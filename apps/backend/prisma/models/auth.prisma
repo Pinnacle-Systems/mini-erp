@@ -1,0 +1,37 @@
+model Identity {
+  id            String     @id @default(uuid()) @db.Uuid
+  phone         String?    @unique
+  email         String?    @unique
+  password_hash String
+  name          String?
+  system_role   SystemRole @default(USER)
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+  deleted_at    DateTime?
+  sessions      Session[]
+
+  @@map("identities")
+  @@schema("auth")
+}
+
+enum SystemRole {
+  USER
+  PLATFORM_ADMIN
+
+  @@schema("auth")
+}
+
+model Session {
+  id          String   @id @default(uuid()) @db.Uuid
+  identity_id String   @db.Uuid
+  token_hash  String   @unique
+  user_agent  String?
+  ip_address  String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  expires_at  DateTime
+  identity    Identity @relation(fields: [identity_id], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@schema("auth")
+}

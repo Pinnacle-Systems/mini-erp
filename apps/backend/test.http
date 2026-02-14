@@ -1,0 +1,28 @@
+#### backend endpoints
+@backend_host=http://localhost:3000
+
+# @name health
+GET {{backend_host}}/api/health
+Content-Type: application/json
+
+### admin
+
+# @name auth
+POST {{backend_host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@mystore.com",
+  "password": "admin"
+}
+
+###
+# @name refresh
+POST {{backend_host}}/api/auth/refresh
+
+###
+# @name logout
+POST {{backend_host}}/api/auth/logout
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzaWQiOiIxYTE0ZWY1ZS1jNjg4LTRmNGEtYjBkZC1hYWQ3OWQ5M2FiZmQiLCJzeXN0ZW1Sb2xlIjoiUExBVEZPUk1fQURNSU4iLCJpYXQiOjE3NzEyNDg0NDksImlzcyI6InBpbm5hY2xlLXN5c3RlbXMtZXJwIiwic3ViIjoiMmY5NmY4OGEtNTkxNi00MDEwLTg5YTAtMzA1OTc4YTYyN2E1IiwiZXhwIjoxNzcxMjQ5MDQ5fQ.TjCm3Rc7_RhX6FxIgXKy6CMg5kKAirhUoC9iHNdBlUM
+
+###

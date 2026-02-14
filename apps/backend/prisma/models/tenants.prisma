@@ -1,0 +1,29 @@
+model Store {
+  id       String        @id @default(uuid()) @db.Uuid
+  name     String
+  owner_id String        @db.Uuid
+  members  StoreMember[]
+
+  @@map("stores")
+  @@schema("tenants")
+}
+
+model StoreMember {
+  id          String    @id @default(uuid()) @db.Uuid
+  store       Store?    @relation(fields: [store_id], references: [id])
+  store_id    String    @db.Uuid
+  identity_id String    @db.Uuid
+  role        StoreRole @default(CASHIER)
+
+  @@unique([store_id, identity_id])
+  @@map("store_members")
+  @@schema("tenants")
+}
+
+enum StoreRole {
+  OWNER
+  MANAGER
+  CASHIER
+
+  @@schema("tenants")
+}
