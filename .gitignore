@@ -24,6 +24,3 @@ build
 .pnpm_store
 .turbo
 .vscode
-
-# Serwist
-public/sw*
