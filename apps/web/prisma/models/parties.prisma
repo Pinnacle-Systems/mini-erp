@@ -1,0 +1,24 @@
+enum PartyType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+
+  @@schema("parties")
+}
+
+model Party {
+  id         String    @id @default(uuid()) @db.Uuid
+  store_id   String    @db.Uuid
+  name       String
+  email      String?
+  phone      String?
+  tax_id     String?
+  type       PartyType @default(CUSTOMER)
+  account_id String?   @db.Uuid
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("parties")
+  @@schema("parties")
+}

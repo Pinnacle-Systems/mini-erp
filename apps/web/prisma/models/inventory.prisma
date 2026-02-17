@@ -1,0 +1,48 @@
+enum UnitType {
+  PCS
+  KG
+  M
+  BOX
+
+  @@schema("inventory")
+}
+
+model Product {
+  id            String        @id @default(uuid()) @db.Uuid
+  store_id      String        @db.Uuid
+  sku           String
+  name          String
+  description   String
+  unit          UnitType      @default(PCS)
+  stock_ledgers StockLedger[]
+
+  @@unique([store_id, sku])
+  @@map("products")
+  @@schema("inventory")
+}
+
+model Location {
+  id            String        @id @default(uuid()) @db.Uuid
+  store_id      String        @db.Uuid
+  name          String
+  stock_ledgers StockLedger[]
+
+  @@map("locations")
+  @@schema("inventory")
+}
+
+model StockLedger {
+  id           String   @id @default(uuid()) @db.Uuid
+  product_id   String   @db.Uuid
+  product      Product  @relation(fields: [product_id], references: [id])
+  location_id  String   @db.Uuid
+  location     Location @relation(fields: [location_id], references: [id])
+  quantity     Decimal  @db.Decimal(12, 3)
+  reason       String
+  reference_id String?
+
+  created_at DateTime @default(now())
+
+  @@map("stock_ledger")
+  @@schema("inventory")
+}
