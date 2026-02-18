@@ -1,4 +1,4 @@
-import { prisma } from "../shared/prisma";
+import { prisma } from "../lib/prisma";
 import * as argon2 from "argon2";
 
 const seed = async () => {

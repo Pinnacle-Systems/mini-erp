@@ -1,6 +1,6 @@
 import * as argon2 from "argon2";
-import { prisma } from "../prisma";
-import { ForbiddenError, UnauthorizedError } from "./errors";
+import { ForbiddenError, UnauthorizedError } from "@/lib/http";
+import { prisma } from "@/lib/prisma";
 
 export const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 

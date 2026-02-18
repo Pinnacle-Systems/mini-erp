@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import authService, { REFRESH_TOKEN_EXPIRY_MS } from "@/shared/auth/auth.service";
-import { getClientIp, handleRouteError, parseAndValidateBody } from "@/shared/auth/http";
-import { loginBodySchema } from "@/shared/auth/auth.schema";
-import { signAccessToken, signTempToken } from "@/shared/auth/token";
-import tenantService from "@/shared/tenant/tenant.service";
-import { SystemRole } from "@/generated/prisma/enums";
+import {
+  authService,
+  getClientIp,
+  handleRouteError,
+  parseAndValidateBody,
+  REFRESH_TOKEN_EXPIRY_MS,
+  signAccessToken,
+  signTempToken,
+} from "@/features/auth/server";
+import { loginBodySchema } from "@/features/auth/schemas";
+import { tenantService } from "@/features/tenant/server";
+import {
+  SystemRole,
+} from "@/generated/prisma/enums";
 
 export async function POST(req: NextRequest) {
   try {

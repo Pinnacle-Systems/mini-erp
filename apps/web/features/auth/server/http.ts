@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodType } from "zod";
-import { AppError, BadRequestError } from "./errors";
+import { AppError, BadRequestError } from "@/lib/http";
 
 export const getClientIp = (req: NextRequest): string => {
   const forwardedFor = req.headers.get("x-forwarded-for");

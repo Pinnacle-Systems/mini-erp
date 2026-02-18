@@ -1,5 +1,5 @@
 import * as jose from "jose";
-import { SystemRole } from "../../generated/prisma/enums";
+import { SystemRole } from "@/generated/prisma/enums";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 const alg = "HS256";
