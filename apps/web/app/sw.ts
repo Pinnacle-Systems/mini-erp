@@ -17,8 +17,13 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
+const precacheEntries: (PrecacheEntry | string)[] = [
+  ...(self.__SW_MANIFEST ?? []),
+  { url: "/offline.html", revision: null },
+];
+
 const serwist = new Serwist({
-  precacheEntries: self.__SW_MANIFEST,
+  precacheEntries,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
@@ -26,7 +31,7 @@ const serwist = new Serwist({
   fallbacks: {
     entries: [
       {
-        url: "/~offline",
+        url: "/offline.html",
         matcher({ request }) {
           return request.destination === "document";
         },

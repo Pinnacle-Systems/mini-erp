@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { startSyncScheduler } from "@/features/sync/client";
 
 type SyncBootstrapProps = {
@@ -14,14 +15,20 @@ export default function SyncBootstrap({
   initialBackoffMs,
   maxBackoffMs,
 }: SyncBootstrapProps) {
+  const pathname = usePathname();
+
   useEffect(() => {
+    if (pathname === "/login") {
+      return;
+    }
+
     const stop = startSyncScheduler({
       intervalMs,
       initialBackoffMs,
       maxBackoffMs,
     });
     return stop;
-  }, [intervalMs, initialBackoffMs, maxBackoffMs]);
+  }, [initialBackoffMs, intervalMs, maxBackoffMs, pathname]);
 
   return null;
 }

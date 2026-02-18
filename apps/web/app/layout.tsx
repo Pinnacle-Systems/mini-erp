@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import "./globals.css";
 import { SerwistProvider } from "./serwist";
 import SyncBootstrap from "./sync-bootstrap";
+import AppShell from "./app-shell";
+import ClientAuthGate from "./client-auth-gate";
 
 const APP_NAME = "PWA App";
 const APP_DEFAULT_TITLE = "My Awesome PWA App";
@@ -51,12 +54,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" dir="ltr">
       <head />
-      <body>
+      <body className="min-h-dvh">
         <SerwistProvider
           swUrl="/sw.js" /* disable={process.env.NODE_ENV === "development"} */
         >
-          <SyncBootstrap />
-          {children}
+          <ClientAuthGate>
+            <SyncBootstrap />
+            <AppShell>{children}</AppShell>
+          </ClientAuthGate>
         </SerwistProvider>
       </body>
     </html>

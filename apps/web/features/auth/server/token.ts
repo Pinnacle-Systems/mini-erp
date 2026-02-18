@@ -5,6 +5,9 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 const alg = "HS256";
 const issuer = "pinnacle-systems-erp";
 
+export const ACCESS_TOKEN_COOKIE = "accessToken";
+export const ACCESS_TOKEN_MAX_AGE_SECONDS = 10 * 60;
+
 type IdentityLike = {
   id: string;
   system_role: SystemRole;
@@ -47,4 +50,16 @@ export const signTempToken = async (
     .setSubject(identity.id)
     .setExpirationTime("10m")
     .sign(JWT_SECRET);
+};
+
+export const verifyAccessToken = async (token: string) => {
+  try {
+    await jose.jwtVerify(token, JWT_SECRET, {
+      algorithms: [alg],
+      issuer,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 };

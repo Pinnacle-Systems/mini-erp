@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  ACCESS_TOKEN_COOKIE,
+  ACCESS_TOKEN_MAX_AGE_SECONDS,
   authService,
   handleRouteError,
   parseAndValidateBody,
@@ -11,6 +13,29 @@ import { ForbiddenError, UnauthorizedError } from "@/lib/http";
 import { refreshBodySchema } from "@/features/auth/schemas";
 import { tenantService } from "@/features/tenant/server";
 import { SystemRole } from "@/generated/prisma/enums";
+
+const setAuthCookies = (
+  response: NextResponse,
+  accessToken: string,
+  refreshToken: string,
+  sessionId: string,
+) => {
+  response.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
+  });
+
+  response.cookies.set("refreshToken", `${sessionId}.${refreshToken}`, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/api/auth/refresh",
+    maxAge: Math.floor(REFRESH_TOKEN_EXPIRY_MS / 1000),
+  });
+};
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,19 +56,14 @@ export async function POST(req: NextRequest) {
         role: SystemRole.PLATFORM_ADMIN,
       });
 
-      response.cookies.set("refreshToken", `${session.id}.${newRefreshToken}`, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        path: "/api/auth/refresh",
-        maxAge: Math.floor(REFRESH_TOKEN_EXPIRY_MS / 1000),
-      });
+      setAuthCookies(response, accessToken, newRefreshToken, session.id);
 
       return response;
     }
 
     const { currentStoreId } = await parseAndValidateBody(req, refreshBodySchema);
 
+    let accessToken: string;
     let payload: Record<string, unknown>;
 
     if (currentStoreId) {
@@ -56,23 +76,23 @@ export async function POST(req: NextRequest) {
         throw new ForbiddenError("Access denied");
       }
 
-      const token = await signAccessToken(session.identity, session, {
+      accessToken = await signAccessToken(session.identity, session, {
         tenantId: currentStoreId,
         memberRole: member.role,
       });
 
       payload = {
         success: true,
-        token,
+        token: accessToken,
         role: SystemRole.USER,
       };
     } else {
-      const tempToken = await signTempToken(session.identity, session);
+      accessToken = await signTempToken(session.identity, session);
       const stores = await tenantService.getStoresForIdentity(session.identity.id);
 
       payload = {
         success: true,
-        token: tempToken,
+        token: accessToken,
         role: SystemRole.USER,
         availableStores: stores,
       };
@@ -80,13 +100,7 @@ export async function POST(req: NextRequest) {
 
     const response = NextResponse.json(payload);
 
-    response.cookies.set("refreshToken", `${session.id}.${newRefreshToken}`, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/api/auth/refresh",
-      maxAge: Math.floor(REFRESH_TOKEN_EXPIRY_MS / 1000),
-    });
+    setAuthCookies(response, accessToken, newRefreshToken, session.id);
 
     return response;
   } catch (error) {
