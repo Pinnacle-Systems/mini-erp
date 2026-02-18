@@ -18,6 +18,7 @@ model Party {
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
   @@map("parties")
   @@schema("parties")

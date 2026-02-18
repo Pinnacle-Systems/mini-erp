@@ -26,3 +26,29 @@ POST {{backend_host}}/api/auth/logout
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzaWQiOiIxYTE0ZWY1ZS1jNjg4LTRmNGEtYjBkZC1hYWQ3OWQ5M2FiZmQiLCJzeXN0ZW1Sb2xlIjoiUExBVEZPUk1fQURNSU4iLCJpYXQiOjE3NzEyNDg0NDksImlzcyI6InBpbm5hY2xlLXN5c3RlbXMtZXJwIiwic3ViIjoiMmY5NmY4OGEtNTkxNi00MDEwLTg5YTAtMzA1OTc4YTYyN2E1IiwiZXhwIjoxNzcxMjQ5MDQ5fQ.TjCm3Rc7_RhX6FxIgXKy6CMg5kKAirhUoC9iHNdBlUM
 
 ###
+
+# @name syncPush
+POST {{backend_host}}/api/sync/push
+Content-Type: application/json
+
+{
+  "mutations": [
+    {
+      "mutationId": "8a57f88f-fc25-4842-90ee-3b202edac6e8",
+      "deviceId": "dev-local-1",
+      "userId": "user-local-1",
+      "entity": "product",
+      "entityId": "product-1",
+      "op": "create",
+      "payload": {
+        "name": "Test Product",
+        "sku": "SKU-001"
+      },
+      "clientTimestamp": "2026-02-18T10:00:00.000Z"
+    }
+  ]
+}
+
+###
+# @name syncPull
+GET {{backend_host}}/api/sync/pull?cursor=0&limit=200

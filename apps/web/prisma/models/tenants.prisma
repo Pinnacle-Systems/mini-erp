@@ -1,19 +1,25 @@
 model Store {
-  id       String        @id @default(uuid()) @db.Uuid
-  name     String
-  owner_id String        @db.Uuid
-  members  StoreMember[]
+  id         String        @id @default(uuid()) @db.Uuid
+  name       String
+  owner_id   String        @db.Uuid
+  created_at DateTime      @default(now())
+  updated_at DateTime      @updatedAt
+  deleted_at DateTime?
+  members    StoreMember[]
 
   @@map("stores")
   @@schema("tenants")
 }
 
 model StoreMember {
-  id          String    @id @default(uuid()) @db.Uuid
-  store       Store?    @relation(fields: [store_id], references: [id])
-  store_id    String    @db.Uuid
-  identity_id String    @db.Uuid
-  role        StoreRole @default(CASHIER)
+  id          String     @id @default(uuid()) @db.Uuid
+  store       Store?     @relation(fields: [store_id], references: [id])
+  store_id    String     @db.Uuid
+  identity_id String     @db.Uuid
+  role        StoreRole  @default(CASHIER)
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+  deleted_at  DateTime?
 
   @@unique([store_id, identity_id])
   @@map("store_members")

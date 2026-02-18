@@ -14,6 +14,9 @@ model Account {
   name           String
   code           String // Chart of accounts
   type           AccountType
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  deleted_at     DateTime?
   ledger_entries LedgerEntry[]
 
   @@unique([store_id, code])
@@ -27,6 +30,8 @@ model JournalEntry {
   description  String
   reference_id String?
   created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+  deleted_at   DateTime?
   lines        LedgerEntry[]
 
   @@map("journal_entries")
@@ -40,6 +45,9 @@ model LedgerEntry {
   party_id         String  @db.Uuid
   debit            Decimal @default(0) @db.Decimal(12, 2)
   credit           Decimal @default(0) @db.Decimal(12, 2)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  deleted_at       DateTime?
 
   journal_entry JournalEntry @relation(fields: [journal_entry_id], references: [id])
   account       Account      @relation(fields: [account_id], references: [id])

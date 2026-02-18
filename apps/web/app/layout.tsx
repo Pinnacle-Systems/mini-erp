@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { SerwistProvider } from "./serwist";
+import SyncBootstrap from "./sync-bootstrap";
 
 const APP_NAME = "PWA App";
 const APP_DEFAULT_TITLE = "My Awesome PWA App";
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <SerwistProvider
           swUrl="/sw.js" /* disable={process.env.NODE_ENV === "development"} */
         >
+          <SyncBootstrap />
           {children}
         </SerwistProvider>
       </body>

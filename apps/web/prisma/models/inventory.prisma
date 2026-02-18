@@ -14,6 +14,9 @@ model Product {
   name          String
   description   String
   unit          UnitType      @default(PCS)
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  deleted_at    DateTime?
   stock_ledgers StockLedger[]
 
   @@unique([store_id, sku])
@@ -25,6 +28,9 @@ model Location {
   id            String        @id @default(uuid()) @db.Uuid
   store_id      String        @db.Uuid
   name          String
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+  deleted_at    DateTime?
   stock_ledgers StockLedger[]
 
   @@map("locations")
@@ -42,6 +48,8 @@ model StockLedger {
   reference_id String?
 
   created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
   @@map("stock_ledger")
   @@schema("inventory")
