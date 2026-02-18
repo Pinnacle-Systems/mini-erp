@@ -14,6 +14,9 @@ CREATE SCHEMA IF NOT EXISTS "inventory";
 CREATE SCHEMA IF NOT EXISTS "parties";
 
 -- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "sync";
+
+-- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "tenants";
 
 -- CreateEnum
@@ -35,6 +38,9 @@ CREATE TYPE "inventory"."UnitType" AS ENUM ('PCS', 'KG', 'M', 'BOX');
 CREATE TYPE "parties"."PartyType" AS ENUM ('CUSTOMER', 'SUPPLIER', 'BOTH');
 
 -- CreateEnum
+CREATE TYPE "sync"."SyncOperation" AS ENUM ('CREATE', 'UPDATE', 'DELETE');
+
+-- CreateEnum
 CREATE TYPE "tenants"."StoreRole" AS ENUM ('OWNER', 'MANAGER', 'CASHIER');
 
 -- CreateTable
@@ -44,6 +50,9 @@ CREATE TABLE "accounts"."accounts" (
     "name" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "type" "accounts"."AccountType" NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "accounts_pkey" PRIMARY KEY ("id")
 );
@@ -55,6 +64,8 @@ CREATE TABLE "accounts"."journal_entries" (
     "description" TEXT NOT NULL,
     "reference_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "journal_entries_pkey" PRIMARY KEY ("id")
 );
@@ -67,6 +78,9 @@ CREATE TABLE "accounts"."ledger_entries" (
     "party_id" UUID NOT NULL,
     "debit" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "credit" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "ledger_entries_pkey" PRIMARY KEY ("id")
 );
@@ -109,7 +123,7 @@ CREATE TABLE "documents"."documents" (
     "doc_number" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
-    "deleted_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
     "party_id" UUID NOT NULL,
     "parent_id" UUID,
     "sub_total" DECIMAL(12,2) NOT NULL,
@@ -131,6 +145,9 @@ CREATE TABLE "documents"."line_items" (
     "unit_price" DECIMAL(12,2) NOT NULL,
     "tax_rate" DECIMAL(5,2) NOT NULL,
     "total" DECIMAL(12,2) NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "line_items_pkey" PRIMARY KEY ("id")
 );
@@ -143,6 +160,9 @@ CREATE TABLE "inventory"."products" (
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "unit" "inventory"."UnitType" NOT NULL DEFAULT 'PCS',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "products_pkey" PRIMARY KEY ("id")
 );
@@ -152,6 +172,9 @@ CREATE TABLE "inventory"."locations" (
     "id" UUID NOT NULL,
     "store_id" UUID NOT NULL,
     "name" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "locations_pkey" PRIMARY KEY ("id")
 );
@@ -165,6 +188,8 @@ CREATE TABLE "inventory"."stock_ledger" (
     "reason" TEXT NOT NULL,
     "reference_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "stock_ledger_pkey" PRIMARY KEY ("id")
 );
@@ -181,8 +206,40 @@ CREATE TABLE "parties"."parties" (
     "account_id" UUID,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "parties_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "sync"."mutation_log" (
+    "id" UUID NOT NULL,
+    "mutation_id" TEXT NOT NULL,
+    "device_id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "entity" TEXT NOT NULL,
+    "entity_id" TEXT NOT NULL,
+    "operation" "sync"."SyncOperation" NOT NULL,
+    "payload" JSONB NOT NULL,
+    "base_version" INTEGER,
+    "client_timestamp" TIMESTAMP(3) NOT NULL,
+    "server_timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "mutation_log_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "sync"."change_log" (
+    "id" UUID NOT NULL,
+    "cursor" BIGSERIAL NOT NULL,
+    "entity" TEXT NOT NULL,
+    "entity_id" TEXT NOT NULL,
+    "operation" "sync"."SyncOperation" NOT NULL,
+    "data" JSONB NOT NULL,
+    "server_version" INTEGER NOT NULL,
+    "server_timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "change_log_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -190,6 +247,9 @@ CREATE TABLE "tenants"."stores" (
     "id" UUID NOT NULL,
     "name" TEXT NOT NULL,
     "owner_id" UUID NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "stores_pkey" PRIMARY KEY ("id")
 );
@@ -200,6 +260,9 @@ CREATE TABLE "tenants"."store_members" (
     "store_id" UUID NOT NULL,
     "identity_id" UUID NOT NULL,
     "role" "tenants"."StoreRole" NOT NULL DEFAULT 'CASHIER',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "store_members_pkey" PRIMARY KEY ("id")
 );
@@ -221,6 +284,15 @@ CREATE UNIQUE INDEX "documents_store_id_type_doc_number_key" ON "documents"."doc
 
 -- CreateIndex
 CREATE UNIQUE INDEX "products_store_id_sku_key" ON "inventory"."products"("store_id", "sku");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "mutation_log_mutation_id_key" ON "sync"."mutation_log"("mutation_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "change_log_cursor_key" ON "sync"."change_log"("cursor");
+
+-- CreateIndex
+CREATE INDEX "change_log_cursor_idx" ON "sync"."change_log"("cursor");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "store_members_store_id_identity_id_key" ON "tenants"."store_members"("store_id", "identity_id");

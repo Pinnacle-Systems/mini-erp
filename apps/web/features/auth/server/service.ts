@@ -1,5 +1,5 @@
 import * as argon2 from "argon2";
-import { ForbiddenError, UnauthorizedError } from "@/lib/http";
+import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 
 export const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -86,10 +86,204 @@ const verifySession = async (refreshToken: string) => {
   return { session: refreshedSession, refreshToken: newRefreshToken };
 };
 
+const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_OWNER_PASSWORD ?? "ChangeMe123!";
+
+type FindOrCreateIdentityInput = {
+  name?: string;
+  email?: string;
+  phone?: string;
+};
+
+type SearchIdentitiesInput = {
+  email?: string;
+  phone?: string;
+};
+
+type UpdateIdentityInput = {
+  identityId: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+};
+
+const findOrCreateIdentity = async ({
+  name,
+  email,
+  phone,
+}: FindOrCreateIdentityInput) => {
+  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedPhone = phone?.trim();
+
+  const lookup = [
+    normalizedEmail ? { email: normalizedEmail } : null,
+    normalizedPhone ? { phone: normalizedPhone } : null,
+  ].filter((condition): condition is { email: string } | { phone: string } => Boolean(condition));
+
+  if (lookup.length === 0) {
+    throw new BadRequestError("Owner email or phone is required");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existingIdentity = await tx.identity.findFirst({
+      where: {
+        OR: lookup,
+      },
+    });
+
+    if (existingIdentity) {
+      return {
+        identity: existingIdentity,
+        wasCreated: false,
+        defaultPassword: null as string | null,
+      };
+    }
+
+    const passwordHash = await argon2.hash(DEFAULT_OWNER_PASSWORD);
+
+    const createdIdentity = await tx.identity.create({
+      data: {
+        name: name?.trim() || null,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        password_hash: passwordHash,
+      },
+    });
+
+    return {
+      identity: createdIdentity,
+      wasCreated: true,
+      defaultPassword: DEFAULT_OWNER_PASSWORD,
+    };
+  });
+};
+
+const searchIdentities = async ({
+  email,
+  phone,
+}: SearchIdentitiesInput) => {
+  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedPhone = phone?.trim();
+
+  const andConditions = [
+    normalizedEmail
+      ? {
+        email: {
+          contains: normalizedEmail,
+          mode: "insensitive" as const,
+        },
+      }
+      : null,
+    normalizedPhone
+      ? {
+        phone: {
+          contains: normalizedPhone,
+        },
+      }
+      : null,
+  ].filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
+
+  return prisma.identity.findMany({
+    where: andConditions.length > 0 ? { AND: andConditions } : undefined,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
+};
+
+const getIdentitiesByIds = async (identityIds: string[]) => {
+  if (identityIds.length === 0) {
+    return [];
+  }
+
+  return prisma.identity.findMany({
+    where: {
+      id: {
+        in: identityIds,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+    },
+  });
+};
+
+const getIdentityById = async (identityId: string) => {
+  return prisma.identity.findUnique({
+    where: {
+      id: identityId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+    },
+  });
+};
+
+const updateIdentity = async ({
+  identityId,
+  name,
+  email,
+  phone,
+}: UpdateIdentityInput) => {
+  const normalizedName = name?.trim();
+  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedPhone = phone?.trim();
+
+  if (!normalizedEmail && !normalizedPhone) {
+    throw new BadRequestError("Owner email or phone is required");
+  }
+
+  try {
+    return await prisma.identity.update({
+      where: {
+        id: identityId,
+      },
+      data: {
+        name: normalizedName || null,
+        email: normalizedEmail || null,
+        phone: normalizedPhone || null,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+      },
+    });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      throw new ConflictError("Email or phone already exists");
+    }
+
+    throw error;
+  }
+};
+
 const authService = {
   createSession,
   searchIdentity,
   verifySession,
+  findOrCreateIdentity,
+  searchIdentities,
+  getIdentitiesByIds,
+  getIdentityById,
+  updateIdentity,
 };
 
 export default authService;

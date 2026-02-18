@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import "./globals.css";
 import { SerwistProvider } from "./serwist";
 import SyncBootstrap from "./sync-bootstrap";
 import AppShell from "./app-shell";
 import ClientAuthGate from "./client-auth-gate";
+import { readAccessToken, ACCESS_TOKEN_COOKIE } from "@/features/auth/server";
+import { SystemRole } from "@/generated/prisma/enums";
 
 const APP_NAME = "PWA App";
 const APP_DEFAULT_TITLE = "My Awesome PWA App";
@@ -50,7 +53,12 @@ export const viewport: Viewport = {
   themeColor: "#FFFFFF",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ACCESS_TOKEN_COOKIE)?.value;
+  const payload = token ? await readAccessToken(token) : null;
+  const shouldEnableSync = payload?.systemRole !== SystemRole.PLATFORM_ADMIN;
+
   return (
     <html lang="en" dir="ltr">
       <head />
@@ -59,7 +67,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           swUrl="/sw.js" /* disable={process.env.NODE_ENV === "development"} */
         >
           <ClientAuthGate>
-            <SyncBootstrap />
+            <SyncBootstrap enabled={shouldEnableSync} />
             <AppShell>{children}</AppShell>
           </ClientAuthGate>
         </SerwistProvider>

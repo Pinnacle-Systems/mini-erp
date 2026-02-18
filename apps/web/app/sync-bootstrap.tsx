@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 import { startSyncScheduler } from "@/features/sync/client";
 
 type SyncBootstrapProps = {
+  enabled?: boolean;
   intervalMs?: number;
   initialBackoffMs?: number;
   maxBackoffMs?: number;
 };
 
 export default function SyncBootstrap({
+  enabled = true,
   intervalMs,
   initialBackoffMs,
   maxBackoffMs,
@@ -18,7 +20,7 @@ export default function SyncBootstrap({
   const pathname = usePathname();
 
   useEffect(() => {
-    if (pathname === "/login") {
+    if (!enabled || pathname === "/login") {
       return;
     }
 
@@ -28,7 +30,7 @@ export default function SyncBootstrap({
       maxBackoffMs,
     });
     return stop;
-  }, [initialBackoffMs, intervalMs, maxBackoffMs, pathname]);
+  }, [enabled, initialBackoffMs, intervalMs, maxBackoffMs, pathname]);
 
   return null;
 }

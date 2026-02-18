@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   ACCESS_TOKEN_COOKIE,
   handleRouteError,
-  verifyAccessToken,
+  readAccessToken,
 } from "@/features/auth/server";
 import { UnauthorizedError } from "@/lib/http";
 
@@ -14,13 +14,16 @@ export async function GET(req: NextRequest) {
       throw new UnauthorizedError("Unauthorized");
     }
 
-    const isTokenValid = await verifyAccessToken(token);
-    if (!isTokenValid) {
+    const payload = await readAccessToken(token);
+    if (!payload) {
       throw new UnauthorizedError("Unauthorized");
     }
 
     return NextResponse.json({
       success: true,
+      role: payload.systemRole ?? null,
+      identityId: payload.sub ?? null,
+      tenantId: typeof payload.tenantId === "string" ? payload.tenantId : null,
     });
   } catch (error) {
     const response = handleRouteError(error);

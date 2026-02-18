@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { writeAuthCache } from "@/features/auth/client/state";
 
 type AppShellProps = {
@@ -13,10 +13,7 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-  if (pathname === "/login" || pathname === "/offline") {
-    return <>{children}</>;
-  }
+  const [role, setRole] = useState<string | null>(null);
 
   const handleLogout = async () => {
     if (isLoggingOut) {
@@ -40,15 +37,61 @@ export default function AppShell({ children }: AppShellProps) {
     }
   };
 
+  useEffect(() => {
+    let active = true;
+
+    const loadMe = async () => {
+      try {
+        const response = await fetch("/api/auth/me", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          success: boolean;
+          role?: string | null;
+        };
+
+        if (active && payload.success) {
+          setRole(payload.role ?? null);
+        }
+      } catch {
+        // Ignore role adornments if identity resolution fails.
+      }
+    };
+
+    void loadMe();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (pathname === "/login" || pathname === "/offline") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-dvh bg-slate-100 text-slate-900">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4">
-          <div className="text-sm font-semibold tracking-wide">Mini ERP</div>
+        <div className="mx-auto flex h-12 w-full max-w-4xl items-center justify-between px-3">
+          <Link
+            href="/"
+            className="rounded-md px-2 py-1 text-sm font-semibold tracking-wide text-slate-900 transition hover:bg-slate-100"
+          >
+            Mini ERP
+          </Link>
           <div className="flex items-center gap-2">
-            <div className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
-              PWA Ready
-            </div>
+            {role === "PLATFORM_ADMIN" ? (
+              <div className="rounded-full bg-slate-900 px-2 py-1 text-xs font-medium text-white">
+                Admin Console
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={handleLogout}
@@ -61,15 +104,15 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-4">
+      <main className="mx-auto w-full max-w-4xl px-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] pt-3">
         {children}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-center gap-2 px-4">
+        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-center gap-2 px-3">
           <Link
             href="/"
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+            className="rounded-full bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
           >
             Dashboard
           </Link>
@@ -77,7 +120,7 @@ export default function AppShell({ children }: AppShellProps) {
             type="button"
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isLoggingOut ? "Logging out..." : "Logout"}
           </button>

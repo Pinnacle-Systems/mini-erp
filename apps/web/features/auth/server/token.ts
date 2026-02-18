@@ -17,6 +17,13 @@ type SessionLike = {
   id: string;
 };
 
+export type AccessTokenPayload = jose.JWTPayload & {
+  sid?: string;
+  systemRole?: SystemRole;
+  scope?: string;
+  tenantId?: string;
+};
+
 export const signAccessToken = async (
   identity: IdentityLike,
   session: SessionLike,
@@ -52,14 +59,22 @@ export const signTempToken = async (
     .sign(JWT_SECRET);
 };
 
-export const verifyAccessToken = async (token: string) => {
+export const readAccessToken = async (
+  token: string,
+): Promise<AccessTokenPayload | null> => {
   try {
-    await jose.jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jose.jwtVerify(token, JWT_SECRET, {
       algorithms: [alg],
       issuer,
     });
-    return true;
+
+    return payload as AccessTokenPayload;
   } catch {
-    return false;
+    return null;
   }
+};
+
+export const verifyAccessToken = async (token: string) => {
+  const payload = await readAccessToken(token);
+  return Boolean(payload);
 };
