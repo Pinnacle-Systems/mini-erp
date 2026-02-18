@@ -17,5 +17,10 @@ export const refreshBodySchema = z.object({
   currentStoreId: z.uuid().optional(),
 });
 
+export const storeSelectionBodySchema = z.object({
+  storeId: z.uuid(),
+});
+
 export type LoginBody = z.infer<typeof loginBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
+export type StoreSelectionBody = z.infer<typeof storeSelectionBodySchema>;

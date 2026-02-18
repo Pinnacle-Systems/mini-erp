@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
-import { syncOnce } from "./engine";
+import { ensureFreshAccessToken } from "@/features/auth/client/session";
+import { syncOnce, SyncAuthExpiredError } from "./engine";
 
 type SyncSchedulerOptions = {
   intervalMs?: number;
@@ -81,6 +82,13 @@ export const startSyncScheduler = (options: SyncSchedulerOptions = {}) => {
       failureCount = 0;
       schedule(config.intervalMs);
     } catch (error) {
+      if (error instanceof SyncAuthExpiredError) {
+        console.warn("Sync stopped: auth session expired.");
+        stop();
+        window.location.assign("/login");
+        return;
+      }
+
       console.error("Sync cycle failed", error);
       failureCount += 1;
       const backoff = Math.min(
@@ -95,12 +103,14 @@ export const startSyncScheduler = (options: SyncSchedulerOptions = {}) => {
 
   const handleOnline = () => {
     if (document.visibilityState === "visible") {
+      void ensureFreshAccessToken();
       void runCycle();
     }
   };
 
   const handleVisibilityChange = () => {
     if (document.visibilityState === "visible") {
+      void ensureFreshAccessToken();
       void runCycle();
     }
   };

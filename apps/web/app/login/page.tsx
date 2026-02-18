@@ -3,11 +3,13 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { writeAuthCache } from "@/features/auth/client/state";
+import { clearStoreContext } from "@/features/auth/client/store-context";
 
 type LoginResponse = {
   success: boolean;
   message?: string;
   token?: string;
+  role?: string;
 };
 
 const toLoginBody = (identifier: string, password: string) => {
@@ -53,7 +55,12 @@ export default function LoginPage() {
       }
 
       writeAuthCache(true);
-      router.replace("/");
+      clearStoreContext();
+      if (payload.role === "USER") {
+        router.replace("/store-selection");
+      } else {
+        router.replace("/");
+      }
     } catch (submitError) {
       const message =
         submitError instanceof Error ? submitError.message : "Unable to sign in.";

@@ -5,6 +5,7 @@ import {
   authService,
   handleRouteError,
   parseAndValidateBody,
+  readAccessToken,
   REFRESH_TOKEN_EXPIRY_MS,
   signAccessToken,
   signTempToken,
@@ -37,6 +38,17 @@ const setAuthCookies = (
   });
 };
 
+const clearAuthCookies = (response: NextResponse) => {
+  response.cookies.delete(ACCESS_TOKEN_COOKIE);
+  response.cookies.set("refreshToken", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/api/auth/refresh",
+    maxAge: 0,
+  });
+};
+
 export async function POST(req: NextRequest) {
   try {
     const refreshToken = req.cookies.get("refreshToken")?.value;
@@ -61,49 +73,58 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
+    const accessToken = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+    const accessPayload = accessToken ? await readAccessToken(accessToken) : null;
+
     const { currentStoreId } = await parseAndValidateBody(req, refreshBodySchema);
+    const effectiveStoreId =
+      currentStoreId ??
+      (typeof accessPayload?.tenantId === "string" ? accessPayload.tenantId : undefined);
 
-    let accessToken: string;
-    let payload: Record<string, unknown>;
-
-    if (currentStoreId) {
+    if (effectiveStoreId) {
       const member = await tenantService.validateMembership(
         session.identity_id,
-        currentStoreId,
+        effectiveStoreId,
       );
 
-      if (!member) {
-        throw new ForbiddenError("Access denied");
+      if (member) {
+        const refreshedAccessToken = await signAccessToken(session.identity, session, {
+          tenantId: effectiveStoreId,
+          memberRole: member.role,
+        });
+
+        const payload = {
+          success: true,
+          token: refreshedAccessToken,
+          role: SystemRole.USER,
+        };
+
+        const response = NextResponse.json(payload);
+        setAuthCookies(response, refreshedAccessToken, newRefreshToken, session.id);
+        return response;
       }
-
-      accessToken = await signAccessToken(session.identity, session, {
-        tenantId: currentStoreId,
-        memberRole: member.role,
-      });
-
-      payload = {
-        success: true,
-        token: accessToken,
-        role: SystemRole.USER,
-      };
-    } else {
-      accessToken = await signTempToken(session.identity, session);
-      const stores = await tenantService.getStoresForIdentity(session.identity.id);
-
-      payload = {
-        success: true,
-        token: accessToken,
-        role: SystemRole.USER,
-        availableStores: stores,
-      };
     }
+
+    const refreshedAccessToken = await signTempToken(session.identity, session);
+
+    const payload = {
+      success: true,
+      token: refreshedAccessToken,
+      role: SystemRole.USER,
+    };
 
     const response = NextResponse.json(payload);
 
-    setAuthCookies(response, accessToken, newRefreshToken, session.id);
+    setAuthCookies(response, refreshedAccessToken, newRefreshToken, session.id);
 
     return response;
   } catch (error) {
-    return handleRouteError(error);
+    const response = handleRouteError(error);
+
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      clearAuthCookies(response);
+    }
+
+    return response;
   }
 }

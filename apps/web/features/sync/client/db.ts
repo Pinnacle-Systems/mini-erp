@@ -1,7 +1,9 @@
 import Dexie, { type Table } from "dexie";
 import type { SyncDelta, SyncMutation } from "../types";
+import { getActiveStoreId } from "@/features/auth/client/store-context";
 
 export type OutboxItem = SyncMutation & {
+  tenantId: string;
   status: "pending" | "applied" | "rejected";
   error?: string;
   createdAt: string;
@@ -9,11 +11,13 @@ export type OutboxItem = SyncMutation & {
 };
 
 export type SyncMeta = {
+  tenantId: string;
   key: "cursor" | "deviceId" | "lastSyncAt";
   value: string;
 };
 
 export type EntityRecord = {
+  tenantId: string;
   entity: string;
   entityId: string;
   data: Record<string, unknown>;
@@ -24,15 +28,15 @@ export type EntityRecord = {
 
 class SyncDatabase extends Dexie {
   outbox!: Table<OutboxItem, string>;
-  syncMeta!: Table<SyncMeta, SyncMeta["key"]>;
-  entities!: Table<EntityRecord, [string, string]>;
+  syncMeta!: Table<SyncMeta, [string, SyncMeta["key"]]>;
+  entities!: Table<EntityRecord, [string, string, string]>;
 
   constructor() {
     super("mini_erp_sync");
     this.version(1).stores({
-      outbox: "&mutationId, status, entity, createdAt",
-      syncMeta: "&key",
-      entities: "[entity+entityId], entity, updatedAt",
+      outbox: "&mutationId, [tenantId+status], tenantId, status, entity, createdAt",
+      syncMeta: "[tenantId+key], tenantId, key",
+      entities: "[tenantId+entity+entityId], tenantId, entity, updatedAt",
     });
   }
 }
@@ -40,9 +44,15 @@ class SyncDatabase extends Dexie {
 export const syncDb = new SyncDatabase();
 
 export const queueMutation = async (mutation: SyncMutation) => {
+  const tenantId = getActiveStoreId();
+  if (!tenantId) {
+    throw new Error("Cannot queue sync mutation without active store");
+  }
+
   const now = new Date().toISOString();
   await syncDb.outbox.put({
     ...mutation,
+    tenantId,
     status: "pending",
     createdAt: now,
     updatedAt: now,
@@ -50,9 +60,14 @@ export const queueMutation = async (mutation: SyncMutation) => {
 };
 
 export const applyDeltas = async (deltas: SyncDelta[]) => {
+  const tenantId = getActiveStoreId();
+  if (!tenantId) {
+    return;
+  }
+
   await syncDb.transaction("rw", syncDb.entities, async () => {
     for (const delta of deltas) {
-      const key: [string, string] = [delta.entity, delta.entityId];
+      const key: [string, string, string] = [tenantId, delta.entity, delta.entityId];
 
       if (delta.op === "delete") {
         const existing = await syncDb.entities.get(key);
@@ -70,6 +85,7 @@ export const applyDeltas = async (deltas: SyncDelta[]) => {
       }
 
       await syncDb.entities.put({
+        tenantId,
         entity: delta.entity,
         entityId: delta.entityId,
         data: delta.data,
@@ -78,4 +94,9 @@ export const applyDeltas = async (deltas: SyncDelta[]) => {
       });
     }
   });
+};
+
+export const getPendingTenantIds = async () => {
+  const pending = await syncDb.outbox.where("status").equals("pending").toArray();
+  return Array.from(new Set(pending.map((item) => item.tenantId)));
 };

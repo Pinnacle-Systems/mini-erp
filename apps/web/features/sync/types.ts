@@ -29,6 +29,7 @@ export type SyncDelta = {
 };
 
 export type PushRequest = {
+  tenantId: string;
   mutations: SyncMutation[];
 };
 

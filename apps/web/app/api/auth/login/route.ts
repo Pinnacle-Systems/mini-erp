@@ -11,7 +11,6 @@ import {
   signTempToken,
 } from "@/features/auth/server";
 import { loginBodySchema } from "@/features/auth/schemas";
-import { tenantService } from "@/features/tenant/server";
 import {
   SystemRole,
 } from "@/generated/prisma/enums";
@@ -71,13 +70,11 @@ export async function POST(req: NextRequest) {
     }
 
     const tempToken = await signTempToken(identity, session);
-    const stores = await tenantService.getStoresForIdentity(identity.id);
 
     const response = NextResponse.json({
       success: true,
       token: tempToken,
       role: SystemRole.USER,
-      availableStores: stores,
     });
 
     setAuthCookies(response, tempToken, refreshToken, session.id);

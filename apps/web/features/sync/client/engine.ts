@@ -1,28 +1,93 @@
-import { applyDeltas, syncDb } from "./db";
-import type { PullResponse, PushResponse } from "../types";
+import {
+  applyDeltas,
+  getPendingTenantIds,
+  syncDb,
+  type OutboxItem,
+} from "./db";
+import type { PullResponse, PushResponse, SyncMutation } from "../types";
+import { ensureFreshAccessToken } from "@/features/auth/client/session";
+import {
+  getActiveStoreId,
+} from "@/features/auth/client/store-context";
 
 const CURSOR_KEY = "cursor";
+const MAX_TENANT_SYNC_CONCURRENCY = 2;
 
-const getCursor = async () => {
-  const cursorRow = await syncDb.syncMeta.get(CURSOR_KEY);
+export class SyncAuthExpiredError extends Error {
+  constructor() {
+    super("Sync session expired.");
+    this.name = "SyncAuthExpiredError";
+  }
+}
+
+const getCursor = async (tenantId: string) => {
+  const cursorRow = await syncDb.syncMeta.get([tenantId, CURSOR_KEY]);
   return cursorRow?.value ?? "0";
 };
 
-const setMeta = async (key: "cursor" | "deviceId" | "lastSyncAt", value: string) => {
-  await syncDb.syncMeta.put({ key, value });
+const setMeta = async (
+  tenantId: string,
+  key: "cursor" | "deviceId" | "lastSyncAt",
+  value: string,
+) => {
+  await syncDb.syncMeta.put({ tenantId, key, value });
 };
 
-const pushPendingMutations = async () => {
-  const pending = await syncDb.outbox.where("status").equals("pending").limit(100).toArray();
+const toSyncMutation = (item: OutboxItem): SyncMutation => ({
+  mutationId: item.mutationId,
+  deviceId: item.deviceId,
+  userId: item.userId,
+  entity: item.entity,
+  entityId: item.entityId,
+  op: item.op,
+  payload: item.payload,
+  baseVersion: item.baseVersion,
+  clientTimestamp: item.clientTimestamp,
+});
+
+const fetchWithAuthRetry = async (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => {
+  const response = await fetch(input, init);
+  if (response.status !== 401) {
+    return response;
+  }
+
+  const refreshStatus = await ensureFreshAccessToken({ force: true });
+  if (refreshStatus === "unauthorized") {
+    throw new SyncAuthExpiredError();
+  }
+
+  if (refreshStatus !== "ok") {
+    return response;
+  }
+
+  const retriedResponse = await fetch(input, init);
+  if (retriedResponse.status === 401) {
+    throw new SyncAuthExpiredError();
+  }
+
+  return retriedResponse;
+};
+
+const pushPendingMutations = async (tenantId: string) => {
+  const pending = await syncDb.outbox
+    .where("[tenantId+status]")
+    .equals([tenantId, "pending"])
+    .limit(100)
+    .toArray();
   if (!pending.length) {
     return;
   }
 
-  const response = await fetch("/api/sync/push", {
+  const response = await fetchWithAuthRetry("/api/sync/push", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({
-      mutations: pending.map(({ status, error, createdAt, updatedAt, ...mutation }) => mutation),
+      tenantId,
+      mutations: pending.map(toSyncMutation),
     }),
   });
 
@@ -48,15 +113,16 @@ const pushPendingMutations = async () => {
       });
     }
 
-    await setMeta("cursor", payload.cursor);
+    await setMeta(tenantId, "cursor", payload.cursor);
   });
 };
 
-const pullDeltas = async () => {
-  const cursor = await getCursor();
-  const query = new URLSearchParams({ cursor, limit: "200" });
-  const response = await fetch(`/api/sync/pull?${query.toString()}`, {
+const pullDeltas = async (tenantId: string) => {
+  const cursor = await getCursor(tenantId);
+  const query = new URLSearchParams({ tenantId, cursor, limit: "200" });
+  const response = await fetchWithAuthRetry(`/api/sync/pull?${query.toString()}`, {
     method: "GET",
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -67,12 +133,64 @@ const pullDeltas = async () => {
 
   await syncDb.transaction("rw", syncDb.syncMeta, syncDb.entities, async () => {
     await applyDeltas(payload.deltas);
-    await setMeta("cursor", payload.nextCursor);
-    await setMeta("lastSyncAt", new Date().toISOString());
+    await setMeta(tenantId, "cursor", payload.nextCursor);
+    await setMeta(tenantId, "lastSyncAt", new Date().toISOString());
   });
 };
 
+const syncTenant = async (tenantId: string) => {
+  await pushPendingMutations(tenantId);
+  await pullDeltas(tenantId);
+};
+
 export const syncOnce = async () => {
-  await pushPendingMutations();
-  await pullDeltas();
+  const refreshStatus = await ensureFreshAccessToken();
+  if (refreshStatus === "unauthorized") {
+    throw new SyncAuthExpiredError();
+  }
+  if (refreshStatus === "failed") {
+    return;
+  }
+
+  const activeTenantId = getActiveStoreId();
+  const pendingTenantIds = await getPendingTenantIds();
+  const queue = activeTenantId
+    ? [activeTenantId, ...pendingTenantIds.filter((tenantId) => tenantId !== activeTenantId)]
+    : pendingTenantIds;
+
+  if (queue.length === 0) {
+    return;
+  }
+
+  const workerCount = Math.min(MAX_TENANT_SYNC_CONCURRENCY, queue.length);
+  let cursor = 0;
+
+  const getNextTenant = () => {
+    if (cursor >= queue.length) {
+      return null;
+    }
+    const next = queue[cursor];
+    cursor += 1;
+    return next;
+  };
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const tenantId = getNextTenant();
+      if (!tenantId) {
+        return;
+      }
+
+      try {
+        await syncTenant(tenantId);
+      } catch (error) {
+        if (error instanceof SyncAuthExpiredError) {
+          throw error;
+        }
+        console.error(`Sync failed for tenant ${tenantId}`, error);
+      }
+    }
+  });
+
+  await Promise.all(workers);
 };

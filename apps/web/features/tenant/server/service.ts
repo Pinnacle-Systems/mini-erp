@@ -5,9 +5,11 @@ import { ConflictError } from "@/lib/http";
 const getStoresForIdentity = async (identityId: string) => {
   return prisma.store.findMany({
     where: {
+      deleted_at: null,
       members: {
         some: {
           identity_id: identityId,
+          deleted_at: null,
         },
       },
     },
@@ -19,6 +21,7 @@ const validateMembership = async (identityId: string, storeId: string) => {
     where: {
       identity_id: identityId,
       store_id: storeId,
+      deleted_at: null,
     },
   });
 };
@@ -45,6 +48,27 @@ type UpdateStoreInput = {
   storeId: string;
   storeName?: string;
   isActive?: boolean;
+};
+
+type AddStoreMemberInput = {
+  storeId: string;
+  identityId: string;
+  role: StoreRole;
+};
+
+type ListStoreMembersInput = {
+  storeId: string;
+};
+
+type UpdateStoreMemberRoleInput = {
+  memberId: string;
+  storeId: string;
+  role: StoreRole;
+};
+
+type SoftDeleteStoreMemberInput = {
+  memberId: string;
+  storeId: string;
 };
 
 const createStore = async ({
@@ -293,6 +317,119 @@ const updateStore = async ({
   }
 };
 
+const addStoreMember = async ({
+  storeId,
+  identityId,
+  role,
+}: AddStoreMemberInput) => {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existingMember = await tx.storeMember.findFirst({
+        where: {
+          store_id: storeId,
+          identity_id: identityId,
+        },
+      });
+
+      if (existingMember && !existingMember.deleted_at) {
+        throw new ConflictError("User is already a member of this store");
+      }
+
+      if (existingMember && existingMember.deleted_at) {
+        return tx.storeMember.update({
+          where: {
+            id: existingMember.id,
+          },
+          data: {
+            role,
+            deleted_at: null,
+          },
+        });
+      }
+
+      return tx.storeMember.create({
+        data: {
+          store_id: storeId,
+          identity_id: identityId,
+          role,
+        },
+      });
+    });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      throw new ConflictError("User is already a member of this store");
+    }
+
+    throw error;
+  }
+};
+
+const listStoreMembers = async ({ storeId }: ListStoreMembersInput) => {
+  return prisma.storeMember.findMany({
+    where: {
+      store_id: storeId,
+      deleted_at: null,
+    },
+    orderBy: {
+      created_at: "asc",
+    },
+  });
+};
+
+const getStoreMemberById = async (memberId: string, storeId: string) => {
+  return prisma.storeMember.findFirst({
+    where: {
+      id: memberId,
+      store_id: storeId,
+      deleted_at: null,
+    },
+  });
+};
+
+const updateStoreMemberRole = async ({
+  memberId,
+  storeId,
+  role,
+}: UpdateStoreMemberRoleInput) => {
+  const existingMember = await getStoreMemberById(memberId, storeId);
+  if (!existingMember) {
+    return null;
+  }
+
+  return prisma.storeMember.update({
+    where: {
+      id: existingMember.id,
+    },
+    data: {
+      role,
+    },
+  });
+};
+
+const softDeleteStoreMember = async ({
+  memberId,
+  storeId,
+}: SoftDeleteStoreMemberInput) => {
+  const existingMember = await getStoreMemberById(memberId, storeId);
+  if (!existingMember) {
+    return null;
+  }
+
+  return prisma.storeMember.update({
+    where: {
+      id: existingMember.id,
+    },
+    data: {
+      deleted_at: new Date(),
+    },
+  });
+};
+
 const tenantService = {
   getStoresForIdentity,
   validateMembership,
@@ -305,6 +442,11 @@ const tenantService = {
   listStoresByOwnerId,
   getStoreById,
   updateStore,
+  addStoreMember,
+  listStoreMembers,
+  getStoreMemberById,
+  updateStoreMemberRole,
+  softDeleteStoreMember,
 };
 
 export default tenantService;

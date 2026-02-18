@@ -20,7 +20,7 @@ export default function SyncBootstrap({
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!enabled || pathname === "/login") {
+    if (!enabled || pathname === "/login" || pathname === "/store-selection") {
       return;
     }
 

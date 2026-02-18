@@ -4,6 +4,8 @@ import {
   handleRouteError,
   readAccessToken,
 } from "@/features/auth/server";
+import { getAssignableRoles, tenantService } from "@/features/tenant/server";
+import { SystemRole } from "@/generated/prisma/enums";
 import { UnauthorizedError } from "@/lib/http";
 
 export async function GET(req: NextRequest) {
@@ -19,11 +21,28 @@ export async function GET(req: NextRequest) {
       throw new UnauthorizedError("Unauthorized");
     }
 
+    let memberRole: string | null = null;
+    let assignableRoles: string[] = [];
+
+    if (
+      payload.systemRole === SystemRole.USER &&
+      typeof payload.sub === "string" &&
+      typeof payload.tenantId === "string"
+    ) {
+      const member = await tenantService.validateMembership(payload.sub, payload.tenantId);
+      if (member) {
+        memberRole = member.role;
+        assignableRoles = getAssignableRoles(member.role);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       role: payload.systemRole ?? null,
       identityId: payload.sub ?? null,
       tenantId: typeof payload.tenantId === "string" ? payload.tenantId : null,
+      memberRole,
+      assignableRoles,
     });
   } catch (error) {
     const response = handleRouteError(error);

@@ -87,6 +87,7 @@ const verifySession = async (refreshToken: string) => {
 };
 
 const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_OWNER_PASSWORD ?? "ChangeMe123!";
+const DEFAULT_MEMBER_PASSWORD = process.env.DEFAULT_MEMBER_PASSWORD ?? DEFAULT_OWNER_PASSWORD;
 
 type FindOrCreateIdentityInput = {
   name?: string;
@@ -153,6 +154,57 @@ const findOrCreateIdentity = async ({
       identity: createdIdentity,
       wasCreated: true,
       defaultPassword: DEFAULT_OWNER_PASSWORD,
+    };
+  });
+};
+
+const findOrCreateMemberIdentity = async ({
+  name,
+  email,
+  phone,
+}: FindOrCreateIdentityInput) => {
+  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedPhone = phone?.trim();
+
+  const lookup = [
+    normalizedEmail ? { email: normalizedEmail } : null,
+    normalizedPhone ? { phone: normalizedPhone } : null,
+  ].filter((condition): condition is { email: string } | { phone: string } => Boolean(condition));
+
+  if (lookup.length === 0) {
+    throw new BadRequestError("Email or phone is required");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existingIdentity = await tx.identity.findFirst({
+      where: {
+        OR: lookup,
+      },
+    });
+
+    if (existingIdentity) {
+      return {
+        identity: existingIdentity,
+        wasCreated: false,
+        defaultPassword: null as string | null,
+      };
+    }
+
+    const passwordHash = await argon2.hash(DEFAULT_MEMBER_PASSWORD);
+
+    const createdIdentity = await tx.identity.create({
+      data: {
+        name: name?.trim() || null,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        password_hash: passwordHash,
+      },
+    });
+
+    return {
+      identity: createdIdentity,
+      wasCreated: true,
+      defaultPassword: DEFAULT_MEMBER_PASSWORD,
     };
   });
 };
@@ -280,6 +332,7 @@ const authService = {
   searchIdentity,
   verifySession,
   findOrCreateIdentity,
+  findOrCreateMemberIdentity,
   searchIdentities,
   getIdentitiesByIds,
   getIdentityById,

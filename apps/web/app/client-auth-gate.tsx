@@ -9,9 +9,15 @@ type ClientAuthGateProps = {
 };
 
 type GateStatus = "checking" | "allow" | "deny";
+type MeResponse = {
+  success: boolean;
+  role?: string | null;
+  tenantId?: string | null;
+};
 
 const LOGIN_PATH = "/login";
 const OFFLINE_PATH = "/offline";
+const STORE_SELECTION_PATH = "/store-selection";
 
 const getOfflineStatus = (isLoginRoute: boolean, isOfflineRoute: boolean): GateStatus => {
   if (isOfflineRoute) {
@@ -30,6 +36,7 @@ export default function ClientAuthGate({ children }: ClientAuthGateProps) {
   const router = useRouter();
   const isLoginRoute = pathname === LOGIN_PATH;
   const isOfflineRoute = pathname === OFFLINE_PATH;
+  const isStoreSelectionRoute = pathname === STORE_SELECTION_PATH;
   const [status, setStatus] = useState<GateStatus>(() => {
     if (typeof window === "undefined") {
       return "checking";
@@ -41,12 +48,10 @@ export default function ClientAuthGate({ children }: ClientAuthGateProps) {
 
     return "checking";
   });
+  const [redirectTarget, setRedirectTarget] = useState<string | null>(null);
 
-  const redirectTarget = useMemo(() => {
-    if (status !== "deny") {
-      return null;
-    }
-    if (isOfflineRoute) {
+  const fallbackRedirectTarget = useMemo(() => {
+    if (isOfflineRoute || status !== "deny") {
       return null;
     }
     return isLoginRoute ? "/" : LOGIN_PATH;
@@ -56,9 +61,12 @@ export default function ClientAuthGate({ children }: ClientAuthGateProps) {
     let isCancelled = false;
 
     const evaluate = async () => {
+      let nextRedirectTarget: string | null = null;
+
       if (isOfflineRoute) {
         if (!isCancelled) {
           setStatus("allow");
+          setRedirectTarget(null);
         }
         return;
       }
@@ -66,6 +74,7 @@ export default function ClientAuthGate({ children }: ClientAuthGateProps) {
       if (!window.navigator.onLine) {
         if (!isCancelled) {
           setStatus(getOfflineStatus(isLoginRoute, isOfflineRoute));
+          setRedirectTarget(null);
         }
         return;
       }
@@ -80,15 +89,39 @@ export default function ClientAuthGate({ children }: ClientAuthGateProps) {
         writeAuthCache(isAuthenticated);
 
         if (!isCancelled) {
-          if (isLoginRoute) {
-            setStatus(isAuthenticated ? "deny" : "allow");
-          } else {
-            setStatus(isAuthenticated ? "allow" : "deny");
+          if (!isAuthenticated) {
+            setStatus(isLoginRoute ? "allow" : "deny");
+            setRedirectTarget(null);
+            return;
           }
+
+          const payload = (await response.json()) as MeResponse;
+          const isNonAdminWithoutStore =
+            payload.role === "USER" && !payload.tenantId;
+
+          if (isLoginRoute) {
+            nextRedirectTarget = isNonAdminWithoutStore ? STORE_SELECTION_PATH : "/";
+            setStatus("deny");
+          } else if (isStoreSelectionRoute) {
+            if (isNonAdminWithoutStore) {
+              setStatus("allow");
+            } else {
+              nextRedirectTarget = "/";
+              setStatus("deny");
+            }
+          } else if (isNonAdminWithoutStore) {
+            nextRedirectTarget = STORE_SELECTION_PATH;
+            setStatus("deny");
+          } else {
+            setStatus("allow");
+          }
+
+          setRedirectTarget(nextRedirectTarget);
         }
       } catch {
         if (!isCancelled) {
           setStatus(getOfflineStatus(isLoginRoute, isOfflineRoute));
+          setRedirectTarget(null);
         }
       }
     };
@@ -107,14 +140,15 @@ export default function ClientAuthGate({ children }: ClientAuthGateProps) {
       window.removeEventListener("online", handleConnectivityChange);
       window.removeEventListener("offline", handleConnectivityChange);
     };
-  }, [isLoginRoute, isOfflineRoute, pathname]);
+  }, [isLoginRoute, isOfflineRoute, isStoreSelectionRoute, pathname]);
 
   useEffect(() => {
-    if (!redirectTarget) {
+    const target = redirectTarget ?? fallbackRedirectTarget;
+    if (!target) {
       return;
     }
-    router.replace(redirectTarget);
-  }, [redirectTarget, router]);
+    router.replace(target);
+  }, [fallbackRedirectTarget, redirectTarget, router]);
 
   if (status === "checking" || status === "deny") {
     return null;

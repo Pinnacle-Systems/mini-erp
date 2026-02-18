@@ -15,10 +15,12 @@ export const mutationSchema = z.object({
 });
 
 export const pushRequestSchema = z.object({
+  tenantId: z.uuid(),
   mutations: z.array(mutationSchema).max(500),
 });
 
 export const pullQuerySchema = z.object({
+  tenantId: z.uuid(),
   cursor: z.string().default("0"),
   limit: z.coerce.number().int().min(1).max(1000).default(200),
 });

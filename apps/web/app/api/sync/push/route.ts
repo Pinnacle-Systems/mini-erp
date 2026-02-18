@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pushRequestSchema } from "@/features/sync/schemas";
 import { processMutations } from "@/features/sync/server";
+import { ACCESS_TOKEN_COOKIE, readAccessToken } from "@/features/auth/server";
+import { tenantService } from "@/features/tenant/server";
+import { SystemRole } from "@/generated/prisma/enums";
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +21,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await processMutations(parsed.data.mutations);
+    const token = req.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+    if (!token) {
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    }
+
+    const payload = await readAccessToken(token);
+    if (
+      !payload ||
+      payload.systemRole !== SystemRole.USER ||
+      typeof payload.sub !== "string"
+    ) {
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    }
+
+    const member = await tenantService.validateMembership(payload.sub, parsed.data.tenantId);
+    if (!member) {
+      return NextResponse.json({ success: false, message: "Access denied" }, { status: 403 });
+    }
+
+    const result = await processMutations(
+      parsed.data.tenantId,
+      parsed.data.mutations,
+    );
 
     return NextResponse.json({
       success: true,

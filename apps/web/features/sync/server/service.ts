@@ -4,7 +4,11 @@ const acceptedEntities = new Set(["product"]);
 
 const nextCursor = () => Date.now().toString();
 
-export const processMutations = async (mutations: SyncMutation[]) => {
+export const processMutations = async (
+  tenantId: string,
+  mutations: SyncMutation[],
+) => {
+  void tenantId;
   const acknowledgements: MutationAck[] = mutations.map((mutation) => {
     if (!acceptedEntities.has(mutation.entity)) {
       return {
@@ -26,7 +30,14 @@ export const processMutations = async (mutations: SyncMutation[]) => {
   };
 };
 
-export const getDeltasSinceCursor = async (_cursor: string, _limit: number) => {
+export const getDeltasSinceCursor = async (
+  tenantId: string,
+  cursor: string,
+  limit: number,
+) => {
+  void tenantId;
+  void cursor;
+  void limit;
   const deltas: SyncDelta[] = [];
 
   return {
