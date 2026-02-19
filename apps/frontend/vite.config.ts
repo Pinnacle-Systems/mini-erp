@@ -1,0 +1,55 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["favicon.svg", "robots.txt"],
+      manifest: {
+        name: "Mini ERP Frontend",
+        short_name: "MiniERP",
+        description: "Offline-capable Mini ERP frontend built with Vite",
+        theme_color: "#0e7490",
+        background_color: "#f8fafc",
+        display: "standalone",
+        start_url: "/",
+        scope: "/",
+        icons: [
+          {
+            src: "/icons/android-chrome-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+          },
+          {
+            src: "/icons/android-chrome-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            urlPattern: /^https?:\/\/.*\/api\//,
+            handler: "NetworkOnly",
+          },
+        ],
+      },
+    }),
+  ],
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_DEV_PROXY_TARGET ?? "http://localhost:3001",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
+});

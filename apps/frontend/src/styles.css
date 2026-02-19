@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+@layer base {
+  :root {
+    --background: 220 23% 97%;
+    --foreground: 220 20% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 12%;
+    --primary: 210 100% 45%;
+    --primary-foreground: 210 100% 99%;
+    --secondary: 220 17% 92%;
+    --secondary-foreground: 220 20% 20%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 10% 44%;
+    --accent: 210 70% 95%;
+    --accent-foreground: 220 20% 20%;
+    --border: 220 14% 85%;
+    --input: 220 14% 85%;
+    --ring: 210 100% 45%;
+
+    font-family:
+      -apple-system,
+      BlinkMacSystemFont,
+      "SF Pro Text",
+      "Helvetica Neue",
+      "Segoe UI",
+      sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 500px at -10% -20%, hsl(210 100% 97%), transparent 70%),
+      radial-gradient(900px 400px at 100% -10%, hsl(220 40% 95%), transparent 70%),
+      hsl(var(--background));
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .page {
+    @apply mx-auto min-h-screen w-full max-w-6xl p-6 md:p-10;
+  }
+
+  .card {
+    @apply rounded-[24px] border border-white/60 bg-white/70 p-6 text-card-foreground shadow-[0_22px_52px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl;
+  }
+
+  .grid {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .row {
+    @apply mt-3 flex flex-wrap gap-2;
+  }
+
+  .status {
+    @apply m-0 text-sm font-medium text-muted-foreground;
+  }
+}

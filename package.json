@@ -6,12 +6,14 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "turbo dev",
     "backend:dev": "turbo dev --filter=backend",
-    "web:dev": "turbo dev --filter=web"
+    "web:dev": "turbo dev --filter=web",
+    "frontend:dev": "turbo dev --filter=frontend",
+    "pwa:dev": "turbo dev --filter=backend --filter=frontend"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.29.3",
+  "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937",
   "devDependencies": {
     "turbo": "^2.8.8"
   }

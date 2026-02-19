@@ -1,0 +1,105 @@
+import { motion } from "framer-motion";
+import { Button } from "../atoms/Button";
+import { Label } from "../atoms/Label";
+import { Input } from "../atoms/Input";
+import { Card, CardContent } from "../molecules/Card";
+import type { FormEvent } from "react";
+
+type LoginCardProps = {
+  username: string;
+  password: string;
+  loading: boolean;
+  onUsernameChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: FormEvent) => void;
+};
+
+export function LoginCard({
+  username,
+  password,
+  loading,
+  onUsernameChange,
+  onPasswordChange,
+  onSubmit
+}: LoginCardProps) {
+  const handleUsernameChange = (value: string) => {
+    const hasEmailChars = /[A-Za-z@]/.test(value);
+    if (hasEmailChars) {
+      onUsernameChange(value.trimStart());
+      return;
+    }
+
+    const digitsOnly = value.replace(/\D/g, "").slice(0, 10);
+    onUsernameChange(digitsOnly);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+    >
+      <Card className="relative overflow-hidden border-white/70 p-0">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary/[0.08] to-transparent" />
+        <CardContent className="relative z-10 space-y-6 p-8 md:p-10">
+          <div>
+            <p className="text-sm font-medium tracking-[0.01em] text-muted-foreground">
+              Mini ERP
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.01em] text-foreground">
+              Welcome back
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Sign in to continue to your workspace.
+            </p>
+          </div>
+
+          <form onSubmit={onSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="username">Phone number or email</Label>
+              <Input
+                id="username"
+                type="text"
+                autoComplete="username"
+                inputMode="tel"
+                value={username}
+                onChange={(event) => handleUsernameChange(event.target.value)}
+                placeholder="5551234567 or you@company.com"
+                className="bg-white/60"
+              />
+              <p className="text-xs text-muted-foreground">
+                Phone login uses 10 digits without country code.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(event) => onPasswordChange(event.target.value)}
+                placeholder="••••••••"
+                className="bg-white/60"
+              />
+            </div>
+
+            <motion.div
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.985 }}
+            >
+              <Button
+                type="submit"
+                size="lg"
+                disabled={loading}
+                className="w-full"
+              >
+                {loading ? "Signing in..." : "Sign in"}
+              </Button>
+            </motion.div>
+          </form>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}

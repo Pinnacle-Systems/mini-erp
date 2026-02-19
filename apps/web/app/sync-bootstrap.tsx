@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { startSyncScheduler } from "@/features/sync/client";
+import { isSyncEnabledForPath, startSyncScheduler } from "@/features/sync/client";
 
 type SyncBootstrapProps = {
   enabled?: boolean;
@@ -20,7 +20,7 @@ export default function SyncBootstrap({
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!enabled || pathname === "/login" || pathname === "/store-selection") {
+    if (!enabled || !isSyncEnabledForPath(pathname)) {
       return;
     }
 
