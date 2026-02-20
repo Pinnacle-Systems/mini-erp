@@ -11,6 +11,7 @@ const assertPlatformAdmin = (req) => {
 };
 
 const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_STORE_OWNER_PASSWORD?.trim() || "ChangeMe123!";
+const DUPLICATE_STORE_NAME_ERROR = "Store name already exists for this owner";
 
 export const listStores = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
@@ -19,18 +20,24 @@ export const listStores = catchAsync(async (req, res) => {
     storeName: rawStoreName = "",
     ownerEmail: rawOwnerEmail = "",
     ownerPhone: rawOwnerPhone = "",
+    includeDeleted: rawIncludeDeleted = false,
     page: rawPage = "1",
     limit: rawLimit = "10",
   } = req.query as {
     storeName?: string;
     ownerEmail?: string;
     ownerPhone?: string;
+    includeDeleted?: string | boolean;
     page?: string;
     limit?: string;
   };
   const storeName = String(rawStoreName);
   const ownerEmail = String(rawOwnerEmail);
   const ownerPhone = String(rawOwnerPhone);
+  const includeDeleted =
+    rawIncludeDeleted === true ||
+    (typeof rawIncludeDeleted === "string" &&
+      rawIncludeDeleted.trim().toLowerCase() === "true");
   const page = Number(rawPage);
   const limit = Number(rawLimit);
 
@@ -56,6 +63,7 @@ export const listStores = catchAsync(async (req, res) => {
   }
 
   const where = {
+    ...(includeDeleted ? {} : { deleted_at: null }),
     ...(storeName ? { name: { contains: storeName, mode: "insensitive" as const } } : {}),
     ...(ownerIdentityIds ? { owner_id: { in: ownerIdentityIds } } : {}),
   };
@@ -83,6 +91,7 @@ export const listStores = catchAsync(async (req, res) => {
       id: store.id,
       name: store.name,
       ownerId: store.owner_id,
+      deletedAt: store.deleted_at,
       owner: ownerById.get(store.owner_id) ?? null,
     })),
     pagination: {
@@ -133,6 +142,7 @@ export const createStore = catchAsync(async (req, res) => {
   }
 
   let ownerId = ownerByPhone?.id ?? ownerByEmail?.id;
+  const normalizedStoreName = name.trim();
 
   if (!ownerId) {
     const passwordHash = await argon2.hash(DEFAULT_OWNER_PASSWORD);
@@ -147,12 +157,39 @@ export const createStore = catchAsync(async (req, res) => {
     ownerId = createdOwner.id;
   }
 
-  const store = await prisma.store.create({
-    data: {
-      name,
-      owner_id: ownerId,
-    },
-  });
+  let store;
+  try {
+    const existingStore = await prisma.store.findFirst({
+      where: {
+        owner_id: ownerId,
+        deleted_at: null,
+        name: {
+          equals: normalizedStoreName,
+          mode: "insensitive",
+        },
+      },
+      select: { id: true },
+    });
+
+    if (existingStore) {
+      throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
+    }
+
+    store = await prisma.store.create({
+      data: {
+        name: normalizedStoreName,
+        owner_id: ownerId,
+      },
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error) {
+      const code = String(error.code);
+      if (code === "P2002") {
+        throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
+      }
+    }
+    throw error;
+  }
 
   res.status(201).json({
     success: true,
@@ -164,15 +201,55 @@ export const createStore = catchAsync(async (req, res) => {
   });
 });
 
+export const getStore = catchAsync(async (req, res) => {
+  assertPlatformAdmin(req);
+
+  const { storeId } = req.params;
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    select: {
+      id: true,
+      name: true,
+      owner_id: true,
+      deleted_at: true,
+    },
+  });
+
+  if (!store) {
+    throw new NotFoundError("Store not found");
+  }
+
+  const owner = await prisma.identity.findUnique({
+    where: { id: store.owner_id },
+    select: { id: true, name: true, email: true, phone: true },
+  });
+
+  res.json({
+    success: true,
+    store: {
+      id: store.id,
+      name: store.name,
+      ownerId: store.owner_id,
+      deletedAt: store.deleted_at,
+      owner: owner ?? null,
+    },
+  });
+});
+
 export const updateStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
   const { storeId } = req.params;
-  const { name, ownerId } = req.body;
+  const { name, ownerId, isActive } = req.body as {
+    name?: string;
+    ownerId?: string;
+    isActive?: boolean;
+  };
+  const normalizedStoreName = typeof name === "string" ? name.trim() : undefined;
 
   if (ownerId) {
     const owner = await prisma.identity.findUnique({
-      where: { id: ownerId },
+      where: { id: ownerId, deleted_at: null },
       select: { id: true },
     });
     if (!owner) {
@@ -182,18 +259,53 @@ export const updateStore = catchAsync(async (req, res) => {
 
   let store;
   try {
-    store = await prisma.store.update({
-      where: { id: storeId },
-      data: {
-        ...(name !== undefined ? { name } : {}),
-        ...(ownerId !== undefined ? { owner_id: ownerId } : {}),
-      },
+    store = await prisma.$transaction(async (tx) => {
+      const existingStore = await tx.store.findUnique({
+        where: { id: storeId },
+        select: { id: true, owner_id: true, name: true },
+      });
+
+      if (!existingStore) {
+        throw new NotFoundError("Store not found");
+      }
+
+      const targetOwnerId = ownerId ?? existingStore.owner_id;
+      const targetStoreName = normalizedStoreName ?? existingStore.name;
+
+      const duplicateStore = await tx.store.findFirst({
+        where: {
+          id: { not: existingStore.id },
+          owner_id: targetOwnerId,
+          deleted_at: null,
+          name: {
+            equals: targetStoreName,
+            mode: "insensitive",
+          },
+        },
+        select: { id: true },
+      });
+
+      if (duplicateStore) {
+        throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
+      }
+
+      return tx.store.update({
+        where: { id: existingStore.id },
+        data: {
+          ...(normalizedStoreName !== undefined ? { name: normalizedStoreName } : {}),
+          ...(ownerId !== undefined ? { owner_id: ownerId } : {}),
+          ...(isActive !== undefined ? { deleted_at: isActive ? null : new Date() } : {}),
+        },
+      });
     });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
       const code = String(error.code);
       if (code === "P2025") {
         throw new NotFoundError("Store not found");
+      }
+      if (code === "P2002") {
+        throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
       }
     }
     throw error;
@@ -215,9 +327,16 @@ export const deleteStore = catchAsync(async (req, res) => {
   const { storeId } = req.params;
 
   try {
-    await prisma.store.delete({
+    const deletedStore = await prisma.store.update({
       where: { id: storeId },
+      data: {
+        deleted_at: new Date(),
+      },
     });
+
+    if (!deletedStore) {
+      throw new NotFoundError("Store not found");
+    }
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
       const code = String(error.code);

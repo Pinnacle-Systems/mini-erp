@@ -1,8 +1,9 @@
 model Store {
-  id       String        @id @default(uuid()) @db.Uuid
-  name     String
-  owner_id String        @db.Uuid
-  members  StoreMember[]
+  id         String        @id @default(uuid()) @db.Uuid
+  name       String
+  owner_id   String        @db.Uuid
+  deleted_at DateTime?
+  members    StoreMember[]
 
   @@map("stores")
   @@schema("tenants")

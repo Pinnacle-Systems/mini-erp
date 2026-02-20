@@ -1,10 +1,23 @@
 import { z } from "zod";
 
+const parseBooleanQueryParam = z.preprocess((value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return value;
+}, z.boolean());
+
 export const listStoresQuerySchema = z.object({
   query: z.object({
     storeName: z.string().trim().optional(),
     ownerEmail: z.string().trim().optional(),
     ownerPhone: z.string().trim().optional(),
+    includeDeleted: parseBooleanQueryParam.default(false),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(50).default(10),
   }),
@@ -31,8 +44,9 @@ export const updateStoreSchema = z.object({
     .object({
       name: z.string().trim().min(2, "Store name is required").optional(),
       ownerId: z.uuid("Owner ID must be a valid UUID").optional(),
+      isActive: z.boolean().optional(),
     })
-    .refine((value) => value.name !== undefined || value.ownerId !== undefined, {
+    .refine((value) => value.name !== undefined || value.ownerId !== undefined || value.isActive !== undefined, {
       error: "At least one update field is required",
     }),
 });

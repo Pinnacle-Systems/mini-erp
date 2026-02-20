@@ -14,14 +14,13 @@ import IosFolder from "./pages/test.jsx";
 import type { FolderId } from "./design-system/organisms/AppFolderLauncher";
 import {
   createAdminStore,
-  deleteAdminStore,
   listAdminStores,
-  updateAdminStore,
   type AdminStoresPagination,
   type AdminStore
 } from "./features/admin/stores";
 import { AdminHomePage } from "./pages/AdminHomePage";
 import { AdminStoresPage } from "./pages/AdminStoresPage";
+import { AdminStoreDetailsPage } from "./pages/AdminStoreDetailsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { SessionSplashPage } from "./pages/SessionSplashPage";
 
@@ -52,13 +51,11 @@ function AppShell() {
   });
   const [adminFilterStoreName, setAdminFilterStoreName] = useState("");
   const [adminFilterOwnerPhone, setAdminFilterOwnerPhone] = useState("");
+  const [adminFilterIncludeDeleted, setAdminFilterIncludeDeleted] = useState(false);
   const adminFilterReadyRef = useRef(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [newStoreName, setNewStoreName] = useState("");
   const [newOwnerPhone, setNewOwnerPhone] = useState("");
-  const [editStoreId, setEditStoreId] = useState<string | null>(null);
-  const [editStoreName, setEditStoreName] = useState("");
-  const [editOwnerId, setEditOwnerId] = useState("");
 
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
@@ -80,14 +77,17 @@ function AppShell() {
     filters: {
       storeName: string;
       ownerPhone: string;
+      includeDeleted: boolean;
     } = {
       storeName: adminFilterStoreName,
       ownerPhone: adminFilterOwnerPhone,
+      includeDeleted: adminFilterIncludeDeleted,
     },
   ) => {
     const result = await listAdminStores({
       storeName: filters.storeName,
       ownerPhone: filters.ownerPhone,
+      includeDeleted: filters.includeDeleted,
       page,
       limit: 10,
     });
@@ -181,6 +181,7 @@ function AppShell() {
       void loadAdminStores(1, {
         storeName: adminFilterStoreName,
         ownerPhone: adminFilterOwnerPhone,
+        includeDeleted: adminFilterIncludeDeleted,
       })
         .catch((error) => {
           setAdminError(error instanceof Error ? error.message : "Unable to load stores");
@@ -191,7 +192,7 @@ function AppShell() {
     }, 350);
 
     return () => window.clearTimeout(timeoutId);
-  }, [role, adminFilterStoreName, adminFilterOwnerPhone]);
+  }, [role, adminFilterStoreName, adminFilterOwnerPhone, adminFilterIncludeDeleted]);
 
   const activeStoreName = useMemo(() => {
     return stores.find((store) => store.id === activeStore)?.name ?? "No store selected";
@@ -313,48 +314,6 @@ function AppShell() {
     }
   };
 
-  const onSaveStoreEdit = async () => {
-    if (!editStoreId || !editStoreName.trim() || !editOwnerId.trim()) {
-      setAdminError("Store name and owner identity ID are required.");
-      return;
-    }
-
-    setLoading(true);
-    setAdminError(null);
-    try {
-      await updateAdminStore(editStoreId, {
-        name: editStoreName.trim(),
-        ownerId: editOwnerId.trim()
-      });
-      setEditStoreId(null);
-      setEditStoreName("");
-      setEditOwnerId("");
-      await loadAdminStores(adminPage);
-    } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Unable to update store");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onDeleteStore = async (storeId: string) => {
-    setLoading(true);
-    setAdminError(null);
-    try {
-      await deleteAdminStore(storeId);
-      if (editStoreId === storeId) {
-        setEditStoreId(null);
-        setEditStoreName("");
-        setEditOwnerId("");
-      }
-      await loadAdminStores(adminPage);
-    } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Unable to delete store");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const onReloadStores = async () => {
     setLoading(true);
     setAdminError(null);
@@ -434,25 +393,19 @@ function AppShell() {
                 pagination={adminPagination}
                 filterStoreName={adminFilterStoreName}
                 filterOwnerPhone={adminFilterOwnerPhone}
+                filterIncludeDeleted={adminFilterIncludeDeleted}
                 loading={loading}
                 error={adminError}
                 newStoreName={newStoreName}
                 newOwnerPhone={newOwnerPhone}
-                editStoreId={editStoreId}
-                editStoreName={editStoreName}
-                editOwnerId={editOwnerId}
                 onFilterStoreNameChange={setAdminFilterStoreName}
                 onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
-                onApplyFilters={() =>
-                  void loadAdminStores(1, {
-                    storeName: adminFilterStoreName,
-                    ownerPhone: adminFilterOwnerPhone,
-                  })
-                }
+                onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
                 onClearFilters={() => {
-                  const cleared = { storeName: "", ownerPhone: "" };
+                  const cleared = { storeName: "", ownerPhone: "", includeDeleted: false };
                   setAdminFilterStoreName("");
                   setAdminFilterOwnerPhone("");
+                  setAdminFilterIncludeDeleted(false);
                   void loadAdminStores(1, cleared);
                 }}
                 onPrevPage={() => void loadAdminStores(Math.max(1, adminPage - 1))}
@@ -460,20 +413,7 @@ function AppShell() {
                 onNewStoreNameChange={setNewStoreName}
                 onNewOwnerPhoneChange={setNewOwnerPhone}
                 onCreate={() => void onCreateStore()}
-                onStartEdit={(store) => {
-                  setEditStoreId(store.id);
-                  setEditStoreName(store.name);
-                  setEditOwnerId(store.ownerId);
-                }}
-                onCancelEdit={() => {
-                  setEditStoreId(null);
-                  setEditStoreName("");
-                  setEditOwnerId("");
-                }}
-                onEditStoreNameChange={setEditStoreName}
-                onEditOwnerIdChange={setEditOwnerId}
-                onSaveEdit={() => void onSaveStoreEdit()}
-                onDelete={(storeId) => void onDeleteStore(storeId)}
+                onOpenStore={(store) => navigate(`/app/stores/${store.id}`)}
                 onReload={() => void onReloadStores()}
               />
             ) : (
@@ -496,25 +436,19 @@ function AppShell() {
                 pagination={adminPagination}
                 filterStoreName={adminFilterStoreName}
                 filterOwnerPhone={adminFilterOwnerPhone}
+                filterIncludeDeleted={adminFilterIncludeDeleted}
                 loading={loading}
                 error={adminError}
                 newStoreName={newStoreName}
                 newOwnerPhone={newOwnerPhone}
-                editStoreId={editStoreId}
-                editStoreName={editStoreName}
-                editOwnerId={editOwnerId}
                 onFilterStoreNameChange={setAdminFilterStoreName}
                 onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
-                onApplyFilters={() =>
-                  void loadAdminStores(1, {
-                    storeName: adminFilterStoreName,
-                    ownerPhone: adminFilterOwnerPhone,
-                  })
-                }
+                onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
                 onClearFilters={() => {
-                  const cleared = { storeName: "", ownerPhone: "" };
+                  const cleared = { storeName: "", ownerPhone: "", includeDeleted: false };
                   setAdminFilterStoreName("");
                   setAdminFilterOwnerPhone("");
+                  setAdminFilterIncludeDeleted(false);
                   void loadAdminStores(1, cleared);
                 }}
                 onPrevPage={() => void loadAdminStores(Math.max(1, adminPage - 1))}
@@ -522,22 +456,23 @@ function AppShell() {
                 onNewStoreNameChange={setNewStoreName}
                 onNewOwnerPhoneChange={setNewOwnerPhone}
                 onCreate={() => void onCreateStore()}
-                onStartEdit={(store) => {
-                  setEditStoreId(store.id);
-                  setEditStoreName(store.name);
-                  setEditOwnerId(store.ownerId);
-                }}
-                onCancelEdit={() => {
-                  setEditStoreId(null);
-                  setEditStoreName("");
-                  setEditOwnerId("");
-                }}
-                onEditStoreNameChange={setEditStoreName}
-                onEditOwnerIdChange={setEditOwnerId}
-                onSaveEdit={() => void onSaveStoreEdit()}
-                onDelete={(storeId) => void onDeleteStore(storeId)}
+                onOpenStore={(store) => navigate(`/app/stores/${store.id}`)}
                 onReload={() => void onReloadStores()}
               />
+            ) : (
+              <Navigate to="/app" replace />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/app/stores/:storeId"
+        element={
+          isHydratingSession ? <SessionSplashPage /> : isAuthenticated ? (
+            role === "PLATFORM_ADMIN" ? (
+              <AdminStoreDetailsPage onStoreMutated={() => void loadAdminStores(adminPage)} />
             ) : (
               <Navigate to="/app" replace />
             )

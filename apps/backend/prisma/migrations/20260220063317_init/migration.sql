@@ -229,6 +229,7 @@ CREATE TABLE "tenants"."stores" (
     "id" UUID NOT NULL,
     "name" TEXT NOT NULL,
     "owner_id" UUID NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "stores_pkey" PRIMARY KEY ("id")
 );

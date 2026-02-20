@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { protect } from "../../shared/middleware/auth.middleware.js";
 import { validateRequest } from "../../shared/middleware/validate.middleware.js";
-import { createStore, deleteStore, listStores, updateStore } from "./admin.controller.js";
+import { createStore, deleteStore, getStore, listStores, updateStore } from "./admin.controller.js";
 import {
   createStoreSchema,
   listStoresQuerySchema,
@@ -14,6 +14,7 @@ const adminRouter = Router();
 adminRouter.use(protect);
 adminRouter.get("/stores", validateRequest(listStoresQuerySchema), listStores);
 adminRouter.post("/stores", validateRequest(createStoreSchema), createStore);
+adminRouter.get("/stores/:storeId", validateRequest(storeParamsSchema), getStore);
 adminRouter.patch(
   "/stores/:storeId",
   validateRequest(storeParamsSchema),

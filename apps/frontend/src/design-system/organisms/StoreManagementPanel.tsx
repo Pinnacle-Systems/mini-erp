@@ -1,8 +1,4 @@
-import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "../atoms/Button";
-import { IconButton } from "../atoms/IconButton";
-import { Input } from "../atoms/Input";
-import { Label } from "../atoms/Label";
 import {
   Card,
   CardContent,
@@ -14,6 +10,8 @@ import type {
   AdminStore,
   AdminStoresPagination,
 } from "../../features/admin/stores";
+import { StoreManagementCreateView } from "./StoreManagementCreateView";
+import { StoreManagementListView } from "./StoreManagementListView";
 
 type StoreManagementPanelProps = {
   mode: "list" | "new";
@@ -22,28 +20,21 @@ type StoreManagementPanelProps = {
   pagination: AdminStoresPagination;
   filterStoreName: string;
   filterOwnerPhone: string;
+  filterIncludeDeleted: boolean;
   loading: boolean;
   error: string | null;
   newStoreName: string;
   newOwnerPhone: string;
-  editStoreId: string | null;
-  editStoreName: string;
-  editOwnerId: string;
   onFilterStoreNameChange: (value: string) => void;
   onFilterOwnerPhoneChange: (value: string) => void;
-  onApplyFilters: () => void;
+  onFilterIncludeDeletedChange: (value: boolean) => void;
   onClearFilters: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
   onNewStoreNameChange: (value: string) => void;
   onNewOwnerPhoneChange: (value: string) => void;
   onCreate: () => void;
-  onStartEdit: (store: AdminStore) => void;
-  onCancelEdit: () => void;
-  onEditStoreNameChange: (value: string) => void;
-  onEditOwnerIdChange: (value: string) => void;
-  onSaveEdit: () => void;
-  onDelete: (storeId: string) => void;
+  onOpenStore: (store: AdminStore) => void;
   onReload: () => void;
   onOpenCreate: () => void;
   onBackToList: () => void;
@@ -56,28 +47,21 @@ export function StoreManagementPanel({
   pagination,
   filterStoreName,
   filterOwnerPhone,
+  filterIncludeDeleted,
   loading,
   error,
   newStoreName,
   newOwnerPhone,
-  editStoreId,
-  editStoreName,
-  editOwnerId,
   onFilterStoreNameChange,
   onFilterOwnerPhoneChange,
-  onApplyFilters,
+  onFilterIncludeDeletedChange,
   onClearFilters,
   onPrevPage,
   onNextPage,
   onNewStoreNameChange,
   onNewOwnerPhoneChange,
   onCreate,
-  onStartEdit,
-  onCancelEdit,
-  onEditStoreNameChange,
-  onEditOwnerIdChange,
-  onSaveEdit,
-  onDelete,
+  onOpenStore,
   onReload,
   onOpenCreate,
   onBackToList,
@@ -113,229 +97,35 @@ export function StoreManagementPanel({
       </CardHeader>
       <CardContent className="space-y-6">
         {isListView ? (
-          <>
-            <div className="rounded-2xl border border-white/70 bg-white/55 p-3">
-              <div className="grid gap-2 md:grid-cols-2">
-                <Input
-                  value={filterStoreName}
-                  onChange={(event) =>
-                    onFilterStoreNameChange(event.target.value)
-                  }
-                  placeholder="Store name"
-                />
-                <Input
-                  value={filterOwnerPhone}
-                  onChange={(event) =>
-                    onFilterOwnerPhoneChange(event.target.value)
-                  }
-                  placeholder="Owner phone"
-                />
-              </div>
-              <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onApplyFilters}
-                  disabled={loading}
-                >
-                  Apply
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={onClearFilters}
-                  disabled={loading}
-                >
-                  Clear Filters
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onReload}
-                  disabled={loading}
-                >
-                  Reload
-                </Button>
-              </div>
-            </div>
-
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-            <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {stores.map((store) => {
-                const isEditing = editStoreId === store.id;
-                return (
-                  <div
-                    key={store.id}
-                    className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] backdrop-blur-xl transition-transform duration-150 hover:-translate-y-0.5"
-                  >
-                    {isEditing ? (
-                      <div className="grid gap-3">
-                        <Input
-                          value={editStoreName}
-                          onChange={(event) =>
-                            onEditStoreNameChange(event.target.value)
-                          }
-                          placeholder="Store name"
-                          disabled={loading}
-                        />
-                        <Input
-                          value={editOwnerId}
-                          onChange={(event) =>
-                            onEditOwnerIdChange(event.target.value)
-                          }
-                          placeholder="Owner ID"
-                          disabled={loading}
-                        />
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          {store.name}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {store.owner?.phone ?? "Owner phone unavailable"}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="mt-3 flex items-center justify-end gap-2">
-                      {isEditing ? (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={onSaveEdit}
-                            disabled={
-                              loading ||
-                              !editStoreName.trim() ||
-                              !editOwnerId.trim()
-                            }
-                          >
-                            Save
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={onCancelEdit}
-                            disabled={loading}
-                          >
-                            Cancel
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <IconButton
-                            icon={Pencil}
-                            variant="outline"
-                            onClick={() => onStartEdit(store)}
-                            disabled={loading}
-                            className="h-8 w-8 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
-                            aria-label={`Edit ${store.name}`}
-                            title="Edit"
-                          />
-                          <IconButton
-                            icon={Trash2}
-                            variant="outline"
-                            onClick={() => onDelete(store.id)}
-                            disabled={loading}
-                            className="h-8 w-8 rounded-full border border-[#f3c3c0] bg-[#fff5f5] p-0 text-[#b42318] shadow-sm hover:bg-[#ffecec]"
-                            aria-label={`Delete ${store.name}`}
-                            title="Delete"
-                          />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {stores.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No stores found.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex items-center justify-between rounded-2xl border border-white/70 bg-white/55 p-3">
-              <p className="text-xs text-muted-foreground">
-                Page {page} of {Math.max(pagination.totalPages, 1)} | Total
-                stores: {pagination.total}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onPrevPage}
-                  disabled={loading || page <= 1}
-                >
-                  Previous
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onNextPage}
-                  disabled={
-                    loading ||
-                    page >= pagination.totalPages ||
-                    pagination.totalPages === 0
-                  }
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </>
+          <StoreManagementListView
+            stores={stores}
+            page={page}
+            pagination={pagination}
+            filterStoreName={filterStoreName}
+            filterOwnerPhone={filterOwnerPhone}
+            filterIncludeDeleted={filterIncludeDeleted}
+            loading={loading}
+            error={error}
+            onFilterStoreNameChange={onFilterStoreNameChange}
+            onFilterOwnerPhoneChange={onFilterOwnerPhoneChange}
+            onFilterIncludeDeletedChange={onFilterIncludeDeletedChange}
+            onClearFilters={onClearFilters}
+            onPrevPage={onPrevPage}
+            onNextPage={onNextPage}
+            onOpenStore={onOpenStore}
+            onReload={onReload}
+          />
         ) : (
-          <>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="new-store-name">Store name</Label>
-                <Input
-                  id="new-store-name"
-                  value={newStoreName}
-                  onChange={(event) => onNewStoreNameChange(event.target.value)}
-                  placeholder="Downtown Outlet"
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-owner-phone">Owner phone (primary)</Label>
-                <Input
-                  id="new-owner-phone"
-                  value={newOwnerPhone}
-                  onChange={(event) =>
-                    onNewOwnerPhoneChange(event.target.value)
-                  }
-                  placeholder="10 digit phone"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              If no owner identity exists for the phone, a new identity is
-              created with the default password.
-            </p>
-
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={onCreate}
-                disabled={
-                  loading || !newStoreName.trim() || !newOwnerPhone.trim()
-                }
-              >
-                Create Store
-              </Button>
-              <Button
-                variant="outline"
-                onClick={onBackToList}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-            </div>
-          </>
+          <StoreManagementCreateView
+            loading={loading}
+            error={error}
+            newStoreName={newStoreName}
+            newOwnerPhone={newOwnerPhone}
+            onNewStoreNameChange={onNewStoreNameChange}
+            onNewOwnerPhoneChange={onNewOwnerPhoneChange}
+            onCreate={onCreate}
+            onBackToList={onBackToList}
+          />
         )}
       </CardContent>
     </Card>

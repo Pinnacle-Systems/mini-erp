@@ -4,6 +4,7 @@ export type AdminStore = {
   id: string;
   name: string;
   ownerId: string;
+  deletedAt?: string | null;
   owner?: {
     id: string;
     name: string | null;
@@ -22,6 +23,7 @@ export type AdminStoresPagination = {
 export type ListAdminStoresParams = {
   storeName?: string;
   ownerPhone?: string;
+  includeDeleted?: boolean;
   page?: number;
   limit?: number;
 };
@@ -38,6 +40,9 @@ const toListStoresUrl = (params: ListAdminStoresParams) => {
   }
   if (params.ownerPhone?.trim()) {
     query.set("ownerPhone", params.ownerPhone.trim());
+  }
+  if (params.includeDeleted) {
+    query.set("includeDeleted", "true");
   }
   if (typeof params.page === "number") {
     query.set("page", String(params.page));
@@ -95,7 +100,7 @@ export const createAdminStore = async (
 
 export const updateAdminStore = async (
   storeId: string,
-  update: { name?: string; ownerId?: string },
+  update: { name?: string; ownerId?: string; isActive?: boolean },
 ): Promise<AdminStore> => {
   const response = await apiFetch(`/api/admin/stores/${encodeURIComponent(storeId)}`, {
     method: "PATCH",
@@ -105,6 +110,19 @@ export const updateAdminStore = async (
 
   if (!response.ok) {
     throw new Error(await parseError(response, "Unable to update store"));
+  }
+
+  const payload = (await response.json()) as { store: AdminStore };
+  return payload.store;
+};
+
+export const getAdminStore = async (storeId: string): Promise<AdminStore> => {
+  const response = await apiFetch(`/api/admin/stores/${encodeURIComponent(storeId)}`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Unable to load store"));
   }
 
   const payload = (await response.json()) as { store: AdminStore };
