@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Button } from "../atoms/Button";
 import { Label } from "../atoms/Label";
 import { Input } from "../atoms/Input";
+import { LoadingOverlay } from "../atoms/LoadingOverlay";
 import { Card, CardContent } from "../molecules/Card";
 import type { FormEvent } from "react";
 
@@ -93,6 +94,7 @@ export function LoginCard({
             </motion.div>
           </form>
         </CardContent>
+        <LoadingOverlay visible={loading} label="Signing in" />
       </Card>
     </motion.div>
   );

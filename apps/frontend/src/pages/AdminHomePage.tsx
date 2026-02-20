@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Store, Users, X } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "../design-system/atoms/Button";
 import { IconButton } from "../design-system/atoms/IconButton";
 
 type AdminAppId = "stores" | "users";
@@ -26,8 +25,6 @@ const adminApps: Array<{
     route: "/app/users",
   },
 ];
-
-const MotionButton = motion.create(Button);
 
 export function AdminHomePage() {
   const [isFolderOpen, setIsFolderOpen] = useState(false);
@@ -110,11 +107,9 @@ export function AdminHomePage() {
                   onClick={(event) => event.stopPropagation()}
                 >
                   {previewApps.map((app) => (
-                    <MotionButton
+                    <motion.button
                       key={app.id}
-                      layout
                       type="button"
-                      variant="ghost"
                       title={app.label}
                       aria-label={app.label}
                       whileTap={{ scale: 0.96 }}
@@ -122,7 +117,7 @@ export function AdminHomePage() {
                         setIsFolderOpen(false);
                         navigate(app.route);
                       }}
-                      className="flex cursor-pointer flex-col items-center gap-2"
+                      className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border border-transparent bg-transparent p-2 transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/55"
                     >
                       <span className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl bg-white/85 text-foreground shadow-lg">
                         <app.Icon size={32} />
@@ -130,7 +125,7 @@ export function AdminHomePage() {
                       <span className="text-xs font-medium text-white">
                         {app.label}
                       </span>
-                    </MotionButton>
+                    </motion.button>
                   ))}
                 </div>
               </motion.div>

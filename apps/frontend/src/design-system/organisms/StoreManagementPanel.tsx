@@ -1,4 +1,5 @@
 import { Button } from "../atoms/Button";
+import { LoadingOverlay } from "../atoms/LoadingOverlay";
 import {
   Card,
   CardContent,
@@ -95,7 +96,7 @@ export function StoreManagementPanel({
           ) : null}
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="relative space-y-6">
         {isListView ? (
           <StoreManagementListView
             stores={stores}
@@ -127,6 +128,7 @@ export function StoreManagementPanel({
             onBackToList={onBackToList}
           />
         )}
+        <LoadingOverlay visible={loading} label="Updating stores" />
       </CardContent>
     </Card>
   );

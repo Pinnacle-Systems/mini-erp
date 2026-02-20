@@ -1,10 +1,11 @@
-import { ArrowLeft, Save, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, Pencil, Save, Trash2, Undo2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "../design-system/atoms/Button";
 import { IconButton } from "../design-system/atoms/IconButton";
 import { Input } from "../design-system/atoms/Input";
 import { Label } from "../design-system/atoms/Label";
+import { LoadingOverlay } from "../design-system/atoms/LoadingOverlay";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
 import { deleteAdminStore, getAdminStore, updateAdminStore, type AdminStore } from "../features/admin/stores";
 
@@ -17,9 +18,11 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
   const { storeId } = useParams<{ storeId: string }>();
   const [store, setStore] = useState<AdminStore | null>(null);
   const [nameDraft, setNameDraft] = useState("");
+  const [isEditingName, setIsEditingName] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const showOverlayLoader = loading || saving;
 
   const loadStore = async () => {
     if (!storeId) {
@@ -34,6 +37,7 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
       const result = await getAdminStore(storeId);
       setStore(result);
       setNameDraft(result.name);
+      setIsEditingName(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load store");
     } finally {
@@ -67,6 +71,7 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
     await runMutation(async () => {
       await updateAdminStore(storeId, { name: nameDraft.trim() });
     });
+    setIsEditingName(false);
   };
 
   const onDelete = async () => {
@@ -109,24 +114,26 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
           <CardTitle>Store Details</CardTitle>
           <CardDescription>Manage store metadata and lifecycle state.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="relative space-y-6">
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading store details...</p>
-          ) : !store ? (
+          {!store && !loading ? (
             <p className="text-sm text-muted-foreground">Store not found.</p>
-          ) : (
+          ) : store ? (
             <>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="store-name">Store name</Label>
-                  <Input
-                    id="store-name"
-                    value={nameDraft}
-                    onChange={(event) => setNameDraft(event.target.value)}
-                    disabled={saving}
-                  />
+                  {isEditingName ? (
+                    <Input
+                      id="store-name"
+                      value={nameDraft}
+                      onChange={(event) => setNameDraft(event.target.value)}
+                      disabled={saving}
+                    />
+                  ) : (
+                    <p className="text-sm text-foreground">{store.name}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Owner phone</Label>
@@ -146,24 +153,60 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={onSaveName} disabled={saving || !nameDraft.trim()} className="gap-1">
-                  <Save className="h-4 w-4" aria-hidden="true" />
-                  Save Name
-                </Button>
                 {store.deletedAt ? (
                   <Button variant="outline" onClick={onRestore} disabled={saving} className="gap-1">
                     <Undo2 className="h-4 w-4" aria-hidden="true" />
                     Restore Store
                   </Button>
                 ) : (
-                  <Button variant="outline" onClick={onDelete} disabled={saving} className="gap-1 text-red-700">
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    Delete Store
-                  </Button>
+                  <>
+                    {isEditingName ? (
+                      <>
+                        <Button onClick={onSaveName} disabled={saving || !nameDraft.trim()} className="gap-1">
+                          <Save className="h-4 w-4" aria-hidden="true" />
+                          Save Name
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setNameDraft(store.name);
+                            setIsEditingName(false);
+                          }}
+                          disabled={saving}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsEditingName(true)}
+                          disabled={saving}
+                          className="gap-1"
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                          Edit Name
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={onDelete}
+                          disabled={saving}
+                          className="gap-1 text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          Delete Store
+                        </Button>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
             </>
+          ) : (
+            <div className="min-h-40" aria-hidden="true" />
           )}
+          <LoadingOverlay visible={showOverlayLoader} label="Loading store details" />
         </CardContent>
       </Card>
     </main>

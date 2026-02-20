@@ -1,22 +1,31 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+} from "react-router-dom";
 import { getMe, login, selectStore } from "./features/auth/client";
 import {
   getAssignedStores,
   clearStoreContext,
   setActiveStore,
-  type AssignedStore
+  type AssignedStore,
 } from "./features/auth/store-context";
-import { getLocalProducts, queueProductCreate, syncOnce } from "./features/sync/engine";
+import {
+  getLocalProducts,
+  queueProductCreate,
+  syncOnce,
+} from "./features/sync/engine";
 import { LoginPage } from "./pages/LoginPage";
 import { AppHomePage } from "./pages/AppHomePage";
-import IosFolder from "./pages/test.jsx";
 import type { FolderId } from "./design-system/organisms/AppFolderLauncher";
 import {
   createAdminStore,
   listAdminStores,
   type AdminStoresPagination,
-  type AdminStore
+  type AdminStore,
 } from "./features/admin/stores";
 import { AdminHomePage } from "./pages/AdminHomePage";
 import { AdminStoresPage } from "./pages/AdminStoresPage";
@@ -34,7 +43,9 @@ function AppShell() {
   const [identityId, setIdentityId] = useState<string | null>(null);
   const [role, setRole] = useState<Role>(null);
   const [isHydratingSession, setIsHydratingSession] = useState(true);
-  const [stores, setStores] = useState<AssignedStore[]>(() => getAssignedStores());
+  const [stores, setStores] = useState<AssignedStore[]>(() =>
+    getAssignedStores(),
+  );
   const [activeStore, setActiveStoreState] = useState<string | null>(null);
   const [isStoreSelected, setIsStoreSelected] = useState(false);
   const [, setStatus] = useState("Not authenticated");
@@ -43,15 +54,18 @@ function AppShell() {
   const [activeFolder, setActiveFolder] = useState<FolderId>("store");
   const [adminStores, setAdminStores] = useState<AdminStore[]>([]);
   const [adminPage, setAdminPage] = useState(1);
-  const [adminPagination, setAdminPagination] = useState<AdminStoresPagination>({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0,
-  });
+  const [adminPagination, setAdminPagination] = useState<AdminStoresPagination>(
+    {
+      page: 1,
+      limit: 10,
+      total: 0,
+      totalPages: 0,
+    },
+  );
   const [adminFilterStoreName, setAdminFilterStoreName] = useState("");
   const [adminFilterOwnerPhone, setAdminFilterOwnerPhone] = useState("");
-  const [adminFilterIncludeDeleted, setAdminFilterIncludeDeleted] = useState(false);
+  const [adminFilterIncludeDeleted, setAdminFilterIncludeDeleted] =
+    useState(false);
   const adminFilterReadyRef = useRef(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [newStoreName, setNewStoreName] = useState("");
@@ -68,7 +82,10 @@ function AppShell() {
     setLocalProducts(
       items
         .filter((item) => !item.deletedAt)
-        .map((item) => `${String(item.data.sku ?? "")}: ${String(item.data.name ?? "")}`)
+        .map(
+          (item) =>
+            `${String(item.data.sku ?? "")}: ${String(item.data.name ?? "")}`,
+        ),
     );
   };
 
@@ -149,7 +166,12 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (!activeStore || !isAuthenticated || role !== "USER" || !isStoreSelected) {
+    if (
+      !activeStore ||
+      !isAuthenticated ||
+      role !== "USER" ||
+      !isStoreSelected
+    ) {
       return;
     }
 
@@ -184,7 +206,9 @@ function AppShell() {
         includeDeleted: adminFilterIncludeDeleted,
       })
         .catch((error) => {
-          setAdminError(error instanceof Error ? error.message : "Unable to load stores");
+          setAdminError(
+            error instanceof Error ? error.message : "Unable to load stores",
+          );
         })
         .finally(() => {
           setLoading(false);
@@ -192,10 +216,18 @@ function AppShell() {
     }, 350);
 
     return () => window.clearTimeout(timeoutId);
-  }, [role, adminFilterStoreName, adminFilterOwnerPhone, adminFilterIncludeDeleted]);
+  }, [
+    role,
+    adminFilterStoreName,
+    adminFilterOwnerPhone,
+    adminFilterIncludeDeleted,
+  ]);
 
   const activeStoreName = useMemo(() => {
-    return stores.find((store) => store.id === activeStore)?.name ?? "No store selected";
+    return (
+      stores.find((store) => store.id === activeStore)?.name ??
+      "No store selected"
+    );
   }, [activeStore, stores]);
 
   const onLogin = async (event: FormEvent) => {
@@ -230,7 +262,9 @@ function AppShell() {
       setIsStoreSelected(true);
       setStatus("Store selected");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Store selection failed");
+      setStatus(
+        error instanceof Error ? error.message : "Store selection failed",
+      );
     } finally {
       setLoading(false);
     }
@@ -253,14 +287,16 @@ function AppShell() {
         sku,
         name,
         description,
-        unit: "PCS"
+        unit: "PCS",
       });
       setStatus("Product mutation queued");
       setSku("");
       setName("");
       setDescription("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to queue mutation");
+      setStatus(
+        error instanceof Error ? error.message : "Failed to queue mutation",
+      );
     } finally {
       setLoading(false);
     }
@@ -308,7 +344,9 @@ function AppShell() {
       await loadAdminStores(1);
       navigate("/app/stores", { replace: true });
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Unable to create store");
+      setAdminError(
+        error instanceof Error ? error.message : "Unable to create store",
+      );
     } finally {
       setLoading(false);
     }
@@ -320,7 +358,9 @@ function AppShell() {
     try {
       await loadAdminStores(adminPage);
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : "Unable to load stores");
+      setAdminError(
+        error instanceof Error ? error.message : "Unable to load stores",
+      );
     } finally {
       setLoading(false);
     }
@@ -331,7 +371,9 @@ function AppShell() {
       <Route
         path="/login"
         element={
-          isHydratingSession ? <SessionSplashPage /> : isAuthenticated ? (
+          isHydratingSession ? (
+            <SessionSplashPage />
+          ) : isAuthenticated ? (
             <Navigate to="/app" replace />
           ) : (
             <LoginPage
@@ -345,12 +387,13 @@ function AppShell() {
           )
         }
       />
-      <Route path="/test" element={<IosFolder />} />
 
       <Route
         path="/app"
         element={
-          isHydratingSession ? <SessionSplashPage /> : isAuthenticated ? (
+          isHydratingSession ? (
+            <SessionSplashPage />
+          ) : isAuthenticated ? (
             role === "PLATFORM_ADMIN" ? (
               <AdminHomePage />
             ) : (
@@ -384,7 +427,9 @@ function AppShell() {
       <Route
         path="/app/stores"
         element={
-          isHydratingSession ? <SessionSplashPage /> : isAuthenticated ? (
+          isHydratingSession ? (
+            <SessionSplashPage />
+          ) : isAuthenticated ? (
             role === "PLATFORM_ADMIN" ? (
               <AdminStoresPage
                 mode="list"
@@ -402,13 +447,19 @@ function AppShell() {
                 onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
                 onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
                 onClearFilters={() => {
-                  const cleared = { storeName: "", ownerPhone: "", includeDeleted: false };
+                  const cleared = {
+                    storeName: "",
+                    ownerPhone: "",
+                    includeDeleted: false,
+                  };
                   setAdminFilterStoreName("");
                   setAdminFilterOwnerPhone("");
                   setAdminFilterIncludeDeleted(false);
                   void loadAdminStores(1, cleared);
                 }}
-                onPrevPage={() => void loadAdminStores(Math.max(1, adminPage - 1))}
+                onPrevPage={() =>
+                  void loadAdminStores(Math.max(1, adminPage - 1))
+                }
                 onNextPage={() => void loadAdminStores(adminPage + 1)}
                 onNewStoreNameChange={setNewStoreName}
                 onNewOwnerPhoneChange={setNewOwnerPhone}
@@ -427,7 +478,9 @@ function AppShell() {
       <Route
         path="/app/stores/new"
         element={
-          isHydratingSession ? <SessionSplashPage /> : isAuthenticated ? (
+          isHydratingSession ? (
+            <SessionSplashPage />
+          ) : isAuthenticated ? (
             role === "PLATFORM_ADMIN" ? (
               <AdminStoresPage
                 mode="new"
@@ -445,13 +498,19 @@ function AppShell() {
                 onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
                 onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
                 onClearFilters={() => {
-                  const cleared = { storeName: "", ownerPhone: "", includeDeleted: false };
+                  const cleared = {
+                    storeName: "",
+                    ownerPhone: "",
+                    includeDeleted: false,
+                  };
                   setAdminFilterStoreName("");
                   setAdminFilterOwnerPhone("");
                   setAdminFilterIncludeDeleted(false);
                   void loadAdminStores(1, cleared);
                 }}
-                onPrevPage={() => void loadAdminStores(Math.max(1, adminPage - 1))}
+                onPrevPage={() =>
+                  void loadAdminStores(Math.max(1, adminPage - 1))
+                }
                 onNextPage={() => void loadAdminStores(adminPage + 1)}
                 onNewStoreNameChange={setNewStoreName}
                 onNewOwnerPhoneChange={setNewOwnerPhone}
@@ -470,9 +529,13 @@ function AppShell() {
       <Route
         path="/app/stores/:storeId"
         element={
-          isHydratingSession ? <SessionSplashPage /> : isAuthenticated ? (
+          isHydratingSession ? (
+            <SessionSplashPage />
+          ) : isAuthenticated ? (
             role === "PLATFORM_ADMIN" ? (
-              <AdminStoreDetailsPage onStoreMutated={() => void loadAdminStores(adminPage)} />
+              <AdminStoreDetailsPage
+                onStoreMutated={() => void loadAdminStores(adminPage)}
+              />
             ) : (
               <Navigate to="/app" replace />
             )
@@ -484,7 +547,9 @@ function AppShell() {
       <Route
         path="/app/users"
         element={
-          isHydratingSession ? <SessionSplashPage /> : isAuthenticated ? (
+          isHydratingSession ? (
+            <SessionSplashPage />
+          ) : isAuthenticated ? (
             role === "PLATFORM_ADMIN" ? (
               <AdminUsersPage />
             ) : (
