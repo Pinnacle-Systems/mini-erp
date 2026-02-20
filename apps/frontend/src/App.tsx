@@ -51,12 +51,10 @@ function AppShell() {
     totalPages: 0,
   });
   const [adminFilterStoreName, setAdminFilterStoreName] = useState("");
-  const [adminFilterOwnerEmail, setAdminFilterOwnerEmail] = useState("");
   const [adminFilterOwnerPhone, setAdminFilterOwnerPhone] = useState("");
   const adminFilterReadyRef = useRef(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [newStoreName, setNewStoreName] = useState("");
-  const [newOwnerEmail, setNewOwnerEmail] = useState("");
   const [newOwnerPhone, setNewOwnerPhone] = useState("");
   const [editStoreId, setEditStoreId] = useState<string | null>(null);
   const [editStoreName, setEditStoreName] = useState("");
@@ -81,17 +79,14 @@ function AppShell() {
     page = adminPage,
     filters: {
       storeName: string;
-      ownerEmail: string;
       ownerPhone: string;
     } = {
       storeName: adminFilterStoreName,
-      ownerEmail: adminFilterOwnerEmail,
       ownerPhone: adminFilterOwnerPhone,
     },
   ) => {
     const result = await listAdminStores({
       storeName: filters.storeName,
-      ownerEmail: filters.ownerEmail,
       ownerPhone: filters.ownerPhone,
       page,
       limit: 10,
@@ -185,7 +180,6 @@ function AppShell() {
       setAdminError(null);
       void loadAdminStores(1, {
         storeName: adminFilterStoreName,
-        ownerEmail: adminFilterOwnerEmail,
         ownerPhone: adminFilterOwnerPhone,
       })
         .catch((error) => {
@@ -197,7 +191,7 @@ function AppShell() {
     }, 350);
 
     return () => window.clearTimeout(timeoutId);
-  }, [role, adminFilterStoreName, adminFilterOwnerEmail, adminFilterOwnerPhone]);
+  }, [role, adminFilterStoreName, adminFilterOwnerPhone]);
 
   const activeStoreName = useMemo(() => {
     return stores.find((store) => store.id === activeStore)?.name ?? "No store selected";
@@ -297,8 +291,8 @@ function AppShell() {
   };
 
   const onCreateStore = async () => {
-    if (!newStoreName.trim() || (!newOwnerEmail.trim() && !newOwnerPhone.trim())) {
-      setAdminError("Store name and owner email or phone is required.");
+    if (!newStoreName.trim() || !newOwnerPhone.trim()) {
+      setAdminError("Store name and owner phone is required.");
       return;
     }
 
@@ -306,11 +300,9 @@ function AppShell() {
     setAdminError(null);
     try {
       await createAdminStore(newStoreName.trim(), {
-        ...(newOwnerEmail.trim() ? { ownerEmail: newOwnerEmail.trim() } : {}),
         ...(newOwnerPhone.trim() ? { ownerPhone: newOwnerPhone.trim() } : {}),
       });
       setNewStoreName("");
-      setNewOwnerEmail("");
       setNewOwnerPhone("");
       await loadAdminStores(1);
       navigate("/app/stores", { replace: true });
@@ -441,37 +433,31 @@ function AppShell() {
                 page={adminPage}
                 pagination={adminPagination}
                 filterStoreName={adminFilterStoreName}
-                filterOwnerEmail={adminFilterOwnerEmail}
                 filterOwnerPhone={adminFilterOwnerPhone}
                 loading={loading}
                 error={adminError}
                 newStoreName={newStoreName}
-                newOwnerEmail={newOwnerEmail}
                 newOwnerPhone={newOwnerPhone}
                 editStoreId={editStoreId}
                 editStoreName={editStoreName}
                 editOwnerId={editOwnerId}
                 onFilterStoreNameChange={setAdminFilterStoreName}
-                onFilterOwnerEmailChange={setAdminFilterOwnerEmail}
                 onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
                 onApplyFilters={() =>
                   void loadAdminStores(1, {
                     storeName: adminFilterStoreName,
-                    ownerEmail: adminFilterOwnerEmail,
                     ownerPhone: adminFilterOwnerPhone,
                   })
                 }
                 onClearFilters={() => {
-                  const cleared = { storeName: "", ownerEmail: "", ownerPhone: "" };
+                  const cleared = { storeName: "", ownerPhone: "" };
                   setAdminFilterStoreName("");
-                  setAdminFilterOwnerEmail("");
                   setAdminFilterOwnerPhone("");
                   void loadAdminStores(1, cleared);
                 }}
                 onPrevPage={() => void loadAdminStores(Math.max(1, adminPage - 1))}
                 onNextPage={() => void loadAdminStores(adminPage + 1)}
                 onNewStoreNameChange={setNewStoreName}
-                onNewOwnerEmailChange={setNewOwnerEmail}
                 onNewOwnerPhoneChange={setNewOwnerPhone}
                 onCreate={() => void onCreateStore()}
                 onStartEdit={(store) => {
@@ -509,37 +495,31 @@ function AppShell() {
                 page={adminPage}
                 pagination={adminPagination}
                 filterStoreName={adminFilterStoreName}
-                filterOwnerEmail={adminFilterOwnerEmail}
                 filterOwnerPhone={adminFilterOwnerPhone}
                 loading={loading}
                 error={adminError}
                 newStoreName={newStoreName}
-                newOwnerEmail={newOwnerEmail}
                 newOwnerPhone={newOwnerPhone}
                 editStoreId={editStoreId}
                 editStoreName={editStoreName}
                 editOwnerId={editOwnerId}
                 onFilterStoreNameChange={setAdminFilterStoreName}
-                onFilterOwnerEmailChange={setAdminFilterOwnerEmail}
                 onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
                 onApplyFilters={() =>
                   void loadAdminStores(1, {
                     storeName: adminFilterStoreName,
-                    ownerEmail: adminFilterOwnerEmail,
                     ownerPhone: adminFilterOwnerPhone,
                   })
                 }
                 onClearFilters={() => {
-                  const cleared = { storeName: "", ownerEmail: "", ownerPhone: "" };
+                  const cleared = { storeName: "", ownerPhone: "" };
                   setAdminFilterStoreName("");
-                  setAdminFilterOwnerEmail("");
                   setAdminFilterOwnerPhone("");
                   void loadAdminStores(1, cleared);
                 }}
                 onPrevPage={() => void loadAdminStores(Math.max(1, adminPage - 1))}
                 onNextPage={() => void loadAdminStores(adminPage + 1)}
                 onNewStoreNameChange={setNewStoreName}
-                onNewOwnerEmailChange={setNewOwnerEmail}
                 onNewOwnerPhoneChange={setNewOwnerPhone}
                 onCreate={() => void onCreateStore()}
                 onStartEdit={(store) => {

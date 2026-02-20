@@ -28,10 +28,10 @@ const createSession = async (identity, userAgent, ipAddress) => {
   };
 };
 
-const searchIdentity = async (phone, email, password) => {
+const searchIdentity = async (phone, password) => {
   const identity = await prisma.identity.findFirst({
     where: {
-      OR: [{ phone }, { email }],
+      phone,
     },
   });
 

@@ -21,7 +21,6 @@ export type AdminStoresPagination = {
 
 export type ListAdminStoresParams = {
   storeName?: string;
-  ownerEmail?: string;
   ownerPhone?: string;
   page?: number;
   limit?: number;
@@ -36,9 +35,6 @@ const toListStoresUrl = (params: ListAdminStoresParams) => {
   const query = new URLSearchParams();
   if (params.storeName?.trim()) {
     query.set("storeName", params.storeName.trim());
-  }
-  if (params.ownerEmail?.trim()) {
-    query.set("ownerEmail", params.ownerEmail.trim());
   }
   if (params.ownerPhone?.trim()) {
     query.set("ownerPhone", params.ownerPhone.trim());
@@ -78,14 +74,13 @@ export const listAdminStores = async (
 
 export const createAdminStore = async (
   name: string,
-  ownerContact: { ownerEmail?: string; ownerPhone?: string },
+  ownerContact: { ownerPhone?: string },
 ): Promise<AdminStore> => {
   const response = await apiFetch("/api/admin/stores", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
-      ...(ownerContact.ownerEmail ? { ownerEmail: ownerContact.ownerEmail.trim() } : {}),
       ...(ownerContact.ownerPhone ? { ownerPhone: ownerContact.ownerPhone.trim() } : {}),
     }),
   });

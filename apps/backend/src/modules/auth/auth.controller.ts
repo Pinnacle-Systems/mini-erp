@@ -11,9 +11,9 @@ import {
 import tenantService from "../tenant/tenant.service.js";
 
 export const login = catchAsync(async (req, res) => {
-  const { email = "", phone = "", password = "" } = req.body;
+  const { phone = "", password = "" } = req.body;
 
-  const identity = await authService.searchIdentity(phone, email, password);
+  const identity = await authService.searchIdentity(phone, password);
 
   const userAgent = req.headers["user-agent"] ?? "unknown";
   const ipAddress = getClientIp(req);

@@ -21,9 +21,10 @@ export type MePayload = {
 
 export const login = async (username: string, password: string): Promise<LoginResult> => {
   const trimmed = username.trim();
-  const body = /^\d{10}$/.test(trimmed)
-    ? { phone: trimmed, password }
-    : { email: trimmed, password };
+  if (!/^\d{10}$/.test(trimmed)) {
+    throw new Error("Phone number must be 10 digits");
+  }
+  const body = { phone: trimmed, password };
 
   const response = await apiFetch(
     "/api/auth/login",

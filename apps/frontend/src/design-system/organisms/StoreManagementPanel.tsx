@@ -1,5 +1,6 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "../atoms/Button";
+import { IconButton } from "../atoms/IconButton";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
 import {
@@ -20,25 +21,21 @@ type StoreManagementPanelProps = {
   page: number;
   pagination: AdminStoresPagination;
   filterStoreName: string;
-  filterOwnerEmail: string;
   filterOwnerPhone: string;
   loading: boolean;
   error: string | null;
   newStoreName: string;
-  newOwnerEmail: string;
   newOwnerPhone: string;
   editStoreId: string | null;
   editStoreName: string;
   editOwnerId: string;
   onFilterStoreNameChange: (value: string) => void;
-  onFilterOwnerEmailChange: (value: string) => void;
   onFilterOwnerPhoneChange: (value: string) => void;
   onApplyFilters: () => void;
   onClearFilters: () => void;
   onPrevPage: () => void;
   onNextPage: () => void;
   onNewStoreNameChange: (value: string) => void;
-  onNewOwnerEmailChange: (value: string) => void;
   onNewOwnerPhoneChange: (value: string) => void;
   onCreate: () => void;
   onStartEdit: (store: AdminStore) => void;
@@ -58,25 +55,21 @@ export function StoreManagementPanel({
   page,
   pagination,
   filterStoreName,
-  filterOwnerEmail,
   filterOwnerPhone,
   loading,
   error,
   newStoreName,
-  newOwnerEmail,
   newOwnerPhone,
   editStoreId,
   editStoreName,
   editOwnerId,
   onFilterStoreNameChange,
-  onFilterOwnerEmailChange,
   onFilterOwnerPhoneChange,
   onApplyFilters,
   onClearFilters,
   onPrevPage,
   onNextPage,
   onNewStoreNameChange,
-  onNewOwnerEmailChange,
   onNewOwnerPhoneChange,
   onCreate,
   onStartEdit,
@@ -100,7 +93,7 @@ export function StoreManagementPanel({
             <CardDescription>
               {isListView
                 ? "Browse, edit, and remove stores as a platform admin."
-                : "Create a new store by looking up the owner using email or phone."}
+                : "Create a new store by looking up the owner using phone."}
             </CardDescription>
           </div>
           {isListView ? (
@@ -122,20 +115,13 @@ export function StoreManagementPanel({
         {isListView ? (
           <>
             <div className="rounded-2xl border border-white/70 bg-white/55 p-3">
-              <div className="grid gap-2 md:grid-cols-3">
+              <div className="grid gap-2 md:grid-cols-2">
                 <Input
                   value={filterStoreName}
                   onChange={(event) =>
                     onFilterStoreNameChange(event.target.value)
                   }
                   placeholder="Store name"
-                />
-                <Input
-                  value={filterOwnerEmail}
-                  onChange={(event) =>
-                    onFilterOwnerEmailChange(event.target.value)
-                  }
-                  placeholder="Owner email"
                 />
                 <Input
                   value={filterOwnerPhone}
@@ -208,9 +194,7 @@ export function StoreManagementPanel({
                           {store.name}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {store.owner?.email ??
-                            store.owner?.phone ??
-                            "Owner contact unavailable"}
+                          {store.owner?.phone ?? "Owner phone unavailable"}
                         </p>
                       </div>
                     )}
@@ -240,28 +224,24 @@ export function StoreManagementPanel({
                         </>
                       ) : (
                         <>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          <IconButton
+                            icon={Pencil}
+                            variant="outline"
                             onClick={() => onStartEdit(store)}
                             disabled={loading}
-                            className="h-8 w-8 rounded-full p-0 text-[#1f4167] hover:bg-[#eaf2ff]"
+                            className="h-8 w-8 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
                             aria-label={`Edit ${store.name}`}
                             title="Edit"
-                          >
-                            <Pencil size={16} />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                          />
+                          <IconButton
+                            icon={Trash2}
+                            variant="outline"
                             onClick={() => onDelete(store.id)}
                             disabled={loading}
-                            className="h-8 w-8 rounded-full p-0 text-[#b42318] hover:bg-[#ffecec]"
+                            className="h-8 w-8 rounded-full border border-[#f3c3c0] bg-[#fff5f5] p-0 text-[#b42318] shadow-sm hover:bg-[#ffecec]"
                             aria-label={`Delete ${store.name}`}
                             title="Delete"
-                          >
-                            <Trash2 color="red" size={16} />
-                          </Button>
+                          />
                         </>
                       )}
                     </div>
@@ -319,18 +299,6 @@ export function StoreManagementPanel({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-owner-email">Owner email</Label>
-                <Input
-                  id="new-owner-email"
-                  value={newOwnerEmail}
-                  onChange={(event) =>
-                    onNewOwnerEmailChange(event.target.value)
-                  }
-                  placeholder="owner@example.com"
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="new-owner-phone">Owner phone (primary)</Label>
                 <Input
                   id="new-owner-phone"
@@ -344,7 +312,7 @@ export function StoreManagementPanel({
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              If no owner identity exists for the email/phone, a new identity is
+              If no owner identity exists for the phone, a new identity is
               created with the default password.
             </p>
 
@@ -354,9 +322,7 @@ export function StoreManagementPanel({
               <Button
                 onClick={onCreate}
                 disabled={
-                  loading ||
-                  !newStoreName.trim() ||
-                  (!newOwnerEmail.trim() && !newOwnerPhone.trim())
+                  loading || !newStoreName.trim() || !newOwnerPhone.trim()
                 }
               >
                 Create Store

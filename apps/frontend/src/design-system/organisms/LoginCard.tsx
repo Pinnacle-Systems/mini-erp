@@ -23,12 +23,6 @@ export function LoginCard({
   onSubmit
 }: LoginCardProps) {
   const handleUsernameChange = (value: string) => {
-    const hasEmailChars = /[A-Za-z@]/.test(value);
-    if (hasEmailChars) {
-      onUsernameChange(value.trimStart());
-      return;
-    }
-
     const digitsOnly = value.replace(/\D/g, "").slice(0, 10);
     onUsernameChange(digitsOnly);
   };
@@ -56,7 +50,7 @@ export function LoginCard({
 
           <form onSubmit={onSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="username">Phone number or email</Label>
+              <Label htmlFor="username">Phone number</Label>
               <Input
                 id="username"
                 type="text"
@@ -64,7 +58,7 @@ export function LoginCard({
                 inputMode="tel"
                 value={username}
                 onChange={(event) => handleUsernameChange(event.target.value)}
-                placeholder="5551234567 or you@company.com"
+                placeholder="5551234567"
                 className="bg-white/60"
               />
               <p className="text-xs text-muted-foreground">
