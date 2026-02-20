@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Button } from "../atoms/Button";
 import { cn } from "../../lib/utils";
 
-export type FolderId = "store" | "sync";
+export type FolderId = "purchase" | "sales" | "inventory";
 
 export type AppFolder = {
   id: FolderId;

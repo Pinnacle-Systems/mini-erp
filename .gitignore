@@ -1,6 +1,7 @@
 # Build output
 dist/
 **/dist/
+**/dev-dist/
 .env
 .DS_Store
 /uploads

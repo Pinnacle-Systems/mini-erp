@@ -1,4 +1,4 @@
-import { SystemRole } from "../../../generated/prisma/enums.js";
+import { StoreRole, SystemRole } from "../../../generated/prisma/enums.js";
 import * as argon2 from "argon2";
 import { prisma } from "../../lib/prisma.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
@@ -181,6 +181,23 @@ export const createStore = catchAsync(async (req, res) => {
         owner_id: ownerId,
       },
     });
+
+    await prisma.storeMember.upsert({
+      where: {
+        store_id_identity_id: {
+          store_id: store.id,
+          identity_id: ownerId,
+        },
+      },
+      update: {
+        role: StoreRole.OWNER,
+      },
+      create: {
+        store_id: store.id,
+        identity_id: ownerId,
+        role: StoreRole.OWNER,
+      },
+    });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
       const code = String(error.code);
@@ -289,7 +306,7 @@ export const updateStore = catchAsync(async (req, res) => {
         throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
       }
 
-      return tx.store.update({
+      const updatedStore = await tx.store.update({
         where: { id: existingStore.id },
         data: {
           ...(normalizedStoreName !== undefined ? { name: normalizedStoreName } : {}),
@@ -297,6 +314,38 @@ export const updateStore = catchAsync(async (req, res) => {
           ...(isActive !== undefined ? { deleted_at: isActive ? null : new Date() } : {}),
         },
       });
+
+      await tx.storeMember.upsert({
+        where: {
+          store_id_identity_id: {
+            store_id: updatedStore.id,
+            identity_id: targetOwnerId,
+          },
+        },
+        update: {
+          role: StoreRole.OWNER,
+        },
+        create: {
+          store_id: updatedStore.id,
+          identity_id: targetOwnerId,
+          role: StoreRole.OWNER,
+        },
+      });
+
+      if (existingStore.owner_id !== targetOwnerId) {
+        await tx.storeMember.updateMany({
+          where: {
+            store_id: updatedStore.id,
+            identity_id: existingStore.owner_id,
+            role: StoreRole.OWNER,
+          },
+          data: {
+            role: StoreRole.MANAGER,
+          },
+        });
+      }
+
+      return updatedStore;
     });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {

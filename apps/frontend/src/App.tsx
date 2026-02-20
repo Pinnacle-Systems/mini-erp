@@ -1,12 +1,21 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { LogOut } from "lucide-react";
 import {
   BrowserRouter,
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
 } from "react-router-dom";
-import { getMe, login, selectStore } from "./features/auth/client";
+import {
+  getMe,
+  login,
+  logout,
+  selectStore,
+  type MePayload,
+} from "./features/auth/client";
+import { Button } from "./design-system/atoms/Button";
 import {
   getAssignedStores,
   clearStoreContext,
@@ -20,7 +29,6 @@ import {
 } from "./features/sync/engine";
 import { LoginPage } from "./pages/LoginPage";
 import { AppHomePage } from "./pages/AppHomePage";
-import type { FolderId } from "./design-system/organisms/AppFolderLauncher";
 import {
   createAdminStore,
   listAdminStores,
@@ -32,11 +40,13 @@ import { AdminStoresPage } from "./pages/AdminStoresPage";
 import { AdminStoreDetailsPage } from "./pages/AdminStoreDetailsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { SessionSplashPage } from "./pages/SessionSplashPage";
+import { StoreSelectionPage } from "./pages/StoreSelectionPage";
 
 type Role = "USER" | "PLATFORM_ADMIN" | null;
 
 function AppShell() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [username, setUsername] = useState("5551234567");
   const [password, setPassword] = useState("ChangeMe123!");
@@ -51,7 +61,6 @@ function AppShell() {
   const [, setStatus] = useState("Not authenticated");
   const [loading, setLoading] = useState(false);
   const [localProducts, setLocalProducts] = useState<string[]>([]);
-  const [activeFolder, setActiveFolder] = useState<FolderId>("store");
   const [adminStores, setAdminStores] = useState<AdminStore[]>([]);
   const [adminPage, setAdminPage] = useState(1);
   const [adminPagination, setAdminPagination] = useState<AdminStoresPagination>(
@@ -113,14 +122,14 @@ function AppShell() {
     setAdminPagination(result.pagination);
   };
 
-  const hydrateSession = async () => {
+  const hydrateSession = async (): Promise<MePayload | null> => {
     try {
       const me = await getMe();
       if (!me.identityId) {
         setIdentityId(null);
         setRole(null);
         setStatus("Not authenticated");
-        return false;
+        return null;
       }
 
       setIdentityId(me.identityId);
@@ -133,7 +142,7 @@ function AppShell() {
         setLocalProducts([]);
         await loadAdminStores(1);
         setStatus("Authenticated");
-        return true;
+        return me;
       }
 
       const localStores = me.stores ?? getAssignedStores();
@@ -150,12 +159,12 @@ function AppShell() {
         setLocalProducts([]);
       }
 
-      return true;
+      return me;
     } catch {
       setIdentityId(null);
       setRole(null);
       setStatus("Session unavailable");
-      return false;
+      return null;
     }
   };
 
@@ -240,9 +249,13 @@ function AppShell() {
       clearStoreContext();
       setActiveStoreState(null);
       setIsStoreSelected(false);
-      const ok = await hydrateSession();
-      if (ok) {
+      const me = await hydrateSession();
+      if (me?.identityId) {
         setStatus("Login successful");
+        if (me.role === "USER" && !me.tenantId) {
+          navigate("/app/select-store", { replace: true });
+          return;
+        }
         navigate("/app", { replace: true });
       }
     } catch (error) {
@@ -261,6 +274,9 @@ function AppShell() {
       await selectStore(activeStore);
       setIsStoreSelected(true);
       setStatus("Store selected");
+      if (role === "USER" && location.pathname === "/app/select-store") {
+        navigate("/app", { replace: true });
+      }
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Store selection failed",
@@ -327,6 +343,24 @@ function AppShell() {
     setIsStoreSelected(false);
   };
 
+  const onLogout = async () => {
+    setLoading(true);
+    setStatus("Logging out...");
+    await logout();
+    clearStoreContext();
+    setIdentityId(null);
+    setRole(null);
+    setStores([]);
+    setActiveStoreState(null);
+    setIsStoreSelected(false);
+    setLocalProducts([]);
+    setAdminStores([]);
+    setAdminError(null);
+    setStatus("Not authenticated");
+    navigate("/login", { replace: true });
+    setLoading(false);
+  };
+
   const onCreateStore = async () => {
     if (!newStoreName.trim() || !newOwnerPhone.trim()) {
       setAdminError("Store name and owner phone is required.");
@@ -367,221 +401,257 @@ function AppShell() {
   };
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : isAuthenticated ? (
-            <Navigate to="/app" replace />
-          ) : (
-            <LoginPage
-              username={username}
-              password={password}
-              loading={loading}
-              onUsernameChange={setUsername}
-              onPasswordChange={setPassword}
-              onSubmit={onLogin}
-            />
-          )
-        }
-      />
+    <>
+      {!isHydratingSession && isAuthenticated ? (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => void onLogout()}
+          className="fixed right-4 top-4 z-50 h-8 gap-1.5 px-3 text-xs md:right-6 md:top-6"
+        >
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+          Logout
+        </Button>
+      ) : null}
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : isAuthenticated ? (
+              <Navigate to="/app" replace />
+            ) : (
+              <LoginPage
+                username={username}
+                password={password}
+                loading={loading}
+                onUsernameChange={setUsername}
+                onPasswordChange={setPassword}
+                onSubmit={onLogin}
+              />
+            )
+          }
+        />
 
-      <Route
-        path="/app"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : isAuthenticated ? (
-            role === "PLATFORM_ADMIN" ? (
-              <AdminHomePage />
+        <Route
+          path="/app"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : isAuthenticated ? (
+              role === "PLATFORM_ADMIN" ? (
+                <AdminHomePage />
+              ) : role === "USER" && !isStoreSelected ? (
+                <Navigate to="/app/select-store" replace />
+              ) : (
+                <AppHomePage
+                  activeStore={activeStore}
+                  activeStoreName={activeStoreName}
+                  loading={loading}
+                  isAuthenticated={isAuthenticated}
+                  isStoreSelected={isStoreSelected}
+                  sku={sku}
+                  name={name}
+                  description={description}
+                  localProducts={localProducts}
+                  onSkuChange={setSku}
+                  onNameChange={setName}
+                  onDescriptionChange={setDescription}
+                  onQueueProductCreate={() => void onQueueProduct()}
+                  onSyncNow={() => void onSyncNow()}
+                />
+              )
             ) : (
-              <AppHomePage
-                stores={stores}
-                activeStore={activeStore}
-                activeStoreName={activeStoreName}
-                loading={loading}
-                isAuthenticated={isAuthenticated}
-                isStoreSelected={isStoreSelected}
-                activeFolder={activeFolder}
-                sku={sku}
-                name={name}
-                description={description}
-                localProducts={localProducts}
-                onSetActiveFolder={setActiveFolder}
-                onStoreChange={onStoreChange}
-                onApplyStoreToken={() => void onApplyStore()}
-                onSkuChange={setSku}
-                onNameChange={setName}
-                onDescriptionChange={setDescription}
-                onQueueProductCreate={() => void onQueueProduct()}
-                onSyncNow={() => void onSyncNow()}
-              />
+              <Navigate to="/login" replace />
             )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route
-        path="/app/stores"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : isAuthenticated ? (
-            role === "PLATFORM_ADMIN" ? (
-              <AdminStoresPage
-                mode="list"
-                stores={adminStores}
-                page={adminPage}
-                pagination={adminPagination}
-                filterStoreName={adminFilterStoreName}
-                filterOwnerPhone={adminFilterOwnerPhone}
-                filterIncludeDeleted={adminFilterIncludeDeleted}
-                loading={loading}
-                error={adminError}
-                newStoreName={newStoreName}
-                newOwnerPhone={newOwnerPhone}
-                onFilterStoreNameChange={setAdminFilterStoreName}
-                onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
-                onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
-                onClearFilters={() => {
-                  const cleared = {
-                    storeName: "",
-                    ownerPhone: "",
-                    includeDeleted: false,
-                  };
-                  setAdminFilterStoreName("");
-                  setAdminFilterOwnerPhone("");
-                  setAdminFilterIncludeDeleted(false);
-                  void loadAdminStores(1, cleared);
-                }}
-                onPrevPage={() =>
-                  void loadAdminStores(Math.max(1, adminPage - 1))
-                }
-                onNextPage={() => void loadAdminStores(adminPage + 1)}
-                onNewStoreNameChange={setNewStoreName}
-                onNewOwnerPhoneChange={setNewOwnerPhone}
-                onCreate={() => void onCreateStore()}
-                onOpenStore={(store) => navigate(`/app/stores/${store.id}`)}
-                onReload={() => void onReloadStores()}
-              />
+          }
+        />
+        <Route
+          path="/app/select-store"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : isAuthenticated ? (
+              role === "PLATFORM_ADMIN" ? (
+                <Navigate to="/app" replace />
+              ) : isStoreSelected ? (
+                <Navigate to="/app" replace />
+              ) : (
+                <StoreSelectionPage
+                  stores={stores}
+                  activeStore={activeStore}
+                  activeStoreName={activeStoreName}
+                  loading={loading}
+                  isAuthenticated={isAuthenticated}
+                  onStoreChange={onStoreChange}
+                  onApplyStoreToken={() => void onApplyStore()}
+                />
+              )
             ) : (
-              <Navigate to="/app" replace />
+              <Navigate to="/login" replace />
             )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route
-        path="/app/stores/new"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : isAuthenticated ? (
-            role === "PLATFORM_ADMIN" ? (
-              <AdminStoresPage
-                mode="new"
-                stores={adminStores}
-                page={adminPage}
-                pagination={adminPagination}
-                filterStoreName={adminFilterStoreName}
-                filterOwnerPhone={adminFilterOwnerPhone}
-                filterIncludeDeleted={adminFilterIncludeDeleted}
-                loading={loading}
-                error={adminError}
-                newStoreName={newStoreName}
-                newOwnerPhone={newOwnerPhone}
-                onFilterStoreNameChange={setAdminFilterStoreName}
-                onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
-                onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
-                onClearFilters={() => {
-                  const cleared = {
-                    storeName: "",
-                    ownerPhone: "",
-                    includeDeleted: false,
-                  };
-                  setAdminFilterStoreName("");
-                  setAdminFilterOwnerPhone("");
-                  setAdminFilterIncludeDeleted(false);
-                  void loadAdminStores(1, cleared);
-                }}
-                onPrevPage={() =>
-                  void loadAdminStores(Math.max(1, adminPage - 1))
-                }
-                onNextPage={() => void loadAdminStores(adminPage + 1)}
-                onNewStoreNameChange={setNewStoreName}
-                onNewOwnerPhoneChange={setNewOwnerPhone}
-                onCreate={() => void onCreateStore()}
-                onOpenStore={(store) => navigate(`/app/stores/${store.id}`)}
-                onReload={() => void onReloadStores()}
-              />
+          }
+        />
+        <Route
+          path="/app/stores"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : isAuthenticated ? (
+              role === "PLATFORM_ADMIN" ? (
+                <AdminStoresPage
+                  mode="list"
+                  stores={adminStores}
+                  page={adminPage}
+                  pagination={adminPagination}
+                  filterStoreName={adminFilterStoreName}
+                  filterOwnerPhone={adminFilterOwnerPhone}
+                  filterIncludeDeleted={adminFilterIncludeDeleted}
+                  loading={loading}
+                  error={adminError}
+                  newStoreName={newStoreName}
+                  newOwnerPhone={newOwnerPhone}
+                  onFilterStoreNameChange={setAdminFilterStoreName}
+                  onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
+                  onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
+                  onClearFilters={() => {
+                    const cleared = {
+                      storeName: "",
+                      ownerPhone: "",
+                      includeDeleted: false,
+                    };
+                    setAdminFilterStoreName("");
+                    setAdminFilterOwnerPhone("");
+                    setAdminFilterIncludeDeleted(false);
+                    void loadAdminStores(1, cleared);
+                  }}
+                  onPrevPage={() =>
+                    void loadAdminStores(Math.max(1, adminPage - 1))
+                  }
+                  onNextPage={() => void loadAdminStores(adminPage + 1)}
+                  onNewStoreNameChange={setNewStoreName}
+                  onNewOwnerPhoneChange={setNewOwnerPhone}
+                  onCreate={() => void onCreateStore()}
+                  onOpenStore={(store) => navigate(`/app/stores/${store.id}`)}
+                  onReload={() => void onReloadStores()}
+                />
+              ) : (
+                <Navigate to="/app" replace />
+              )
             ) : (
-              <Navigate to="/app" replace />
+              <Navigate to="/login" replace />
             )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route
-        path="/app/stores/:storeId"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : isAuthenticated ? (
-            role === "PLATFORM_ADMIN" ? (
-              <AdminStoreDetailsPage
-                onStoreMutated={() => void loadAdminStores(adminPage)}
-              />
+          }
+        />
+        <Route
+          path="/app/stores/new"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : isAuthenticated ? (
+              role === "PLATFORM_ADMIN" ? (
+                <AdminStoresPage
+                  mode="new"
+                  stores={adminStores}
+                  page={adminPage}
+                  pagination={adminPagination}
+                  filterStoreName={adminFilterStoreName}
+                  filterOwnerPhone={adminFilterOwnerPhone}
+                  filterIncludeDeleted={adminFilterIncludeDeleted}
+                  loading={loading}
+                  error={adminError}
+                  newStoreName={newStoreName}
+                  newOwnerPhone={newOwnerPhone}
+                  onFilterStoreNameChange={setAdminFilterStoreName}
+                  onFilterOwnerPhoneChange={setAdminFilterOwnerPhone}
+                  onFilterIncludeDeletedChange={setAdminFilterIncludeDeleted}
+                  onClearFilters={() => {
+                    const cleared = {
+                      storeName: "",
+                      ownerPhone: "",
+                      includeDeleted: false,
+                    };
+                    setAdminFilterStoreName("");
+                    setAdminFilterOwnerPhone("");
+                    setAdminFilterIncludeDeleted(false);
+                    void loadAdminStores(1, cleared);
+                  }}
+                  onPrevPage={() =>
+                    void loadAdminStores(Math.max(1, adminPage - 1))
+                  }
+                  onNextPage={() => void loadAdminStores(adminPage + 1)}
+                  onNewStoreNameChange={setNewStoreName}
+                  onNewOwnerPhoneChange={setNewOwnerPhone}
+                  onCreate={() => void onCreateStore()}
+                  onOpenStore={(store) => navigate(`/app/stores/${store.id}`)}
+                  onReload={() => void onReloadStores()}
+                />
+              ) : (
+                <Navigate to="/app" replace />
+              )
             ) : (
-              <Navigate to="/app" replace />
+              <Navigate to="/login" replace />
             )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route
-        path="/app/users"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : isAuthenticated ? (
-            role === "PLATFORM_ADMIN" ? (
-              <AdminUsersPage />
+          }
+        />
+        <Route
+          path="/app/stores/:storeId"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : isAuthenticated ? (
+              role === "PLATFORM_ADMIN" ? (
+                <AdminStoreDetailsPage
+                  onStoreMutated={() => void loadAdminStores(adminPage)}
+                />
+              ) : (
+                <Navigate to="/app" replace />
+              )
             ) : (
-              <Navigate to="/app" replace />
+              <Navigate to="/login" replace />
             )
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
+          }
+        />
+        <Route
+          path="/app/users"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : isAuthenticated ? (
+              role === "PLATFORM_ADMIN" ? (
+                <AdminUsersPage />
+              ) : (
+                <Navigate to="/app" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
 
-      <Route
-        path="/"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : (
-            <Navigate to={isAuthenticated ? "/app" : "/login"} replace />
-          )
-        }
-      />
-      <Route
-        path="*"
-        element={
-          isHydratingSession ? (
-            <SessionSplashPage />
-          ) : (
-            <Navigate to={isAuthenticated ? "/app" : "/login"} replace />
-          )
-        }
-      />
-    </Routes>
+        <Route
+          path="/"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : (
+              <Navigate to={isAuthenticated ? "/app" : "/login"} replace />
+            )
+          }
+        />
+        <Route
+          path="*"
+          element={
+            isHydratingSession ? (
+              <SessionSplashPage />
+            ) : (
+              <Navigate to={isAuthenticated ? "/app" : "/login"} replace />
+            )
+          }
+        />
+      </Routes>
+    </>
   );
 }
 

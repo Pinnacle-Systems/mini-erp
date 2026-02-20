@@ -88,3 +88,12 @@ export const getMe = async (): Promise<MePayload> => {
 
   return payload;
 };
+
+export const logout = async (): Promise<void> => {
+  await apiFetch(
+    "/api/auth/logout",
+    { method: "POST" },
+    { retryOnUnauthorized: false }
+  ).catch(() => null);
+  setAccessToken(null);
+};

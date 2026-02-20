@@ -55,8 +55,19 @@ export const login = catchAsync(async (req, res) => {
 });
 
 export const logout = catchAsync(async (req, res) => {
-  console.log("reached logout");
-  res.json({});
+  const refreshToken = typeof req.cookies?.refreshToken === "string"
+    ? req.cookies.refreshToken
+    : "";
+  const [sessionId] = refreshToken.split(".");
+  await authService.revokeSession(sessionId);
+  res.cookie("refreshToken", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production" ? true : false,
+    sameSite: "strict",
+    path: "/api/auth/refresh",
+    maxAge: 0,
+  });
+  res.json({ success: true });
 });
 
 export const refresh = catchAsync(async (req, res) => {
@@ -87,7 +98,7 @@ export const refresh = catchAsync(async (req, res) => {
     });
   }
 
-  const { currentStoreId } = req.body;
+  const { currentStoreId } = (req.body ?? {}) as { currentStoreId?: string };
 
   if (currentStoreId) {
     const member = await tenantService.validateMembership(

@@ -96,9 +96,19 @@ const getIdentity = async (id) => {
   });
 };
 
+const revokeSession = async (sessionId) => {
+  if (!sessionId) return;
+  await prisma.session.deleteMany({
+    where: {
+      id: sessionId,
+    },
+  });
+};
+
 export default {
   createSession,
   searchIdentity,
   getIdentity,
   verifySession,
+  revokeSession,
 };
