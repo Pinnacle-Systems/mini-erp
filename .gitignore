@@ -1,29 +1,28 @@
-# Build output
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Build and caches
 dist/
 **/dist/
-**/dev-dist/
+build/
+**/build/
+.cache/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Logs and OS/editor files
+*.log
 .DS_Store
-/uploads
-node_modules
-yarn-error.log
-.idea
+.idea/
+.vscode/
 
-coverage
-
-!src/**
-
-./tsconfig.tsbuildinfo
-build
-.cache
-
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
-
-.pnpm_store
-.turbo
-.vscode
+# Project-specific output
+/uploads/
