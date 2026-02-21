@@ -9,13 +9,21 @@ export function SessionSplashPage() {
             <motion.span
               className="absolute inset-0 rounded-full border-2 border-primary/20"
               animate={{ scale: [1, 1.2, 1], opacity: [0.7, 0.25, 0.7] }}
-              transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+              transition={{
+                duration: 1.4,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
             />
             <span className="absolute inset-2 rounded-full bg-primary/90" />
           </div>
           <div>
-            <p className="m-0 text-sm font-semibold text-foreground">Restoring your session</p>
-            <p className="m-0 text-xs text-muted-foreground">Checking credentials and workspace access...</p>
+            <p className="m-0 text-sm font-semibold text-foreground">
+              Restoring your session
+            </p>
+            <p className="m-0 text-xs text-muted-foreground">
+              Checking credentials and workspace access...
+            </p>
           </div>
         </div>
       </section>

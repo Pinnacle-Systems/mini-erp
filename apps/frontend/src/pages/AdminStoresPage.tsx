@@ -1,6 +1,9 @@
 import { ArrowLeft, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { AdminStore, AdminStoresPagination } from "../features/admin/stores";
+import type {
+  AdminStore,
+  AdminStoresPagination,
+} from "../features/admin/stores";
 import { IconButton } from "../design-system/atoms/IconButton";
 import { StoreManagementPanel } from "../design-system/organisms/StoreManagementPanel";
 

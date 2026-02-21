@@ -6,14 +6,27 @@ import { IconButton } from "../design-system/atoms/IconButton";
 import { Input } from "../design-system/atoms/Input";
 import { Label } from "../design-system/atoms/Label";
 import { LoadingOverlay } from "../design-system/atoms/LoadingOverlay";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
-import { deleteAdminStore, getAdminStore, updateAdminStore, type AdminStore } from "../features/admin/stores";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../design-system/molecules/Card";
+import {
+  deleteAdminStore,
+  getAdminStore,
+  updateAdminStore,
+  type AdminStore,
+} from "../features/admin/stores";
 
 type AdminStoreDetailsPageProps = {
   onStoreMutated: () => void;
 };
 
-export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageProps) {
+export function AdminStoreDetailsPage({
+  onStoreMutated,
+}: AdminStoreDetailsPageProps) {
   const navigate = useNavigate();
   const { storeId } = useParams<{ storeId: string }>();
   const [store, setStore] = useState<AdminStore | null>(null);
@@ -39,7 +52,11 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
       setNameDraft(result.name);
       setIsEditingName(false);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load store");
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load store",
+      );
     } finally {
       setLoading(false);
     }
@@ -57,7 +74,11 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
       onStoreMutated();
       await loadStore();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to update store");
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to update store",
+      );
     } finally {
       setSaving(false);
     }
@@ -112,7 +133,9 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
       <Card>
         <CardHeader>
           <CardTitle>Store Details</CardTitle>
-          <CardDescription>Manage store metadata and lifecycle state.</CardDescription>
+          <CardDescription>
+            Manage store metadata and lifecycle state.
+          </CardDescription>
         </CardHeader>
         <CardContent className="relative space-y-6">
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -146,7 +169,13 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
               <div className="rounded-2xl border border-white/70 bg-white/55 p-3">
                 <p className="text-xs text-muted-foreground">
                   Status:{" "}
-                  <span className={store.deletedAt ? "font-semibold text-red-700" : "font-semibold text-green-700"}>
+                  <span
+                    className={
+                      store.deletedAt
+                        ? "font-semibold text-red-700"
+                        : "font-semibold text-green-700"
+                    }
+                  >
                     {store.deletedAt ? "Deleted" : "Active"}
                   </span>
                 </p>
@@ -154,7 +183,12 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
 
               <div className="flex flex-wrap items-center gap-2">
                 {store.deletedAt ? (
-                  <Button variant="outline" onClick={onRestore} disabled={saving} className="gap-1">
+                  <Button
+                    variant="outline"
+                    onClick={onRestore}
+                    disabled={saving}
+                    className="gap-1"
+                  >
                     <Undo2 className="h-4 w-4" aria-hidden="true" />
                     Restore Store
                   </Button>
@@ -162,7 +196,11 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
                   <>
                     {isEditingName ? (
                       <>
-                        <Button onClick={onSaveName} disabled={saving || !nameDraft.trim()} className="gap-1">
+                        <Button
+                          onClick={onSaveName}
+                          disabled={saving || !nameDraft.trim()}
+                          className="gap-1"
+                        >
                           <Save className="h-4 w-4" aria-hidden="true" />
                           Save Name
                         </Button>
@@ -206,7 +244,10 @@ export function AdminStoreDetailsPage({ onStoreMutated }: AdminStoreDetailsPageP
           ) : (
             <div className="min-h-40" aria-hidden="true" />
           )}
-          <LoadingOverlay visible={showOverlayLoader} label="Loading store details" />
+          <LoadingOverlay
+            visible={showOverlayLoader}
+            label="Loading store details"
+          />
         </CardContent>
       </Card>
     </main>
