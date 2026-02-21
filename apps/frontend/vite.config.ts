@@ -32,6 +32,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
+        navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
@@ -42,6 +43,7 @@ export default defineConfig({
       },
       devOptions: {
         enabled: true,
+        navigateFallbackAllowlist: [/^\/(?!api\/).*/],
       },
     }),
   ],

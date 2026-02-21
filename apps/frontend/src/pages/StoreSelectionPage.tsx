@@ -1,25 +1,62 @@
-import type { AssignedStore } from "../features/auth/store-context";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { selectStore } from "../features/auth/client";
+import { useSessionStore } from "../features/auth/session-store";
 import { StorePanel } from "../design-system/organisms/StorePanel";
 
-type StoreSelectionPageProps = {
-  stores: AssignedStore[];
-  activeStore: string | null;
-  activeStoreName: string;
-  loading: boolean;
-  isAuthenticated: boolean;
-  onStoreChange: (storeId: string) => void;
-  onApplyStoreToken: () => void;
-};
+export function StoreSelectionPage() {
+  const navigate = useNavigate();
+  const stores = useSessionStore((state) => state.stores);
+  const activeStore = useSessionStore((state) => state.activeStore);
+  const setActiveStore = useSessionStore((state) => state.setActiveStore);
+  const setIsStoreSelected = useSessionStore((state) => state.setIsStoreSelected);
+  const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
+  const identityId = useSessionStore((state) => state.identityId);
+  const [loading, setLoading] = useState(false);
+  const [selectedStore, setSelectedStore] = useState(activeStore ?? "");
+  const isAuthenticated = Boolean(identityId);
+  const activeStoreName = useMemo(
+    () =>
+      stores.find((store) => store.id === activeStore)?.name ??
+      "No store selected",
+    [activeStore, stores],
+  );
+  const currentStoreReminder =
+    isStoreSelected && activeStore ? activeStoreName : null;
 
-export function StoreSelectionPage({
-  stores,
-  activeStore,
-  activeStoreName,
-  loading,
-  isAuthenticated,
-  onStoreChange,
-  onApplyStoreToken,
-}: StoreSelectionPageProps) {
+  useEffect(() => {
+    setSelectedStore(activeStore ?? "");
+  }, [activeStore]);
+
+  const onStoreChange = (storeId: string) => {
+    setSelectedStore(storeId);
+  };
+
+  const onApplyStoreToken = async () => {
+    if (!selectedStore) return;
+    setLoading(true);
+    try {
+      await selectStore(selectedStore);
+      setActiveStore(selectedStore);
+      setIsStoreSelected(true);
+      navigate("/app", { replace: true });
+    } catch (error) {
+      const isNetworkFailure =
+        !navigator.onLine || error instanceof TypeError;
+
+      if (isAuthenticated && isNetworkFailure) {
+        setActiveStore(selectedStore);
+        setIsStoreSelected(true);
+        navigate("/app", { replace: true });
+        return;
+      }
+
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-4xl space-y-4 p-6 md:p-10">
       <header className="space-y-1">
@@ -32,8 +69,8 @@ export function StoreSelectionPage({
       </header>
       <StorePanel
         stores={stores}
-        activeStore={activeStore}
-        activeStoreName={activeStoreName}
+        activeStore={selectedStore}
+        currentStoreReminder={currentStoreReminder}
         loading={loading}
         isAuthenticated={isAuthenticated}
         onStoreChange={onStoreChange}

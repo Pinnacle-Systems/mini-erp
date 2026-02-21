@@ -1,12 +1,12 @@
-import type { AssignedStore } from "../../features/auth/store-context";
+import type { AssignedStore } from "../../features/auth/session-store";
 import { Button } from "../atoms/Button";
 import { Select } from "../atoms/Select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../molecules/Card";
+import { Card, CardContent } from "../molecules/Card";
 
 type StorePanelProps = {
   stores: AssignedStore[];
   activeStore: string | null;
-  activeStoreName: string;
+  currentStoreReminder: string | null;
   loading: boolean;
   isAuthenticated: boolean;
   onStoreChange: (storeId: string) => void;
@@ -16,7 +16,7 @@ type StorePanelProps = {
 export function StorePanel({
   stores,
   activeStore,
-  activeStoreName,
+  currentStoreReminder,
   loading,
   isAuthenticated,
   onStoreChange,
@@ -24,13 +24,14 @@ export function StorePanel({
 }: StorePanelProps) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Store Context</CardTitle>
-        <CardDescription>
-          Active: {activeStoreName}. Tenant users must select a store and apply token.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap gap-3">
+      <CardContent className="space-y-3">
+        {currentStoreReminder ? (
+          <p className="text-sm text-muted-foreground">
+            Currently on:{" "}
+            <span className="font-medium text-foreground">{currentStoreReminder}</span>
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-3">
         <Select
           value={activeStore ?? ""}
           onChange={(event) => onStoreChange(event.target.value)}
@@ -51,8 +52,9 @@ export function StorePanel({
           disabled={!activeStore || loading || !isAuthenticated}
           onClick={onApplyStoreToken}
         >
-          Apply Store Token
+          Select Store
         </Button>
+        </div>
       </CardContent>
     </Card>
   );

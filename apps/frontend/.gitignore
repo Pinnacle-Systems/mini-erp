@@ -1,2 +1,5 @@
 # PWA dev service worker output from vite-plugin-pwa (devOptions.enabled)
 dev-dist/
+
+# TypeScript build metadata
+.cache/

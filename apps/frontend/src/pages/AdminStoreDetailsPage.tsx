@@ -20,13 +20,7 @@ import {
   type AdminStore,
 } from "../features/admin/stores";
 
-type AdminStoreDetailsPageProps = {
-  onStoreMutated: () => void;
-};
-
-export function AdminStoreDetailsPage({
-  onStoreMutated,
-}: AdminStoreDetailsPageProps) {
+export function AdminStoreDetailsPage() {
   const navigate = useNavigate();
   const { storeId } = useParams<{ storeId: string }>();
   const [store, setStore] = useState<AdminStore | null>(null);
@@ -71,7 +65,6 @@ export function AdminStoreDetailsPage({
     setError(null);
     try {
       await operation();
-      onStoreMutated();
       await loadStore();
     } catch (requestError) {
       setError(

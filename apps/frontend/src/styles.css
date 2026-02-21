@@ -49,8 +49,20 @@
     box-sizing: border-box;
   }
 
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   body {
     margin: 0;
+    display: block;
+    width: 100%;
     min-height: 100vh;
     background:
       radial-gradient(1200px 500px at -10% -20%, hsl(210 100% 97%), transparent 70%),
@@ -59,6 +71,11 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     @apply bg-background text-foreground;
+  }
+
+  #root {
+    width: 100%;
+    min-height: 100vh;
   }
 }
 
@@ -82,5 +99,36 @@
 
   .status {
     @apply m-0 text-sm font-medium text-muted-foreground;
+  }
+
+  .folder-launcher-layout {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(0.5rem, 1.4vw, 1.25rem);
+  }
+
+  .folder-launcher-item {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  @media (orientation: landscape), (min-width: 1024px) {
+    .folder-launcher-layout {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+    }
+
+    .folder-launcher-item {
+      width: clamp(11rem, 18vw, 12.5rem);
+      flex: 0 0 auto;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .folder-launcher-item {
+      width: 13rem;
+    }
   }
 }

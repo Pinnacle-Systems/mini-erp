@@ -11,6 +11,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useSessionStore } from "../features/auth/session-store";
+import { useSyncActions } from "../features/sync/SyncProvider";
+import { useUserAppStore } from "../features/sync/user-app-store";
 import { SyncPanel } from "../design-system/organisms/SyncPanel";
 import { AppFolder } from "../design-system/organisms/AppFolder";
 import {
@@ -20,23 +23,6 @@ import {
   CardHeader,
   CardTitle,
 } from "../design-system/molecules/Card";
-
-type AppHomePageProps = {
-  activeStore: string | null;
-  activeStoreName: string;
-  loading: boolean;
-  isAuthenticated: boolean;
-  isStoreSelected: boolean;
-  sku: string;
-  name: string;
-  description: string;
-  localProducts: string[];
-  onSkuChange: (value: string) => void;
-  onNameChange: (value: string) => void;
-  onDescriptionChange: (value: string) => void;
-  onQueueProductCreate: () => void;
-  onSyncNow: () => void;
-};
 
 type UserFolderId = "purchase" | "sales" | "inventory";
 type UserAppId =
@@ -126,22 +112,26 @@ const folders: Array<{
   },
 ];
 
-export function AppHomePage({
-  activeStore,
-  activeStoreName,
-  loading,
-  isAuthenticated,
-  isStoreSelected,
-  sku,
-  name,
-  description,
-  localProducts,
-  onSkuChange,
-  onNameChange,
-  onDescriptionChange,
-  onQueueProductCreate,
-  onSyncNow,
-}: AppHomePageProps) {
+export function AppHomePage() {
+  const stores = useSessionStore((state) => state.stores);
+  const activeStore = useSessionStore((state) => state.activeStore);
+  const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
+  const identityId = useSessionStore((state) => state.identityId);
+  const sku = useUserAppStore((state) => state.sku);
+  const name = useUserAppStore((state) => state.name);
+  const description = useUserAppStore((state) => state.description);
+  const localProducts = useUserAppStore((state) => state.localProducts);
+  const setSku = useUserAppStore((state) => state.setSku);
+  const setName = useUserAppStore((state) => state.setName);
+  const setDescription = useUserAppStore((state) => state.setDescription);
+  const { loading, onQueueProductCreate, onSyncNow } = useSyncActions();
+  const activeStoreName = useMemo(
+    () =>
+      stores.find((store) => store.id === activeStore)?.name ??
+      "No store selected",
+    [activeStore, stores],
+  );
+  const isAuthenticated = Boolean(identityId);
   const [openFolderId, setOpenFolderId] = useState<UserFolderId | null>(null);
   const [activeAppId, setActiveAppId] = useState<UserAppId | null>(null);
 
@@ -171,9 +161,9 @@ export function AppHomePage({
           isAuthenticated={isAuthenticated}
           activeStore={activeStore}
           isStoreSelected={isStoreSelected}
-          onSkuChange={onSkuChange}
-          onNameChange={onNameChange}
-          onDescriptionChange={onDescriptionChange}
+          onSkuChange={setSku}
+          onNameChange={setName}
+          onDescriptionChange={setDescription}
           onQueueProductCreate={onQueueProductCreate}
           onSyncNow={onSyncNow}
         />
@@ -226,17 +216,14 @@ export function AppHomePage({
   };
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-6xl space-y-6 p-6 md:p-10">
+    <main className="min-h-screen w-full space-y-6 p-4 sm:p-6 md:p-10">
       <section>
         <p className="mb-4 text-sm font-medium tracking-[0.01em] text-muted-foreground">
           Apps
         </p>
-        <div className="grid grid-cols-3 gap-[clamp(0.5rem,1.4vw,1.25rem)] md:[grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]">
+        <div className="folder-launcher-layout">
           {folders.map((folder) => (
-            <div
-              key={folder.id}
-              className="w-full md:max-w-[14rem] md:justify-self-center"
-            >
+            <div key={folder.id} className="folder-launcher-item">
               <AppFolder
                 label={folder.label}
                 apps={folder.apps}

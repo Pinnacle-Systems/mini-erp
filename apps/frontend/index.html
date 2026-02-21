@@ -5,9 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0e7490" />
     <title>Mini ERP Frontend</title>
+    <style>
+      :root {
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          "SF Pro Text",
+          "Helvetica Neue",
+          "Segoe UI",
+          sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(900px 400px at -10% -20%, #dbeafe, transparent 70%),
+          radial-gradient(800px 300px at 110% -20%, #e0f2fe, transparent 70%),
+          #f4f8fc;
+        color: #111827;
+      }
+      .boot-fallback {
+        width: min(540px, calc(100% - 2rem));
+        border-radius: 24px;
+        border: 1px solid #dbe3ee;
+        background: #ffffffd9;
+        padding: 2rem;
+        box-shadow: 0 20px 48px -28px rgb(15 23 42 / 0.35);
+      }
+      .boot-fallback h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.4rem;
+      }
+      .boot-fallback p {
+        margin: 0;
+        color: #4b5563;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="boot-fallback">
+        <h1>You are offline</h1>
+        <p>Mini ERP could not load application assets. Reconnect and refresh.</p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

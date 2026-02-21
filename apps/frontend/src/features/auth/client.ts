@@ -1,9 +1,9 @@
 import { apiFetch, setAccessToken } from "../../lib/api";
 import {
-  setActiveStore,
   setAssignedStores,
-  type AssignedStore
-} from "./store-context";
+  setPersistedActiveStore,
+  type AssignedStore,
+} from "./session-store";
 
 export type LoginResult = {
   token: string;
@@ -72,7 +72,7 @@ export const selectStore = async (storeId: string) => {
     setAccessToken(payload.token);
   }
 
-  setActiveStore(storeId);
+  setPersistedActiveStore(storeId);
 };
 
 export const getMe = async (): Promise<MePayload> => {
