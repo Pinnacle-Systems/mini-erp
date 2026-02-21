@@ -1,6 +1,6 @@
 import type { MutationAck, SyncDelta, SyncMutation } from "../types";
 
-const acceptedEntities = new Set(["product"]);
+const acceptedEntities = new Set(["item"]);
 
 const nextCursor = () => Date.now().toString();
 

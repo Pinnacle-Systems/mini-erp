@@ -4,6 +4,8 @@ import type { PullResponse, PushResponse, SyncMutation } from "./types";
 
 const CURSOR_KEY = "cursor";
 const DEVICE_ID_KEY = "mini_erp_device_id_v1";
+const isNetworkOnline = () =>
+  typeof navigator === "undefined" ? true : navigator.onLine;
 
 const getOrCreateDeviceId = () => {
   const existing = window.localStorage.getItem(DEVICE_ID_KEY);
@@ -34,17 +36,23 @@ const toMutation = (item: OutboxItem): SyncMutation => ({
   clientTimestamp: item.clientTimestamp
 });
 
-export const queueProductCreate = async (
+export const queueItemCreate = async (
   tenantId: string,
   userId: string,
-  payload: { sku: string; name: string; description: string; unit: "PCS" | "KG" | "M" | "BOX" }
+  payload: {
+    sku: string;
+    name: string;
+    description: string;
+    unit: "PCS" | "KG" | "M" | "BOX";
+    itemType: "PRODUCT" | "SERVICE";
+  }
 ) => {
   const entityId = crypto.randomUUID();
   await queueMutation(tenantId, {
     mutationId: crypto.randomUUID(),
     deviceId: getOrCreateDeviceId(),
     userId,
-    entity: "product",
+    entity: "item",
     entityId,
     op: "create",
     payload,
@@ -53,6 +61,8 @@ export const queueProductCreate = async (
 };
 
 const push = async (tenantId: string) => {
+  if (!isNetworkOnline()) return;
+
   const pending = await syncDb.outbox
     .where("[tenantId+status]")
     .equals([tenantId, "pending"])
@@ -95,6 +105,8 @@ const push = async (tenantId: string) => {
 };
 
 const pull = async (tenantId: string) => {
+  if (!isNetworkOnline()) return;
+
   const cursor = await getCursor(tenantId);
   const params = new URLSearchParams({ tenantId, cursor, limit: "200" });
   const response = await apiFetch(`/api/sync/pull?${params.toString()}`, { method: "GET" });
@@ -112,10 +124,12 @@ const pull = async (tenantId: string) => {
 };
 
 export const syncOnce = async (tenantId: string) => {
+  if (!isNetworkOnline()) return;
+
   await push(tenantId);
   await pull(tenantId);
 };
 
-export const getLocalProducts = async (tenantId: string) => {
-  return listEntities(tenantId, "product");
+export const getLocalItems = async (tenantId: string) => {
+  return listEntities(tenantId, "item");
 };

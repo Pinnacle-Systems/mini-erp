@@ -19,6 +19,15 @@ export function useLogoutFlow() {
       return;
     }
 
+    if (!navigator.onLine) {
+      const shouldContinue = window.confirm(
+        "You are offline. If you log out now, you may not be able to log in again until network connectivity is restored. Continue?",
+      );
+      if (!shouldContinue) {
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       await logout();

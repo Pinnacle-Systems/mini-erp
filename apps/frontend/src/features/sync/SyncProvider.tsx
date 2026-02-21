@@ -8,11 +8,11 @@ import {
 } from "react";
 import { useSessionStore } from "../auth/session-store";
 import { useUserAppStore } from "./user-app-store";
-import { getLocalProducts, queueProductCreate, syncOnce } from "./engine";
+import { getLocalItems, queueItemCreate, syncOnce } from "./engine";
 
 type SyncContextValue = {
   loading: boolean;
-  onQueueProductCreate: () => Promise<void>;
+  onQueueItemCreate: () => Promise<void>;
   onSyncNow: () => Promise<void>;
 };
 
@@ -30,14 +30,14 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const sku = useUserAppStore((state) => state.sku);
   const name = useUserAppStore((state) => state.name);
   const description = useUserAppStore((state) => state.description);
-  const setLocalProducts = useUserAppStore((state) => state.setLocalProducts);
+  const setLocalItems = useUserAppStore((state) => state.setLocalItems);
   const clearDraft = useUserAppStore((state) => state.clearDraft);
   const [loading, setLoading] = useState(false);
 
-  const loadProducts = useCallback(
+  const loadItems = useCallback(
     async (tenantId: string) => {
-      const items = await getLocalProducts(tenantId);
-      setLocalProducts(
+      const items = await getLocalItems(tenantId);
+      setLocalItems(
         items
           .filter((item) => !item.deletedAt)
           .map(
@@ -46,20 +46,21 @@ export function SyncProvider({ children }: SyncProviderProps) {
           ),
       );
     },
-    [setLocalProducts],
+    [setLocalItems],
   );
 
-  const onQueueProductCreate = useCallback(async () => {
+  const onQueueItemCreate = useCallback(async () => {
     if (!activeStore || !identityId || !isStoreSelected) return;
     if (!sku || !name) return;
 
     setLoading(true);
     try {
-      await queueProductCreate(activeStore, identityId, {
+      await queueItemCreate(activeStore, identityId, {
         sku,
         name,
         description,
         unit: "PCS",
+        itemType: "PRODUCT",
       });
       clearDraft();
     } catch (error) {
@@ -75,30 +76,30 @@ export function SyncProvider({ children }: SyncProviderProps) {
     setLoading(true);
     try {
       await syncOnce(activeStore);
-      await loadProducts(activeStore);
+      await loadItems(activeStore);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
-  }, [activeStore, isStoreSelected, loadProducts]);
+  }, [activeStore, isStoreSelected, loadItems]);
 
   useEffect(() => {
     if (!activeStore || role !== "USER" || !isStoreSelected) return;
 
     const interval = window.setInterval(() => {
       void syncOnce(activeStore)
-        .then(() => loadProducts(activeStore))
+        .then(() => loadItems(activeStore))
         .catch((error: unknown) => {
           console.error(error);
         });
     }, 15000);
 
     return () => window.clearInterval(interval);
-  }, [activeStore, isStoreSelected, loadProducts, role]);
+  }, [activeStore, isStoreSelected, loadItems, role]);
 
   return (
-    <SyncContext.Provider value={{ loading, onQueueProductCreate, onSyncNow }}>
+    <SyncContext.Provider value={{ loading, onQueueItemCreate, onSyncNow }}>
       {children}
     </SyncContext.Provider>
   );

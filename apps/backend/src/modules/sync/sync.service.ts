@@ -1,19 +1,21 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../shared/utils/errors.js";
 
-const SUPPORTED_ENTITIES = new Set(["product"]);
-const SUPPORTED_PRODUCT_FIELDS = new Set(["sku", "name", "description", "unit"]);
-type ProductPayload = {
-  sku?: string;
+const SUPPORTED_ENTITIES = new Set(["item"]);
+const SUPPORTED_ITEM_FIELDS = new Set(["sku", "name", "description", "unit", "itemType"]);
+type ItemPayload = {
+  sku?: string | null;
   name?: string;
   description?: string;
   unit?: string;
+  itemType?: string;
 };
-const DEFAULT_PRODUCT_VALUES = {
-  sku: "TEMP-SKU",
-  name: "Untitled Product",
+const DEFAULT_ITEM_VALUES = {
+  sku: null,
+  name: "Untitled Item",
   description: "",
   unit: "PCS",
+  itemType: "PRODUCT",
 };
 const prismaAny = prisma as any;
 
@@ -29,10 +31,10 @@ const toSyncOperation = (op) => {
   return "delete";
 };
 
-const sanitizeProductPayload = (payload) => {
-  const normalized: ProductPayload = {};
+const sanitizeItemPayload = (payload) => {
+  const normalized: ItemPayload = {};
   for (const [key, value] of Object.entries(payload ?? {})) {
-    if (!SUPPORTED_PRODUCT_FIELDS.has(key)) {
+    if (!SUPPORTED_ITEM_FIELDS.has(key)) {
       continue;
     }
     normalized[key] = value;
@@ -40,33 +42,38 @@ const sanitizeProductPayload = (payload) => {
   return normalized;
 };
 
-const buildProductForCreate = (payload) => {
-  const normalized = sanitizeProductPayload(payload);
+const buildItemForCreate = (payload) => {
+  const normalized = sanitizeItemPayload(payload);
 
   return {
     sku:
       typeof normalized.sku === "string" && normalized.sku.trim()
         ? normalized.sku.trim()
-        : DEFAULT_PRODUCT_VALUES.sku,
+        : DEFAULT_ITEM_VALUES.sku,
     name:
       typeof normalized.name === "string" && normalized.name.trim()
         ? normalized.name.trim()
-        : DEFAULT_PRODUCT_VALUES.name,
+        : DEFAULT_ITEM_VALUES.name,
     description:
       typeof normalized.description === "string"
         ? normalized.description
-        : DEFAULT_PRODUCT_VALUES.description,
+        : DEFAULT_ITEM_VALUES.description,
     unit:
-      typeof normalized.unit === "string" ? normalized.unit : DEFAULT_PRODUCT_VALUES.unit,
+      typeof normalized.unit === "string" ? normalized.unit : DEFAULT_ITEM_VALUES.unit,
+    item_type:
+      normalized.itemType === "SERVICE" ? "SERVICE" : DEFAULT_ITEM_VALUES.itemType,
   };
 };
 
-const buildProductForUpdate = (payload) => {
-  const normalized = sanitizeProductPayload(payload);
-  const patch: ProductPayload = {};
+const buildItemForUpdate = (payload) => {
+  const normalized = sanitizeItemPayload(payload);
+  const patch: ItemPayload & { item_type?: string } = {};
 
   if (typeof normalized.sku === "string" && normalized.sku.trim()) {
     patch.sku = normalized.sku.trim();
+  }
+  if (normalized.sku === null) {
+    patch.sku = null;
   }
   if (typeof normalized.name === "string" && normalized.name.trim()) {
     patch.name = normalized.name.trim();
@@ -76,6 +83,9 @@ const buildProductForUpdate = (payload) => {
   }
   if (typeof normalized.unit === "string") {
     patch.unit = normalized.unit;
+  }
+  if (normalized.itemType === "PRODUCT" || normalized.itemType === "SERVICE") {
+    patch.item_type = normalized.itemType;
   }
 
   return patch;
@@ -91,19 +101,19 @@ const getTenantCursor = async (tenantId) => {
   return latestChange?.cursor?.toString() ?? "0";
 };
 
-const applyProductMutation = async (tx, tenantId, mutation) => {
+const applyItemMutation = async (tx, tenantId, mutation) => {
   if (mutation.op === "create") {
-    const product = await tx.product.create({
+    const item = await tx.item.create({
       data: {
         id: mutation.entityId,
         store_id: tenantId,
-        ...buildProductForCreate(mutation.payload),
+        ...buildItemForCreate(mutation.payload),
       },
     });
-    return product;
+    return item;
   }
 
-  const current = await tx.product.findUnique({
+  const current = await tx.item.findUnique({
     where: { id: mutation.entityId },
   });
 
@@ -112,22 +122,22 @@ const applyProductMutation = async (tx, tenantId, mutation) => {
   }
 
   if (mutation.op === "delete") {
-    await tx.product.delete({
+    await tx.item.delete({
       where: { id: mutation.entityId },
     });
     return null;
   }
 
-  const patch = buildProductForUpdate(mutation.payload);
+  const patch = buildItemForUpdate(mutation.payload);
   if (Object.keys(patch).length === 0) {
     return current;
   }
 
-  const product = await tx.product.update({
+  const item = await tx.item.update({
     where: { id: mutation.entityId },
     data: patch,
   });
-  return product;
+  return item;
 };
 
 const applyMutation = async (tenantId, mutation) => {
@@ -143,8 +153,8 @@ const applyMutation = async (tenantId, mutation) => {
     }
 
     let snapshot = null;
-    if (mutation.entity === "product") {
-      snapshot = await applyProductMutation(tx, tenantId, mutation);
+    if (mutation.entity === "item") {
+      snapshot = await applyItemMutation(tx, tenantId, mutation);
     } else {
       throw new AppError(`Unsupported entity '${mutation.entity}'`, 400);
     }

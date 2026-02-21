@@ -9,6 +9,7 @@ import { AdminStoresPage } from "../pages/AdminStoresPage";
 import { AdminStoreDetailsPage } from "../pages/AdminStoreDetailsPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { StoreSelectionPage } from "../pages/StoreSelectionPage";
+import { ItemsPage } from "../pages/ItemsPage";
 import { OfflinePage } from "../pages/OfflinePage";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import { RequireAuth, RequireHydrated, RequireRole } from "./guards";
@@ -48,6 +49,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
 export function AppRoutes() {
   const identityId = useSessionStore((state) => state.identityId);
   const role = useSessionStore((state) => state.role);
+  const isHydratingSession = useSessionStore((state) => state.isHydratingSession);
   const { submit: onLogout } = useLogoutFlow();
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
 
@@ -67,7 +69,7 @@ export function AppRoutes() {
   }, []);
 
   const shouldShowOfflinePage =
-    !isOnline && (role === "PLATFORM_ADMIN" || !isAuthenticated);
+    !isHydratingSession && !isOnline && (role === "PLATFORM_ADMIN" || !isAuthenticated);
 
   if (shouldShowOfflinePage) return <OfflinePage />;
 
@@ -91,6 +93,7 @@ export function AppRoutes() {
 
             <Route element={<RequireRole role="USER" />}>
               <Route path="/app/select-store" element={<StoreSelectionPage />} />
+              <Route path="/app/items" element={<ItemsPage />} />
             </Route>
 
             <Route element={<RequireRole role="PLATFORM_ADMIN" />}>

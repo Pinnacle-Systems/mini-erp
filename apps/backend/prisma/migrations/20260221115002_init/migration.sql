@@ -35,6 +35,9 @@ CREATE TYPE "documents"."DocumentStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'C
 CREATE TYPE "inventory"."UnitType" AS ENUM ('PCS', 'KG', 'M', 'BOX');
 
 -- CreateEnum
+CREATE TYPE "inventory"."ItemType" AS ENUM ('PRODUCT', 'SERVICE');
+
+-- CreateEnum
 CREATE TYPE "parties"."PartyType" AS ENUM ('CUSTOMER', 'SUPPLIER', 'BOTH');
 
 -- CreateEnum
@@ -131,7 +134,7 @@ CREATE TABLE "documents"."documents" (
 CREATE TABLE "documents"."line_items" (
     "id" UUID NOT NULL,
     "document_id" UUID NOT NULL,
-    "product_id" UUID NOT NULL,
+    "item_id" UUID NOT NULL,
     "description" TEXT NOT NULL,
     "quantity" DECIMAL(12,3) NOT NULL,
     "unit_price" DECIMAL(12,2) NOT NULL,
@@ -142,15 +145,16 @@ CREATE TABLE "documents"."line_items" (
 );
 
 -- CreateTable
-CREATE TABLE "inventory"."products" (
+CREATE TABLE "inventory"."items" (
     "id" UUID NOT NULL,
     "store_id" UUID NOT NULL,
-    "sku" TEXT NOT NULL,
+    "item_type" "inventory"."ItemType" NOT NULL DEFAULT 'PRODUCT',
+    "sku" TEXT,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "unit" "inventory"."UnitType" NOT NULL DEFAULT 'PCS',
 
-    CONSTRAINT "products_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "items_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -165,7 +169,7 @@ CREATE TABLE "inventory"."locations" (
 -- CreateTable
 CREATE TABLE "inventory"."stock_ledger" (
     "id" UUID NOT NULL,
-    "product_id" UUID NOT NULL,
+    "item_id" UUID NOT NULL,
     "location_id" UUID NOT NULL,
     "quantity" DECIMAL(12,3) NOT NULL,
     "reason" TEXT NOT NULL,
@@ -260,7 +264,7 @@ CREATE UNIQUE INDEX "sessions_token_hash_key" ON "auth"."sessions"("token_hash")
 CREATE UNIQUE INDEX "documents_store_id_type_doc_number_key" ON "documents"."documents"("store_id", "type", "doc_number");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "products_store_id_sku_key" ON "inventory"."products"("store_id", "sku");
+CREATE UNIQUE INDEX "items_store_id_sku_key" ON "inventory"."items"("store_id", "sku");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "mutation_log_mutation_id_key" ON "sync"."mutation_log"("mutation_id");
@@ -296,7 +300,7 @@ ALTER TABLE "documents"."documents" ADD CONSTRAINT "documents_parent_id_fkey" FO
 ALTER TABLE "documents"."line_items" ADD CONSTRAINT "line_items_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents"."documents"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "inventory"."stock_ledger" ADD CONSTRAINT "stock_ledger_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "inventory"."products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "inventory"."stock_ledger" ADD CONSTRAINT "stock_ledger_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "inventory"."items"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "inventory"."stock_ledger" ADD CONSTRAINT "stock_ledger_location_id_fkey" FOREIGN KEY ("location_id") REFERENCES "inventory"."locations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

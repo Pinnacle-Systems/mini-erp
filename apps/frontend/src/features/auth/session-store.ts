@@ -98,8 +98,11 @@ export const useSessionStore = create<SessionState & SessionActions>()(
       name: STORE_CONTEXT_KEY,
       storage: createJSONStorage(() => window.localStorage),
       partialize: (state) => ({
+        identityId: state.identityId,
+        role: state.role,
         stores: state.stores,
         activeStore: state.activeStore,
+        isStoreSelected: state.isStoreSelected,
       }),
     },
   ),

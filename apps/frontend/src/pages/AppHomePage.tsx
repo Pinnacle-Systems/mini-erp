@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSessionStore } from "../features/auth/session-store";
 import { useSyncActions } from "../features/sync/SyncProvider";
 import { useUserAppStore } from "../features/sync/user-app-store";
@@ -33,7 +34,7 @@ type UserAppId =
   | "sales-orders"
   | "sales-returns"
   | "inventory-sync"
-  | "inventory-products"
+  | "inventory-items"
   | "inventory-adjustments";
 
 type UserFolderApp = {
@@ -95,12 +96,12 @@ const folders: Array<{
     apps: [
       {
         id: "inventory-sync",
-        label: "Product Sync",
+        label: "Item Sync",
         Icon: Boxes,
       },
       {
-        id: "inventory-products",
-        label: "Products",
+        id: "inventory-items",
+        label: "Items",
         Icon: Package,
       },
       {
@@ -113,6 +114,7 @@ const folders: Array<{
 ];
 
 export function AppHomePage() {
+  const navigate = useNavigate();
   const stores = useSessionStore((state) => state.stores);
   const activeStore = useSessionStore((state) => state.activeStore);
   const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
@@ -120,11 +122,11 @@ export function AppHomePage() {
   const sku = useUserAppStore((state) => state.sku);
   const name = useUserAppStore((state) => state.name);
   const description = useUserAppStore((state) => state.description);
-  const localProducts = useUserAppStore((state) => state.localProducts);
+  const localItems = useUserAppStore((state) => state.localItems);
   const setSku = useUserAppStore((state) => state.setSku);
   const setName = useUserAppStore((state) => state.setName);
   const setDescription = useUserAppStore((state) => state.setDescription);
-  const { loading, onQueueProductCreate, onSyncNow } = useSyncActions();
+  const { loading, onQueueItemCreate, onSyncNow } = useSyncActions();
   const activeStoreName = useMemo(
     () =>
       stores.find((store) => store.id === activeStore)?.name ??
@@ -156,7 +158,7 @@ export function AppHomePage() {
           sku={sku}
           name={name}
           description={description}
-          localProducts={localProducts}
+          localItems={localItems}
           loading={loading}
           isAuthenticated={isAuthenticated}
           activeStore={activeStore}
@@ -164,7 +166,7 @@ export function AppHomePage() {
           onSkuChange={setSku}
           onNameChange={setName}
           onDescriptionChange={setDescription}
-          onQueueProductCreate={onQueueProductCreate}
+          onQueueItemCreate={onQueueItemCreate}
           onSyncNow={onSyncNow}
         />
       );
@@ -233,7 +235,15 @@ export function AppHomePage() {
                   setActiveAppId(null);
                 }}
                 onClose={() => setOpenFolderId(null)}
-                onSelectApp={setActiveAppId}
+                onSelectApp={(appId) => {
+                  if (appId === "inventory-items") {
+                    setOpenFolderId(null);
+                    setActiveAppId(null);
+                    navigate("/app/items");
+                    return;
+                  }
+                  setActiveAppId(appId);
+                }}
               >
                 {openFolderId === folder.id && activeAppId ? (
                   <div className="mt-6">{renderFolderContent()}</div>

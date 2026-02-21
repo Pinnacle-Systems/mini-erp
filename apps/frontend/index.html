@@ -27,12 +27,16 @@
         color: #111827;
       }
       .boot-fallback {
+        display: none;
         width: min(540px, calc(100% - 2rem));
         border-radius: 24px;
         border: 1px solid #dbe3ee;
         background: #ffffffd9;
         padding: 2rem;
         box-shadow: 0 20px 48px -28px rgb(15 23 42 / 0.35);
+      }
+      html.show-boot-fallback .boot-fallback {
+        display: block;
       }
       .boot-fallback h1 {
         margin: 0 0 0.5rem;
@@ -45,6 +49,13 @@
     </style>
   </head>
   <body>
+    <script>
+      window.setTimeout(() => {
+        if (!window.__MINIERP_BOOTED__) {
+          document.documentElement.classList.add("show-boot-fallback");
+        }
+      }, 900);
+    </script>
     <div id="root">
       <main class="boot-fallback">
         <h1>You are offline</h1>

@@ -1,14 +1,14 @@
 import { create } from "zustand";
 
 type UserAppState = {
-  localProducts: string[];
+  localItems: string[];
   sku: string;
   name: string;
   description: string;
 };
 
 type UserAppActions = {
-  setLocalProducts: (value: string[]) => void;
+  setLocalItems: (value: string[]) => void;
   setSku: (value: string) => void;
   setName: (value: string) => void;
   setDescription: (value: string) => void;
@@ -17,7 +17,7 @@ type UserAppActions = {
 };
 
 const initialState: UserAppState = {
-  localProducts: [],
+  localItems: [],
   sku: "",
   name: "",
   description: "",
@@ -25,8 +25,8 @@ const initialState: UserAppState = {
 
 export const useUserAppStore = create<UserAppState & UserAppActions>((set) => ({
   ...initialState,
-  setLocalProducts: (value) => {
-    set({ localProducts: value });
+  setLocalItems: (value) => {
+    set({ localItems: value });
   },
   setSku: (value) => {
     set({ sku: value });

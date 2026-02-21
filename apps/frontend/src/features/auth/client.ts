@@ -78,7 +78,9 @@ export const selectStore = async (storeId: string) => {
 export const getMe = async (): Promise<MePayload> => {
   const response = await apiFetch("/api/auth/me", { method: "GET" });
   if (!response.ok) {
-    throw new Error("Failed to fetch current session");
+    const error = new Error("Failed to fetch current session");
+    Object.assign(error, { status: response.status });
+    throw error;
   }
 
   const payload = (await response.json()) as MePayload;

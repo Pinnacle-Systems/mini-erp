@@ -7,7 +7,7 @@ type SyncPanelProps = {
   sku: string;
   name: string;
   description: string;
-  localProducts: string[];
+  localItems: string[];
   loading: boolean;
   isAuthenticated: boolean;
   activeStore: string | null;
@@ -15,7 +15,7 @@ type SyncPanelProps = {
   onSkuChange: (value: string) => void;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
-  onQueueProductCreate: () => void;
+  onQueueItemCreate: () => void;
   onSyncNow: () => void;
 };
 
@@ -23,7 +23,7 @@ export function SyncPanel({
   sku,
   name,
   description,
-  localProducts,
+  localItems,
   loading,
   isAuthenticated,
   activeStore,
@@ -31,14 +31,14 @@ export function SyncPanel({
   onSkuChange,
   onNameChange,
   onDescriptionChange,
-  onQueueProductCreate,
+  onQueueItemCreate,
   onSyncNow
 }: SyncPanelProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Product Sync</CardTitle>
-        <CardDescription>Queue and sync product mutations for the active store.</CardDescription>
+        <CardTitle>Item Sync</CardTitle>
+        <CardDescription>Queue and sync item mutations for the active store.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 md:grid-cols-3">
@@ -59,9 +59,9 @@ export function SyncPanel({
         <div className="mt-5 flex flex-wrap gap-3">
           <Button
             disabled={loading || !isAuthenticated || !activeStore || !isStoreSelected}
-            onClick={onQueueProductCreate}
+            onClick={onQueueItemCreate}
           >
-            Queue Product Create
+            Queue Item Create
           </Button>
           <Button
             variant="outline"
@@ -78,14 +78,14 @@ export function SyncPanel({
         ) : null}
 
         <div className="mt-5">
-          <p className="text-xs font-medium tracking-[0.01em] text-muted-foreground">Local products</p>
+          <p className="text-xs font-medium tracking-[0.01em] text-muted-foreground">Local items</p>
           <ul className="mt-2 space-y-1.5 text-sm text-foreground">
-            {localProducts.map((product) => (
-              <li key={product} className="rounded-xl border border-white/80 bg-white/65 px-3 py-1.5">
-                {product}
+            {localItems.map((item) => (
+              <li key={item} className="rounded-xl border border-white/80 bg-white/65 px-3 py-1.5">
+                {item}
               </li>
             ))}
-            {localProducts.length === 0 ? <li className="text-muted-foreground">No local products synced yet.</li> : null}
+            {localItems.length === 0 ? <li className="text-muted-foreground">No local items synced yet.</li> : null}
           </ul>
         </div>
       </CardContent>
