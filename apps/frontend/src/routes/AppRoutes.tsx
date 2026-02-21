@@ -10,6 +10,7 @@ import { AdminStoreDetailsPage } from "../pages/AdminStoreDetailsPage";
 import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { StoreSelectionPage } from "../pages/StoreSelectionPage";
 import { ItemsPage } from "../pages/ItemsPage";
+import { AddItemPage } from "../pages/AddItemPage";
 import { OfflinePage } from "../pages/OfflinePage";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import { RequireAuth, RequireHydrated, RequireRole } from "./guards";
@@ -94,6 +95,7 @@ export function AppRoutes() {
             <Route element={<RequireRole role="USER" />}>
               <Route path="/app/select-store" element={<StoreSelectionPage />} />
               <Route path="/app/items" element={<ItemsPage />} />
+              <Route path="/app/items/new" element={<AddItemPage />} />
             </Route>
 
             <Route element={<RequireRole role="PLATFORM_ADMIN" />}>
