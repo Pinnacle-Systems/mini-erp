@@ -98,7 +98,7 @@ const pushPendingMutations = async (tenantId: string) => {
   const payload = (await response.json()) as PushResponse;
   const now = new Date().toISOString();
 
-  await syncDb.transaction("rw", syncDb.outbox, syncDb.syncMeta, async () => {
+  await syncDb.transaction("rw", syncDb.outbox, async () => {
     for (const ack of payload.acknowledgements) {
       const current = await syncDb.outbox.get(ack.mutationId);
       if (!current) {
@@ -112,8 +112,6 @@ const pushPendingMutations = async (tenantId: string) => {
         updatedAt: now,
       });
     }
-
-    await setMeta(tenantId, "cursor", payload.cursor);
   });
 };
 

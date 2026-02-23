@@ -149,12 +149,54 @@ CREATE TABLE "inventory"."items" (
     "id" UUID NOT NULL,
     "store_id" UUID NOT NULL,
     "item_type" "inventory"."ItemType" NOT NULL DEFAULT 'PRODUCT',
-    "sku" TEXT,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "unit" "inventory"."UnitType" NOT NULL DEFAULT 'PCS',
 
     CONSTRAINT "items_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "inventory"."item_variants" (
+    "id" UUID NOT NULL,
+    "store_id" UUID NOT NULL,
+    "item_id" UUID NOT NULL,
+    "sku" TEXT,
+    "barcode" TEXT,
+    "name" TEXT,
+    "is_default" BOOLEAN NOT NULL DEFAULT false,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "item_variants_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "inventory"."item_options" (
+    "id" UUID NOT NULL,
+    "item_id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "position" INTEGER NOT NULL DEFAULT 0,
+
+    CONSTRAINT "item_options_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "inventory"."item_option_values" (
+    "id" UUID NOT NULL,
+    "option_id" UUID NOT NULL,
+    "value" TEXT NOT NULL,
+    "position" INTEGER NOT NULL DEFAULT 0,
+
+    CONSTRAINT "item_option_values_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "inventory"."item_variant_option_values" (
+    "id" UUID NOT NULL,
+    "variant_id" UUID NOT NULL,
+    "option_value_id" UUID NOT NULL,
+
+    CONSTRAINT "item_variant_option_values_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -169,7 +211,7 @@ CREATE TABLE "inventory"."locations" (
 -- CreateTable
 CREATE TABLE "inventory"."stock_ledger" (
     "id" UUID NOT NULL,
-    "item_id" UUID NOT NULL,
+    "variant_id" UUID NOT NULL,
     "location_id" UUID NOT NULL,
     "quantity" DECIMAL(12,3) NOT NULL,
     "reason" TEXT NOT NULL,
@@ -264,7 +306,16 @@ CREATE UNIQUE INDEX "sessions_token_hash_key" ON "auth"."sessions"("token_hash")
 CREATE UNIQUE INDEX "documents_store_id_type_doc_number_key" ON "documents"."documents"("store_id", "type", "doc_number");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "items_store_id_sku_key" ON "inventory"."items"("store_id", "sku");
+CREATE UNIQUE INDEX "item_variants_store_id_sku_key" ON "inventory"."item_variants"("store_id", "sku");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "item_options_item_id_name_key" ON "inventory"."item_options"("item_id", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "item_option_values_option_id_value_key" ON "inventory"."item_option_values"("option_id", "value");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "item_variant_option_values_variant_id_option_value_id_key" ON "inventory"."item_variant_option_values"("variant_id", "option_value_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "mutation_log_mutation_id_key" ON "sync"."mutation_log"("mutation_id");
@@ -300,7 +351,22 @@ ALTER TABLE "documents"."documents" ADD CONSTRAINT "documents_parent_id_fkey" FO
 ALTER TABLE "documents"."line_items" ADD CONSTRAINT "line_items_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents"."documents"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "inventory"."stock_ledger" ADD CONSTRAINT "stock_ledger_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "inventory"."items"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "inventory"."item_variants" ADD CONSTRAINT "item_variants_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "inventory"."items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inventory"."item_options" ADD CONSTRAINT "item_options_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "inventory"."items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inventory"."item_option_values" ADD CONSTRAINT "item_option_values_option_id_fkey" FOREIGN KEY ("option_id") REFERENCES "inventory"."item_options"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inventory"."item_variant_option_values" ADD CONSTRAINT "item_variant_option_values_variant_id_fkey" FOREIGN KEY ("variant_id") REFERENCES "inventory"."item_variants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inventory"."item_variant_option_values" ADD CONSTRAINT "item_variant_option_values_option_value_id_fkey" FOREIGN KEY ("option_value_id") REFERENCES "inventory"."item_option_values"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "inventory"."stock_ledger" ADD CONSTRAINT "stock_ledger_variant_id_fkey" FOREIGN KEY ("variant_id") REFERENCES "inventory"."item_variants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "inventory"."stock_ledger" ADD CONSTRAINT "stock_ledger_location_id_fkey" FOREIGN KEY ("location_id") REFERENCES "inventory"."locations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

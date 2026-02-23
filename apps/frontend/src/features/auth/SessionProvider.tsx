@@ -7,7 +7,7 @@ import {
 } from "react";
 import { getMe, type MePayload } from "./client";
 import { useSessionStore } from "./session-store";
-import { getLocalItems } from "../sync/engine";
+import { getLocalItemLabels } from "../sync/engine";
 import { useUserAppStore } from "../sync/user-app-store";
 
 type SessionHydrationContextValue = {
@@ -34,15 +34,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   const loadItems = useCallback(
     async (tenantId: string) => {
-      const items = await getLocalItems(tenantId);
-      setLocalItems(
-        items
-          .filter((item) => !item.deletedAt)
-          .map(
-            (item) =>
-              `${String(item.data.sku ?? "")}: ${String(item.data.name ?? "")}`,
-          ),
-      );
+      const items = await getLocalItemLabels(tenantId);
+      setLocalItems(items);
     },
     [setLocalItems],
   );

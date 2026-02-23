@@ -1,4 +1,4 @@
-import { LogOut, Store } from "lucide-react";
+import { ArrowLeft, LogOut, Store } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
@@ -7,11 +7,13 @@ import { useSessionStore } from "../../features/auth/session-store";
 type SessionHeaderProps = {
   onLogout: () => void;
   showSwitchStore?: boolean;
+  showBackHome?: boolean;
 };
 
 export function SessionHeader({
   onLogout,
   showSwitchStore = true,
+  showBackHome = false,
 }: SessionHeaderProps) {
   const navigate = useNavigate();
   const role = useSessionStore((state) => state.role);
@@ -31,6 +33,17 @@ export function SessionHeader({
         {showSelectedStore ? activeStoreName : null}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {showBackHome ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate("/app")}
+            className="h-8 gap-1.5 px-3 text-xs"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to home
+          </Button>
+        ) : null}
         {canSwitchStore ? (
           <Button
             type="button"

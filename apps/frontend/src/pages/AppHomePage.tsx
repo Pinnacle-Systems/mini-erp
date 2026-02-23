@@ -1,6 +1,7 @@
 import {
   Boxes,
   ClipboardList,
+  Cog,
   FileText,
   HandCoins,
   Package,
@@ -10,12 +11,13 @@ import {
   Undo2,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSessionStore } from "../features/auth/session-store";
 import { useSyncActions } from "../features/sync/SyncProvider";
 import { useUserAppStore } from "../features/sync/user-app-store";
 import { SyncPanel } from "../design-system/organisms/SyncPanel";
+import { SettingsPanel } from "../design-system/organisms/SettingsPanel";
 import { AppFolder } from "../design-system/organisms/AppFolder";
 import {
   Card,
@@ -24,8 +26,12 @@ import {
   CardHeader,
   CardTitle,
 } from "../design-system/molecules/Card";
+import {
+  getPendingOutboxCount,
+  resetTenantSyncState,
+} from "../features/sync/engine";
 
-type UserFolderId = "purchase" | "sales" | "inventory";
+type UserFolderId = "purchase" | "sales" | "inventory" | "settings";
 type UserAppId =
   | "purchase-bills"
   | "purchase-orders"
@@ -35,7 +41,8 @@ type UserAppId =
   | "sales-returns"
   | "inventory-sync"
   | "inventory-items"
-  | "inventory-adjustments";
+  | "inventory-adjustments"
+  | "settings-sync";
 
 type UserFolderApp = {
   id: UserAppId;
@@ -111,6 +118,17 @@ const folders: Array<{
       },
     ],
   },
+  {
+    id: "settings",
+    label: "Settings",
+    apps: [
+      {
+        id: "settings-sync",
+        label: "Data Sync",
+        Icon: Cog,
+      },
+    ],
+  },
 ];
 
 export function AppHomePage() {
@@ -123,6 +141,7 @@ export function AppHomePage() {
   const name = useUserAppStore((state) => state.name);
   const description = useUserAppStore((state) => state.description);
   const localItems = useUserAppStore((state) => state.localItems);
+  const setLocalItems = useUserAppStore((state) => state.setLocalItems);
   const setSku = useUserAppStore((state) => state.setSku);
   const setName = useUserAppStore((state) => state.setName);
   const setDescription = useUserAppStore((state) => state.setDescription);
@@ -136,6 +155,8 @@ export function AppHomePage() {
   const isAuthenticated = Boolean(identityId);
   const [openFolderId, setOpenFolderId] = useState<UserFolderId | null>(null);
   const [activeAppId, setActiveAppId] = useState<UserAppId | null>(null);
+  const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
+  const [resyncing, setResyncing] = useState(false);
 
   const openFolder = useMemo(
     () => folders.find((folder) => folder.id === openFolderId) ?? null,
@@ -146,6 +167,57 @@ export function AppHomePage() {
     () => openFolder?.apps.slice(0, 9) ?? [],
     [openFolder],
   );
+
+  useEffect(() => {
+    if (!activeStore || !isStoreSelected) {
+      setPendingOutboxCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    void getPendingOutboxCount(activeStore)
+      .then((count) => {
+        if (!cancelled) {
+          setPendingOutboxCount(count);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, isStoreSelected, loading, resyncing]);
+
+  const handleResync = async () => {
+    if (!activeStore || !isStoreSelected || resyncing) {
+      return;
+    }
+
+    const pendingWarning =
+      pendingOutboxCount > 0
+        ? `Warning: ${pendingOutboxCount} pending outbox item${pendingOutboxCount === 1 ? "" : "s"} will be deleted and data will be lost.\n\n`
+        : "";
+
+    const confirmed = window.confirm(
+      `${pendingWarning}This clears local sync data for the active store and pulls a fresh copy from server. Continue?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setResyncing(true);
+    try {
+      setLocalItems([]);
+      await resetTenantSyncState(activeStore);
+      await onSyncNow();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setResyncing(false);
+    }
+  };
 
   const renderFolderContent = () => {
     if (!activeAppId) {
@@ -168,6 +240,19 @@ export function AppHomePage() {
           onDescriptionChange={setDescription}
           onQueueItemCreate={onQueueItemCreate}
           onSyncNow={onSyncNow}
+        />
+      );
+    }
+
+    if (activeAppId === "settings-sync") {
+      return (
+        <SettingsPanel
+          pendingOutboxCount={pendingOutboxCount}
+          loading={resyncing || loading}
+          disabled={!isAuthenticated || !activeStore || !isStoreSelected}
+          onResync={() => {
+            void handleResync();
+          }}
         />
       );
     }

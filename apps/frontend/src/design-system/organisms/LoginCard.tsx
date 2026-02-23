@@ -10,6 +10,7 @@ type LoginCardProps = {
   username: string;
   password: string;
   loading: boolean;
+  error: string | null;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
@@ -19,6 +20,7 @@ export function LoginCard({
   username,
   password,
   loading,
+  error,
   onUsernameChange,
   onPasswordChange,
   onSubmit
@@ -92,6 +94,8 @@ export function LoginCard({
                 {loading ? "Signing in..." : "Sign in"}
               </Button>
             </motion.div>
+
+            {error ? <p className="text-sm text-red-600">{error}</p> : null}
           </form>
         </CardContent>
         <LoadingOverlay visible={loading} label="Signing in" />

@@ -20,8 +20,10 @@ export function useLoginFlow() {
     (state) => state.setIsStoreSelected,
   );
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async ({ username, password }: Credentials) => {
+    setError(null);
     setLoading(true);
 
     try {
@@ -42,11 +44,11 @@ export function useLoginFlow() {
 
       navigate("/app", { replace: true });
     } catch (error) {
-      console.error(error);
+      setError(error instanceof Error ? error.message : "Unable to sign in");
     } finally {
       setLoading(false);
     }
   };
 
-  return { loading, submit };
+  return { loading, submit, error };
 }

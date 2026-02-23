@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useSessionStore } from "../auth/session-store";
 import { useUserAppStore } from "./user-app-store";
-import { getLocalItems, queueItemCreate, syncOnce } from "./engine";
+import { getLocalItemLabels, queueItemCreate, syncOnce } from "./engine";
 
 type SyncContextValue = {
   loading: boolean;
@@ -36,15 +36,8 @@ export function SyncProvider({ children }: SyncProviderProps) {
 
   const loadItems = useCallback(
     async (tenantId: string) => {
-      const items = await getLocalItems(tenantId);
-      setLocalItems(
-        items
-          .filter((item) => !item.deletedAt)
-          .map(
-            (item) =>
-              `${String(item.data.sku ?? "")}: ${String(item.data.name ?? "")}`,
-          ),
-      );
+      const items = await getLocalItemLabels(tenantId);
+      setLocalItems(items);
     },
     [setLocalItems],
   );
@@ -83,6 +76,25 @@ export function SyncProvider({ children }: SyncProviderProps) {
       setLoading(false);
     }
   }, [activeStore, isStoreSelected, loadItems]);
+
+  useEffect(() => {
+    if (!activeStore || role !== "USER" || !isStoreSelected) return;
+
+    let cancelled = false;
+
+    void syncOnce(activeStore)
+      .then(() => {
+        if (cancelled) return;
+        return loadItems(activeStore);
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, isStoreSelected, loadItems, role]);
 
   useEffect(() => {
     if (!activeStore || role !== "USER" || !isStoreSelected) return;

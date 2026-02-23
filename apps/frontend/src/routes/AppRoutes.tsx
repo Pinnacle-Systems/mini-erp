@@ -11,6 +11,7 @@ import { AdminUsersPage } from "../pages/AdminUsersPage";
 import { StoreSelectionPage } from "../pages/StoreSelectionPage";
 import { ItemsPage } from "../pages/ItemsPage";
 import { AddItemPage } from "../pages/AddItemPage";
+import { ItemDetailsPage } from "../pages/ItemDetailsPage";
 import { OfflinePage } from "../pages/OfflinePage";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import { RequireAuth, RequireHydrated, RequireRole } from "./guards";
@@ -37,6 +38,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
       {isAuthenticated ? (
         <div className="px-4 pt-4 sm:px-6 md:px-10">
           <SessionHeader
+            showBackHome={location.pathname !== "/app"}
             showSwitchStore={location.pathname !== "/app/select-store"}
             onLogout={onLogout}
           />
@@ -96,6 +98,7 @@ export function AppRoutes() {
               <Route path="/app/select-store" element={<StoreSelectionPage />} />
               <Route path="/app/items" element={<ItemsPage />} />
               <Route path="/app/items/new" element={<AddItemPage />} />
+              <Route path="/app/items/:itemId" element={<ItemDetailsPage />} />
             </Route>
 
             <Route element={<RequireRole role="PLATFORM_ADMIN" />}>

@@ -78,14 +78,14 @@ export function SyncPanel({
         ) : null}
 
         <div className="mt-5">
-          <p className="text-xs font-medium tracking-[0.01em] text-muted-foreground">Local items</p>
+          <p className="text-xs font-medium tracking-[0.01em] text-muted-foreground">Items</p>
           <ul className="mt-2 space-y-1.5 text-sm text-foreground">
             {localItems.map((item) => (
               <li key={item} className="rounded-xl border border-white/80 bg-white/65 px-3 py-1.5">
                 {item}
               </li>
             ))}
-            {localItems.length === 0 ? <li className="text-muted-foreground">No local items synced yet.</li> : null}
+            {localItems.length === 0 ? <li className="text-muted-foreground">No items available yet.</li> : null}
           </ul>
         </div>
       </CardContent>

@@ -1,17 +1,34 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../shared/utils/errors.js";
 
-const SUPPORTED_ENTITIES = new Set(["item"]);
-const SUPPORTED_ITEM_FIELDS = new Set(["sku", "name", "description", "unit", "itemType"]);
+const SUPPORTED_ENTITIES = new Set(["item", "item_variant"]);
+const SUPPORTED_ITEM_FIELDS = new Set([
+  "sku",
+  "name",
+  "description",
+  "unit",
+  "itemType",
+  "variants",
+]);
 type ItemPayload = {
   sku?: string | null;
   name?: string;
   description?: string;
   unit?: string;
   itemType?: string;
+  variants?: VariantPayload[];
+};
+type VariantPayload = {
+  id?: string;
+  itemId?: string;
+  sku?: string | null;
+  barcode?: string;
+  name?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  optionValues?: Record<string, string>;
 };
 const DEFAULT_ITEM_VALUES = {
-  sku: null,
   name: "Untitled Item",
   description: "",
   unit: "PCS",
@@ -42,38 +59,97 @@ const sanitizeItemPayload = (payload) => {
   return normalized;
 };
 
+const sanitizeVariantPayload = (payload) => {
+  const raw = (payload ?? {}) as VariantPayload;
+  const normalized: VariantPayload = {};
+
+  if (typeof raw.itemId === "string" && raw.itemId) {
+    normalized.itemId = raw.itemId;
+  }
+  if (typeof raw.name === "string") {
+    normalized.name = raw.name;
+  }
+  if (typeof raw.barcode === "string") {
+    normalized.barcode = raw.barcode;
+  }
+  if (typeof raw.isDefault === "boolean") {
+    normalized.isDefault = raw.isDefault;
+  }
+  if (typeof raw.isActive === "boolean") {
+    normalized.isActive = raw.isActive;
+  }
+
+  const normalizedSku = normalizeSku(raw.sku);
+  if (raw.sku === null) {
+    normalized.sku = null;
+  } else if (normalizedSku !== undefined) {
+    normalized.sku = normalizedSku;
+  }
+
+  if (raw.optionValues && typeof raw.optionValues === "object") {
+    const entries = Object.entries(raw.optionValues).filter(
+      ([key, value]) =>
+        typeof key === "string" &&
+        key.trim().length > 0 &&
+        typeof value === "string" &&
+        value.trim().length > 0,
+    );
+    if (entries.length > 0) {
+      normalized.optionValues = Object.fromEntries(
+        entries.map(([key, value]) => [key.trim(), String(value).trim()]),
+      );
+    }
+  }
+
+  return normalized;
+};
+
+const normalizeSku = (value: unknown) => {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
 const buildItemForCreate = (payload) => {
   const normalized = sanitizeItemPayload(payload);
 
   return {
-    sku:
-      typeof normalized.sku === "string" && normalized.sku.trim()
-        ? normalized.sku.trim()
-        : DEFAULT_ITEM_VALUES.sku,
-    name:
-      typeof normalized.name === "string" && normalized.name.trim()
-        ? normalized.name.trim()
-        : DEFAULT_ITEM_VALUES.name,
-    description:
-      typeof normalized.description === "string"
-        ? normalized.description
-        : DEFAULT_ITEM_VALUES.description,
-    unit:
-      typeof normalized.unit === "string" ? normalized.unit : DEFAULT_ITEM_VALUES.unit,
-    item_type:
-      normalized.itemType === "SERVICE" ? "SERVICE" : DEFAULT_ITEM_VALUES.itemType,
+    item: {
+      name:
+        typeof normalized.name === "string" && normalized.name.trim()
+          ? normalized.name.trim()
+          : DEFAULT_ITEM_VALUES.name,
+      description:
+        typeof normalized.description === "string"
+          ? normalized.description
+          : DEFAULT_ITEM_VALUES.description,
+      unit:
+        typeof normalized.unit === "string" ? normalized.unit : DEFAULT_ITEM_VALUES.unit,
+      item_type:
+        normalized.itemType === "SERVICE" ? "SERVICE" : DEFAULT_ITEM_VALUES.itemType,
+    },
+    defaultVariant: {
+      sku: normalizeSku(normalized.sku) ?? null,
+      is_default: true,
+      is_active: true,
+    },
+    variants: Array.isArray(normalized.variants)
+      ? normalized.variants.map((variant) => sanitizeVariantPayload(variant))
+      : [],
   };
 };
 
 const buildItemForUpdate = (payload) => {
   const normalized = sanitizeItemPayload(payload);
   const patch: ItemPayload & { item_type?: string } = {};
+  let sku: string | null | undefined = undefined;
 
-  if (typeof normalized.sku === "string" && normalized.sku.trim()) {
-    patch.sku = normalized.sku.trim();
-  }
+  const normalizedSku = normalizeSku(normalized.sku);
   if (normalized.sku === null) {
-    patch.sku = null;
+    sku = null;
+  } else if (normalizedSku !== undefined) {
+    sku = normalizedSku;
   }
   if (typeof normalized.name === "string" && normalized.name.trim()) {
     patch.name = normalized.name.trim();
@@ -88,7 +164,180 @@ const buildItemForUpdate = (payload) => {
     patch.item_type = normalized.itemType;
   }
 
-  return patch;
+  return {
+    itemPatch: patch,
+    sku,
+  };
+};
+
+const toItemSnapshot = (item, defaultVariant) => {
+  return {
+    id: item.id,
+    store_id: item.store_id,
+    item_type: item.item_type,
+    itemType: item.item_type,
+    name: item.name,
+    description: item.description,
+    unit: item.unit,
+    sku: defaultVariant?.sku ?? null,
+    default_variant_id: defaultVariant?.id ?? null,
+  };
+};
+
+const toVariantSnapshot = (variant, optionValues: Record<string, string> = {}) => {
+  return {
+    id: variant.id,
+    item_id: variant.item_id,
+    itemId: variant.item_id,
+    store_id: variant.store_id,
+    sku: variant.sku ?? null,
+    barcode: variant.barcode ?? null,
+    name: variant.name ?? null,
+    is_default: variant.is_default,
+    isDefault: variant.is_default,
+    is_active: variant.is_active,
+    isActive: variant.is_active,
+    option_values: optionValues,
+    optionValues,
+  };
+};
+
+const getDefaultVariant = async (tx, tenantId, itemId) => {
+  return tx.itemVariant.findFirst({
+    where: {
+      item_id: itemId,
+      store_id: tenantId,
+      is_default: true,
+    },
+  });
+};
+
+const getVariantOptionValues = async (tx, variantId) => {
+  const links = await tx.itemVariantOptionValue.findMany({
+    where: { variant_id: variantId },
+    include: {
+      option_value: {
+        include: {
+          option: true,
+        },
+      },
+    },
+  });
+
+  const optionValues: Record<string, string> = {};
+  for (const link of links) {
+    const optionName = link.option_value?.option?.name;
+    const value = link.option_value?.value;
+    if (optionName && value) {
+      optionValues[optionName] = value;
+    }
+  }
+  return optionValues;
+};
+
+const attachOptionValuesToVariant = async (tx, itemId, variantId, optionValues?: Record<string, string>) => {
+  if (!optionValues || Object.keys(optionValues).length === 0) {
+    return;
+  }
+
+  for (const [optionName, value] of Object.entries(optionValues)) {
+    const option = await tx.itemOption.upsert({
+      where: {
+        item_id_name: {
+          item_id: itemId,
+          name: optionName,
+        },
+      },
+      update: {},
+      create: {
+        item_id: itemId,
+        name: optionName,
+      },
+    });
+
+    const optionValue = await tx.itemOptionValue.upsert({
+      where: {
+        option_id_value: {
+          option_id: option.id,
+          value,
+        },
+      },
+      update: {},
+      create: {
+        option_id: option.id,
+        value,
+      },
+    });
+
+    await tx.itemVariantOptionValue.upsert({
+      where: {
+        variant_id_option_value_id: {
+          variant_id: variantId,
+          option_value_id: optionValue.id,
+        },
+      },
+      update: {},
+      create: {
+        variant_id: variantId,
+        option_value_id: optionValue.id,
+      },
+    });
+  }
+};
+
+const ensureSingleDefaultVariant = async (tx, itemId, preferredVariantId?: string) => {
+  const variants = await tx.itemVariant.findMany({
+    where: { item_id: itemId },
+    orderBy: { id: "asc" },
+    select: { id: true, is_default: true },
+  });
+  if (variants.length === 0) return;
+
+  const desiredDefaultId =
+    preferredVariantId ??
+    variants.find((variant) => variant.is_default)?.id ??
+    variants[0].id;
+
+  await tx.itemVariant.updateMany({
+    where: { item_id: itemId, id: { not: desiredDefaultId } },
+    data: { is_default: false },
+  });
+  await tx.itemVariant.update({
+    where: { id: desiredDefaultId },
+    data: { is_default: true },
+  });
+};
+
+const getItemSnapshot = async (tx, tenantId, itemId) => {
+  const item = await tx.item.findUnique({
+    where: { id: itemId },
+  });
+  if (!item || item.store_id !== tenantId) {
+    throw new AppError("Entity not found in store", 404);
+  }
+
+  const variants = await tx.itemVariant.findMany({
+    where: { item_id: itemId, store_id: tenantId },
+  });
+
+  const snapshotVariants = await Promise.all(
+    variants.map(async (variant) => {
+      const optionValues = await getVariantOptionValues(tx, variant.id);
+      return toVariantSnapshot(variant, optionValues);
+    }),
+  );
+
+  const defaultVariant =
+    variants.find((variant) => variant.is_default) ??
+    variants[0] ??
+    null;
+
+  return {
+    ...toItemSnapshot(item, defaultVariant),
+    variants: snapshotVariants,
+    variant_count: snapshotVariants.length,
+    variantCount: snapshotVariants.length,
+  };
 };
 
 const getTenantCursor = async (tenantId) => {
@@ -103,14 +352,69 @@ const getTenantCursor = async (tenantId) => {
 
 const applyItemMutation = async (tx, tenantId, mutation) => {
   if (mutation.op === "create") {
+    const createData = buildItemForCreate(mutation.payload);
     const item = await tx.item.create({
       data: {
         id: mutation.entityId,
         store_id: tenantId,
-        ...buildItemForCreate(mutation.payload),
+        ...createData.item,
       },
     });
-    return item;
+    const variantInputs = createData.variants.filter(
+      (variant) =>
+        variant.sku !== undefined ||
+        variant.name !== undefined ||
+        variant.barcode !== undefined ||
+        (variant.optionValues && Object.keys(variant.optionValues).length > 0),
+    );
+
+    const createdVariantIds: string[] = [];
+    let preferredDefaultId: string | undefined;
+
+    if (variantInputs.length === 0) {
+      const defaultVariant = await tx.itemVariant.create({
+        data: {
+          store_id: tenantId,
+          item_id: item.id,
+          ...createData.defaultVariant,
+        },
+      });
+      createdVariantIds.push(defaultVariant.id);
+      preferredDefaultId = defaultVariant.id;
+    } else {
+      for (const variant of variantInputs) {
+        const createdVariant = await tx.itemVariant.create({
+          data: {
+            store_id: tenantId,
+            item_id: item.id,
+            sku: variant.sku ?? null,
+            name: variant.name?.trim() || null,
+            barcode: variant.barcode?.trim() || null,
+            is_default: Boolean(variant.isDefault),
+            is_active: variant.isActive ?? true,
+          },
+        });
+        createdVariantIds.push(createdVariant.id);
+        if (!preferredDefaultId && variant.isDefault) {
+          preferredDefaultId = createdVariant.id;
+        }
+        await attachOptionValuesToVariant(
+          tx,
+          item.id,
+          createdVariant.id,
+          variant.optionValues,
+        );
+      }
+    }
+
+    preferredDefaultId ??= createdVariantIds[0];
+    await ensureSingleDefaultVariant(
+      tx,
+      item.id,
+      preferredDefaultId,
+    );
+
+    return getItemSnapshot(tx, tenantId, item.id);
   }
 
   const current = await tx.item.findUnique({
@@ -128,16 +432,143 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     return null;
   }
 
-  const patch = buildItemForUpdate(mutation.payload);
-  if (Object.keys(patch).length === 0) {
-    return current;
+  const { itemPatch, sku } = buildItemForUpdate(mutation.payload);
+  let nextItem = current;
+
+  if (Object.keys(itemPatch).length > 0) {
+    nextItem = await tx.item.update({
+      where: { id: mutation.entityId },
+      data: itemPatch,
+    });
   }
 
-  const item = await tx.item.update({
+  let defaultVariant = await getDefaultVariant(tx, tenantId, mutation.entityId);
+
+  if (sku !== undefined) {
+    if (defaultVariant) {
+      defaultVariant = await tx.itemVariant.update({
+        where: { id: defaultVariant.id },
+        data: { sku },
+      });
+    } else {
+      defaultVariant = await tx.itemVariant.create({
+        data: {
+          store_id: tenantId,
+          item_id: mutation.entityId,
+          sku,
+          is_default: true,
+          is_active: true,
+        },
+      });
+    }
+  }
+
+  if (!defaultVariant) {
+    defaultVariant = await tx.itemVariant.create({
+      data: {
+        store_id: tenantId,
+        item_id: mutation.entityId,
+        sku: null,
+        is_default: true,
+        is_active: true,
+      },
+    });
+  }
+
+  const snapshot = await getItemSnapshot(tx, tenantId, nextItem.id);
+  return snapshot;
+};
+
+const applyItemVariantMutation = async (tx, tenantId, mutation) => {
+  const payload = sanitizeVariantPayload(mutation.payload);
+
+  if (mutation.op === "create") {
+    if (!payload.itemId) {
+      throw new AppError("itemId is required for variant create", 400);
+    }
+
+    const parentItem = await tx.item.findUnique({
+      where: { id: payload.itemId },
+    });
+    if (!parentItem || parentItem.store_id !== tenantId) {
+      throw new AppError("Item not found in store", 404);
+    }
+
+    const variant = await tx.itemVariant.create({
+      data: {
+        id: mutation.entityId,
+        store_id: tenantId,
+        item_id: payload.itemId,
+        sku: payload.sku ?? null,
+        barcode: payload.barcode?.trim() || null,
+        name: payload.name?.trim() || null,
+        is_default: Boolean(payload.isDefault),
+        is_active: payload.isActive ?? true,
+      },
+    });
+
+    await attachOptionValuesToVariant(tx, payload.itemId, variant.id, payload.optionValues);
+
+    await ensureSingleDefaultVariant(
+      tx,
+      payload.itemId,
+      payload.isDefault ? variant.id : undefined,
+    );
+
+    const optionValues = await getVariantOptionValues(tx, variant.id);
+    return toVariantSnapshot(variant, optionValues);
+  }
+
+  const current = await tx.itemVariant.findUnique({
     where: { id: mutation.entityId },
-    data: patch,
   });
-  return item;
+  if (!current || current.store_id !== tenantId) {
+    throw new AppError("Variant not found in store", 404);
+  }
+
+  if (mutation.op === "delete") {
+    await tx.itemVariant.delete({
+      where: { id: mutation.entityId },
+    });
+    await ensureSingleDefaultVariant(tx, current.item_id);
+    return null;
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (payload.sku !== undefined) patch.sku = payload.sku;
+  if (payload.name !== undefined) patch.name = payload.name?.trim() || null;
+  if (payload.barcode !== undefined) patch.barcode = payload.barcode?.trim() || null;
+  if (payload.isActive !== undefined) patch.is_active = payload.isActive;
+  if (payload.isDefault !== undefined) patch.is_default = payload.isDefault;
+
+  const variant =
+    Object.keys(patch).length > 0
+      ? await tx.itemVariant.update({
+          where: { id: mutation.entityId },
+          data: patch,
+        })
+      : current;
+
+  if (payload.optionValues) {
+    await tx.itemVariantOptionValue.deleteMany({
+      where: { variant_id: mutation.entityId },
+    });
+    await attachOptionValuesToVariant(
+      tx,
+      variant.item_id,
+      mutation.entityId,
+      payload.optionValues,
+    );
+  }
+
+  if (payload.isDefault) {
+    await ensureSingleDefaultVariant(tx, variant.item_id, variant.id);
+  } else {
+    await ensureSingleDefaultVariant(tx, variant.item_id);
+  }
+
+  const optionValues = await getVariantOptionValues(tx, variant.id);
+  return toVariantSnapshot(variant, optionValues);
 };
 
 const applyMutation = async (tenantId, mutation) => {
@@ -155,6 +586,8 @@ const applyMutation = async (tenantId, mutation) => {
     let snapshot = null;
     if (mutation.entity === "item") {
       snapshot = await applyItemMutation(tx, tenantId, mutation);
+    } else if (mutation.entity === "item_variant") {
+      snapshot = await applyItemVariantMutation(tx, tenantId, mutation);
     } else {
       throw new AppError(`Unsupported entity '${mutation.entity}'`, 400);
     }

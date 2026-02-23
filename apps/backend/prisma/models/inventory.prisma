@@ -15,17 +15,72 @@ enum ItemType {
 }
 
 model Item {
-  id            String        @id @default(uuid()) @db.Uuid
-  store_id      String        @db.Uuid
-  item_type     ItemType      @default(PRODUCT)
+  id          String        @id @default(uuid()) @db.Uuid
+  store_id    String        @db.Uuid
+  item_type   ItemType      @default(PRODUCT)
+  name        String
+  description String
+  unit        UnitType      @default(PCS)
+  variants    ItemVariant[]
+  options     ItemOption[]
+
+  @@map("items")
+  @@schema("inventory")
+}
+
+model ItemVariant {
+  id            String                   @id @default(uuid()) @db.Uuid
+  store_id      String                   @db.Uuid
+  item_id       String                   @db.Uuid
+  item          Item                     @relation(fields: [item_id], references: [id], onDelete: Cascade)
   sku           String?
-  name          String
-  description   String
-  unit          UnitType      @default(PCS)
+  barcode       String?
+  name          String?
+  is_default    Boolean                  @default(false)
+  is_active     Boolean                  @default(true)
   stock_ledgers StockLedger[]
+  option_values ItemVariantOptionValue[]
 
   @@unique([store_id, sku])
-  @@map("items")
+  @@map("item_variants")
+  @@schema("inventory")
+}
+
+model ItemOption {
+  id       String            @id @default(uuid()) @db.Uuid
+  item_id  String            @db.Uuid
+  item     Item              @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  name     String
+  position Int               @default(0)
+  values   ItemOptionValue[]
+
+  @@unique([item_id, name])
+  @@map("item_options")
+  @@schema("inventory")
+}
+
+model ItemOptionValue {
+  id             String                   @id @default(uuid()) @db.Uuid
+  option_id      String                   @db.Uuid
+  option         ItemOption               @relation(fields: [option_id], references: [id], onDelete: Cascade)
+  value          String
+  position       Int                      @default(0)
+  variant_values ItemVariantOptionValue[]
+
+  @@unique([option_id, value])
+  @@map("item_option_values")
+  @@schema("inventory")
+}
+
+model ItemVariantOptionValue {
+  id              String          @id @default(uuid()) @db.Uuid
+  variant_id      String          @db.Uuid
+  variant         ItemVariant     @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+  option_value_id String          @db.Uuid
+  option_value    ItemOptionValue @relation(fields: [option_value_id], references: [id], onDelete: Cascade)
+
+  @@unique([variant_id, option_value_id])
+  @@map("item_variant_option_values")
   @@schema("inventory")
 }
 
@@ -40,12 +95,12 @@ model Location {
 }
 
 model StockLedger {
-  id           String   @id @default(uuid()) @db.Uuid
-  item_id      String   @db.Uuid
-  item         Item     @relation(fields: [item_id], references: [id])
-  location_id  String   @db.Uuid
-  location     Location @relation(fields: [location_id], references: [id])
-  quantity     Decimal  @db.Decimal(12, 3)
+  id           String      @id @default(uuid()) @db.Uuid
+  variant_id   String      @db.Uuid
+  variant      ItemVariant @relation(fields: [variant_id], references: [id])
+  location_id  String      @db.Uuid
+  location     Location    @relation(fields: [location_id], references: [id])
+  quantity     Decimal     @db.Decimal(12, 3)
   reason       String
   reference_id String?
 
