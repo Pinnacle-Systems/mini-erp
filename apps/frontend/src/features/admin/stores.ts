@@ -5,6 +5,11 @@ export type AdminStore = {
   name: string;
   ownerId: string;
   deletedAt?: string | null;
+  modules?: {
+    catalog: boolean;
+    inventory: boolean;
+    pricing: boolean;
+  };
   owner?: {
     id: string;
     name: string | null;
@@ -100,7 +105,16 @@ export const createAdminStore = async (
 
 export const updateAdminStore = async (
   storeId: string,
-  update: { name?: string; ownerId?: string; isActive?: boolean },
+  update: {
+    name?: string;
+    ownerId?: string;
+    isActive?: boolean;
+    modules?: {
+      catalog?: boolean;
+      inventory?: boolean;
+      pricing?: boolean;
+    };
+  },
 ): Promise<AdminStore> => {
   const response = await apiFetch(`/api/admin/stores/${encodeURIComponent(storeId)}`, {
     method: "PATCH",

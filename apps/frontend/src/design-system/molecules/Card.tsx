@@ -9,7 +9,7 @@ export function Card({ className, children, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        "rounded-[24px] border border-white/65 bg-white/72 p-6 text-card-foreground shadow-[0_24px_55px_-30px_rgba(15,23,42,0.38)] backdrop-blur-xl",
+        "rounded-[20px] border border-white/65 bg-white/72 p-5 text-card-foreground shadow-[0_24px_55px_-30px_rgba(15,23,42,0.38)] backdrop-blur-xl",
         className
       )}
       {...props}
@@ -21,7 +21,7 @@ export function Card({ className, children, ...props }: CardProps) {
 
 export function CardHeader({ className, children, ...props }: CardProps) {
   return (
-    <div className={cn("mb-6", className)} {...props}>
+    <div className={cn("mb-4", className)} {...props}>
       {children}
     </div>
   );
@@ -29,7 +29,7 @@ export function CardHeader({ className, children, ...props }: CardProps) {
 
 export function CardTitle({ className, children, ...props }: CardProps) {
   return (
-    <h2 className={cn("text-[1.4rem] font-semibold tracking-[-0.01em] text-foreground", className)} {...props}>
+    <h2 className={cn("text-xl font-semibold tracking-[-0.01em] text-foreground", className)} {...props}>
       {children}
     </h2>
   );
@@ -37,7 +37,7 @@ export function CardTitle({ className, children, ...props }: CardProps) {
 
 export function CardDescription({ className, children, ...props }: CardProps) {
   return (
-    <p className={cn("mt-1 text-sm text-muted-foreground", className)} {...props}>
+    <p className={cn("mt-1 text-xs text-muted-foreground", className)} {...props}>
       {children}
     </p>
   );
@@ -45,7 +45,7 @@ export function CardDescription({ className, children, ...props }: CardProps) {
 
 export function CardContent({ className, children, ...props }: CardProps) {
   return (
-    <div className={cn("space-y-4", className)} {...props}>
+    <div className={cn("space-y-3", className)} {...props}>
       {children}
     </div>
   );

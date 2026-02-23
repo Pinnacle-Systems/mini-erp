@@ -4,6 +4,7 @@ model Store {
   owner_id   String        @db.Uuid
   deleted_at DateTime?
   members    StoreMember[]
+  modules    StoreModule[]
 
   @@map("stores")
   @@schema("tenants")
@@ -26,5 +27,28 @@ enum StoreRole {
   MANAGER
   CASHIER
 
+  @@schema("tenants")
+}
+
+enum StoreModuleKey {
+  CATALOG
+  INVENTORY
+  PRICING
+
+  @@schema("tenants")
+}
+
+model StoreModule {
+  id         String         @id @default(uuid()) @db.Uuid
+  store_id   String         @db.Uuid
+  module_key StoreModuleKey
+  enabled    Boolean        @default(true)
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+  store      Store          @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([store_id, module_key])
+  @@index([store_id, enabled])
+  @@map("store_modules")
   @@schema("tenants")
 }

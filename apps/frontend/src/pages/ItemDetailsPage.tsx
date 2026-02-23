@@ -4,6 +4,7 @@ import { Button } from "../design-system/atoms/Button";
 import { Input } from "../design-system/atoms/Input";
 import { Label } from "../design-system/atoms/Label";
 import { Select } from "../design-system/atoms/Select";
+import { Switch } from "../design-system/atoms/Switch";
 import {
   Card,
   CardContent,
@@ -24,7 +25,9 @@ import {
 } from "../features/sync/engine";
 
 const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
-const ITEM_TYPE_OPTIONS = ["PRODUCT", "SERVICE"] as const;
+const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
+const DENSE_SELECT_CLASS = "h-8 rounded-lg px-3 text-xs";
+const DENSE_SWITCH_CLASS = "h-6 w-10 [&>span]:h-4 [&>span]:w-4";
 
 type DraftVariant = {
   id: string;
@@ -33,37 +36,32 @@ type DraftVariant = {
   barcode: string;
   isDefault: boolean;
   isActive: boolean;
-  optionText: string;
+  optionRows: Array<{ id: string; key: string; value: string }>;
+  usageCount: number;
+  isLocked: boolean;
 };
 
 type DraftItem = {
   id: string;
   name: string;
-  description: string;
   unit: "PCS" | "KG" | "M" | "BOX";
   itemType: "PRODUCT" | "SERVICE";
   variants: DraftVariant[];
 };
 
-const toOptionText = (optionValues: Record<string, string>) =>
-  Object.entries(optionValues)
-    .map(([key, value]) => `${key}=${value}`)
-    .join(", ");
+const toOptionRows = (optionValues: Record<string, string>) =>
+  Object.entries(optionValues).map(([key, value], index) => ({
+    id: `${key}-${index}`,
+    key,
+    value,
+  }));
 
-const parseOptionText = (value: string) => {
-  const optionValues: Record<string, string> = {};
-  for (const segment of value.split(",")) {
-    const [rawKey, rawValue] = segment.split("=");
-    const key = rawKey?.trim();
-    const parsedValue = rawValue?.trim();
-    if (!key || !parsedValue) continue;
-    optionValues[key] = parsedValue;
-  }
-  return optionValues;
-};
-
-const normalizeVariant = (variant: DraftVariant): VariantInput => {
-  const optionValues = parseOptionText(variant.optionText);
+const normalizeVariantForCreate = (variant: DraftVariant): VariantInput => {
+  const optionValues = Object.fromEntries(
+    variant.optionRows
+      .map((entry) => [entry.key.trim(), entry.value.trim()] as const)
+      .filter(([key, value]) => key.length > 0 && value.length > 0),
+  );
   return {
     name: variant.name.trim() || undefined,
     sku: variant.sku.trim() || undefined,
@@ -74,10 +72,44 @@ const normalizeVariant = (variant: DraftVariant): VariantInput => {
   };
 };
 
+const normalizeVariantForUpdate = (variant: DraftVariant): VariantInput => {
+  const optionValues = Object.fromEntries(
+    variant.optionRows
+      .map((entry) => [entry.key.trim(), entry.value.trim()] as const)
+      .filter(([key, value]) => key.length > 0 && value.length > 0),
+  );
+  return {
+    name: variant.name.trim() || null,
+    sku: variant.sku.trim() || null,
+    barcode: variant.barcode.trim() || null,
+    isDefault: variant.isDefault,
+    isActive: variant.isActive,
+    optionValues,
+  };
+};
+
+const hasAtLeastOneVariantDetail = (variant: DraftVariant) => {
+  const hasBasicField =
+    variant.name.trim().length > 0 ||
+    variant.sku.trim().length > 0 ||
+    variant.barcode.trim().length > 0;
+  const hasOptionPair = variant.optionRows.some(
+    (entry) => entry.key.trim().length > 0 && entry.value.trim().length > 0,
+  );
+  return hasBasicField || hasOptionPair;
+};
+
+const hasIncompleteOptionRows = (variant: DraftVariant) => {
+  return variant.optionRows.some((entry) => {
+    const key = entry.key.trim();
+    const value = entry.value.trim();
+    return (key.length > 0 && value.length === 0) || (key.length === 0 && value.length > 0);
+  });
+};
+
 const toDraft = (item: ItemDetailDisplay): DraftItem => ({
   id: item.id,
   name: item.name,
-  description: item.description,
   unit: item.unit,
   itemType: item.itemType,
   variants: item.variants.map((variant, index) => ({
@@ -87,7 +119,9 @@ const toDraft = (item: ItemDetailDisplay): DraftItem => ({
     barcode: variant.barcode,
     isDefault: variant.isDefault || index === 0,
     isActive: variant.isActive,
-    optionText: toOptionText(variant.optionValues),
+    optionRows: toOptionRows(variant.optionValues),
+    usageCount: variant.usageCount,
+    isLocked: variant.isLocked,
   })),
 });
 
@@ -98,8 +132,10 @@ export function ItemDetailsPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
   const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [item, setItem] = useState<DraftItem | null>(null);
   const [initialItem, setInitialItem] = useState<DraftItem | null>(null);
+  const [hasEnteredVariantMode, setHasEnteredVariantMode] = useState(false);
 
   useEffect(() => {
     if (!activeStore || !itemId) return;
@@ -112,6 +148,8 @@ export function ItemDetailsPage() {
       const draft = toDraft(detail);
       setItem(draft);
       setInitialItem(draft);
+      setHasEnteredVariantMode(false);
+      setSaveError(null);
     });
   }, [activeStore, itemId]);
 
@@ -133,6 +171,27 @@ export function ItemDetailsPage() {
     );
   };
 
+  const isImplicitDefaultVariant = (variants: DraftVariant[]) => {
+    if (variants.length !== 1) return false;
+    const [variant] = variants;
+    const hasOptions = variant.optionRows.some(
+      (entry) => entry.key.trim().length > 0 && entry.value.trim().length > 0,
+    );
+    return (
+      variant.isDefault &&
+      variant.name.trim().length === 0 &&
+      variant.barcode.trim().length === 0 &&
+      !hasOptions
+    );
+  };
+
+  const shouldHideDefaultVariant =
+    item && isImplicitDefaultVariant(item.variants) && !hasEnteredVariantMode;
+  const visibleVariants = shouldHideDefaultVariant ? [] : item?.variants ?? [];
+  const defaultVariantId = item?.variants.find((variant) => variant.isDefault)?.id;
+  const defaultVariantSku =
+    item?.variants.find((variant) => variant.id === defaultVariantId)?.sku ?? "";
+
   const onSave = async () => {
     if (!item || !initialItem || !identityId || !activeStore || !isStoreSelected) return;
     if (item.variants.length === 0) return;
@@ -142,26 +201,62 @@ export function ItemDetailsPage() {
       variants: ensureSingleDefault(item.variants),
     };
     setItem(nextItem);
+    const nextIsImplicitMode = isImplicitDefaultVariant(nextItem.variants);
+    const nextDefaultSkuValue =
+      nextItem.variants.find((variant) => variant.isDefault)?.sku.trim() ?? "";
+    const initialDefaultSkuValue =
+      initialItem.variants.find((variant) => variant.isDefault)?.sku.trim() ?? "";
 
+    setSaveError(null);
     setLoading(true);
     try {
-      if (
+      const shouldUpdateItemRecord =
         nextItem.name !== initialItem.name ||
-        nextItem.description !== initialItem.description ||
         nextItem.unit !== initialItem.unit ||
-        nextItem.itemType !== initialItem.itemType
+        nextItem.itemType !== initialItem.itemType ||
+        (nextIsImplicitMode && nextDefaultSkuValue !== initialDefaultSkuValue);
+
+      if (
+        shouldUpdateItemRecord
       ) {
         await queueItemUpdate(activeStore, identityId, nextItem.id, {
           name: nextItem.name,
-          description: nextItem.description,
           unit: nextItem.unit,
           itemType: nextItem.itemType,
+          sku: nextIsImplicitMode ? nextDefaultSkuValue : undefined,
         });
       }
 
       const initialVariantsById = new Map(
         initialItem.variants.map((variant) => [variant.id, variant]),
       );
+      for (let index = 0; index < nextItem.variants.length; index += 1) {
+        const variant = nextItem.variants[index];
+        const initialVariant = initialVariantsById.get(variant.id);
+        const isChangedOrNew =
+          variant.id.startsWith("temp-") ||
+          (initialVariant &&
+            JSON.stringify(normalizeVariantForUpdate(variant)) !==
+              JSON.stringify(normalizeVariantForUpdate(initialVariant)));
+
+        const mustValidate = isChangedOrNew && !variant.isDefault;
+        if (!mustValidate) continue;
+
+        if (!hasAtLeastOneVariantDetail(variant)) {
+          setSaveError(
+            `Variant ${index + 1} is empty. Enter at least one of name, SKU, barcode, or option key/value.`,
+          );
+          return;
+        }
+
+        if (hasIncompleteOptionRows(variant)) {
+          setSaveError(
+            `Variant ${index + 1} has incomplete option rows. Fill both key and value or remove the row.`,
+          );
+          return;
+        }
+      }
+
       const currentVariantIds = new Set(
         nextItem.variants
           .filter((variant) => !variant.id.startsWith("temp-"))
@@ -169,15 +264,15 @@ export function ItemDetailsPage() {
       );
 
       for (const initialVariant of initialItem.variants) {
+        if (initialVariant.id.startsWith("temp-")) continue;
         if (!currentVariantIds.has(initialVariant.id)) {
           await queueItemVariantDelete(activeStore, identityId, initialVariant.id);
         }
       }
 
       for (const variant of nextItem.variants) {
-        const payload = normalizeVariant(variant);
-
         if (variant.id.startsWith("temp-")) {
+          const payload = normalizeVariantForCreate(variant);
           await queueItemVariantCreate(activeStore, identityId, nextItem.id, payload);
           continue;
         }
@@ -185,25 +280,39 @@ export function ItemDetailsPage() {
         const initialVariant = initialVariantsById.get(variant.id);
         if (!initialVariant) continue;
 
+        const payload = normalizeVariantForUpdate(variant);
+
+        if (nextIsImplicitMode && variant.isDefault) {
+          const initialPayload = normalizeVariantForUpdate(initialVariant);
+          const nextPayloadWithoutSku = { ...payload, sku: undefined };
+          const initialPayloadWithoutSku = { ...initialPayload, sku: undefined };
+          if (
+            JSON.stringify(nextPayloadWithoutSku) !==
+            JSON.stringify(initialPayloadWithoutSku)
+          ) {
+            await queueItemVariantUpdate(
+              activeStore,
+              identityId,
+              variant.id,
+              nextPayloadWithoutSku,
+            );
+          }
+          continue;
+        }
+
         if (
           JSON.stringify(payload) !==
-          JSON.stringify(normalizeVariant(initialVariant))
+          JSON.stringify(normalizeVariantForUpdate(initialVariant))
         ) {
           await queueItemVariantUpdate(activeStore, identityId, variant.id, payload);
         }
       }
 
       await syncOnce(activeStore);
-      const refreshed = await getLocalItemDetailForDisplay(activeStore, itemId);
-      if (!refreshed) {
-        navigate("/app/items", { replace: true });
-        return;
-      }
-      const draft = toDraft(refreshed);
-      setItem(draft);
-      setInitialItem(draft);
+      navigate("/app/items", { replace: true });
     } catch (error) {
       console.error(error);
+      setSaveError("Unable to save changes. Some variant fields may be locked after usage.");
     } finally {
       setLoading(false);
     }
@@ -211,7 +320,7 @@ export function ItemDetailsPage() {
 
   if (!item) {
     return (
-      <main className="min-h-screen w-full p-4 sm:p-6 md:p-10">
+      <main className="min-h-screen w-full p-4 sm:p-6 lg:p-8 xl:p-10">
         <Card className="mx-auto w-full max-w-2xl">
           <CardContent className="py-8">
             <p className="text-sm text-muted-foreground">Item not found.</p>
@@ -222,51 +331,82 @@ export function ItemDetailsPage() {
   }
 
   return (
-    <main className="min-h-screen w-full p-4 sm:p-6 md:p-10">
-      <Card className="mx-auto w-full max-w-4xl">
+    <main className="min-h-screen w-full p-4 sm:p-6 lg:p-8 xl:p-10">
+      <Card className="mx-auto w-full max-w-6xl p-4">
         <CardHeader>
-          <CardTitle>Manage Item</CardTitle>
-          <CardDescription>Edit item details and variants.</CardDescription>
+          <CardTitle className="text-xl">Manage Item</CardTitle>
+          <CardDescription className="text-xs">
+            Edit item details and variants.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="grid gap-2">
               <Label>Name</Label>
               <Input
+                className={DENSE_INPUT_CLASS}
                 value={item.name}
                 onChange={(event) => setItem({ ...item, name: event.target.value })}
               />
             </div>
             <div className="grid gap-2">
               <Label>Item type</Label>
-              <Select
-                value={item.itemType}
-                onChange={(event) =>
-                  setItem({
-                    ...item,
-                    itemType: event.target.value as "PRODUCT" | "SERVICE",
-                  })
-                }
-              >
-                {ITEM_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </Select>
+              <div className="inline-flex items-center gap-3">
+                <span
+                  className={
+                    item.itemType === "PRODUCT"
+                      ? "text-xs font-semibold text-foreground"
+                      : "text-xs font-medium text-muted-foreground"
+                  }
+                >
+                  Product
+                </span>
+                <Switch
+                  className={DENSE_SWITCH_CLASS}
+                  checked={item.itemType === "SERVICE"}
+                  aria-label="Toggle item type"
+                  onCheckedChange={(checked) =>
+                    setItem({
+                      ...item,
+                      itemType: checked ? "SERVICE" : "PRODUCT",
+                    })
+                  }
+                />
+                <span
+                  className={
+                    item.itemType === "SERVICE"
+                      ? "text-xs font-semibold text-foreground"
+                      : "text-xs font-medium text-muted-foreground"
+                  }
+                >
+                  Service
+                </span>
+              </div>
             </div>
-            <div className="grid gap-2 md:col-span-2">
-              <Label>Description</Label>
-              <Input
-                value={item.description}
-                onChange={(event) =>
-                  setItem({ ...item, description: event.target.value })
-                }
-              />
-            </div>
+            {shouldHideDefaultVariant ? (
+              <div className="grid gap-2">
+                <Label>Item SKU</Label>
+                <Input
+                  className={DENSE_INPUT_CLASS}
+                  value={defaultVariantSku}
+                  onChange={(event) =>
+                    setItem({
+                      ...item,
+                      variants: item.variants.map((variant) =>
+                        variant.id === defaultVariantId
+                          ? { ...variant, sku: event.target.value }
+                          : variant,
+                      ),
+                    })
+                  }
+                  placeholder="Item SKU"
+                />
+              </div>
+            ) : null}
             <div className="grid gap-2">
               <Label>Unit</Label>
               <Select
+                className={`${DENSE_SELECT_CLASS} w-24`}
                 value={item.unit}
                 onChange={(event) =>
                   setItem({
@@ -286,12 +426,13 @@ export function ItemDetailsPage() {
 
           <div className="mt-2 grid gap-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-foreground">Variants</p>
+              <p className="text-xs font-medium text-foreground">Variants</p>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() =>
+                onClick={() => {
+                  setHasEnteredVariantMode(true);
                   setItem({
                     ...item,
                     variants: [
@@ -303,25 +444,38 @@ export function ItemDetailsPage() {
                         barcode: "",
                         isDefault: false,
                         isActive: true,
-                        optionText: "",
+                        optionRows: [],
+                        usageCount: 0,
+                        isLocked: false,
                       },
                     ],
-                  })
-                }
+                  });
+                }}
               >
-                Add Variant
+                Add Item Variant
               </Button>
             </div>
-            {item.variants.map((variant) => (
-              <div
-                key={variant.id}
-                className="rounded-xl border border-white/80 bg-white/65 p-3"
-              >
-                <div className="grid gap-3 md:grid-cols-2">
+            {shouldHideDefaultVariant ? (
+              <p className="text-sm text-muted-foreground">
+                No variants added yet. Item SKU is mapped to the default variant.
+              </p>
+            ) : null}
+            {visibleVariants.map((variant) => (
+              <div key={variant.id} className="rounded-xl border border-white/80 bg-white/65 p-3">
+                {variant.isLocked ? (
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Used in {variant.usageCount} record
+                    {variant.usageCount === 1 ? "" : "s"}: SKU, name, barcode, options, and
+                    delete are locked.
+                  </p>
+                ) : null}
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="grid gap-1.5">
                     <Label>Variant name</Label>
                     <Input
+                      className={DENSE_INPUT_CLASS}
                       value={variant.name}
+                      disabled={variant.isLocked}
                       onChange={(event) =>
                         setItem({
                           ...item,
@@ -337,7 +491,9 @@ export function ItemDetailsPage() {
                   <div className="grid gap-1.5">
                     <Label>SKU</Label>
                     <Input
+                      className={DENSE_INPUT_CLASS}
                       value={variant.sku}
+                      disabled={variant.isLocked}
                       onChange={(event) =>
                         setItem({
                           ...item,
@@ -353,7 +509,9 @@ export function ItemDetailsPage() {
                   <div className="grid gap-1.5">
                     <Label>Barcode</Label>
                     <Input
+                      className={DENSE_INPUT_CLASS}
                       value={variant.barcode}
+                      disabled={variant.isLocked}
                       onChange={(event) =>
                         setItem({
                           ...item,
@@ -366,28 +524,132 @@ export function ItemDetailsPage() {
                       }
                     />
                   </div>
-                  <div className="grid gap-1.5">
+                  <div className="grid gap-1.5 xl:col-span-2">
                     <Label>Options</Label>
-                    <Input
-                      value={variant.optionText}
-                      onChange={(event) =>
-                        setItem({
-                          ...item,
-                          variants: item.variants.map((entry) =>
-                            entry.id === variant.id
-                              ? { ...entry, optionText: event.target.value }
-                              : entry,
-                          ),
-                        })
-                      }
-                      placeholder="Size=M, Color=Red"
-                    />
+                    <div className="overflow-hidden rounded-lg border border-white/75 bg-white/75">
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 border-b border-white/75 px-3 py-2 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                        <span>Key</span>
+                        <span>Value</span>
+                        <span className="sr-only">Actions</span>
+                      </div>
+                      <div className="grid gap-2 p-2">
+                        {variant.optionRows.length === 0 ? (
+                          <p className="px-1 py-2 text-xs text-muted-foreground">
+                            No option rows added.
+                          </p>
+                        ) : (
+                          variant.optionRows.map((row) => (
+                            <div key={row.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                              <Input
+                                className={DENSE_INPUT_CLASS}
+                                value={row.key}
+                                disabled={variant.isLocked}
+                                placeholder="Size"
+                                onChange={(event) =>
+                                  setItem({
+                                    ...item,
+                                    variants: item.variants.map((entry) =>
+                                      entry.id === variant.id
+                                        ? {
+                                            ...entry,
+                                            optionRows: entry.optionRows.map((optionRow) =>
+                                              optionRow.id === row.id
+                                                ? { ...optionRow, key: event.target.value }
+                                                : optionRow,
+                                            ),
+                                          }
+                                        : entry,
+                                    ),
+                                  })
+                                }
+                              />
+                              <Input
+                                className={DENSE_INPUT_CLASS}
+                                value={row.value}
+                                disabled={variant.isLocked}
+                                placeholder="M"
+                                onChange={(event) =>
+                                  setItem({
+                                    ...item,
+                                    variants: item.variants.map((entry) =>
+                                      entry.id === variant.id
+                                        ? {
+                                            ...entry,
+                                            optionRows: entry.optionRows.map((optionRow) =>
+                                              optionRow.id === row.id
+                                                ? { ...optionRow, value: event.target.value }
+                                                : optionRow,
+                                            ),
+                                          }
+                                        : entry,
+                                    ),
+                                  })
+                                }
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={variant.isLocked}
+                                onClick={() =>
+                                  setItem({
+                                    ...item,
+                                    variants: item.variants.map((entry) =>
+                                      entry.id === variant.id
+                                        ? {
+                                            ...entry,
+                                            optionRows: entry.optionRows.filter(
+                                              (optionRow) => optionRow.id !== row.id,
+                                            ),
+                                          }
+                                        : entry,
+                                    ),
+                                  })
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={variant.isLocked}
+                        onClick={() =>
+                          setItem({
+                            ...item,
+                            variants: item.variants.map((entry) =>
+                              entry.id === variant.id
+                                ? {
+                                    ...entry,
+                                    optionRows: [
+                                      ...entry.optionRows,
+                                      {
+                                        id: crypto.randomUUID(),
+                                        key: "",
+                                        value: "",
+                                      },
+                                    ],
+                                  }
+                                : entry,
+                            ),
+                          })
+                        }
+                      >
+                        Add Option Row
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-4">
-                    <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       <input
                         type="radio"
                         name="defaultVariant"
@@ -404,7 +666,7 @@ export function ItemDetailsPage() {
                       />
                       Default
                     </label>
-                    <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       <input
                         type="checkbox"
                         checked={variant.isActive}
@@ -426,7 +688,7 @@ export function ItemDetailsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={item.variants.length <= 1}
+                    disabled={item.variants.length <= 1 || variant.isLocked}
                     onClick={() =>
                       setItem({
                         ...item,
@@ -443,13 +705,23 @@ export function ItemDetailsPage() {
             ))}
           </div>
 
+          {saveError ? (
+            <p className="text-xs text-red-600">{saveError}</p>
+          ) : null}
+
           <div className="mt-2 flex gap-2">
-            <Button type="button" onClick={() => void onSave()} disabled={loading || !isDirty}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void onSave()}
+              disabled={loading || !isDirty}
+            >
               {loading ? "Saving..." : "Save Changes"}
             </Button>
             <Button
               type="button"
               variant="outline"
+              size="sm"
               disabled={loading}
               onClick={() => navigate("/app/items")}
             >

@@ -5,7 +5,6 @@ const SUPPORTED_ENTITIES = new Set(["item", "item_variant"]);
 const SUPPORTED_ITEM_FIELDS = new Set([
   "sku",
   "name",
-  "description",
   "unit",
   "itemType",
   "variants",
@@ -13,7 +12,6 @@ const SUPPORTED_ITEM_FIELDS = new Set([
 type ItemPayload = {
   sku?: string | null;
   name?: string;
-  description?: string;
   unit?: string;
   itemType?: string;
   variants?: VariantPayload[];
@@ -22,15 +20,14 @@ type VariantPayload = {
   id?: string;
   itemId?: string;
   sku?: string | null;
-  barcode?: string;
-  name?: string;
+  barcode?: string | null;
+  name?: string | null;
   isDefault?: boolean;
   isActive?: boolean;
   optionValues?: Record<string, string>;
 };
 const DEFAULT_ITEM_VALUES = {
   name: "Untitled Item",
-  description: "",
   unit: "PCS",
   itemType: "PRODUCT",
 };
@@ -66,10 +63,14 @@ const sanitizeVariantPayload = (payload) => {
   if (typeof raw.itemId === "string" && raw.itemId) {
     normalized.itemId = raw.itemId;
   }
-  if (typeof raw.name === "string") {
+  if (raw.name === null) {
+    normalized.name = null;
+  } else if (typeof raw.name === "string") {
     normalized.name = raw.name;
   }
-  if (typeof raw.barcode === "string") {
+  if (raw.barcode === null) {
+    normalized.barcode = null;
+  } else if (typeof raw.barcode === "string") {
     normalized.barcode = raw.barcode;
   }
   if (typeof raw.isDefault === "boolean") {
@@ -94,11 +95,9 @@ const sanitizeVariantPayload = (payload) => {
         typeof value === "string" &&
         value.trim().length > 0,
     );
-    if (entries.length > 0) {
-      normalized.optionValues = Object.fromEntries(
-        entries.map(([key, value]) => [key.trim(), String(value).trim()]),
-      );
-    }
+    normalized.optionValues = Object.fromEntries(
+      entries.map(([key, value]) => [key.trim(), String(value).trim()]),
+    );
   }
 
   return normalized;
@@ -120,10 +119,6 @@ const buildItemForCreate = (payload) => {
         typeof normalized.name === "string" && normalized.name.trim()
           ? normalized.name.trim()
           : DEFAULT_ITEM_VALUES.name,
-      description:
-        typeof normalized.description === "string"
-          ? normalized.description
-          : DEFAULT_ITEM_VALUES.description,
       unit:
         typeof normalized.unit === "string" ? normalized.unit : DEFAULT_ITEM_VALUES.unit,
       item_type:
@@ -154,9 +149,6 @@ const buildItemForUpdate = (payload) => {
   if (typeof normalized.name === "string" && normalized.name.trim()) {
     patch.name = normalized.name.trim();
   }
-  if (typeof normalized.description === "string") {
-    patch.description = normalized.description;
-  }
   if (typeof normalized.unit === "string") {
     patch.unit = normalized.unit;
   }
@@ -177,14 +169,18 @@ const toItemSnapshot = (item, defaultVariant) => {
     item_type: item.item_type,
     itemType: item.item_type,
     name: item.name,
-    description: item.description,
     unit: item.unit,
     sku: defaultVariant?.sku ?? null,
     default_variant_id: defaultVariant?.id ?? null,
   };
 };
 
-const toVariantSnapshot = (variant, optionValues: Record<string, string> = {}) => {
+const toVariantSnapshot = (
+  variant,
+  optionValues: Record<string, string> = {},
+  usageCount = 0,
+) => {
+  const isLocked = usageCount > 0;
   return {
     id: variant.id,
     item_id: variant.item_id,
@@ -199,6 +195,10 @@ const toVariantSnapshot = (variant, optionValues: Record<string, string> = {}) =
     isActive: variant.is_active,
     option_values: optionValues,
     optionValues,
+    usage_count: usageCount,
+    usageCount,
+    is_locked: isLocked,
+    isLocked,
   };
 };
 
@@ -233,6 +233,89 @@ const getVariantOptionValues = async (tx, variantId) => {
     }
   }
   return optionValues;
+};
+
+const getVariantUsageCount = async (tx, tenantId, variantId) => {
+  const txAny = tx as any;
+  const stockLedgerCountPromise = tx.stockLedger.count({
+    where: {
+      variant_id: variantId,
+      location: {
+        store_id: tenantId,
+      },
+    },
+  });
+
+  const activityDelegate = txAny.itemActivityProjection;
+  const activityCountPromise =
+    activityDelegate && typeof activityDelegate.count === "function"
+      ? activityDelegate
+          .count({
+            where: {
+              store_id: tenantId,
+              variant_id: variantId,
+            },
+          })
+          .catch(() => 0)
+      : Promise.resolve(0);
+
+  const [stockLedgerCount, activityCount] = await Promise.all([
+    stockLedgerCountPromise,
+    activityCountPromise,
+  ]);
+
+  return stockLedgerCount + activityCount;
+};
+
+const toNullableTrimmedValue = (value: string | null | undefined) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const normalizeOptionValuesForCompare = (value: Record<string, string>) => {
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, optionValue]) => [key.trim(), optionValue.trim()])
+      .filter(([key, optionValue]) => key.length > 0 && optionValue.length > 0)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey)),
+  );
+};
+
+const variantImmutableFieldsChanged = (
+  current,
+  currentOptionValues: Record<string, string>,
+  payload: VariantPayload,
+) => {
+  const currentSku = toNullableTrimmedValue(current.sku);
+  const currentName = toNullableTrimmedValue(current.name);
+  const currentBarcode = toNullableTrimmedValue(current.barcode);
+
+  const requestedSku = toNullableTrimmedValue(payload.sku);
+  if (requestedSku !== undefined && requestedSku !== currentSku) {
+    return true;
+  }
+
+  const requestedName = toNullableTrimmedValue(payload.name);
+  if (requestedName !== undefined && requestedName !== currentName) {
+    return true;
+  }
+
+  const requestedBarcode = toNullableTrimmedValue(payload.barcode);
+  if (requestedBarcode !== undefined && requestedBarcode !== currentBarcode) {
+    return true;
+  }
+
+  if (payload.optionValues !== undefined) {
+    const normalizedCurrent = normalizeOptionValuesForCompare(currentOptionValues);
+    const normalizedRequested = normalizeOptionValuesForCompare(payload.optionValues);
+    if (JSON.stringify(normalizedCurrent) !== JSON.stringify(normalizedRequested)) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 const attachOptionValuesToVariant = async (tx, itemId, variantId, optionValues?: Record<string, string>) => {
@@ -322,8 +405,11 @@ const getItemSnapshot = async (tx, tenantId, itemId) => {
 
   const snapshotVariants = await Promise.all(
     variants.map(async (variant) => {
-      const optionValues = await getVariantOptionValues(tx, variant.id);
-      return toVariantSnapshot(variant, optionValues);
+      const [optionValues, usageCount] = await Promise.all([
+        getVariantOptionValues(tx, variant.id),
+        getVariantUsageCount(tx, tenantId, variant.id),
+      ]);
+      return toVariantSnapshot(variant, optionValues, usageCount);
     }),
   );
 
@@ -446,6 +532,17 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
 
   if (sku !== undefined) {
     if (defaultVariant) {
+      const nextSku = toNullableTrimmedValue(sku);
+      const currentSku = toNullableTrimmedValue(defaultVariant.sku);
+      if (nextSku !== currentSku) {
+        const usageCount = await getVariantUsageCount(tx, tenantId, defaultVariant.id);
+        if (usageCount > 0) {
+          throw new AppError(
+            "Default variant SKU is locked after usage. Create a new variant for SKU changes.",
+            400,
+          );
+        }
+      }
       defaultVariant = await tx.itemVariant.update({
         where: { id: defaultVariant.id },
         data: { sku },
@@ -516,22 +613,37 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     );
 
     const optionValues = await getVariantOptionValues(tx, variant.id);
-    return toVariantSnapshot(variant, optionValues);
+    const usageCount = await getVariantUsageCount(tx, tenantId, variant.id);
+    return toVariantSnapshot(variant, optionValues, usageCount);
   }
 
   const current = await tx.itemVariant.findUnique({
     where: { id: mutation.entityId },
   });
-  if (!current || current.store_id !== tenantId) {
-    throw new AppError("Variant not found in store", 404);
-  }
 
   if (mutation.op === "delete") {
+    if (!current) {
+      return null;
+    }
+    if (current.store_id !== tenantId) {
+      throw new AppError("Variant not found in store", 404);
+    }
+    const usageCount = await getVariantUsageCount(tx, tenantId, mutation.entityId);
+    if (usageCount > 0) {
+      throw new AppError(
+        "Variant cannot be deleted because it has been used in transactions. Archive it instead.",
+        400,
+      );
+    }
     await tx.itemVariant.delete({
       where: { id: mutation.entityId },
     });
     await ensureSingleDefaultVariant(tx, current.item_id);
     return null;
+  }
+
+  if (!current || current.store_id !== tenantId) {
+    throw new AppError("Variant not found in store", 404);
   }
 
   const patch: Record<string, unknown> = {};
@@ -540,6 +652,17 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
   if (payload.barcode !== undefined) patch.barcode = payload.barcode?.trim() || null;
   if (payload.isActive !== undefined) patch.is_active = payload.isActive;
   if (payload.isDefault !== undefined) patch.is_default = payload.isDefault;
+
+  const [currentOptionValues, usageCount] = await Promise.all([
+    getVariantOptionValues(tx, mutation.entityId),
+    getVariantUsageCount(tx, tenantId, mutation.entityId),
+  ]);
+  if (usageCount > 0 && variantImmutableFieldsChanged(current, currentOptionValues, payload)) {
+    throw new AppError(
+      "Variant identity fields are locked after usage. Create a new variant for these changes.",
+      400,
+    );
+  }
 
   const variant =
     Object.keys(patch).length > 0
@@ -568,7 +691,8 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
   }
 
   const optionValues = await getVariantOptionValues(tx, variant.id);
-  return toVariantSnapshot(variant, optionValues);
+  const nextUsageCount = await getVariantUsageCount(tx, tenantId, variant.id);
+  return toVariantSnapshot(variant, optionValues, nextUsageCount);
 };
 
 const applyMutation = async (tenantId, mutation) => {

@@ -29,7 +29,6 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
   const sku = useUserAppStore((state) => state.sku);
   const name = useUserAppStore((state) => state.name);
-  const description = useUserAppStore((state) => state.description);
   const setLocalItems = useUserAppStore((state) => state.setLocalItems);
   const clearDraft = useUserAppStore((state) => state.clearDraft);
   const [loading, setLoading] = useState(false);
@@ -51,7 +50,6 @@ export function SyncProvider({ children }: SyncProviderProps) {
       await queueItemCreate(activeStore, identityId, {
         sku,
         name,
-        description,
         unit: "PCS",
         itemType: "PRODUCT",
       });
@@ -61,7 +59,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, [activeStore, clearDraft, description, identityId, isStoreSelected, name, sku]);
+  }, [activeStore, clearDraft, identityId, isStoreSelected, name, sku]);
 
   const onSyncNow = useCallback(async () => {
     if (!activeStore || !isStoreSelected) return;

@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../mo
 type SyncPanelProps = {
   sku: string;
   name: string;
-  description: string;
   localItems: string[];
   loading: boolean;
   isAuthenticated: boolean;
@@ -14,7 +13,6 @@ type SyncPanelProps = {
   isStoreSelected: boolean;
   onSkuChange: (value: string) => void;
   onNameChange: (value: string) => void;
-  onDescriptionChange: (value: string) => void;
   onQueueItemCreate: () => void;
   onSyncNow: () => void;
 };
@@ -22,7 +20,6 @@ type SyncPanelProps = {
 export function SyncPanel({
   sku,
   name,
-  description,
   localItems,
   loading,
   isAuthenticated,
@@ -30,7 +27,6 @@ export function SyncPanel({
   isStoreSelected,
   onSkuChange,
   onNameChange,
-  onDescriptionChange,
   onQueueItemCreate,
   onSyncNow
 }: SyncPanelProps) {
@@ -41,7 +37,7 @@ export function SyncPanel({
         <CardDescription>Queue and sync item mutations for the active store.</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>SKU</Label>
             <Input value={sku} onChange={(event) => onSkuChange(event.target.value)} />
@@ -49,10 +45,6 @@ export function SyncPanel({
           <div className="space-y-2">
             <Label>Name</Label>
             <Input value={name} onChange={(event) => onNameChange(event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Input value={description} onChange={(event) => onDescriptionChange(event.target.value)} />
           </div>
         </div>
 

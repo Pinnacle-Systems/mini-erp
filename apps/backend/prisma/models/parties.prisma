@@ -15,10 +15,39 @@ model Party {
   tax_id     String?
   type       PartyType @default(CUSTOMER)
   account_id String?   @db.Uuid
+  customer_group_memberships CustomerGroupMember[]
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
   @@map("parties")
+  @@schema("parties")
+}
+
+model CustomerGroup {
+  id             String                   @id @default(uuid()) @db.Uuid
+  store_id       String                   @db.Uuid
+  code           String
+  name           String
+  is_active      Boolean                  @default(true)
+  memberships    CustomerGroupMember[]
+  created_at     DateTime                 @default(now())
+  updated_at     DateTime                 @updatedAt
+
+  @@unique([store_id, code])
+  @@map("customer_groups")
+  @@schema("parties")
+}
+
+model CustomerGroupMember {
+  id                String        @id @default(uuid()) @db.Uuid
+  customer_group_id String        @db.Uuid
+  party_id          String        @db.Uuid
+  customer_group    CustomerGroup @relation(fields: [customer_group_id], references: [id], onDelete: Cascade)
+  party             Party         @relation(fields: [party_id], references: [id], onDelete: Cascade)
+  created_at        DateTime      @default(now())
+
+  @@unique([customer_group_id, party_id])
+  @@map("customer_group_members")
   @@schema("parties")
 }

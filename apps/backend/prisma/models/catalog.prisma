@@ -1,0 +1,83 @@
+enum UnitType {
+  PCS
+  KG
+  M
+  BOX
+
+  @@schema("catalog")
+}
+
+enum ItemType {
+  PRODUCT
+  SERVICE
+
+  @@schema("catalog")
+}
+
+model Item {
+  id          String        @id @default(uuid()) @db.Uuid
+  store_id    String        @db.Uuid
+  item_type   ItemType      @default(PRODUCT)
+  name        String
+  unit        UnitType      @default(PCS)
+  variants    ItemVariant[]
+  options     ItemOption[]
+
+  @@map("items")
+  @@schema("catalog")
+}
+
+model ItemVariant {
+  id            String                   @id @default(uuid()) @db.Uuid
+  store_id      String                   @db.Uuid
+  item_id       String                   @db.Uuid
+  item          Item                     @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  sku           String?
+  barcode       String?
+  name          String?
+  is_default    Boolean                  @default(false)
+  is_active     Boolean                  @default(true)
+  option_values ItemVariantOptionValue[]
+
+  @@unique([store_id, sku])
+  @@map("item_variants")
+  @@schema("catalog")
+}
+
+model ItemOption {
+  id       String            @id @default(uuid()) @db.Uuid
+  item_id  String            @db.Uuid
+  item     Item              @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  name     String
+  position Int               @default(0)
+  values   ItemOptionValue[]
+
+  @@unique([item_id, name])
+  @@map("item_options")
+  @@schema("catalog")
+}
+
+model ItemOptionValue {
+  id             String                   @id @default(uuid()) @db.Uuid
+  option_id      String                   @db.Uuid
+  option         ItemOption               @relation(fields: [option_id], references: [id], onDelete: Cascade)
+  value          String
+  position       Int                      @default(0)
+  variant_values ItemVariantOptionValue[]
+
+  @@unique([option_id, value])
+  @@map("item_option_values")
+  @@schema("catalog")
+}
+
+model ItemVariantOptionValue {
+  id              String          @id @default(uuid()) @db.Uuid
+  variant_id      String          @db.Uuid
+  variant         ItemVariant     @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+  option_value_id String          @db.Uuid
+  option_value    ItemOptionValue @relation(fields: [option_value_id], references: [id], onDelete: Cascade)
+
+  @@unique([variant_id, option_value_id])
+  @@map("item_variant_option_values")
+  @@schema("catalog")
+}

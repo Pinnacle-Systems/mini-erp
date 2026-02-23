@@ -38,7 +38,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
       {isAuthenticated ? (
         <div className="px-4 pt-4 sm:px-6 md:px-10">
           <SessionHeader
-            showBackHome={location.pathname !== "/app"}
+            showBack={location.pathname !== "/app"}
             showSwitchStore={location.pathname !== "/app/select-store"}
             onLogout={onLogout}
           />

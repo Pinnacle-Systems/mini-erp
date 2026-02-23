@@ -60,13 +60,14 @@ export const applyDeltas = async (tenantId: string, deltas: SyncDelta[]) => {
 
       if (delta.op === "delete") {
         const existing = await syncDb.entities.get(key);
-        if (!existing) continue;
-
         await syncDb.entities.put({
-          ...existing,
+          tenantId,
+          entity: delta.entity,
+          entityId: delta.entityId,
+          data: existing?.data ?? {},
           deletedAt: delta.serverTimestamp,
           serverVersion: delta.serverVersion,
-          updatedAt: delta.serverTimestamp
+          updatedAt: delta.serverTimestamp,
         });
         continue;
       }

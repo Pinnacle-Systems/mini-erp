@@ -3,12 +3,35 @@ import { UnauthorizedError } from "../../shared/utils/errors.js";
 import { getClientIp } from "../../shared/utils/getIp.js";
 import authService, { REFRESH_TOKEN_EXPIRY_MS } from "./auth.service.js";
 import { SystemRole } from "../../../generated/prisma/enums.js";
+import { prisma } from "../../lib/prisma.js";
 import {
   signAccessToken,
   signTempToken,
   verifyAccessToken,
 } from "../../shared/utils/token.utils.js";
 import tenantService from "../tenant/tenant.service.js";
+
+const toModuleState = (
+  rows: Array<{ module_key: "CATALOG" | "INVENTORY" | "PRICING"; enabled: boolean }>,
+) => {
+  const byKey = new Map(rows.map((row) => [row.module_key, row.enabled]));
+  return {
+    catalog: byKey.get("CATALOG") ?? true,
+    inventory: byKey.get("INVENTORY") ?? true,
+    pricing: byKey.get("PRICING") ?? true,
+  };
+};
+
+const getStoreModules = async (storeId: string) => {
+  const rows = await prisma.storeModule.findMany({
+    where: { store_id: storeId },
+    select: { module_key: true, enabled: true },
+  });
+
+  return toModuleState(
+    rows as Array<{ module_key: "CATALOG" | "INVENTORY" | "PRICING"; enabled: boolean }>,
+  );
+};
 
 export const login = catchAsync(async (req, res) => {
   const { phone = "", password = "" } = req.body;
@@ -167,6 +190,7 @@ export const selectStore = catchAsync(async (req, res) => {
       memberRole: member.role,
     },
   );
+  const modules = await getStoreModules(storeId);
 
   res.json({
     success: true,
@@ -174,6 +198,7 @@ export const selectStore = catchAsync(async (req, res) => {
     tenantId: storeId,
     memberRole: member.role,
     token: accessToken,
+    modules,
   });
 });
 
@@ -194,12 +219,15 @@ export const getMe = catchAsync(async (req, res) => {
   if (payload.systemRole === SystemRole.USER && typeof payload.sub === "string") {
     stores = await tenantService.getStoresForIdentity(payload.sub);
   }
+  const tenantId = typeof payload.tenantId === "string" ? payload.tenantId : null;
+  const modules = tenantId ? await getStoreModules(tenantId) : null;
 
   res.json({
     success: true,
     role: payload.systemRole ?? null,
     identityId: payload.sub ?? null,
-    tenantId: typeof payload.tenantId === "string" ? payload.tenantId : null,
+    tenantId,
     stores,
+    modules,
   });
 });

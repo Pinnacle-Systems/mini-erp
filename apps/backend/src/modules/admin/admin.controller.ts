@@ -12,6 +12,21 @@ const assertPlatformAdmin = (req) => {
 
 const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_STORE_OWNER_PASSWORD?.trim() || "ChangeMe123!";
 const DUPLICATE_STORE_NAME_ERROR = "Store name already exists for this owner";
+const MODULE_KEYS = ["CATALOG", "INVENTORY", "PRICING"] as const;
+
+const toModuleState = (
+  rows: Array<{
+    module_key: (typeof MODULE_KEYS)[number];
+    enabled: boolean;
+  }>,
+) => {
+  const byKey = new Map(rows.map((row) => [row.module_key, row.enabled]));
+  return {
+    catalog: byKey.get("CATALOG") ?? true,
+    inventory: byKey.get("INVENTORY") ?? true,
+    pricing: byKey.get("PRICING") ?? true,
+  };
+};
 
 export const listStores = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
@@ -198,6 +213,15 @@ export const createStore = catchAsync(async (req, res) => {
         role: StoreRole.OWNER,
       },
     });
+
+    await prisma.storeModule.createMany({
+      data: MODULE_KEYS.map((moduleKey) => ({
+        store_id: store.id,
+        module_key: moduleKey,
+        enabled: true,
+      })),
+      skipDuplicates: true,
+    });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
       const code = String(error.code);
@@ -229,6 +253,12 @@ export const getStore = catchAsync(async (req, res) => {
       name: true,
       owner_id: true,
       deleted_at: true,
+      modules: {
+        select: {
+          module_key: true,
+          enabled: true,
+        },
+      },
     },
   });
 
@@ -249,6 +279,7 @@ export const getStore = catchAsync(async (req, res) => {
       ownerId: store.owner_id,
       deletedAt: store.deleted_at,
       owner: owner ?? null,
+      modules: toModuleState(store.modules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>),
     },
   });
 });
@@ -257,10 +288,15 @@ export const updateStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
   const { storeId } = req.params;
-  const { name, ownerId, isActive } = req.body as {
+  const { name, ownerId, isActive, modules } = req.body as {
     name?: string;
     ownerId?: string;
     isActive?: boolean;
+    modules?: {
+      catalog?: boolean;
+      inventory?: boolean;
+      pricing?: boolean;
+    };
   };
   const normalizedStoreName = typeof name === "string" ? name.trim() : undefined;
 
@@ -315,6 +351,38 @@ export const updateStore = catchAsync(async (req, res) => {
         },
       });
 
+      if (modules) {
+        const moduleUpdates: Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }> = [];
+        if (typeof modules.catalog === "boolean") {
+          moduleUpdates.push({ module_key: "CATALOG", enabled: modules.catalog });
+        }
+        if (typeof modules.inventory === "boolean") {
+          moduleUpdates.push({ module_key: "INVENTORY", enabled: modules.inventory });
+        }
+        if (typeof modules.pricing === "boolean") {
+          moduleUpdates.push({ module_key: "PRICING", enabled: modules.pricing });
+        }
+
+        for (const moduleUpdate of moduleUpdates) {
+          await tx.storeModule.upsert({
+            where: {
+              store_id_module_key: {
+                store_id: updatedStore.id,
+                module_key: moduleUpdate.module_key,
+              },
+            },
+            update: {
+              enabled: moduleUpdate.enabled,
+            },
+            create: {
+              store_id: updatedStore.id,
+              module_key: moduleUpdate.module_key,
+              enabled: moduleUpdate.enabled,
+            },
+          });
+        }
+      }
+
       await tx.storeMember.upsert({
         where: {
           store_id_identity_id: {
@@ -345,7 +413,18 @@ export const updateStore = catchAsync(async (req, res) => {
         });
       }
 
-      return updatedStore;
+      const storeModules = await tx.storeModule.findMany({
+        where: { store_id: updatedStore.id },
+        select: {
+          module_key: true,
+          enabled: true,
+        },
+      });
+
+      return {
+        ...updatedStore,
+        modules: storeModules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>,
+      };
     });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
@@ -366,6 +445,8 @@ export const updateStore = catchAsync(async (req, res) => {
       id: store.id,
       name: store.name,
       ownerId: store.owner_id,
+      deletedAt: store.deleted_at,
+      modules: toModuleState(store.modules),
     },
   });
 });

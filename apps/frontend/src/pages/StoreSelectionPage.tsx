@@ -9,6 +9,7 @@ export function StoreSelectionPage() {
   const stores = useSessionStore((state) => state.stores);
   const activeStore = useSessionStore((state) => state.activeStore);
   const setActiveStore = useSessionStore((state) => state.setActiveStore);
+  const setActiveStoreModules = useSessionStore((state) => state.setActiveStoreModules);
   const setIsStoreSelected = useSessionStore((state) => state.setIsStoreSelected);
   const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
   const identityId = useSessionStore((state) => state.identityId);
@@ -36,8 +37,9 @@ export function StoreSelectionPage() {
     if (!selectedStore) return;
     setLoading(true);
     try {
-      await selectStore(selectedStore);
+      const result = await selectStore(selectedStore);
       setActiveStore(selectedStore);
+      setActiveStoreModules(result.modules ?? null);
       setIsStoreSelected(true);
       navigate("/app", { replace: true });
     } catch (error) {

@@ -46,9 +46,9 @@ const toMutation = (item: OutboxItem): SyncMutation => ({
 export type VariantInput = {
   id?: string;
   itemId?: string;
-  name?: string;
-  sku?: string;
-  barcode?: string;
+  name?: string | null;
+  sku?: string | null;
+  barcode?: string | null;
   isDefault?: boolean;
   isActive?: boolean;
   optionValues?: Record<string, string>;
@@ -57,7 +57,6 @@ export type VariantInput = {
 export type ItemInput = {
   sku?: string;
   name?: string;
-  description?: string;
   unit?: "PCS" | "KG" | "M" | "BOX";
   itemType?: "PRODUCT" | "SERVICE";
   variants?: VariantInput[];
@@ -69,7 +68,6 @@ export const queueItemCreate = async (
   payload: {
     sku?: string;
     name: string;
-    description: string;
     unit: "PCS" | "KG" | "M" | "BOX";
     itemType: "PRODUCT" | "SERVICE";
     variants?: VariantInput[];
@@ -270,8 +268,8 @@ export const getLocalItems = async (tenantId: string) => {
 export type ItemDisplay = {
   entityId: string;
   name: string;
-  description: string;
   sku: string;
+  variantSkus: string[];
   variantCount: number;
   pending: boolean;
 };
@@ -285,13 +283,14 @@ export type ItemVariantDisplay = {
   isDefault: boolean;
   isActive: boolean;
   optionValues: Record<string, string>;
+  usageCount: number;
+  isLocked: boolean;
   pending: boolean;
 };
 
 export type ItemDetailDisplay = {
   id: string;
   name: string;
-  description: string;
   unit: "PCS" | "KG" | "M" | "BOX";
   itemType: "PRODUCT" | "SERVICE";
   pending: boolean;
@@ -327,6 +326,8 @@ const extractVariantsFromItemData = (itemData: Record<string, unknown>, itemId: 
         isDefault: Boolean(variant.isDefault ?? variant.is_default ?? false),
         isActive: Boolean(variant.isActive ?? variant.is_active ?? true),
         optionValues,
+        usageCount: Number(variant.usageCount ?? variant.usage_count ?? 0),
+        isLocked: Boolean(variant.isLocked ?? variant.is_locked ?? false),
         pending: false,
       } satisfies ItemVariantDisplay;
     })
@@ -367,6 +368,16 @@ export const getLocalItemsForDisplay = async (
   ]);
 
   const activeVariants = variantEntities.filter((variant) => !variant.deletedAt);
+  const deletedVariantIdsByItemId = variantEntities
+    .filter((variant) => Boolean(variant.deletedAt))
+    .reduce<Record<string, Set<string>>>((acc, variant) => {
+      const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+      if (!itemId) return acc;
+      const ids = acc[itemId] ?? new Set<string>();
+      ids.add(variant.entityId);
+      acc[itemId] = ids;
+      return acc;
+    }, {});
   const variantsByItemId = activeVariants.reduce<Record<string, EntityRecord[]>>(
     (acc, variant) => {
       const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
@@ -379,48 +390,25 @@ export const getLocalItemsForDisplay = async (
 
   const confirmed = entities
     .filter((item) => !item.deletedAt)
-    .map((item) => ({
-      entityId: item.entityId,
-      name: String(item.data.name ?? "Untitled Item"),
-      description: String(item.data.description ?? ""),
-      sku: (() => {
-        const baseVariants = extractVariantsFromItemData(item.data, item.entityId);
-        const overlayVariants = (variantsByItemId[item.entityId] ?? []).map((variant) => {
-          const optionValuesRaw =
-            variant.data.optionValues && typeof variant.data.optionValues === "object"
-              ? (variant.data.optionValues as Record<string, unknown>)
-              : variant.data.option_values && typeof variant.data.option_values === "object"
-                ? (variant.data.option_values as Record<string, unknown>)
-                : {};
-          const optionValues = Object.fromEntries(
-            Object.entries(optionValuesRaw)
-              .filter((entry) => typeof entry[1] === "string")
-              .map(([key, value]) => [key, String(value)]),
-          );
+    .map((item) => {
+      const deletedVariantIds = deletedVariantIdsByItemId[item.entityId] ?? new Set<string>();
+      const baseVariants = extractVariantsFromItemData(item.data, item.entityId).filter(
+        (variant) => !deletedVariantIds.has(variant.id),
+      );
+      const overlayVariants = (variantsByItemId[item.entityId] ?? []).map((variant) => {
+        const optionValuesRaw =
+          variant.data.optionValues && typeof variant.data.optionValues === "object"
+            ? (variant.data.optionValues as Record<string, unknown>)
+            : variant.data.option_values && typeof variant.data.option_values === "object"
+              ? (variant.data.option_values as Record<string, unknown>)
+              : {};
+        const optionValues = Object.fromEntries(
+          Object.entries(optionValuesRaw)
+            .filter((entry) => typeof entry[1] === "string")
+            .map(([key, value]) => [key, String(value)]),
+        );
 
-          return {
-            id: variant.entityId,
-            itemId: String(variant.data.itemId ?? variant.data.item_id ?? item.entityId),
-            name: String(variant.data.name ?? ""),
-            sku: String(variant.data.sku ?? ""),
-            barcode: String(variant.data.barcode ?? ""),
-            isDefault: Boolean(variant.data.isDefault ?? variant.data.is_default ?? false),
-            isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
-            optionValues,
-            pending: false,
-          } satisfies ItemVariantDisplay;
-        });
-        const merged = mergeVariants(baseVariants, overlayVariants);
-        if (merged.length > 0) {
-          const defaultVariant =
-            merged.find((variant) => variant.isDefault) ?? merged[0];
-          return defaultVariant.sku;
-        }
-        return String(item.data.sku ?? "");
-      })(),
-      variantCount: (() => {
-        const baseVariants = extractVariantsFromItemData(item.data, item.entityId);
-        const overlayVariants = (variantsByItemId[item.entityId] ?? []).map((variant) => ({
+        return {
           id: variant.entityId,
           itemId: String(variant.data.itemId ?? variant.data.item_id ?? item.entityId),
           name: String(variant.data.name ?? ""),
@@ -428,13 +416,37 @@ export const getLocalItemsForDisplay = async (
           barcode: String(variant.data.barcode ?? ""),
           isDefault: Boolean(variant.data.isDefault ?? variant.data.is_default ?? false),
           isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
-          optionValues: {},
+          optionValues,
+          usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
+          isLocked: Boolean(variant.data.isLocked ?? variant.data.is_locked ?? false),
           pending: false,
-        }));
-        return mergeVariants(baseVariants, overlayVariants).length;
-      })(),
-      pending: false,
-    }));
+        } satisfies ItemVariantDisplay;
+      });
+
+      const mergedVariants =
+        overlayVariants.length > 0
+          ? mergeVariants([], overlayVariants)
+          : mergeVariants(baseVariants, []);
+      const variantSkus = mergedVariants
+        .map((variant) => variant.sku.trim())
+        .filter((sku) => sku.length > 0);
+      const primarySku = (() => {
+        if (mergedVariants.length > 0) {
+          const defaultVariant = mergedVariants.find((variant) => variant.isDefault) ?? mergedVariants[0];
+          return defaultVariant.sku;
+        }
+        return String(item.data.sku ?? "");
+      })();
+
+      return {
+        entityId: item.entityId,
+        name: String(item.data.name ?? "Untitled Item"),
+        sku: primarySku,
+        variantSkus,
+        variantCount: mergedVariants.length,
+        pending: false,
+      } satisfies ItemDisplay;
+    });
 
   const confirmedByEntityId = new Set(confirmed.map((item) => item.entityId));
 
@@ -444,7 +456,6 @@ export const getLocalItemsForDisplay = async (
       const payload = item.payload as {
         sku?: unknown;
         name?: unknown;
-        description?: unknown;
         variants?: unknown;
       };
       const variants = Array.isArray(payload.variants)
@@ -461,14 +472,20 @@ export const getLocalItemsForDisplay = async (
         typeof (defaultVariant as { sku?: unknown }).sku === "string"
           ? String((defaultVariant as { sku?: unknown }).sku)
           : "";
+      const variantSkus = variants
+        .map((variant) => {
+          const sku = (variant as { sku?: unknown }).sku;
+          return typeof sku === "string" ? sku.trim() : "";
+        })
+        .filter((sku) => sku.length > 0);
       return {
         entityId: item.entityId,
         name: String(payload.name ?? "Untitled Item"),
-        description: String(payload.description ?? ""),
         sku: variantSku || String(payload.sku ?? ""),
+        variantSkus,
         variantCount: variants.length,
         pending: true,
-      };
+      } satisfies ItemDisplay;
     });
 
   return [...pendingOnly, ...confirmed];
@@ -513,12 +530,28 @@ export const getLocalItemDetailForDisplay = async (
         isDefault: Boolean(variant.data.isDefault ?? variant.data.is_default ?? false),
         isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
         optionValues,
+        usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
+        isLocked: Boolean(variant.data.isLocked ?? variant.data.is_locked ?? false),
         pending: false,
       } satisfies ItemVariantDisplay;
     });
 
-  const fallbackFromItem = extractVariantsFromItemData(item.data, item.entityId);
-  const mergedVariants = mergeVariants(fallbackFromItem, variantRows);
+  const deletedVariantIds = new Set(
+    variantEntities
+      .filter((variant) => Boolean(variant.deletedAt))
+      .filter(
+        (variant) =>
+          String(variant.data.itemId ?? variant.data.item_id ?? "") === item.entityId,
+      )
+      .map((variant) => variant.entityId),
+  );
+  const fallbackFromItem = extractVariantsFromItemData(item.data, item.entityId).filter(
+    (variant) => !deletedVariantIds.has(variant.id),
+  );
+  const mergedVariants =
+    variantRows.length > 0
+      ? mergeVariants([], variantRows)
+      : mergeVariants(fallbackFromItem, []);
   const variants =
     mergedVariants.length > 0
       ? mergedVariants
@@ -532,6 +565,8 @@ export const getLocalItemDetailForDisplay = async (
             isDefault: true,
             isActive: true,
             optionValues: {},
+            usageCount: 0,
+            isLocked: false,
             pending: false,
           } satisfies ItemVariantDisplay,
         ];
@@ -539,7 +574,6 @@ export const getLocalItemDetailForDisplay = async (
   return {
     id: item.entityId,
     name: String(item.data.name ?? "Untitled Item"),
-    description: String(item.data.description ?? ""),
     unit: String(item.data.unit ?? "PCS") as "PCS" | "KG" | "M" | "BOX",
     itemType: String(item.data.itemType ?? item.data.item_type ?? "PRODUCT") as
       | "PRODUCT"

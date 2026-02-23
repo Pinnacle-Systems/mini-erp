@@ -55,16 +55,26 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
 
       const fallbackStores = useSessionStore.getState().stores;
+      const cachedSession = useSessionStore.getState();
       const stores = me.stores ?? fallbackStores;
-      const selected = me.tenantId ?? null;
+      const cachedActiveStore =
+        cachedSession.activeStore &&
+        stores.some((store) => store.id === cachedSession.activeStore)
+          ? cachedSession.activeStore
+          : null;
+      const selected = me.tenantId ?? cachedActiveStore ?? null;
+      const selectedModules =
+        me.modules ??
+        (selected ? cachedSession.storeModulesById[selected] ?? null : null);
       setUserSession({
         identityId: me.identityId,
         stores,
         activeStore: selected,
-        isStoreSelected: Boolean(me.tenantId),
+        activeStoreModules: selectedModules,
+        isStoreSelected: Boolean(selected),
       });
 
-      if (selected && me.tenantId) {
+      if (selected) {
         await loadItems(selected);
       } else {
         setLocalItems([]);
@@ -99,6 +109,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           identityId: cachedSession.identityId,
           tenantId: cachedSession.activeStore,
           stores: cachedSession.stores,
+          modules: cachedSession.activeStoreModules,
         };
       }
 

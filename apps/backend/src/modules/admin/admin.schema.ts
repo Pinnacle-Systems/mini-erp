@@ -45,10 +45,25 @@ export const updateStoreSchema = z.object({
       name: z.string().trim().min(2, "Store name is required").optional(),
       ownerId: z.uuid("Owner ID must be a valid UUID").optional(),
       isActive: z.boolean().optional(),
+      modules: z
+        .object({
+          catalog: z.boolean().optional(),
+          inventory: z.boolean().optional(),
+          pricing: z.boolean().optional(),
+        })
+        .strict()
+        .optional(),
     })
-    .refine((value) => value.name !== undefined || value.ownerId !== undefined || value.isActive !== undefined, {
-      error: "At least one update field is required",
-    }),
+    .refine(
+      (value) =>
+        value.name !== undefined ||
+        value.ownerId !== undefined ||
+        value.isActive !== undefined ||
+        value.modules !== undefined,
+      {
+        error: "At least one update field is required",
+      },
+    ),
 });
 
 export const storeParamsSchema = z.object({

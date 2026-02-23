@@ -2,6 +2,7 @@ import { apiFetch, setAccessToken } from "../../lib/api";
 import {
   setAssignedStores,
   setPersistedActiveStore,
+  type StoreModules,
   type AssignedStore,
 } from "./session-store";
 
@@ -17,6 +18,7 @@ export type MePayload = {
   identityId: string | null;
   tenantId: string | null;
   stores?: AssignedStore[];
+  modules?: StoreModules | null;
 };
 
 export const login = async (username: string, password: string): Promise<LoginResult> => {
@@ -55,7 +57,9 @@ export const login = async (username: string, password: string): Promise<LoginRe
   return payload;
 };
 
-export const selectStore = async (storeId: string) => {
+export const selectStore = async (
+  storeId: string,
+): Promise<{ modules?: StoreModules | null }> => {
   const response = await apiFetch("/api/auth/select-store", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -67,12 +71,18 @@ export const selectStore = async (storeId: string) => {
     throw new Error(payload?.message ?? "Store selection failed");
   }
 
-  const payload = (await response.json()) as { token?: string };
+  const payload = (await response.json()) as {
+    token?: string;
+    modules?: StoreModules | null;
+  };
   if (payload.token) {
     setAccessToken(payload.token);
   }
 
   setPersistedActiveStore(storeId);
+  return {
+    modules: payload.modules ?? null,
+  };
 };
 
 export const getMe = async (): Promise<MePayload> => {

@@ -25,6 +25,11 @@ export function AdminStoreDetailsPage() {
   const { storeId } = useParams<{ storeId: string }>();
   const [store, setStore] = useState<AdminStore | null>(null);
   const [nameDraft, setNameDraft] = useState("");
+  const [moduleDraft, setModuleDraft] = useState({
+    catalog: true,
+    inventory: true,
+    pricing: true,
+  });
   const [isEditingName, setIsEditingName] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,6 +49,11 @@ export function AdminStoreDetailsPage() {
       const result = await getAdminStore(storeId);
       setStore(result);
       setNameDraft(result.name);
+      setModuleDraft({
+        catalog: result.modules?.catalog ?? true,
+        inventory: result.modules?.inventory ?? true,
+        pricing: result.modules?.pricing ?? true,
+      });
       setIsEditingName(false);
     } catch (requestError) {
       setError(
@@ -99,6 +109,19 @@ export function AdminStoreDetailsPage() {
     if (!storeId) return;
     await runMutation(async () => {
       await updateAdminStore(storeId, { isActive: true });
+    });
+  };
+
+  const onSaveModules = async () => {
+    if (!storeId) return;
+    await runMutation(async () => {
+      await updateAdminStore(storeId, {
+        modules: {
+          catalog: moduleDraft.catalog,
+          inventory: moduleDraft.inventory,
+          pricing: moduleDraft.pricing,
+        },
+      });
     });
   };
 
@@ -172,6 +195,63 @@ export function AdminStoreDetailsPage() {
                     {store.deletedAt ? "Deleted" : "Active"}
                   </span>
                 </p>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-white/70 bg-white/55 p-4">
+                <p className="text-sm font-semibold text-foreground">Enabled Modules</p>
+                <div className="grid gap-2">
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={moduleDraft.catalog}
+                      onChange={(event) =>
+                        setModuleDraft((current) => ({
+                          ...current,
+                          catalog: event.target.checked,
+                        }))
+                      }
+                      disabled={saving}
+                    />
+                    Catalog
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={moduleDraft.inventory}
+                      onChange={(event) =>
+                        setModuleDraft((current) => ({
+                          ...current,
+                          inventory: event.target.checked,
+                        }))
+                      }
+                      disabled={saving}
+                    />
+                    Inventory
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={moduleDraft.pricing}
+                      onChange={(event) =>
+                        setModuleDraft((current) => ({
+                          ...current,
+                          pricing: event.target.checked,
+                        }))
+                      }
+                      disabled={saving}
+                    />
+                    Pricing
+                  </label>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={onSaveModules}
+                  disabled={saving}
+                  className="gap-1"
+                >
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                  Save Modules
+                </Button>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">

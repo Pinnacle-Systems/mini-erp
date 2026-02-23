@@ -1,0 +1,58 @@
+enum ItemActivitySourceType {
+  POS_SALE
+  SALES_QUOTATION
+  SALES_ORDER
+  SALES_INVOICE
+  SALES_RETURN
+  PURCHASE_ORDER
+  GOODS_RECEIPT
+  PURCHASE_INVOICE
+  PURCHASE_RETURN
+  STOCK_ADJUSTMENT
+  STOCK_TRANSFER
+  STOCK_COUNT
+
+  @@schema("reporting")
+}
+
+enum ItemActivityStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+
+  @@schema("reporting")
+}
+
+model ItemActivityProjection {
+  id                String                 @id @default(uuid()) @db.Uuid
+  store_id          String                 @db.Uuid
+  source_schema     String
+  source_type       ItemActivitySourceType
+  source_ref        String
+  source_id         String                 @db.Uuid
+  source_line_id    String?
+  source_number     String?
+  source_status     ItemActivityStatus     @default(DRAFT)
+  item_id           String?                @db.Uuid
+  variant_id        String?                @db.Uuid
+  party_id          String?                @db.Uuid
+  occurred_at       DateTime
+  signed_qty        Decimal                @db.Decimal(14, 3)
+  uom               String                 @db.VarChar(16)
+  net_amount        Decimal?               @db.Decimal(14, 2)
+  tax_amount        Decimal?               @db.Decimal(14, 2)
+  gross_amount      Decimal?               @db.Decimal(14, 2)
+  currency          String?                @db.VarChar(3)
+  source_updated_at DateTime?
+  metadata          Json?
+  created_at        DateTime               @default(now())
+  updated_at        DateTime               @updatedAt
+
+  @@unique([store_id, source_ref])
+  @@index([store_id, item_id, occurred_at])
+  @@index([store_id, variant_id, occurred_at])
+  @@index([store_id, source_type, occurred_at])
+  @@index([store_id, source_status])
+  @@map("item_activity_projection")
+  @@schema("reporting")
+}

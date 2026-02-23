@@ -45,6 +45,36 @@ export function StoreManagementListView({
   onOpenStore,
   onReload,
 }: StoreManagementListViewProps) {
+  const renderModules = (store: AdminStore) => {
+    const modules = store.modules;
+    if (!modules) {
+      return <span className="text-xs text-muted-foreground">Not configured</span>;
+    }
+
+    const enabled = [
+      modules.catalog ? "Catalog" : null,
+      modules.inventory ? "Inventory" : null,
+      modules.pricing ? "Pricing" : null,
+    ].filter(Boolean) as string[];
+
+    if (enabled.length === 0) {
+      return <span className="text-xs text-muted-foreground">None</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {enabled.map((moduleName) => (
+          <span
+            key={`${store.id}-${moduleName}`}
+            className="rounded-full border border-[#c6d8ef] bg-[#f4f8ff] px-2 py-0.5 text-[11px] font-medium text-[#24486f]"
+          >
+            {moduleName}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="rounded-2xl border border-white/70 bg-white/55 p-3">
@@ -107,7 +137,7 @@ export function StoreManagementListView({
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="space-y-3 md:hidden">
         {stores.map((store) => {
           const isDeleted = Boolean(store.deletedAt);
           return (
@@ -129,18 +159,31 @@ export function StoreManagementListView({
               }`}
               title={isDeleted ? "Deleted store" : "Open store details"}
             >
-              <div>
-                <p
-                  className={`text-sm font-semibold ${
-                    isDeleted ? "text-[#8a2b2b]" : "text-foreground"
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p
+                    className={`truncate text-sm font-semibold ${
+                      isDeleted ? "text-[#8a2b2b]" : "text-foreground"
+                    }`}
+                  >
+                    {store.name}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {store.owner?.phone ?? "Owner phone unavailable"}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    isDeleted
+                      ? "bg-[#fce8e8] text-[#8a2b2b]"
+                      : "bg-[#e8f2ff] text-[#24507e]"
                   }`}
                 >
-                  {store.name}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {store.owner?.phone ?? "Owner phone unavailable"}
-                </p>
+                  {isDeleted ? "Deleted" : "Active"}
+                </span>
               </div>
+
+              <div className="mt-3">{renderModules(store)}</div>
 
               <div className="mt-3 flex items-center justify-end gap-2">
                 <IconButton
@@ -155,11 +198,83 @@ export function StoreManagementListView({
             </div>
           );
         })}
-
-        {stores.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No stores found.</p>
-        ) : null}
       </div>
+
+      <div className="hidden overflow-x-auto rounded-2xl border border-white/70 bg-white/60 md:block">
+        <table className="w-full min-w-[760px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-white/70 bg-white/70 text-left text-xs uppercase tracking-[0.05em] text-muted-foreground">
+              <th className="px-4 py-3 font-semibold">Store</th>
+              <th className="px-4 py-3 font-semibold">Owner</th>
+              <th className="px-4 py-3 font-semibold">Modules</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 text-right font-semibold">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stores.map((store) => {
+              const isDeleted = Boolean(store.deletedAt);
+              return (
+                <tr
+                  key={store.id}
+                  className={`border-b border-white/60 align-top transition-colors last:border-b-0 ${
+                    isDeleted ? "bg-[#fff7f7]" : "hover:bg-white/70"
+                  }`}
+                >
+                  <td className="px-4 py-3">
+                    <p
+                      className={`font-semibold ${
+                        isDeleted ? "text-[#8a2b2b]" : "text-foreground"
+                      }`}
+                    >
+                      {store.name}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{store.id}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-foreground/90">
+                      {store.owner?.name ?? "Unknown owner"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {store.owner?.phone ?? "Owner phone unavailable"}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">{renderModules(store)}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        isDeleted
+                          ? "bg-[#fce8e8] text-[#8a2b2b]"
+                          : "bg-[#e8f2ff] text-[#24507e]"
+                      }`}
+                    >
+                      {isDeleted ? "Deleted" : "Active"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onOpenStore(store)}
+                        disabled={loading}
+                        className="gap-1.5"
+                      >
+                        Open
+                        <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {stores.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No stores found.</p>
+      ) : null}
 
       <div className="flex items-center justify-between rounded-2xl border border-white/70 bg-white/55 p-3">
         <p className="text-xs text-muted-foreground">
