@@ -14,6 +14,13 @@ export const setAccessToken = (token: string | null) => {
 
 export const apiUrl = (path: string) => `${getApiBaseUrl()}${path}`;
 
+export const apiAssetUrl = (path: string | null | undefined) => {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return apiUrl(normalized);
+};
+
 type ApiFetchOptions = {
   auth?: boolean;
   retryOnUnauthorized?: boolean;

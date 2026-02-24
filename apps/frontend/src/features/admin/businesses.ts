@@ -1,4 +1,4 @@
-import { apiFetch } from "../../lib/api";
+import { apiAssetUrl, apiFetch } from "../../lib/api";
 
 export type AdminStore = {
   id: string;
@@ -47,6 +47,11 @@ const parseError = async (response: Response, fallback: string) => {
   return payload?.message ?? fallback;
 };
 
+const normalizeStore = (store: AdminStore): AdminStore => ({
+  ...store,
+  logo: store.logo ? apiAssetUrl(store.logo) : store.logo,
+});
+
 const toListBusinessesUrl = (params: ListAdminBusinessesParams) => {
   const query = new URLSearchParams();
   if (params.businessName?.trim()) {
@@ -81,7 +86,7 @@ export const listAdminStores = async (
     pagination?: AdminBusinessesPagination;
   };
   return {
-    businesses: payload.businesses ?? [],
+    businesses: (payload.businesses ?? []).map(normalizeStore),
     pagination: payload.pagination ?? {
       page: params.page ?? 1,
       limit: params.limit ?? 10,
@@ -129,7 +134,7 @@ export const createAdminStore = async (
   }
 
   const responseBody = (await response.json()) as { business: AdminStore };
-  return responseBody.business;
+  return normalizeStore(responseBody.business);
 };
 
 export const updateAdminStore = async (
@@ -165,7 +170,7 @@ export const updateAdminStore = async (
   }
 
   const payload = (await response.json()) as { business: AdminStore };
-  return payload.business;
+  return normalizeStore(payload.business);
 };
 
 export const getAdminStore = async (businessId: string): Promise<AdminStore> => {
@@ -178,7 +183,7 @@ export const getAdminStore = async (businessId: string): Promise<AdminStore> => 
   }
 
   const payload = (await response.json()) as { business: AdminStore };
-  return payload.business;
+  return normalizeStore(payload.business);
 };
 
 export const deleteAdminStore = async (businessId: string): Promise<void> => {
@@ -210,7 +215,7 @@ export const uploadBusinessLogo = async (
   }
 
   const data = (await response.json()) as { logo: string };
-  return { logo: data.logo };
+  return { logo: apiAssetUrl(data.logo) };
 };
 
 export const removeBusinessLogo = async (businessId: string): Promise<void> => {

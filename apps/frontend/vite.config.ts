@@ -33,17 +33,21 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\//,
+            handler: "NetworkOnly",
+          },
+          {
+            urlPattern: /^https?:\/\/.*\/uploads\//,
             handler: "NetworkOnly",
           },
         ],
       },
       devOptions: {
         enabled: true,
-        navigateFallbackAllowlist: [/^\/(?!api\/).*/],
+        navigateFallbackAllowlist: [/^\/(?!api\/|uploads\/).*/],
       },
     }),
   ],
@@ -51,6 +55,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
+        target: process.env.VITE_DEV_PROXY_TARGET ?? "http://localhost:3001",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/uploads": {
         target: process.env.VITE_DEV_PROXY_TARGET ?? "http://localhost:3001",
         changeOrigin: true,
         secure: false,
