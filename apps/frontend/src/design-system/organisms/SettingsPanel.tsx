@@ -19,7 +19,7 @@ export function SettingsPanel({
       <CardHeader>
         <CardTitle>Settings</CardTitle>
         <CardDescription>
-          Reset local sync data and pull a fresh copy from the server for the active store.
+          Reset local sync data and pull a fresh copy from the server for the active business.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -30,7 +30,7 @@ export function SettingsPanel({
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No pending outbox items detected for the active store.
+            No pending outbox items detected for the active business.
           </p>
         )}
 

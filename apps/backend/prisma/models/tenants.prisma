@@ -1,28 +1,28 @@
-model Store {
+model Business {
   id         String        @id @default(uuid()) @db.Uuid
   name       String
   owner_id   String        @db.Uuid
   deleted_at DateTime?
-  members    StoreMember[]
-  modules    StoreModule[]
+  members    BusinessMember[]
+  modules    BusinessModule[]
 
-  @@map("stores")
+  @@map("businesses")
   @@schema("tenants")
 }
 
-model StoreMember {
+model BusinessMember {
   id          String    @id @default(uuid()) @db.Uuid
-  store       Store?    @relation(fields: [store_id], references: [id])
-  store_id    String    @db.Uuid
+  business       Business?    @relation(fields: [business_id], references: [id])
+  business_id    String    @db.Uuid
   identity_id String    @db.Uuid
-  role        StoreRole @default(CASHIER)
+  role        BusinessRole @default(CASHIER)
 
-  @@unique([store_id, identity_id])
-  @@map("store_members")
+  @@unique([business_id, identity_id])
+  @@map("business_members")
   @@schema("tenants")
 }
 
-enum StoreRole {
+enum BusinessRole {
   OWNER
   MANAGER
   CASHIER
@@ -30,7 +30,7 @@ enum StoreRole {
   @@schema("tenants")
 }
 
-enum StoreModuleKey {
+enum BusinessModuleKey {
   CATALOG
   INVENTORY
   PRICING
@@ -38,17 +38,17 @@ enum StoreModuleKey {
   @@schema("tenants")
 }
 
-model StoreModule {
+model BusinessModule {
   id         String         @id @default(uuid()) @db.Uuid
-  store_id   String         @db.Uuid
-  module_key StoreModuleKey
+  business_id   String         @db.Uuid
+  module_key BusinessModuleKey
   enabled    Boolean        @default(true)
   created_at DateTime       @default(now())
   updated_at DateTime       @updatedAt
-  store      Store          @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  business      Business          @relation(fields: [business_id], references: [id], onDelete: Cascade)
 
-  @@unique([store_id, module_key])
-  @@index([store_id, enabled])
-  @@map("store_modules")
+  @@unique([business_id, module_key])
+  @@index([business_id, enabled])
+  @@map("business_modules")
   @@schema("tenants")
 }

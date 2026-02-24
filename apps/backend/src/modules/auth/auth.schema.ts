@@ -9,8 +9,8 @@ export const loginSchema = z.object({
   }),
 });
 
-export const selectStoreSchema = z.object({
+export const selectBusinessSchema = z.object({
   body: z.object({
-    storeId: z.uuid(),
+    businessId: z.uuid(),
   }),
 });

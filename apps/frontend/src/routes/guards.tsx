@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from "react-router-dom";
-import { useSessionStore } from "../features/auth/session-store";
+import { useSessionStore } from "../features/auth/session-business";
 import { SessionSplashPage } from "../pages/SessionSplashPage";
 
 export function RequireHydrated() {

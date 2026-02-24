@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../design-system/molecules/Card";
-import { useSessionStore } from "../features/auth/session-store";
+import { useSessionStore } from "../features/auth/session-business";
 import {
   getLocalItemDetailForDisplay,
   queueItemUpdate,
@@ -130,7 +130,7 @@ export function ItemDetailsPage() {
   const { itemId = "" } = useParams();
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
-  const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
+  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [item, setItem] = useState<DraftItem | null>(null);
@@ -193,7 +193,7 @@ export function ItemDetailsPage() {
     item?.variants.find((variant) => variant.id === defaultVariantId)?.sku ?? "";
 
   const onSave = async () => {
-    if (!item || !initialItem || !identityId || !activeStore || !isStoreSelected) return;
+    if (!item || !initialItem || !identityId || !activeStore || !isBusinessSelected) return;
     if (item.variants.length === 0) return;
 
     const nextItem = {

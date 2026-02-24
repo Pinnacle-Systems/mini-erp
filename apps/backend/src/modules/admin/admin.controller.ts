@@ -1,4 +1,4 @@
-import { StoreRole, SystemRole } from "../../../generated/prisma/enums.js";
+import { BusinessRole, SystemRole } from "../../../generated/prisma/enums.js";
 import * as argon2 from "argon2";
 import { prisma } from "../../lib/prisma.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
@@ -10,8 +10,8 @@ const assertPlatformAdmin = (req) => {
   }
 };
 
-const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_STORE_OWNER_PASSWORD?.trim() || "ChangeMe123!";
-const DUPLICATE_STORE_NAME_ERROR = "Store name already exists for this owner";
+const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_BUSINESS_OWNER_PASSWORD?.trim() || "ChangeMe123!";
+const DUPLICATE_BUSINESS_NAME_ERROR = "Business name already exists for this owner";
 const MODULE_KEYS = ["CATALOG", "INVENTORY", "PRICING"] as const;
 
 const toModuleState = (
@@ -32,21 +32,21 @@ export const listStores = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
   const {
-    storeName: rawStoreName = "",
+    businessName: rawBusinessName = "",
     ownerEmail: rawOwnerEmail = "",
     ownerPhone: rawOwnerPhone = "",
     includeDeleted: rawIncludeDeleted = false,
     page: rawPage = "1",
     limit: rawLimit = "10",
   } = req.query as {
-    storeName?: string;
+    businessName?: string;
     ownerEmail?: string;
     ownerPhone?: string;
     includeDeleted?: string | boolean;
     page?: string;
     limit?: string;
   };
-  const storeName = String(rawStoreName);
+  const businessName = String(rawBusinessName);
   const ownerEmail = String(rawOwnerEmail);
   const ownerPhone = String(rawOwnerPhone);
   const includeDeleted =
@@ -71,7 +71,7 @@ export const listStores = catchAsync(async (req, res) => {
     if (ownerIdentityIds.length === 0) {
       return res.json({
         success: true,
-        stores: [],
+        businesses: [],
         pagination: { page, limit, total: 0, totalPages: 0 },
       });
     }
@@ -79,13 +79,13 @@ export const listStores = catchAsync(async (req, res) => {
 
   const where = {
     ...(includeDeleted ? {} : { deleted_at: null }),
-    ...(storeName ? { name: { contains: storeName, mode: "insensitive" as const } } : {}),
+    ...(businessName ? { name: { contains: businessName, mode: "insensitive" as const } } : {}),
     ...(ownerIdentityIds ? { owner_id: { in: ownerIdentityIds } } : {}),
   };
 
-  const [total, stores] = await Promise.all([
-    prisma.store.count({ where }),
-    prisma.store.findMany({
+  const [total, businesses] = await Promise.all([
+    prisma.business.count({ where }),
+    prisma.business.findMany({
       where,
       orderBy: { name: "asc" },
       skip: (page - 1) * limit,
@@ -93,7 +93,7 @@ export const listStores = catchAsync(async (req, res) => {
     }),
   ]);
 
-  const ownerIds = [...new Set(stores.map((store) => store.owner_id))];
+  const ownerIds = [...new Set(businesses.map((business) => business.owner_id))];
   const owners = await prisma.identity.findMany({
     where: { id: { in: ownerIds } },
     select: { id: true, name: true, email: true, phone: true },
@@ -102,12 +102,12 @@ export const listStores = catchAsync(async (req, res) => {
 
   res.json({
     success: true,
-    stores: stores.map((store) => ({
-      id: store.id,
-      name: store.name,
-      ownerId: store.owner_id,
-      deletedAt: store.deleted_at,
-      owner: ownerById.get(store.owner_id) ?? null,
+    businesses: businesses.map((business) => ({
+      id: business.id,
+      name: business.name,
+      ownerId: business.owner_id,
+      deletedAt: business.deleted_at,
+      owner: ownerById.get(business.owner_id) ?? null,
     })),
     pagination: {
       page,
@@ -157,7 +157,7 @@ export const createStore = catchAsync(async (req, res) => {
   }
 
   let ownerId = ownerByPhone?.id ?? ownerByEmail?.id;
-  const normalizedStoreName = name.trim();
+  const normalizedBusinessName = name.trim();
 
   if (!ownerId) {
     const passwordHash = await argon2.hash(DEFAULT_OWNER_PASSWORD);
@@ -172,14 +172,14 @@ export const createStore = catchAsync(async (req, res) => {
     ownerId = createdOwner.id;
   }
 
-  let store;
+  let business;
   try {
-    const existingStore = await prisma.store.findFirst({
+    const existingStore = await prisma.business.findFirst({
       where: {
         owner_id: ownerId,
         deleted_at: null,
         name: {
-          equals: normalizedStoreName,
+          equals: normalizedBusinessName,
           mode: "insensitive",
         },
       },
@@ -187,36 +187,36 @@ export const createStore = catchAsync(async (req, res) => {
     });
 
     if (existingStore) {
-      throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
+      throw new ConflictError(DUPLICATE_BUSINESS_NAME_ERROR);
     }
 
-    store = await prisma.store.create({
+    business = await prisma.business.create({
       data: {
-        name: normalizedStoreName,
+        name: normalizedBusinessName,
         owner_id: ownerId,
       },
     });
 
-    await prisma.storeMember.upsert({
+    await prisma.businessMember.upsert({
       where: {
-        store_id_identity_id: {
-          store_id: store.id,
+        business_id_identity_id: {
+          business_id: business.id,
           identity_id: ownerId,
         },
       },
       update: {
-        role: StoreRole.OWNER,
+        role: BusinessRole.OWNER,
       },
       create: {
-        store_id: store.id,
+        business_id: business.id,
         identity_id: ownerId,
-        role: StoreRole.OWNER,
+        role: BusinessRole.OWNER,
       },
     });
 
-    await prisma.storeModule.createMany({
+    await prisma.businessModule.createMany({
       data: MODULE_KEYS.map((moduleKey) => ({
-        store_id: store.id,
+        business_id: business.id,
         module_key: moduleKey,
         enabled: true,
       })),
@@ -226,7 +226,7 @@ export const createStore = catchAsync(async (req, res) => {
     if (error && typeof error === "object" && "code" in error) {
       const code = String(error.code);
       if (code === "P2002") {
-        throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
+        throw new ConflictError(DUPLICATE_BUSINESS_NAME_ERROR);
       }
     }
     throw error;
@@ -234,10 +234,10 @@ export const createStore = catchAsync(async (req, res) => {
 
   res.status(201).json({
     success: true,
-    store: {
-      id: store.id,
-      name: store.name,
-      ownerId: store.owner_id,
+    business: {
+      id: business.id,
+      name: business.name,
+      ownerId: business.owner_id,
     },
   });
 });
@@ -245,9 +245,9 @@ export const createStore = catchAsync(async (req, res) => {
 export const getStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
-  const { storeId } = req.params;
-  const store = await prisma.store.findUnique({
-    where: { id: storeId },
+  const { businessId } = req.params;
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
     select: {
       id: true,
       name: true,
@@ -262,24 +262,24 @@ export const getStore = catchAsync(async (req, res) => {
     },
   });
 
-  if (!store) {
-    throw new NotFoundError("Store not found");
+  if (!business) {
+    throw new NotFoundError("Business not found");
   }
 
   const owner = await prisma.identity.findUnique({
-    where: { id: store.owner_id },
+    where: { id: business.owner_id },
     select: { id: true, name: true, email: true, phone: true },
   });
 
   res.json({
     success: true,
-    store: {
-      id: store.id,
-      name: store.name,
-      ownerId: store.owner_id,
-      deletedAt: store.deleted_at,
+    business: {
+      id: business.id,
+      name: business.name,
+      ownerId: business.owner_id,
+      deletedAt: business.deleted_at,
       owner: owner ?? null,
-      modules: toModuleState(store.modules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>),
+      modules: toModuleState(business.modules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>),
     },
   });
 });
@@ -287,7 +287,7 @@ export const getStore = catchAsync(async (req, res) => {
 export const updateStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
-  const { storeId } = req.params;
+  const { businessId } = req.params;
   const { name, ownerId, isActive, modules } = req.body as {
     name?: string;
     ownerId?: string;
@@ -298,7 +298,7 @@ export const updateStore = catchAsync(async (req, res) => {
       pricing?: boolean;
     };
   };
-  const normalizedStoreName = typeof name === "string" ? name.trim() : undefined;
+  const normalizedBusinessName = typeof name === "string" ? name.trim() : undefined;
 
   if (ownerId) {
     const owner = await prisma.identity.findUnique({
@@ -310,28 +310,28 @@ export const updateStore = catchAsync(async (req, res) => {
     }
   }
 
-  let store;
+  let business;
   try {
-    store = await prisma.$transaction(async (tx) => {
-      const existingStore = await tx.store.findUnique({
-        where: { id: storeId },
+    business = await prisma.$transaction(async (tx) => {
+      const existingStore = await tx.business.findUnique({
+        where: { id: businessId },
         select: { id: true, owner_id: true, name: true },
       });
 
       if (!existingStore) {
-        throw new NotFoundError("Store not found");
+        throw new NotFoundError("Business not found");
       }
 
       const targetOwnerId = ownerId ?? existingStore.owner_id;
-      const targetStoreName = normalizedStoreName ?? existingStore.name;
+      const targetBusinessName = normalizedBusinessName ?? existingStore.name;
 
-      const duplicateStore = await tx.store.findFirst({
+      const duplicateStore = await tx.business.findFirst({
         where: {
           id: { not: existingStore.id },
           owner_id: targetOwnerId,
           deleted_at: null,
           name: {
-            equals: targetStoreName,
+            equals: targetBusinessName,
             mode: "insensitive",
           },
         },
@@ -339,13 +339,13 @@ export const updateStore = catchAsync(async (req, res) => {
       });
 
       if (duplicateStore) {
-        throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
+        throw new ConflictError(DUPLICATE_BUSINESS_NAME_ERROR);
       }
 
-      const updatedStore = await tx.store.update({
+      const updatedStore = await tx.business.update({
         where: { id: existingStore.id },
         data: {
-          ...(normalizedStoreName !== undefined ? { name: normalizedStoreName } : {}),
+          ...(normalizedBusinessName !== undefined ? { name: normalizedBusinessName } : {}),
           ...(ownerId !== undefined ? { owner_id: ownerId } : {}),
           ...(isActive !== undefined ? { deleted_at: isActive ? null : new Date() } : {}),
         },
@@ -364,10 +364,10 @@ export const updateStore = catchAsync(async (req, res) => {
         }
 
         for (const moduleUpdate of moduleUpdates) {
-          await tx.storeModule.upsert({
+          await tx.businessModule.upsert({
             where: {
-              store_id_module_key: {
-                store_id: updatedStore.id,
+              business_id_module_key: {
+                business_id: updatedStore.id,
                 module_key: moduleUpdate.module_key,
               },
             },
@@ -375,7 +375,7 @@ export const updateStore = catchAsync(async (req, res) => {
               enabled: moduleUpdate.enabled,
             },
             create: {
-              store_id: updatedStore.id,
+              business_id: updatedStore.id,
               module_key: moduleUpdate.module_key,
               enabled: moduleUpdate.enabled,
             },
@@ -383,38 +383,38 @@ export const updateStore = catchAsync(async (req, res) => {
         }
       }
 
-      await tx.storeMember.upsert({
+      await tx.businessMember.upsert({
         where: {
-          store_id_identity_id: {
-            store_id: updatedStore.id,
+          business_id_identity_id: {
+            business_id: updatedStore.id,
             identity_id: targetOwnerId,
           },
         },
         update: {
-          role: StoreRole.OWNER,
+          role: BusinessRole.OWNER,
         },
         create: {
-          store_id: updatedStore.id,
+          business_id: updatedStore.id,
           identity_id: targetOwnerId,
-          role: StoreRole.OWNER,
+          role: BusinessRole.OWNER,
         },
       });
 
       if (existingStore.owner_id !== targetOwnerId) {
-        await tx.storeMember.updateMany({
+        await tx.businessMember.updateMany({
           where: {
-            store_id: updatedStore.id,
+            business_id: updatedStore.id,
             identity_id: existingStore.owner_id,
-            role: StoreRole.OWNER,
+            role: BusinessRole.OWNER,
           },
           data: {
-            role: StoreRole.MANAGER,
+            role: BusinessRole.MANAGER,
           },
         });
       }
 
-      const storeModules = await tx.storeModule.findMany({
-        where: { store_id: updatedStore.id },
+      const businessModules = await tx.businessModule.findMany({
+        where: { business_id: updatedStore.id },
         select: {
           module_key: true,
           enabled: true,
@@ -423,17 +423,17 @@ export const updateStore = catchAsync(async (req, res) => {
 
       return {
         ...updatedStore,
-        modules: storeModules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>,
+        modules: businessModules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>,
       };
     });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
       const code = String(error.code);
       if (code === "P2025") {
-        throw new NotFoundError("Store not found");
+        throw new NotFoundError("Business not found");
       }
       if (code === "P2002") {
-        throw new ConflictError(DUPLICATE_STORE_NAME_ERROR);
+        throw new ConflictError(DUPLICATE_BUSINESS_NAME_ERROR);
       }
     }
     throw error;
@@ -441,12 +441,12 @@ export const updateStore = catchAsync(async (req, res) => {
 
   res.json({
     success: true,
-    store: {
-      id: store.id,
-      name: store.name,
-      ownerId: store.owner_id,
-      deletedAt: store.deleted_at,
-      modules: toModuleState(store.modules),
+    business: {
+      id: business.id,
+      name: business.name,
+      ownerId: business.owner_id,
+      deletedAt: business.deleted_at,
+      modules: toModuleState(business.modules),
     },
   });
 });
@@ -454,27 +454,27 @@ export const updateStore = catchAsync(async (req, res) => {
 export const deleteStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
-  const { storeId } = req.params;
+  const { businessId } = req.params;
 
   try {
-    const deletedStore = await prisma.store.update({
-      where: { id: storeId },
+    const deletedStore = await prisma.business.update({
+      where: { id: businessId },
       data: {
         deleted_at: new Date(),
       },
     });
 
     if (!deletedStore) {
-      throw new NotFoundError("Store not found");
+      throw new NotFoundError("Business not found");
     }
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
       const code = String(error.code);
       if (code === "P2025") {
-        throw new NotFoundError("Store not found");
+        throw new NotFoundError("Business not found");
       }
       if (code === "P2003") {
-        throw new ConflictError("Store cannot be deleted because related records exist");
+        throw new ConflictError("Business cannot be deleted because related records exist");
       }
     }
     throw error;

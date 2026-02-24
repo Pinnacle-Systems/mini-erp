@@ -22,9 +22,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSessionStore, type StoreModules } from "../features/auth/session-store";
+import { useSessionStore, type BusinessModules } from "../features/auth/session-business";
 import { useSyncActions } from "../features/sync/SyncProvider";
-import { useUserAppStore } from "../features/sync/user-app-store";
+import { useUserAppStore } from "../features/sync/user-app-business";
 import { SyncPanel } from "../design-system/organisms/SyncPanel";
 import { SettingsPanel } from "../design-system/organisms/SettingsPanel";
 import {
@@ -81,7 +81,7 @@ const folders: Array<{
   group: FolderGroupId;
   label: string;
   Icon: LucideIcon;
-  requiredModule?: keyof StoreModules;
+  requiredModule?: keyof BusinessModules;
   apps: UserFolderApp[];
 }> = [
   {
@@ -233,7 +233,7 @@ const folders: Array<{
     apps: [
       {
         id: "admin-settings",
-        label: "Store Settings",
+        label: "Business Settings",
         Icon: ShieldCheck,
       },
       {
@@ -269,10 +269,10 @@ const folderGroups: Array<{
 
 export function AppHomePage() {
   const navigate = useNavigate();
-  const stores = useSessionStore((state) => state.stores);
+  const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
-  const activeStoreModules = useSessionStore((state) => state.activeStoreModules);
-  const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
+  const activeBusinessModules = useSessionStore((state) => state.activeBusinessModules);
+  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const identityId = useSessionStore((state) => state.identityId);
   const sku = useUserAppStore((state) => state.sku);
   const name = useUserAppStore((state) => state.name);
@@ -281,11 +281,11 @@ export function AppHomePage() {
   const setSku = useUserAppStore((state) => state.setSku);
   const setName = useUserAppStore((state) => state.setName);
   const { loading, onQueueItemCreate, onSyncNow } = useSyncActions();
-  const activeStoreName = useMemo(
+  const activeBusinessName = useMemo(
     () =>
-      stores.find((store) => store.id === activeStore)?.name ??
-      "No store selected",
-    [activeStore, stores],
+      businesses.find((business) => business.id === activeStore)?.name ??
+      "No business selected",
+    [activeStore, businesses],
   );
   const isAuthenticated = Boolean(identityId);
   const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(null);
@@ -294,12 +294,12 @@ export function AppHomePage() {
   const [resyncing, setResyncing] = useState(false);
   const enabledModules = useMemo(
     () =>
-      activeStoreModules ?? {
+      activeBusinessModules ?? {
         catalog: true,
         inventory: true,
         pricing: true,
       },
-    [activeStoreModules],
+    [activeBusinessModules],
   );
 
   const visibleFolders = useMemo(
@@ -348,7 +348,7 @@ export function AppHomePage() {
   }, [activeAppId, activeFolderId, visibleFolders]);
 
   useEffect(() => {
-    if (!activeStore || !isStoreSelected) {
+    if (!activeStore || !isBusinessSelected) {
       setPendingOutboxCount(0);
       return;
     }
@@ -367,10 +367,10 @@ export function AppHomePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeStore, isStoreSelected, loading, resyncing]);
+  }, [activeStore, isBusinessSelected, loading, resyncing]);
 
   const handleResync = async () => {
-    if (!activeStore || !isStoreSelected || resyncing) {
+    if (!activeStore || !isBusinessSelected || resyncing) {
       return;
     }
 
@@ -380,7 +380,7 @@ export function AppHomePage() {
         : "";
 
     const confirmed = window.confirm(
-      `${pendingWarning}This clears local sync data for the active store and pulls a fresh copy from server. Continue?`,
+      `${pendingWarning}This clears local sync data for the active business and pulls a fresh copy from server. Continue?`,
     );
     if (!confirmed) {
       return;
@@ -421,7 +421,7 @@ export function AppHomePage() {
           loading={loading}
           isAuthenticated={isAuthenticated}
           activeStore={activeStore}
-          isStoreSelected={isStoreSelected}
+          isBusinessSelected={isBusinessSelected}
           onSkuChange={setSku}
           onNameChange={setName}
           onQueueItemCreate={onQueueItemCreate}
@@ -435,7 +435,7 @@ export function AppHomePage() {
         <SettingsPanel
           pendingOutboxCount={pendingOutboxCount}
           loading={resyncing || loading}
-          disabled={!isAuthenticated || !activeStore || !isStoreSelected}
+          disabled={!isAuthenticated || !activeStore || !isBusinessSelected}
           onResync={() => {
             void handleResync();
           }}
@@ -449,7 +449,7 @@ export function AppHomePage() {
           <CardHeader>
             <CardTitle>Sell</CardTitle>
             <CardDescription>
-              <strong>{activeStoreName}</strong> sell app: {activeApp?.label ?? "Sell"}.
+              <strong>{activeBusinessName}</strong> sell app: {activeApp?.label ?? "Sell"}.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -467,7 +467,7 @@ export function AppHomePage() {
           <CardHeader>
             <CardTitle>Catalog</CardTitle>
             <CardDescription>
-              <strong>{activeStoreName}</strong> catalog app: {activeApp?.label ?? "Catalog"}.
+              <strong>{activeBusinessName}</strong> catalog app: {activeApp?.label ?? "Catalog"}.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -494,7 +494,7 @@ export function AppHomePage() {
         <CardHeader>
           <CardTitle>{sectionLabel}</CardTitle>
           <CardDescription>
-            <strong>{activeStoreName}</strong> {sectionLabel.toLowerCase()} app: {activeApp?.label ?? sectionLabel}.
+            <strong>{activeBusinessName}</strong> {sectionLabel.toLowerCase()} app: {activeApp?.label ?? sectionLabel}.
           </CardDescription>
         </CardHeader>
         <CardContent>

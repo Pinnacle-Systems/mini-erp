@@ -1,8 +1,8 @@
-import { ArrowLeft, LogOut, Store } from "lucide-react";
+import { ArrowLeft, Building2, LogOut } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
-import { useSessionStore } from "../../features/auth/session-store";
+import { useSessionStore } from "../../features/auth/session-business";
 
 type SessionHeaderProps = {
   onLogout: () => void;
@@ -17,15 +17,15 @@ export function SessionHeader({
 }: SessionHeaderProps) {
   const navigate = useNavigate();
   const role = useSessionStore((state) => state.role);
-  const stores = useSessionStore((state) => state.stores);
+  const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
-  const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
-  const canSwitchStore = role === "USER" && stores.length > 1 && showSwitchStore;
-  const activeStoreName = useMemo(
-    () => stores.find((store) => store.id === activeStore)?.name ?? "No store selected",
-    [activeStore, stores],
+  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
+  const canSwitchStore = role === "USER" && businesses.length > 1 && showSwitchStore;
+  const activeBusinessName = useMemo(
+    () => businesses.find((business) => business.id === activeStore)?.name ?? "No business selected",
+    [activeStore, businesses],
   );
-  const showSelectedStore = role === "USER" && isStoreSelected && showSwitchStore;
+  const showSelectedStore = role === "USER" && isBusinessSelected && showSwitchStore;
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1);
@@ -44,7 +44,7 @@ export function SessionHeader({
             className="cursor-pointer rounded-md px-1 py-0.5 text-left transition hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             title="Back to home"
           >
-            {activeStoreName}
+            {activeBusinessName}
           </button>
         ) : null}
       </div>
@@ -64,11 +64,11 @@ export function SessionHeader({
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate("/app/select-store")}
+            onClick={() => navigate("/app/select-business")}
             className="h-8 gap-1.5 px-3 text-xs"
           >
-            <Store className="h-4 w-4" aria-hidden="true" />
-            Switch store
+            <Building2 className="h-4 w-4" aria-hidden="true" />
+            Switch business
           </Button>
         ) : null}
         <Button

@@ -6,9 +6,9 @@ import {
   type ReactNode,
 } from "react";
 import { getMe, type MePayload } from "./client";
-import { useSessionStore } from "./session-store";
+import { useSessionStore } from "./session-business";
 import { getLocalItemLabels } from "../sync/engine";
-import { useUserAppStore } from "../sync/user-app-store";
+import { useUserAppStore } from "../sync/user-app-business";
 
 type SessionHydrationContextValue = {
   refreshSession: () => Promise<MePayload | null>;
@@ -54,24 +54,24 @@ export function SessionProvider({ children }: SessionProviderProps) {
         return me;
       }
 
-      const fallbackStores = useSessionStore.getState().stores;
+      const fallbackStores = useSessionStore.getState().businesses;
       const cachedSession = useSessionStore.getState();
-      const stores = me.stores ?? fallbackStores;
+      const businesses = me.businesses ?? fallbackStores;
       const cachedActiveStore =
         cachedSession.activeStore &&
-        stores.some((store) => store.id === cachedSession.activeStore)
+        businesses.some((business) => business.id === cachedSession.activeStore)
           ? cachedSession.activeStore
           : null;
       const selected = me.tenantId ?? cachedActiveStore ?? null;
       const selectedModules =
         me.modules ??
-        (selected ? cachedSession.storeModulesById[selected] ?? null : null);
+        (selected ? cachedSession.businessModulesById[selected] ?? null : null);
       setUserSession({
         identityId: me.identityId,
-        stores,
+        businesses,
         activeStore: selected,
-        activeStoreModules: selectedModules,
-        isStoreSelected: Boolean(selected),
+        activeBusinessModules: selectedModules,
+        isBusinessSelected: Boolean(selected),
       });
 
       if (selected) {
@@ -98,7 +98,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         cachedSession.identityId &&
         cachedSession.role === "USER"
       ) {
-        if (cachedSession.activeStore && cachedSession.isStoreSelected) {
+        if (cachedSession.activeStore && cachedSession.isBusinessSelected) {
           await loadItems(cachedSession.activeStore);
         } else {
           setLocalItems([]);
@@ -108,8 +108,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
           role: cachedSession.role,
           identityId: cachedSession.identityId,
           tenantId: cachedSession.activeStore,
-          stores: cachedSession.stores,
-          modules: cachedSession.activeStoreModules,
+          businesses: cachedSession.businesses,
+          modules: cachedSession.activeBusinessModules,
         };
       }
 

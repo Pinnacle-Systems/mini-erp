@@ -15,7 +15,7 @@ enum DiscountValueType {
 
 model PriceBook {
   id                String                   @id @default(uuid()) @db.Uuid
-  store_id          String                   @db.Uuid
+  business_id          String                   @db.Uuid
   code              String?
   name              String
   default_currency  String                   @db.VarChar(3)
@@ -30,8 +30,8 @@ model PriceBook {
   created_at        DateTime                 @default(now())
   updated_at        DateTime                 @updatedAt
 
-  @@unique([store_id, code])
-  @@index([store_id, is_default])
+  @@unique([business_id, code])
+  @@index([business_id, is_default])
   @@map("price_books")
   @@schema("pricing")
 }
@@ -50,7 +50,7 @@ model PriceBookCustomerGroup {
 
 model ItemPrice {
   id                String          @id @default(uuid()) @db.Uuid
-  store_id          String          @db.Uuid
+  business_id          String          @db.Uuid
   price_book_id     String          @db.Uuid
   variant_id        String          @db.Uuid
   customer_group_id String?         @db.Uuid
@@ -66,17 +66,17 @@ model ItemPrice {
   created_at        DateTime        @default(now())
   updated_at        DateTime        @updatedAt
 
-  @@index([store_id, variant_id])
+  @@index([business_id, variant_id])
   @@index([customer_group_id])
-  @@index([store_id, price_book_id, customer_group_id])
-  @@index([store_id, is_active, starts_at, ends_at])
+  @@index([business_id, price_book_id, customer_group_id])
+  @@index([business_id, is_active, starts_at, ends_at])
   @@map("item_prices")
   @@schema("pricing")
 }
 
 model DiscountRule {
   id                String                   @id @default(uuid()) @db.Uuid
-  store_id          String                   @db.Uuid
+  business_id          String                   @db.Uuid
   name              String
   description       String?
   rule_type         DiscountRuleType
@@ -98,10 +98,10 @@ model DiscountRule {
   created_at        DateTime                 @default(now())
   updated_at        DateTime                 @updatedAt
 
-  @@index([store_id, rule_type])
-  @@index([store_id, code])
+  @@index([business_id, rule_type])
+  @@index([business_id, code])
   @@index([customer_group_id])
-  @@index([store_id, is_active, starts_at, ends_at])
+  @@index([business_id, is_active, starts_at, ends_at])
   @@map("discount_rules")
   @@schema("pricing")
 }

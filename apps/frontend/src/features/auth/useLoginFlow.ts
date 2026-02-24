@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useSessionHydration } from "./SessionProvider";
 import { login } from "./client";
 import {
-  clearSessionStoreContext,
+  clearSessionBusinessContext,
   useSessionStore,
-} from "./session-store";
+} from "./session-business";
 
 type Credentials = {
   username: string;
@@ -16,8 +16,8 @@ export function useLoginFlow() {
   const navigate = useNavigate();
   const { refreshSession } = useSessionHydration();
   const setSessionActiveStore = useSessionStore((state) => state.setActiveStore);
-  const setSessionStoreSelected = useSessionStore(
-    (state) => state.setIsStoreSelected,
+  const setSessionBusinessSelected = useSessionStore(
+    (state) => state.setIsBusinessSelected,
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,9 +28,9 @@ export function useLoginFlow() {
 
     try {
       await login(username, password);
-      clearSessionStoreContext();
+      clearSessionBusinessContext();
       setSessionActiveStore(null);
-      setSessionStoreSelected(false);
+      setSessionBusinessSelected(false);
 
       const me = await refreshSession();
       if (!me?.identityId) {
@@ -38,7 +38,7 @@ export function useLoginFlow() {
       }
 
       if (me.role === "USER" && !me.tenantId) {
-        navigate("/app/select-store", { replace: true });
+        navigate("/app/select-business", { replace: true });
         return;
       }
 

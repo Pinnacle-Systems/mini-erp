@@ -165,7 +165,7 @@ const buildItemForUpdate = (payload) => {
 const toItemSnapshot = (item, defaultVariant) => {
   return {
     id: item.id,
-    store_id: item.store_id,
+    business_id: item.business_id,
     item_type: item.item_type,
     itemType: item.item_type,
     name: item.name,
@@ -185,7 +185,7 @@ const toVariantSnapshot = (
     id: variant.id,
     item_id: variant.item_id,
     itemId: variant.item_id,
-    store_id: variant.store_id,
+    business_id: variant.business_id,
     sku: variant.sku ?? null,
     barcode: variant.barcode ?? null,
     name: variant.name ?? null,
@@ -206,7 +206,7 @@ const getDefaultVariant = async (tx, tenantId, itemId) => {
   return tx.itemVariant.findFirst({
     where: {
       item_id: itemId,
-      store_id: tenantId,
+      business_id: tenantId,
       is_default: true,
     },
   });
@@ -241,7 +241,7 @@ const getVariantUsageCount = async (tx, tenantId, variantId) => {
     where: {
       variant_id: variantId,
       location: {
-        store_id: tenantId,
+        business_id: tenantId,
       },
     },
   });
@@ -252,7 +252,7 @@ const getVariantUsageCount = async (tx, tenantId, variantId) => {
       ? activityDelegate
           .count({
             where: {
-              store_id: tenantId,
+              business_id: tenantId,
               variant_id: variantId,
             },
           })
@@ -395,12 +395,12 @@ const getItemSnapshot = async (tx, tenantId, itemId) => {
   const item = await tx.item.findUnique({
     where: { id: itemId },
   });
-  if (!item || item.store_id !== tenantId) {
-    throw new AppError("Entity not found in store", 404);
+  if (!item || item.business_id !== tenantId) {
+    throw new AppError("Entity not found in business", 404);
   }
 
   const variants = await tx.itemVariant.findMany({
-    where: { item_id: itemId, store_id: tenantId },
+    where: { item_id: itemId, business_id: tenantId },
   });
 
   const snapshotVariants = await Promise.all(
@@ -442,7 +442,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     const item = await tx.item.create({
       data: {
         id: mutation.entityId,
-        store_id: tenantId,
+        business_id: tenantId,
         ...createData.item,
       },
     });
@@ -460,7 +460,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     if (variantInputs.length === 0) {
       const defaultVariant = await tx.itemVariant.create({
         data: {
-          store_id: tenantId,
+          business_id: tenantId,
           item_id: item.id,
           ...createData.defaultVariant,
         },
@@ -471,7 +471,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
       for (const variant of variantInputs) {
         const createdVariant = await tx.itemVariant.create({
           data: {
-            store_id: tenantId,
+            business_id: tenantId,
             item_id: item.id,
             sku: variant.sku ?? null,
             name: variant.name?.trim() || null,
@@ -507,8 +507,8 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     where: { id: mutation.entityId },
   });
 
-  if (!current || current.store_id !== tenantId) {
-    throw new AppError("Entity not found in store", 404);
+  if (!current || current.business_id !== tenantId) {
+    throw new AppError("Entity not found in business", 404);
   }
 
   if (mutation.op === "delete") {
@@ -550,7 +550,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     } else {
       defaultVariant = await tx.itemVariant.create({
         data: {
-          store_id: tenantId,
+          business_id: tenantId,
           item_id: mutation.entityId,
           sku,
           is_default: true,
@@ -563,7 +563,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   if (!defaultVariant) {
     defaultVariant = await tx.itemVariant.create({
       data: {
-        store_id: tenantId,
+        business_id: tenantId,
         item_id: mutation.entityId,
         sku: null,
         is_default: true,
@@ -587,14 +587,14 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     const parentItem = await tx.item.findUnique({
       where: { id: payload.itemId },
     });
-    if (!parentItem || parentItem.store_id !== tenantId) {
-      throw new AppError("Item not found in store", 404);
+    if (!parentItem || parentItem.business_id !== tenantId) {
+      throw new AppError("Item not found in business", 404);
     }
 
     const variant = await tx.itemVariant.create({
       data: {
         id: mutation.entityId,
-        store_id: tenantId,
+        business_id: tenantId,
         item_id: payload.itemId,
         sku: payload.sku ?? null,
         barcode: payload.barcode?.trim() || null,
@@ -625,8 +625,8 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     if (!current) {
       return null;
     }
-    if (current.store_id !== tenantId) {
-      throw new AppError("Variant not found in store", 404);
+    if (current.business_id !== tenantId) {
+      throw new AppError("Variant not found in business", 404);
     }
     const usageCount = await getVariantUsageCount(tx, tenantId, mutation.entityId);
     if (usageCount > 0) {
@@ -642,8 +642,8 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     return null;
   }
 
-  if (!current || current.store_id !== tenantId) {
-    throw new AppError("Variant not found in store", 404);
+  if (!current || current.business_id !== tenantId) {
+    throw new AppError("Variant not found in business", 404);
   }
 
   const patch: Record<string, unknown> = {};

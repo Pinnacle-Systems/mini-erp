@@ -10,7 +10,7 @@ type SyncPanelProps = {
   loading: boolean;
   isAuthenticated: boolean;
   activeStore: string | null;
-  isStoreSelected: boolean;
+  isBusinessSelected: boolean;
   onSkuChange: (value: string) => void;
   onNameChange: (value: string) => void;
   onQueueItemCreate: () => void;
@@ -24,7 +24,7 @@ export function SyncPanel({
   loading,
   isAuthenticated,
   activeStore,
-  isStoreSelected,
+  isBusinessSelected,
   onSkuChange,
   onNameChange,
   onQueueItemCreate,
@@ -34,7 +34,7 @@ export function SyncPanel({
     <Card>
       <CardHeader>
         <CardTitle>Item Sync</CardTitle>
-        <CardDescription>Queue and sync item mutations for the active store.</CardDescription>
+        <CardDescription>Queue and sync item mutations for the active business.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 md:grid-cols-2">
@@ -50,22 +50,22 @@ export function SyncPanel({
 
         <div className="mt-5 flex flex-wrap gap-3">
           <Button
-            disabled={loading || !isAuthenticated || !activeStore || !isStoreSelected}
+            disabled={loading || !isAuthenticated || !activeStore || !isBusinessSelected}
             onClick={onQueueItemCreate}
           >
             Queue Item Create
           </Button>
           <Button
             variant="outline"
-            disabled={loading || !isAuthenticated || !activeStore || !isStoreSelected}
+            disabled={loading || !isAuthenticated || !activeStore || !isBusinessSelected}
             onClick={onSyncNow}
           >
             Sync Now
           </Button>
         </div>
-        {!isStoreSelected ? (
+        {!isBusinessSelected ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Select a store and apply the store token to enable sync.
+            Select a business and apply the business token to enable sync.
           </p>
         ) : null}
 

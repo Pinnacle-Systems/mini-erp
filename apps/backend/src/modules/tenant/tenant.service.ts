@@ -1,7 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 
-const getStoresForIdentity = async (identityId) => {
-  return prisma.store.findMany({
+const getBusinessesForIdentity = async (identityId) => {
+  return prisma.business.findMany({
     where: {
       members: {
         some: {
@@ -12,11 +12,11 @@ const getStoresForIdentity = async (identityId) => {
   });
 };
 
-const validateMembership = async (identityId, storeId) => {
-  return prisma.storeMember.findUnique({
+const validateMembership = async (identityId, businessId) => {
+  return prisma.businessMember.findUnique({
     where: {
-      store_id_identity_id: {
-        store_id: storeId,
+      business_id_identity_id: {
+        business_id: businessId,
         identity_id: identityId,
       },
     },
@@ -24,6 +24,6 @@ const validateMembership = async (identityId, storeId) => {
 };
 
 export default {
-  getStoresForIdentity,
+  getBusinessesForIdentity,
   validateMembership,
 };

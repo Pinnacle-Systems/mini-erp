@@ -6,8 +6,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSessionStore } from "../auth/session-store";
-import { useUserAppStore } from "./user-app-store";
+import { useSessionStore } from "../auth/session-business";
+import { useUserAppStore } from "./user-app-business";
 import { getLocalItemLabels, queueItemCreate, syncOnce } from "./engine";
 
 type SyncContextValue = {
@@ -26,7 +26,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const identityId = useSessionStore((state) => state.identityId);
   const role = useSessionStore((state) => state.role);
   const activeStore = useSessionStore((state) => state.activeStore);
-  const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
+  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const sku = useUserAppStore((state) => state.sku);
   const name = useUserAppStore((state) => state.name);
   const setLocalItems = useUserAppStore((state) => state.setLocalItems);
@@ -42,7 +42,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   );
 
   const onQueueItemCreate = useCallback(async () => {
-    if (!activeStore || !identityId || !isStoreSelected) return;
+    if (!activeStore || !identityId || !isBusinessSelected) return;
     if (!sku || !name) return;
 
     setLoading(true);
@@ -59,10 +59,10 @@ export function SyncProvider({ children }: SyncProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, [activeStore, clearDraft, identityId, isStoreSelected, name, sku]);
+  }, [activeStore, clearDraft, identityId, isBusinessSelected, name, sku]);
 
   const onSyncNow = useCallback(async () => {
-    if (!activeStore || !isStoreSelected) return;
+    if (!activeStore || !isBusinessSelected) return;
 
     setLoading(true);
     try {
@@ -73,10 +73,10 @@ export function SyncProvider({ children }: SyncProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, [activeStore, isStoreSelected, loadItems]);
+  }, [activeStore, isBusinessSelected, loadItems]);
 
   useEffect(() => {
-    if (!activeStore || role !== "USER" || !isStoreSelected) return;
+    if (!activeStore || role !== "USER" || !isBusinessSelected) return;
 
     let cancelled = false;
 
@@ -92,10 +92,10 @@ export function SyncProvider({ children }: SyncProviderProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeStore, isStoreSelected, loadItems, role]);
+  }, [activeStore, isBusinessSelected, loadItems, role]);
 
   useEffect(() => {
-    if (!activeStore || role !== "USER" || !isStoreSelected) return;
+    if (!activeStore || role !== "USER" || !isBusinessSelected) return;
 
     const interval = window.setInterval(() => {
       void syncOnce(activeStore)
@@ -106,7 +106,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     }, 15000);
 
     return () => window.clearInterval(interval);
-  }, [activeStore, isStoreSelected, loadItems, role]);
+  }, [activeStore, isBusinessSelected, loadItems, role]);
 
   return (
     <SyncContext.Provider value={{ loading, onQueueItemCreate, onSyncNow }}>

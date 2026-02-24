@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../design-system/molecules/Card";
-import { useSessionStore } from "../features/auth/session-store";
+import { useSessionStore } from "../features/auth/session-business";
 import { queueItemCreate, syncOnce, type VariantInput } from "../features/sync/engine";
 
 const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
@@ -32,7 +32,7 @@ export function AddItemPage() {
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
-  const isStoreSelected = useSessionStore((state) => state.isStoreSelected);
+  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [itemType, setItemType] = useState<"PRODUCT" | "SERVICE">("PRODUCT");
   const [hasVariants, setHasVariants] = useState(false);
   const [sku, setSku] = useState("");
@@ -43,7 +43,7 @@ export function AddItemPage() {
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!identityId || !activeStore || !isStoreSelected || !name.trim()) return;
+    if (!identityId || !activeStore || !isBusinessSelected || !name.trim()) return;
     if (hasVariants && variants.length === 0) return;
 
     setLoading(true);
@@ -87,7 +87,7 @@ export function AddItemPage() {
         <CardHeader>
           <CardTitle className="text-xl">Add Item</CardTitle>
           <CardDescription className="text-xs">
-            Create a new item for the active store.
+            Create a new item for the active business.
           </CardDescription>
         </CardHeader>
         <CardContent>

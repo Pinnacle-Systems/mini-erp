@@ -3,24 +3,24 @@ import { protect } from "../../shared/middleware/auth.middleware.js";
 import { validateRequest } from "../../shared/middleware/validate.middleware.js";
 import { createStore, deleteStore, getStore, listStores, updateStore } from "./admin.controller.js";
 import {
-  createStoreSchema,
-  listStoresQuerySchema,
-  storeParamsSchema,
-  updateStoreSchema,
+  createBusinessSchema,
+  listBusinessesQuerySchema,
+  businessParamsSchema,
+  updateBusinessSchema,
 } from "./admin.schema.js";
 
 const adminRouter = Router();
 
 adminRouter.use(protect);
-adminRouter.get("/stores", validateRequest(listStoresQuerySchema), listStores);
-adminRouter.post("/stores", validateRequest(createStoreSchema), createStore);
-adminRouter.get("/stores/:storeId", validateRequest(storeParamsSchema), getStore);
+adminRouter.get("/businesses", validateRequest(listBusinessesQuerySchema), listStores);
+adminRouter.post("/businesses", validateRequest(createBusinessSchema), createStore);
+adminRouter.get("/businesses/:businessId", validateRequest(businessParamsSchema), getStore);
 adminRouter.patch(
-  "/stores/:storeId",
-  validateRequest(storeParamsSchema),
-  validateRequest(updateStoreSchema),
+  "/businesses/:businessId",
+  validateRequest(businessParamsSchema),
+  validateRequest(updateBusinessSchema),
   updateStore,
 );
-adminRouter.delete("/stores/:storeId", validateRequest(storeParamsSchema), deleteStore);
+adminRouter.delete("/businesses/:businessId", validateRequest(businessParamsSchema), deleteStore);
 
 export default adminRouter;

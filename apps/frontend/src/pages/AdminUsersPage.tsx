@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../de
 
 export function AdminUsersPage() {
   return (
-    <main className="mx-auto min-h-screen w-full max-w-6xl p-6 md:p-10">
+    <section>
       <Card>
         <CardHeader>
           <CardTitle>User Management</CardTitle>
@@ -14,6 +14,6 @@ export function AdminUsersPage() {
           </p>
         </CardContent>
       </Card>
-    </main>
+    </section>
   );
 }

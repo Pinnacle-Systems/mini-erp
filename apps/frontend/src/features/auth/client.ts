@@ -2,9 +2,9 @@ import { apiFetch, setAccessToken } from "../../lib/api";
 import {
   setAssignedStores,
   setPersistedActiveStore,
-  type StoreModules,
+  type BusinessModules,
   type AssignedStore,
-} from "./session-store";
+} from "./session-business";
 
 export type LoginResult = {
   token: string;
@@ -17,8 +17,8 @@ export type MePayload = {
   role: "USER" | "PLATFORM_ADMIN" | null;
   identityId: string | null;
   tenantId: string | null;
-  stores?: AssignedStore[];
-  modules?: StoreModules | null;
+  businesses?: AssignedStore[];
+  modules?: BusinessModules | null;
 };
 
 export const login = async (username: string, password: string): Promise<LoginResult> => {
@@ -58,28 +58,28 @@ export const login = async (username: string, password: string): Promise<LoginRe
 };
 
 export const selectStore = async (
-  storeId: string,
-): Promise<{ modules?: StoreModules | null }> => {
-  const response = await apiFetch("/api/auth/select-store", {
+  businessId: string,
+): Promise<{ modules?: BusinessModules | null }> => {
+  const response = await apiFetch("/api/auth/select-business", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ storeId })
+    body: JSON.stringify({ businessId })
   });
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? "Store selection failed");
+    throw new Error(payload?.message ?? "Business selection failed");
   }
 
   const payload = (await response.json()) as {
     token?: string;
-    modules?: StoreModules | null;
+    modules?: BusinessModules | null;
   };
   if (payload.token) {
     setAccessToken(payload.token);
   }
 
-  setPersistedActiveStore(storeId);
+  setPersistedActiveStore(businessId);
   return {
     modules: payload.modules ?? null,
   };
@@ -94,8 +94,8 @@ export const getMe = async (): Promise<MePayload> => {
   }
 
   const payload = (await response.json()) as MePayload;
-  if (payload.stores) {
-    setAssignedStores(payload.stores);
+  if (payload.businesses) {
+    setAssignedStores(payload.businesses);
   }
 
   return payload;

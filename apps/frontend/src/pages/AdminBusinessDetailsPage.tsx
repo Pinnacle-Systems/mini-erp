@@ -1,0 +1,307 @@
+import { Pencil, Save, Trash2, Undo2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import { Button } from "../design-system/atoms/Button";
+import { Input } from "../design-system/atoms/Input";
+import { Label } from "../design-system/atoms/Label";
+import { LoadingOverlay } from "../design-system/atoms/LoadingOverlay";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../design-system/molecules/Card";
+import {
+  deleteAdminStore,
+  getAdminStore,
+  updateAdminStore,
+  type AdminStore,
+} from "../features/admin/businesses";
+
+export function AdminBusinessDetailsPage() {
+  const { businessId } = useParams<{ businessId: string }>();
+  const [business, setStore] = useState<AdminStore | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const [moduleDraft, setModuleDraft] = useState({
+    catalog: true,
+    inventory: true,
+    pricing: true,
+  });
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const showOverlayLoader = loading || saving;
+
+  const loadStore = async () => {
+    if (!businessId) {
+      setError("Business not found");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getAdminStore(businessId);
+      setStore(result);
+      setNameDraft(result.name);
+      setModuleDraft({
+        catalog: result.modules?.catalog ?? true,
+        inventory: result.modules?.inventory ?? true,
+        pricing: result.modules?.pricing ?? true,
+      });
+      setIsEditingName(false);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to load business",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadStore();
+  }, [businessId]);
+
+  const runMutation = async (operation: () => Promise<void>) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await operation();
+      await loadStore();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to update business",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSaveName = async () => {
+    if (!businessId || !nameDraft.trim()) {
+      setError("Business name is required.");
+      return;
+    }
+    await runMutation(async () => {
+      await updateAdminStore(businessId, { name: nameDraft.trim() });
+    });
+    setIsEditingName(false);
+  };
+
+  const onDelete = async () => {
+    if (!businessId) return;
+    await runMutation(async () => {
+      await deleteAdminStore(businessId);
+    });
+  };
+
+  const onRestore = async () => {
+    if (!businessId) return;
+    await runMutation(async () => {
+      await updateAdminStore(businessId, { isActive: true });
+    });
+  };
+
+  const onSaveModules = async () => {
+    if (!businessId) return;
+    await runMutation(async () => {
+      await updateAdminStore(businessId, {
+        modules: {
+          catalog: moduleDraft.catalog,
+          inventory: moduleDraft.inventory,
+          pricing: moduleDraft.pricing,
+        },
+      });
+    });
+  };
+
+  return (
+    <section className="space-y-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Business Details</CardTitle>
+          <CardDescription>
+            Manage business metadata and lifecycle state.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="relative space-y-6">
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+          {!business && !loading ? (
+            <p className="text-sm text-muted-foreground">Business not found.</p>
+          ) : business ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="business-name">Business name</Label>
+                  {isEditingName ? (
+                    <Input
+                      id="business-name"
+                      value={nameDraft}
+                      onChange={(event) => setNameDraft(event.target.value)}
+                      disabled={saving}
+                    />
+                  ) : (
+                    <p className="text-sm text-foreground">{business.name}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Owner phone</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {business.owner?.phone ?? "Owner phone unavailable"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/70 bg-white/55 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Status:{" "}
+                  <span
+                    className={
+                      business.deletedAt
+                        ? "font-semibold text-red-700"
+                        : "font-semibold text-green-700"
+                    }
+                  >
+                    {business.deletedAt ? "Deleted" : "Active"}
+                  </span>
+                </p>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-white/70 bg-white/55 p-4">
+                <p className="text-sm font-semibold text-foreground">Enabled Modules</p>
+                <div className="grid gap-2">
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={moduleDraft.catalog}
+                      onChange={(event) =>
+                        setModuleDraft((current) => ({
+                          ...current,
+                          catalog: event.target.checked,
+                        }))
+                      }
+                      disabled={saving}
+                    />
+                    Catalog
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={moduleDraft.inventory}
+                      onChange={(event) =>
+                        setModuleDraft((current) => ({
+                          ...current,
+                          inventory: event.target.checked,
+                        }))
+                      }
+                      disabled={saving}
+                    />
+                    Inventory
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={moduleDraft.pricing}
+                      onChange={(event) =>
+                        setModuleDraft((current) => ({
+                          ...current,
+                          pricing: event.target.checked,
+                        }))
+                      }
+                      disabled={saving}
+                    />
+                    Pricing
+                  </label>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={onSaveModules}
+                  disabled={saving}
+                  className="gap-1"
+                >
+                  <Save className="h-4 w-4" aria-hidden="true" />
+                  Save Modules
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {business.deletedAt ? (
+                  <Button
+                    variant="outline"
+                    onClick={onRestore}
+                    disabled={saving}
+                    className="gap-1"
+                  >
+                    <Undo2 className="h-4 w-4" aria-hidden="true" />
+                    Restore Business
+                  </Button>
+                ) : (
+                  <>
+                    {isEditingName ? (
+                      <>
+                        <Button
+                          onClick={onSaveName}
+                          disabled={saving || !nameDraft.trim()}
+                          className="gap-1"
+                        >
+                          <Save className="h-4 w-4" aria-hidden="true" />
+                          Save Name
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setNameDraft(business.name);
+                            setIsEditingName(false);
+                          }}
+                          disabled={saving}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsEditingName(true)}
+                          disabled={saving}
+                          className="gap-1"
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                          Edit Name
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={onDelete}
+                          disabled={saving}
+                          className="gap-1 text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          Delete Business
+                        </Button>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="min-h-40" aria-hidden="true" />
+          )}
+          <LoadingOverlay
+            visible={showOverlayLoader}
+            label="Loading business details"
+          />
+        </CardContent>
+      </Card>
+    </section>
+  );
+}

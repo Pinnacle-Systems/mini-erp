@@ -26,7 +26,7 @@ enum DocumentStatus {
 
 model Document {
   id            String         @id @default(uuid()) @db.Uuid
-  store_id      String         @db.Uuid
+  business_id      String         @db.Uuid
   type          DocumentType
   status        DocumentStatus @default(DRAFT)
   doc_number    String
@@ -44,7 +44,7 @@ model Document {
   shipping_addr String?
   lineItems     LineItem[]
 
-  @@unique([store_id, type, doc_number])
+  @@unique([business_id, type, doc_number])
   @@map("documents")
   @@schema("documents")
 }

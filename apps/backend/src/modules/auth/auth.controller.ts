@@ -22,9 +22,9 @@ const toModuleState = (
   };
 };
 
-const getStoreModules = async (storeId: string) => {
-  const rows = await prisma.storeModule.findMany({
-    where: { store_id: storeId },
+const getBusinessModules = async (businessId: string) => {
+  const rows = await prisma.businessModule.findMany({
+    where: { business_id: businessId },
     select: { module_key: true, enabled: true },
   });
 
@@ -67,13 +67,13 @@ export const login = catchAsync(async (req, res) => {
 
   const tempToken = await signTempToken(identity, session);
 
-  const stores = await tenantService.getStoresForIdentity(identity.id);
+  const businesses = await tenantService.getBusinessesForIdentity(identity.id);
 
   res.json({
     success: true,
     token: tempToken,
     role: SystemRole.USER,
-    availableStores: stores,
+    availableStores: businesses,
   });
 });
 
@@ -121,16 +121,16 @@ export const refresh = catchAsync(async (req, res) => {
     });
   }
 
-  const { currentStoreId } = (req.body ?? {}) as { currentStoreId?: string };
+  const { currentBusinessId } = (req.body ?? {}) as { currentBusinessId?: string };
 
-  if (currentStoreId) {
+  if (currentBusinessId) {
     const member = await tenantService.validateMembership(
       session.identity_id,
-      currentStoreId,
+      currentBusinessId,
     );
 
     const token = await signAccessToken(session.identity, session, {
-      tenantId: currentStoreId,
+      tenantId: currentBusinessId,
       memberRole: member.role,
     });
 
@@ -143,18 +143,18 @@ export const refresh = catchAsync(async (req, res) => {
 
   const tempToken = await signTempToken(session.identity, session);
 
-  const stores = await tenantService.getStoresForIdentity(session.identity.id);
+  const businesses = await tenantService.getBusinessesForIdentity(session.identity.id);
 
   res.json({
     success: true,
     token: tempToken,
     role: SystemRole.USER,
-    availableStores: stores,
+    availableStores: businesses,
   });
 });
 
 export const selectStore = catchAsync(async (req, res) => {
-  const { storeId = "" } = req.body;
+  const { businessId = "" } = req.body;
   const authHeader = req.headers.authorization ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : "";
 
@@ -172,7 +172,7 @@ export const selectStore = catchAsync(async (req, res) => {
     throw new UnauthorizedError("Unauthorized");
   }
 
-  const member = await tenantService.validateMembership(payload.sub, storeId);
+  const member = await tenantService.validateMembership(payload.sub, businessId);
   if (!member) {
     throw new UnauthorizedError("Access denied");
   }
@@ -186,16 +186,16 @@ export const selectStore = catchAsync(async (req, res) => {
       id: payload.sid,
     },
     {
-      tenantId: storeId,
+      tenantId: businessId,
       memberRole: member.role,
     },
   );
-  const modules = await getStoreModules(storeId);
+  const modules = await getBusinessModules(businessId);
 
   res.json({
     success: true,
     role: SystemRole.USER,
-    tenantId: storeId,
+    tenantId: businessId,
     memberRole: member.role,
     token: accessToken,
     modules,
@@ -215,19 +215,19 @@ export const getMe = catchAsync(async (req, res) => {
     throw new UnauthorizedError("Unauthorized");
   }
 
-  let stores = [];
+  let businesses = [];
   if (payload.systemRole === SystemRole.USER && typeof payload.sub === "string") {
-    stores = await tenantService.getStoresForIdentity(payload.sub);
+    businesses = await tenantService.getBusinessesForIdentity(payload.sub);
   }
   const tenantId = typeof payload.tenantId === "string" ? payload.tenantId : null;
-  const modules = tenantId ? await getStoreModules(tenantId) : null;
+  const modules = tenantId ? await getBusinessModules(tenantId) : null;
 
   res.json({
     success: true,
     role: payload.systemRole ?? null,
     identityId: payload.sub ?? null,
     tenantId,
-    stores,
+    businesses,
     modules,
   });
 });

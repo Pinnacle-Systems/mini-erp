@@ -4,7 +4,7 @@ import { Button } from "../design-system/atoms/Button";
 import { Input } from "../design-system/atoms/Input";
 import { Label } from "../design-system/atoms/Label";
 import { Select } from "../design-system/atoms/Select";
-import { useSessionStore } from "../features/auth/session-store";
+import { useSessionStore } from "../features/auth/session-business";
 import {
   getLocalItemsForDisplay,
   type ItemDisplay,

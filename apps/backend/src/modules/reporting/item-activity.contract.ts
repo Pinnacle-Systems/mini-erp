@@ -19,7 +19,7 @@ export const itemActivityStatusSchema = z.enum(["DRAFT", "POSTED", "CANCELLED"])
 
 // Cross-module projection contract for item-360 timeline rows.
 export const itemActivityProjectionInputSchema = z.object({
-  storeId: z.uuid(),
+  businessId: z.uuid(),
   sourceSchema: z.string().trim().min(1),
   sourceType: itemActivitySourceTypeSchema,
   sourceRef: z.string().trim().min(1),
@@ -47,7 +47,7 @@ export type ItemActivityProjectionInput = z.infer<typeof itemActivityProjectionI
 
 export const toProjectionRow = (input: ItemActivityProjectionInput) =>
   ({
-    store_id: input.storeId,
+    business_id: input.businessId,
     source_schema: input.sourceSchema,
     source_type: input.sourceType,
     source_ref: input.sourceRef,

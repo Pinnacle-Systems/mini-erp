@@ -27,7 +27,7 @@ export const signTempToken = async (identity, session) => {
   return new jose.SignJWT({
     sid: session.id,
     systemRole: identity.system_role,
-    scope: "STORE_SELECTION",
+    scope: "BUSINESS_SELECTION",
   })
     .setProtectedHeader({ alg })
     .setIssuedAt()

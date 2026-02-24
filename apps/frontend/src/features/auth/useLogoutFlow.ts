@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAdminStoresStore } from "../admin/admin-stores-store";
-import { useUserAppStore } from "../sync/user-app-store";
+import { useAdminBusinessesStore } from "../admin/admin-businesses-store";
+import { useUserAppStore } from "../sync/user-app-business";
 import { logout } from "./client";
-import { clearSessionStoreContext, useSessionStore } from "./session-store";
+import { clearSessionBusinessContext, useSessionStore } from "./session-business";
 
 export function useLogoutFlow() {
   const navigate = useNavigate();
   const clearSession = useSessionStore((state) => state.clearSession);
   const resetUserAppState = useUserAppStore((state) => state.resetUserAppState);
-  const resetAdminStoresState = useAdminStoresStore(
-    (state) => state.resetAdminStoresState,
+  const resetAdminBusinessesState = useAdminBusinessesStore(
+    (state) => state.resetAdminBusinessesState,
   );
   const [loading, setLoading] = useState(false);
 
@@ -31,10 +31,10 @@ export function useLogoutFlow() {
     setLoading(true);
     try {
       await logout();
-      clearSessionStoreContext();
+      clearSessionBusinessContext();
       clearSession();
       resetUserAppState();
-      resetAdminStoresState();
+      resetAdminBusinessesState();
       navigate("/login", { replace: true });
     } finally {
       setLoading(false);

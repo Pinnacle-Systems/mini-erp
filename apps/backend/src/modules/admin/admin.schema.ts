@@ -12,9 +12,9 @@ const parseBooleanQueryParam = z.preprocess((value) => {
   return value;
 }, z.boolean());
 
-export const listStoresQuerySchema = z.object({
+export const listBusinessesQuerySchema = z.object({
   query: z.object({
-    storeName: z.string().trim().optional(),
+    businessName: z.string().trim().optional(),
     ownerEmail: z.string().trim().optional(),
     ownerPhone: z.string().trim().optional(),
     includeDeleted: parseBooleanQueryParam.default(false),
@@ -23,10 +23,10 @@ export const listStoresQuerySchema = z.object({
   }),
 });
 
-export const createStoreSchema = z.object({
+export const createBusinessSchema = z.object({
   body: z
     .object({
-      name: z.string().trim().min(2, "Store name is required"),
+      name: z.string().trim().min(2, "Business name is required"),
       ownerEmail: z.string().trim().email().optional(),
       ownerPhone: z
         .string()
@@ -39,10 +39,10 @@ export const createStoreSchema = z.object({
     }),
 });
 
-export const updateStoreSchema = z.object({
+export const updateBusinessSchema = z.object({
   body: z
     .object({
-      name: z.string().trim().min(2, "Store name is required").optional(),
+      name: z.string().trim().min(2, "Business name is required").optional(),
       ownerId: z.uuid("Owner ID must be a valid UUID").optional(),
       isActive: z.boolean().optional(),
       modules: z
@@ -66,8 +66,8 @@ export const updateStoreSchema = z.object({
     ),
 });
 
-export const storeParamsSchema = z.object({
+export const businessParamsSchema = z.object({
   params: z.object({
-    storeId: z.uuid("Store ID must be a valid UUID"),
+    businessId: z.uuid("Business ID must be a valid UUID"),
   }),
 });
