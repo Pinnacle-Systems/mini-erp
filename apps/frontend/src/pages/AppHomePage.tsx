@@ -507,9 +507,9 @@ export function AppHomePage() {
   };
 
   return (
-    <main className="min-h-screen w-full p-4 pb-24 sm:p-6 sm:pb-28 md:p-10 lg:pb-10">
-      <div className="mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
-        <aside className="hidden rounded-3xl border border-white/70 bg-white/60 p-3 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block">
+    <main className="h-auto w-full p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
+      <div className="mx-auto grid w-full max-w-6xl gap-2 lg:h-full lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="hidden rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block lg:h-full lg:overflow-y-auto">
           {folderGroups.map((group) =>
             visibleFolders.some((folder) => folder.group === group.id) ? (
               <section key={group.id} className="mb-4 space-y-2 last:mb-0">
@@ -547,13 +547,13 @@ export function AppHomePage() {
           )}
         </aside>
 
-        <section className="space-y-4">
-          <div className="rounded-3xl border border-white/70 bg-white/60 p-4 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl sm:p-5">
+        <section className="space-y-2 lg:flex lg:min-h-0 lg:flex-col">
+          <div className="rounded-2xl border border-white/70 bg-white/60 p-3 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl">
             <div className="mb-3">
-              <p className="text-sm font-semibold tracking-[0.01em] text-foreground/90">
+              <p className="text-xs font-semibold tracking-[0.01em] text-foreground/90">
                 {activeFolder?.label ?? "Apps"}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 Choose an app to continue.
               </p>
             </div>
@@ -563,7 +563,7 @@ export function AppHomePage() {
                   key={app.id}
                   type="button"
                   onClick={() => handleAppSelect(app.id)}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${
+                  className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition ${
                     activeAppId === app.id
                       ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
                       : "border-border/70 bg-white/70 text-foreground/80 hover:bg-white"
@@ -576,28 +576,30 @@ export function AppHomePage() {
             </div>
           </div>
 
-          {activeAppId ? (
-            <section className="space-y-4">{renderFolderContent()}</section>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Pick an app</CardTitle>
-                <CardDescription>
-                  Select one app from {activeFolder?.label ?? "navigation"}.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          )}
+          <div className="space-y-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+            {activeAppId ? (
+              <section className="space-y-2">{renderFolderContent()}</section>
+            ) : (
+              <Card className="p-3">
+                <CardHeader className="mb-0">
+                  <CardTitle className="text-base">Pick an app</CardTitle>
+                  <CardDescription className="text-xs">
+                    Select one app from {activeFolder?.label ?? "navigation"}.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            )}
 
-          <section className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => navigate("/app/settings")}
-              className="h-10 rounded-full border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] px-4 text-xs font-semibold text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] transition hover:from-[#ffffff] hover:to-[#edf5ff]"
-            >
-              Open settings
-            </button>
-          </section>
+            <section className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => navigate("/app/settings")}
+                className="h-8 rounded-full border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] px-3 text-[11px] font-semibold text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] transition hover:from-[#ffffff] hover:to-[#edf5ff]"
+              >
+                Open settings
+              </button>
+            </section>
+          </div>
         </section>
       </div>
 

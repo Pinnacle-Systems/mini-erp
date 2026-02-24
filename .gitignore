@@ -26,3 +26,4 @@ coverage/
 
 # Project-specific output
 /uploads/
+/apps/backend/uploads/

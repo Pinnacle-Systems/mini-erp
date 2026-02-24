@@ -34,9 +34,9 @@ export function AdminHomePage() {
   const primaryApp = adminApps[0];
 
   return (
-    <main className="min-h-screen w-full p-4 pb-24 sm:p-6 sm:pb-28 md:p-10 lg:pb-10">
-      <div className="mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
-        <aside className="hidden rounded-3xl border border-white/70 bg-white/60 p-3 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block">
+    <main className="h-auto w-full p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
+      <div className="mx-auto grid w-full max-w-6xl gap-2 lg:h-full lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="hidden rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block lg:h-full lg:overflow-y-auto">
           <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Admin Menu
           </p>
@@ -55,11 +55,11 @@ export function AdminHomePage() {
           </div>
         </aside>
 
-        <section className="space-y-4">
-          <Card>
+        <section className="space-y-2 lg:min-h-0 lg:overflow-y-auto">
+          <Card className="p-3">
             <CardHeader>
-              <CardTitle>Admin</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-base">Admin</CardTitle>
+              <CardDescription className="text-xs">
                 Use the menu to manage platform businesses and users.
               </CardDescription>
             </CardHeader>

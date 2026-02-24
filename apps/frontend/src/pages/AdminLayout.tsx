@@ -1,5 +1,5 @@
 import { Building2, Users } from "lucide-react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 
 type AdminMenuId = "businesses" | "users";
 
@@ -24,13 +24,12 @@ const adminMenu: Array<{
 ];
 
 export function AdminLayout() {
-  const navigate = useNavigate();
   const location = useLocation();
 
   return (
-    <main className="min-h-screen w-full px-2 pt-2 pb-20 sm:px-3 sm:pt-3 sm:pb-24 lg:h-[calc(100dvh-4rem)] lg:min-h-0 lg:overflow-hidden lg:pb-3">
+    <main className="min-h-[calc(100vh-3.5rem)] w-full px-2 pt-1 pb-20 sm:min-h-[calc(100vh-4rem)] sm:px-3 sm:pt-1 sm:pb-24 lg:h-[calc(100vh-4rem)] lg:overflow-hidden lg:pb-3">
       <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="hidden rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block lg:h-full">
+        <aside className="hidden h-full overflow-y-auto rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block">
           <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Admin Menu
           </p>
@@ -40,10 +39,9 @@ export function AdminLayout() {
                 location.pathname === menu.route ||
                 location.pathname.startsWith(`${menu.route}/`);
               return (
-                <button
+                <Link
                   key={menu.id}
-                  type="button"
-                  onClick={() => navigate(menu.route)}
+                  to={menu.route}
                   aria-current={isActive ? "page" : undefined}
                   className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
                     isActive
@@ -53,13 +51,13 @@ export function AdminLayout() {
                 >
                   <menu.Icon className="h-4 w-4 shrink-0" />
                   <span>{menu.label}</span>
-                </button>
+                </Link>
               );
             })}
           </div>
         </aside>
 
-        <section className="space-y-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+        <section className="space-y-2 overflow-visible lg:h-full lg:overflow-hidden">
           <Outlet />
         </section>
       </div>
@@ -71,10 +69,9 @@ export function AdminLayout() {
               location.pathname === menu.route ||
               location.pathname.startsWith(`${menu.route}/`);
             return (
-              <button
+              <Link
                 key={menu.id}
-                type="button"
-                onClick={() => navigate(menu.route)}
+                to={menu.route}
                 aria-current={isActive ? "page" : undefined}
                 className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight transition ${
                   isActive
@@ -84,7 +81,7 @@ export function AdminLayout() {
               >
                 <menu.Icon className="h-4 w-4" />
                 <span className="text-center">{menu.label}</span>
-              </button>
+              </Link>
             );
           })}
         </div>

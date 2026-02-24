@@ -2,22 +2,15 @@ import { useParams } from "react-router-dom";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "../design-system/molecules/Card";
 
 export function AdminUserDetailsPage() {
   const { userId } = useParams<{ userId: string }>();
 
   return (
-    <section>
-      <Card>
-        <CardHeader>
-          <CardTitle>User Details</CardTitle>
-          <CardDescription>Inspect and manage user profile data.</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <section className="h-auto lg:h-full lg:min-h-0">
+      <Card className="p-3 lg:h-full lg:min-h-0">
+        <CardContent className="lg:overflow-y-auto">
           <p className="text-sm text-muted-foreground">
             User detail screen is not implemented yet.
           </p>

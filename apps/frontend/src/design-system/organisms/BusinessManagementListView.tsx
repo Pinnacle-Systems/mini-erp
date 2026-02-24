@@ -80,69 +80,89 @@ export function BusinessManagementListView({
 
   return (
     <>
-      <div className="rounded-2xl border border-white/70 bg-white/55 p-2.5">
-        <div className="flex w-full flex-col gap-1.5 min-[642px]:flex-row min-[642px]:items-center">
-          <Input
-            className="w-full min-w-0 min-[642px]:min-w-[12rem] min-[642px]:basis-[12rem] min-[642px]:flex-1"
-            value={filterBusinessName}
-            onChange={(event) => onFilterBusinessNameChange(event.target.value)}
-            placeholder="Business name"
-          />
-          <Input
-            className="w-full min-w-0 min-[642px]:min-w-[12rem] min-[642px]:basis-[12rem] min-[642px]:flex-1"
-            value={filterOwnerPhone}
-            onChange={(event) => onFilterOwnerPhoneChange(event.target.value)}
-            placeholder="Owner phone"
-          />
-          <div className="flex w-full items-center justify-between min-[642px]:ml-auto min-[642px]:w-auto min-[642px]:justify-end min-[642px]:gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                id="include-deleted-businesses"
-                type="button"
-                role="switch"
-                aria-checked={filterIncludeDeleted}
-                aria-label="Include deleted businesses"
-                onClick={() => onFilterIncludeDeletedChange(!filterIncludeDeleted)}
-                disabled={loading}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
-                  filterIncludeDeleted
-                    ? "border-[#2f6fb7] bg-[#4a8dd9]"
-                    : "border-[#b8cbe0] bg-[#e7eff8]"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                    filterIncludeDeleted ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
-              <Label htmlFor="include-deleted-businesses" className="shrink-0">
-                Include deleted
-              </Label>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <IconButton
-                icon={X}
-                variant="outline"
-                onClick={onClearFilters}
-                disabled={loading}
-                className="h-8 w-8 shrink-0 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
-                aria-label="Clear filters"
-                title="Clear filters"
-              />
-              <IconButton
-                icon={RefreshCw}
-                variant="outline"
-                onClick={onReload}
-                disabled={loading}
-                className="h-8 w-8 shrink-0 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
-                aria-label="Reload businesses"
-                title="Reload businesses"
-              />
+      <div className="flex flex-col gap-2 min-[1192px]:flex-row min-[1192px]:items-center min-[1192px]:gap-2">
+        <div className="flex justify-end min-[1192px]:order-2 min-[1192px]:flex-none">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate("/app/businesses/new")}
+            disabled={loading}
+            className="h-8 px-2.5 text-[11px]"
+          >
+            Add Business
+          </Button>
+        </div>
+        <fieldset className="rounded-xl border border-[#c6d8ef] bg-[#f4f8ff] p-2 min-[1192px]:order-1 min-[1192px]:flex-1 min-[1192px]:min-w-0">
+          <legend className="rounded-full border border-[#c6d8ef] bg-[#eef5ff] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#35597f]">
+            Filters
+          </legend>
+          <p className="mb-2 text-[11px] leading-tight text-[#4c6e93]">
+            Refine the businesses shown below.
+          </p>
+          <div className="flex w-full flex-col gap-1.5 min-[642px]:flex-row min-[642px]:flex-wrap min-[642px]:items-center min-[642px]:gap-x-0 min-[642px]:gap-y-1.5 min-[1192px]:gap-y-0">
+            <Input
+              className="w-full min-w-0 min-[642px]:flex-1 min-[642px]:min-w-[12rem] min-[1192px]:w-52 min-[1192px]:flex-none"
+              value={filterBusinessName}
+              onChange={(event) => onFilterBusinessNameChange(event.target.value)}
+              placeholder="Business name"
+            />
+            <Input
+              className="w-full min-w-0 min-[642px]:ml-1 min-[642px]:flex-1 min-[642px]:min-w-[10rem] min-[1192px]:w-44 min-[1192px]:flex-none"
+              value={filterOwnerPhone}
+              onChange={(event) => onFilterOwnerPhoneChange(event.target.value)}
+              placeholder="Owner phone"
+            />
+            <div className="flex w-full items-center justify-start gap-2 min-[642px]:inline-flex min-[642px]:w-auto min-[1192px]:ml-1 max-[1191px]:basis-full">
+              <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                <div className="flex items-center gap-2">
+                  <button
+                    id="include-deleted-businesses"
+                    type="button"
+                    role="switch"
+                    aria-checked={filterIncludeDeleted}
+                    aria-label="Include deleted businesses"
+                    onClick={() => onFilterIncludeDeletedChange(!filterIncludeDeleted)}
+                    disabled={loading}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      filterIncludeDeleted
+                        ? "border-[#2f6fb7] bg-[#4a8dd9]"
+                        : "border-[#b8cbe0] bg-[#e7eff8]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
+                        filterIncludeDeleted ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                  <Label htmlFor="include-deleted-businesses" className="shrink-0">
+                    Include deleted
+                  </Label>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onClearFilters}
+                  disabled={loading}
+                  className="h-6 gap-1 px-2 text-[11px]"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  Clear Filters
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onReload}
+                  disabled={loading}
+                  className="h-6 gap-1 px-2 text-[11px]"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                  Reload Data
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        </fieldset>
       </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -298,7 +318,9 @@ export function BusinessManagementListView({
       </div>
 
       {businesses.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No businesses found.</p>
+        <div className="rounded-2xl border border-white/70 bg-white/55 p-3">
+          <p className="px-0 text-sm text-muted-foreground">No businesses found.</p>
+        </div>
       ) : null}
 
       <div className="flex items-center justify-between rounded-2xl border border-white/70 bg-white/55 p-3">

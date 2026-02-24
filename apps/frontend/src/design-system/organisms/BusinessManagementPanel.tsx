@@ -3,9 +3,6 @@ import { LoadingOverlay } from "../atoms/LoadingOverlay";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "../molecules/Card";
 import type {
   AdminStore,
@@ -26,6 +23,16 @@ type BusinessManagementPanelProps = {
   error: string | null;
   newBusinessName: string;
   newOwnerPhone: string;
+  newPhoneNumber: string;
+  newGstin: string;
+  newEmail: string;
+  newBusinessType: string;
+  newBusinessCategory: string;
+  newState: string;
+  newPincode: string;
+  newAddress: string;
+  logoPreviewUrl: string | null;
+  uploadingLogo: boolean;
   onFilterBusinessNameChange: (value: string) => void;
   onFilterOwnerPhoneChange: (value: string) => void;
   onFilterIncludeDeletedChange: (value: boolean) => void;
@@ -34,10 +41,18 @@ type BusinessManagementPanelProps = {
   onNextPage: () => void;
   onNewBusinessNameChange: (value: string) => void;
   onNewOwnerPhoneChange: (value: string) => void;
+  onNewPhoneNumberChange: (value: string) => void;
+  onNewGstinChange: (value: string) => void;
+  onNewEmailChange: (value: string) => void;
+  onNewBusinessTypeChange: (value: string) => void;
+  onNewBusinessCategoryChange: (value: string) => void;
+  onNewStateChange: (value: string) => void;
+  onNewPincodeChange: (value: string) => void;
+  onNewAddressChange: (value: string) => void;
+  onLogoFileChange: (file: File | null) => void;
   onCreate: () => void;
   onOpenStore: (business: AdminStore) => void;
   onReload: () => void;
-  onOpenCreate: () => void;
   onBackToList: () => void;
 };
 
@@ -53,6 +68,16 @@ export function BusinessManagementPanel({
   error,
   newBusinessName,
   newOwnerPhone,
+  newPhoneNumber,
+  newGstin,
+  newEmail,
+  newBusinessType,
+  newBusinessCategory,
+  newState,
+  newPincode,
+  newAddress,
+  logoPreviewUrl,
+  uploadingLogo,
   onFilterBusinessNameChange,
   onFilterOwnerPhoneChange,
   onFilterIncludeDeletedChange,
@@ -61,41 +86,27 @@ export function BusinessManagementPanel({
   onNextPage,
   onNewBusinessNameChange,
   onNewOwnerPhoneChange,
+  onNewPhoneNumberChange,
+  onNewGstinChange,
+  onNewEmailChange,
+  onNewBusinessTypeChange,
+  onNewBusinessCategoryChange,
+  onNewStateChange,
+  onNewPincodeChange,
+  onNewAddressChange,
+  onLogoFileChange,
   onCreate,
   onOpenStore,
   onReload,
-  onOpenCreate,
   onBackToList,
 }: BusinessManagementPanelProps) {
   const isListView = mode === "list";
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <CardTitle>{isListView ? "Manage Businesses" : "Add Business"}</CardTitle>
-            <CardDescription>
-              {isListView
-                ? "Browse, edit, and remove businesses as a platform admin."
-                : "Create a new business by looking up the owner using phone."}
-            </CardDescription>
-          </div>
-          {isListView ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onOpenCreate}
-              aria-label="Add new business"
-              title="Add new business"
-            >
-              Add Business
-            </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent className={`relative ${isListView ? "space-y-0" : "space-y-4"}`}>
+    <Card className="h-auto lg:h-full lg:min-h-0">
+      <CardContent
+        className={`relative ${isListView ? "space-y-0" : "space-y-2"} lg:h-full lg:min-h-0 lg:overflow-y-auto`}
+      >
         {isListView ? (
           <BusinessManagementListView
             businesses={businesses}
@@ -121,8 +132,27 @@ export function BusinessManagementPanel({
             error={error}
             newBusinessName={newBusinessName}
             newOwnerPhone={newOwnerPhone}
+            newPhoneNumber={newPhoneNumber}
+            newGstin={newGstin}
+            newEmail={newEmail}
+            newBusinessType={newBusinessType}
+            newBusinessCategory={newBusinessCategory}
+            newState={newState}
+            newPincode={newPincode}
+            newAddress={newAddress}
+            logoPreviewUrl={logoPreviewUrl}
+            uploadingLogo={uploadingLogo}
             onNewBusinessNameChange={onNewBusinessNameChange}
             onNewOwnerPhoneChange={onNewOwnerPhoneChange}
+            onNewPhoneNumberChange={onNewPhoneNumberChange}
+            onNewGstinChange={onNewGstinChange}
+            onNewEmailChange={onNewEmailChange}
+            onNewBusinessTypeChange={onNewBusinessTypeChange}
+            onNewBusinessCategoryChange={onNewBusinessCategoryChange}
+            onNewStateChange={onNewStateChange}
+            onNewPincodeChange={onNewPincodeChange}
+            onNewAddressChange={onNewAddressChange}
+            onLogoFileChange={onLogoFileChange}
             onCreate={onCreate}
             onBackToList={onBackToList}
           />

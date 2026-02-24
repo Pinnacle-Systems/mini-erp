@@ -4,6 +4,15 @@ export type AdminStore = {
   id: string;
   name: string;
   ownerId: string;
+  phoneNumber?: string | null;
+  gstin?: string | null;
+  email?: string | null;
+  businessType?: string | null;
+  businessCategory?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  address?: string | null;
+  logo?: string | null;
   deletedAt?: string | null;
   modules?: {
     catalog: boolean;
@@ -84,14 +93,34 @@ export const listAdminStores = async (
 
 export const createAdminStore = async (
   name: string,
-  ownerContact: { ownerPhone?: string },
+  payload: {
+    ownerPhone?: string;
+    phoneNumber?: string;
+    gstin?: string;
+    email?: string;
+    businessType?: string;
+    businessCategory?: string;
+    state?: string;
+    pincode?: string;
+    address?: string;
+    logo?: string;
+  },
 ): Promise<AdminStore> => {
   const response = await apiFetch("/api/admin/businesses", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
-      ...(ownerContact.ownerPhone ? { ownerPhone: ownerContact.ownerPhone.trim() } : {}),
+      ...(payload.ownerPhone ? { ownerPhone: payload.ownerPhone.trim() } : {}),
+      ...(payload.phoneNumber ? { phoneNumber: payload.phoneNumber.trim() } : {}),
+      ...(payload.gstin ? { gstin: payload.gstin.trim() } : {}),
+      ...(payload.email ? { email: payload.email.trim() } : {}),
+      ...(payload.businessType ? { businessType: payload.businessType.trim() } : {}),
+      ...(payload.businessCategory ? { businessCategory: payload.businessCategory.trim() } : {}),
+      ...(payload.state ? { state: payload.state.trim() } : {}),
+      ...(payload.pincode ? { pincode: payload.pincode.trim() } : {}),
+      ...(payload.address ? { address: payload.address.trim() } : {}),
+      ...(payload.logo ? { logo: payload.logo.trim() } : {}),
     }),
   });
 
@@ -99,8 +128,8 @@ export const createAdminStore = async (
     throw new Error(await parseError(response, "Unable to create business"));
   }
 
-  const payload = (await response.json()) as { business: AdminStore };
-  return payload.business;
+  const responseBody = (await response.json()) as { business: AdminStore };
+  return responseBody.business;
 };
 
 export const updateAdminStore = async (
@@ -109,6 +138,15 @@ export const updateAdminStore = async (
     name?: string;
     ownerId?: string;
     isActive?: boolean;
+    phoneNumber?: string | null;
+    gstin?: string | null;
+    email?: string | null;
+    businessType?: string | null;
+    businessCategory?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    address?: string | null;
+    logo?: string | null;
     modules?: {
       catalog?: boolean;
       inventory?: boolean;
@@ -150,5 +188,37 @@ export const deleteAdminStore = async (businessId: string): Promise<void> => {
 
   if (!response.ok) {
     throw new Error(await parseError(response, "Unable to delete business"));
+  }
+};
+
+export const uploadBusinessLogo = async (
+  businessId: string,
+  payload: { fileName?: string; mimeType: string; dataBase64: string },
+): Promise<{ logo: string }> => {
+  const response = await apiFetch(`/api/admin/businesses/${encodeURIComponent(businessId)}/logo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const fallbackMessage =
+      response.status === 413
+        ? "Logo file is too large. Please use an image up to 2MB."
+        : "Unable to upload business logo";
+    throw new Error(await parseError(response, fallbackMessage));
+  }
+
+  const data = (await response.json()) as { logo: string };
+  return { logo: data.logo };
+};
+
+export const removeBusinessLogo = async (businessId: string): Promise<void> => {
+  const response = await apiFetch(`/api/admin/businesses/${encodeURIComponent(businessId)}/logo`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Unable to remove business logo"));
   }
 };

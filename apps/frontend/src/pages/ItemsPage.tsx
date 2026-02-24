@@ -53,10 +53,10 @@ export function ItemsPage() {
   }, [items, query, variantFilter]);
 
   return (
-    <main className="min-h-screen w-full space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10">
-      <section className="flex flex-wrap items-start justify-between gap-3">
+    <main className="h-auto w-full space-y-2 p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:space-y-2 lg:pb-3">
+      <section className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-[-0.01em] text-foreground">
+          <h1 className="text-base font-semibold tracking-[-0.01em] text-foreground">
             Items
           </h1>
         </div>
@@ -65,8 +65,8 @@ export function ItemsPage() {
         </Button>
       </section>
 
-      <section>
-        <div className="mb-4 grid gap-3 rounded-2xl border border-white/65 bg-white/55 p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="space-y-2 lg:min-h-0 lg:overflow-y-auto">
+        <div className="grid gap-2 rounded-xl border border-white/65 bg-white/55 p-2 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1">
             <Label htmlFor="items-search" className="block">
               Search
@@ -121,7 +121,7 @@ export function ItemsPage() {
             No items match your current filters.
           </div>
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredItems.map((item) => (
               <li
                 key={item.entityId}

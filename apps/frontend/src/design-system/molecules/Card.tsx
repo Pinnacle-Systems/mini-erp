@@ -20,8 +20,9 @@ export function Card({ className, children, ...props }: CardProps) {
 }
 
 export function CardHeader({ className, children, ...props }: CardProps) {
+  const hasExplicitMarginBottom = className?.split(/\s+/).some((token) => /(^|:)mb-/.test(token));
   return (
-    <div className={cn("mb-4", className)} {...props}>
+    <div className={cn(hasExplicitMarginBottom ? undefined : "mb-4", className)} {...props}>
       {children}
     </div>
   );

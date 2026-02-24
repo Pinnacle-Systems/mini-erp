@@ -1,5 +1,9 @@
 import { BusinessRole, SystemRole } from "../../../generated/prisma/enums.js";
 import * as argon2 from "argon2";
+import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { dirname, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { prisma } from "../../lib/prisma.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/utils/errors.js";
@@ -13,6 +17,27 @@ const assertPlatformAdmin = (req) => {
 const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_BUSINESS_OWNER_PASSWORD?.trim() || "ChangeMe123!";
 const DUPLICATE_BUSINESS_NAME_ERROR = "Business name already exists for this owner";
 const MODULE_KEYS = ["CATALOG", "INVENTORY", "PRICING"] as const;
+const ALLOWED_LOGO_MIME_TYPES = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+} as const;
+const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const LOGO_UPLOAD_DIR = resolve(__dirname, "../../../uploads/business-logos");
+
+const removeLocalLogoFile = async (logoPath: string | null | undefined) => {
+  if (!logoPath?.startsWith("/uploads/business-logos/")) {
+    return;
+  }
+  const fileName = logoPath.replace("/uploads/business-logos/", "");
+  const absolutePath = resolve(LOGO_UPLOAD_DIR, fileName);
+  if (!extname(absolutePath)) {
+    return;
+  }
+  await fs.unlink(absolutePath).catch(() => undefined);
+};
 
 const toModuleState = (
   rows: Array<{
@@ -106,6 +131,15 @@ export const listStores = catchAsync(async (req, res) => {
       id: business.id,
       name: business.name,
       ownerId: business.owner_id,
+      phoneNumber: business.phone_number,
+      gstin: business.gstin,
+      email: business.email,
+      businessType: business.business_type,
+      businessCategory: business.business_category,
+      state: business.state,
+      pincode: business.pincode,
+      address: business.address,
+      logo: business.logo,
       deletedAt: business.deleted_at,
       owner: ownerById.get(business.owner_id) ?? null,
     })),
@@ -121,10 +155,32 @@ export const listStores = catchAsync(async (req, res) => {
 export const createStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
-  const { name, ownerEmail, ownerPhone } = req.body as {
+  const {
+    name,
+    ownerEmail,
+    ownerPhone,
+    phoneNumber,
+    gstin,
+    email,
+    businessType,
+    businessCategory,
+    state,
+    pincode,
+    address,
+    logo,
+  } = req.body as {
     name: string;
     ownerEmail?: string;
     ownerPhone?: string;
+    phoneNumber?: string;
+    gstin?: string;
+    email?: string;
+    businessType?: string;
+    businessCategory?: string;
+    state?: string;
+    pincode?: string;
+    address?: string;
+    logo?: string;
   };
   const normalizedEmail = ownerEmail?.trim().toLowerCase();
   const normalizedPhone = ownerPhone?.trim();
@@ -194,6 +250,15 @@ export const createStore = catchAsync(async (req, res) => {
       data: {
         name: normalizedBusinessName,
         owner_id: ownerId,
+        phone_number: phoneNumber ?? null,
+        gstin: gstin ?? null,
+        email: email ?? null,
+        business_type: businessType ?? null,
+        business_category: businessCategory ?? null,
+        state: state ?? null,
+        pincode: pincode ?? null,
+        address: address ?? null,
+        logo: logo ?? null,
       },
     });
 
@@ -238,6 +303,15 @@ export const createStore = catchAsync(async (req, res) => {
       id: business.id,
       name: business.name,
       ownerId: business.owner_id,
+      phoneNumber: business.phone_number,
+      gstin: business.gstin,
+      email: business.email,
+      businessType: business.business_type,
+      businessCategory: business.business_category,
+      state: business.state,
+      pincode: business.pincode,
+      address: business.address,
+      logo: business.logo,
     },
   });
 });
@@ -252,6 +326,15 @@ export const getStore = catchAsync(async (req, res) => {
       id: true,
       name: true,
       owner_id: true,
+      phone_number: true,
+      gstin: true,
+      email: true,
+      business_type: true,
+      business_category: true,
+      state: true,
+      pincode: true,
+      address: true,
+      logo: true,
       deleted_at: true,
       modules: {
         select: {
@@ -277,6 +360,15 @@ export const getStore = catchAsync(async (req, res) => {
       id: business.id,
       name: business.name,
       ownerId: business.owner_id,
+      phoneNumber: business.phone_number,
+      gstin: business.gstin,
+      email: business.email,
+      businessType: business.business_type,
+      businessCategory: business.business_category,
+      state: business.state,
+      pincode: business.pincode,
+      address: business.address,
+      logo: business.logo,
       deletedAt: business.deleted_at,
       owner: owner ?? null,
       modules: toModuleState(business.modules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>),
@@ -288,7 +380,21 @@ export const updateStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
   const { businessId } = req.params;
-  const { name, ownerId, isActive, modules } = req.body as {
+  const {
+    name,
+    ownerId,
+    isActive,
+    modules,
+    phoneNumber,
+    gstin,
+    email,
+    businessType,
+    businessCategory,
+    state,
+    pincode,
+    address,
+    logo,
+  } = req.body as {
     name?: string;
     ownerId?: string;
     isActive?: boolean;
@@ -297,8 +403,18 @@ export const updateStore = catchAsync(async (req, res) => {
       inventory?: boolean;
       pricing?: boolean;
     };
+    phoneNumber?: string | null;
+    gstin?: string | null;
+    email?: string | null;
+    businessType?: string | null;
+    businessCategory?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    address?: string | null;
+    logo?: string | null;
   };
   const normalizedBusinessName = typeof name === "string" ? name.trim() : undefined;
+  const hasField = (field: string) => Object.prototype.hasOwnProperty.call(req.body ?? {}, field);
 
   if (ownerId) {
     const owner = await prisma.identity.findUnique({
@@ -348,6 +464,15 @@ export const updateStore = catchAsync(async (req, res) => {
           ...(normalizedBusinessName !== undefined ? { name: normalizedBusinessName } : {}),
           ...(ownerId !== undefined ? { owner_id: ownerId } : {}),
           ...(isActive !== undefined ? { deleted_at: isActive ? null : new Date() } : {}),
+          ...(hasField("phoneNumber") ? { phone_number: phoneNumber ?? null } : {}),
+          ...(hasField("gstin") ? { gstin: gstin ?? null } : {}),
+          ...(hasField("email") ? { email: email ?? null } : {}),
+          ...(hasField("businessType") ? { business_type: businessType ?? null } : {}),
+          ...(hasField("businessCategory") ? { business_category: businessCategory ?? null } : {}),
+          ...(hasField("state") ? { state: state ?? null } : {}),
+          ...(hasField("pincode") ? { pincode: pincode ?? null } : {}),
+          ...(hasField("address") ? { address: address ?? null } : {}),
+          ...(hasField("logo") ? { logo: logo ?? null } : {}),
         },
       });
 
@@ -445,6 +570,15 @@ export const updateStore = catchAsync(async (req, res) => {
       id: business.id,
       name: business.name,
       ownerId: business.owner_id,
+      phoneNumber: business.phone_number,
+      gstin: business.gstin,
+      email: business.email,
+      businessType: business.business_type,
+      businessCategory: business.business_category,
+      state: business.state,
+      pincode: business.pincode,
+      address: business.address,
+      logo: business.logo,
       deletedAt: business.deleted_at,
       modules: toModuleState(business.modules),
     },
@@ -479,6 +613,90 @@ export const deleteStore = catchAsync(async (req, res) => {
     }
     throw error;
   }
+
+  res.json({
+    success: true,
+  });
+});
+
+export const uploadBusinessLogo = catchAsync(async (req, res) => {
+  assertPlatformAdmin(req);
+
+  const { businessId } = req.params;
+  const { mimeType, dataBase64 } = req.body as {
+    fileName?: string;
+    mimeType: string;
+    dataBase64: string;
+  };
+
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { id: true, logo: true },
+  });
+
+  if (!business) {
+    throw new NotFoundError("Business not found");
+  }
+
+  const extension = ALLOWED_LOGO_MIME_TYPES[mimeType as keyof typeof ALLOWED_LOGO_MIME_TYPES];
+  if (!extension) {
+    throw new ConflictError("Unsupported logo file type");
+  }
+
+  let fileBuffer: Buffer;
+  try {
+    fileBuffer = Buffer.from(dataBase64, "base64");
+  } catch {
+    throw new ConflictError("Invalid logo file payload");
+  }
+
+  if (!fileBuffer.length) {
+    throw new ConflictError("Logo file is empty");
+  }
+
+  if (fileBuffer.length > MAX_LOGO_SIZE_BYTES) {
+    throw new ConflictError("Logo file exceeds 2MB size limit");
+  }
+
+  await fs.mkdir(LOGO_UPLOAD_DIR, { recursive: true });
+  const fileName = `${businessId}-${Date.now()}-${randomUUID()}${extension}`;
+  const absolutePath = resolve(LOGO_UPLOAD_DIR, fileName);
+  const publicPath = `/uploads/business-logos/${fileName}`;
+
+  await fs.writeFile(absolutePath, fileBuffer);
+
+  await removeLocalLogoFile(business.logo);
+
+  await prisma.business.update({
+    where: { id: businessId },
+    data: { logo: publicPath },
+  });
+
+  res.status(201).json({
+    success: true,
+    logo: publicPath,
+  });
+});
+
+export const removeBusinessLogo = catchAsync(async (req, res) => {
+  assertPlatformAdmin(req);
+
+  const { businessId } = req.params;
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { id: true, logo: true },
+  });
+
+  if (!business) {
+    throw new NotFoundError("Business not found");
+  }
+
+  await removeLocalLogoFile(business.logo);
+
+  await prisma.business.update({
+    where: { id: businessId },
+    data: { logo: null },
+  });
 
   res.json({
     success: true,

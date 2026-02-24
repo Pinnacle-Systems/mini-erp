@@ -35,24 +35,87 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
 
   const isAuthenticated = Boolean(identityId);
   const isPlatformAdmin = role === "PLATFORM_ADMIN";
+  const headerContext = (() => {
+    if (!isPlatformAdmin) return null;
+    const { pathname } = location;
+    if (pathname === "/app/businesses") {
+      return {
+        title: "Manage Businesses",
+        subtitle: "Browse, edit, and manage business records.",
+      };
+    }
+    if (pathname === "/app/businesses/new") {
+      return {
+        title: "Add Business",
+        subtitle: "Create a new business and initialize profile details.",
+      };
+    }
+    if (pathname.startsWith("/app/businesses/")) {
+      return {
+        title: "Business Details",
+        subtitle: "Manage business metadata and lifecycle state.",
+      };
+    }
+    if (pathname === "/app/users") {
+      return {
+        title: "Manage Users",
+        subtitle: "Review users and inspect account activity.",
+      };
+    }
+    if (pathname.startsWith("/app/users/")) {
+      return {
+        title: "User Details",
+        subtitle: "Inspect user profile data and account state.",
+      };
+    }
+    return null;
+  })();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      document.body.classList.remove("app-shell-locked");
+      return;
+    }
+
+    const desktopMedia = window.matchMedia("(min-width: 1024px)");
+    const applyLock = () => {
+      if (desktopMedia.matches) {
+        document.body.classList.add("app-shell-locked");
+      } else {
+        document.body.classList.remove("app-shell-locked");
+      }
+    };
+
+    applyLock();
+    desktopMedia.addEventListener("change", applyLock);
+
+    return () => {
+      desktopMedia.removeEventListener("change", applyLock);
+      document.body.classList.remove("app-shell-locked");
+    };
+  }, [isAuthenticated]);
 
   return (
-    <>
+    <div className="min-h-screen w-full lg:h-screen lg:overflow-hidden">
       {isAuthenticated ? (
         <div className="fixed inset-x-0 top-0 z-40 border-b border-white/60 bg-white/80 backdrop-blur-xl">
           <div className="px-2 py-2 sm:px-3 md:px-4">
             <SessionHeader
               showBack={!isPlatformAdmin && location.pathname !== "/app"}
               showSwitchStore={location.pathname !== "/app/select-business"}
+              contextTitle={headerContext?.title}
+              contextSubtitle={headerContext?.subtitle}
               onLogout={onLogout}
             />
           </div>
         </div>
       ) : null}
-      <div className={isAuthenticated ? "pt-14 sm:pt-16" : undefined}>
+      <div
+        className={`overflow-visible overflow-x-hidden lg:h-full lg:overflow-y-auto ${isAuthenticated ? "pt-14 sm:pt-16" : ""}`}
+      >
         <Outlet />
       </div>
-    </>
+    </div>
   );
 }
 

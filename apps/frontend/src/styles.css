@@ -77,6 +77,19 @@
     width: 100%;
     min-height: 100vh;
   }
+
+  @media (min-width: 1024px) {
+    body.app-shell-locked {
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    body.app-shell-locked #root {
+      height: 100vh;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+  }
 }
 
 @layer components {

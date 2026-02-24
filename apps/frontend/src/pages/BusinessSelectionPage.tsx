@@ -60,12 +60,12 @@ export function BusinessSelectionPage() {
   };
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-4xl space-y-4 p-6 md:p-10">
+    <main className="mx-auto h-auto w-full max-w-4xl space-y-3 p-3 pb-20 sm:p-4 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-[-0.01em] text-foreground">
+        <h1 className="text-lg font-semibold tracking-[-0.01em] text-foreground">
           Select a business
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Choose the business you want to access for this session.
         </p>
       </header>

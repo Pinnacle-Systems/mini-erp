@@ -8,12 +8,16 @@ type SessionHeaderProps = {
   onLogout: () => void;
   showSwitchStore?: boolean;
   showBack?: boolean;
+  contextTitle?: string;
+  contextSubtitle?: string;
 };
 
 export function SessionHeader({
   onLogout,
   showSwitchStore = true,
   showBack = false,
+  contextTitle,
+  contextSubtitle,
 }: SessionHeaderProps) {
   const navigate = useNavigate();
   const role = useSessionStore((state) => state.role);
@@ -36,12 +40,23 @@ export function SessionHeader({
 
   return (
     <section className="flex flex-wrap items-center justify-between gap-2">
-      <div className="min-h-8 text-lg font-semibold tracking-[-0.01em] text-foreground">
-        {showSelectedStore ? (
+      <div className="min-h-8">
+        {contextTitle ? (
+          <div className="space-y-0.5">
+            <p className="text-sm font-semibold leading-tight tracking-[-0.01em] text-foreground">
+              {contextTitle}
+            </p>
+            {contextSubtitle ? (
+              <p className="text-[11px] leading-tight text-muted-foreground">
+                {contextSubtitle}
+              </p>
+            ) : null}
+          </div>
+        ) : showSelectedStore ? (
           <button
             type="button"
             onClick={() => navigate("/app")}
-            className="cursor-pointer rounded-md px-1 py-0.5 text-left transition hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="cursor-pointer rounded-md px-1 py-0.5 text-left text-lg font-semibold tracking-[-0.01em] transition hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             title="Back to home"
           >
             {activeBusinessName}

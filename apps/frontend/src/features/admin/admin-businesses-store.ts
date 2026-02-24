@@ -11,6 +11,15 @@ type AdminBusinessesState = {
   error: string | null;
   newBusinessName: string;
   newOwnerPhone: string;
+  newPhoneNumber: string;
+  newGstin: string;
+  newEmail: string;
+  newBusinessType: string;
+  newBusinessCategory: string;
+  newState: string;
+  newPincode: string;
+  newAddress: string;
+  newLogo: string;
 };
 
 type AdminBusinessesActions = {
@@ -25,6 +34,15 @@ type AdminBusinessesActions = {
   setError: (value: string | null) => void;
   setNewBusinessName: (value: string) => void;
   setNewOwnerPhone: (value: string) => void;
+  setNewPhoneNumber: (value: string) => void;
+  setNewGstin: (value: string) => void;
+  setNewEmail: (value: string) => void;
+  setNewBusinessType: (value: string) => void;
+  setNewBusinessCategory: (value: string) => void;
+  setNewState: (value: string) => void;
+  setNewPincode: (value: string) => void;
+  setNewAddress: (value: string) => void;
+  setNewLogo: (value: string) => void;
   clearCreateDraft: () => void;
   resetAdminBusinessesState: () => void;
 };
@@ -46,6 +64,15 @@ const initialState: AdminBusinessesState = {
   error: null,
   newBusinessName: "",
   newOwnerPhone: "",
+  newPhoneNumber: "",
+  newGstin: "",
+  newEmail: "",
+  newBusinessType: "",
+  newBusinessCategory: "",
+  newState: "",
+  newPincode: "",
+  newAddress: "",
+  newLogo: "",
 };
 
 export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusinessesActions>(
@@ -83,10 +110,46 @@ export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusine
     setNewOwnerPhone: (value) => {
       set({ newOwnerPhone: value });
     },
+    setNewPhoneNumber: (value) => {
+      set({ newPhoneNumber: value });
+    },
+    setNewGstin: (value) => {
+      set({ newGstin: value });
+    },
+    setNewEmail: (value) => {
+      set({ newEmail: value });
+    },
+    setNewBusinessType: (value) => {
+      set({ newBusinessType: value });
+    },
+    setNewBusinessCategory: (value) => {
+      set({ newBusinessCategory: value });
+    },
+    setNewState: (value) => {
+      set({ newState: value });
+    },
+    setNewPincode: (value) => {
+      set({ newPincode: value });
+    },
+    setNewAddress: (value) => {
+      set({ newAddress: value });
+    },
+    setNewLogo: (value) => {
+      set({ newLogo: value });
+    },
     clearCreateDraft: () => {
       set({
         newBusinessName: "",
         newOwnerPhone: "",
+        newPhoneNumber: "",
+        newGstin: "",
+        newEmail: "",
+        newBusinessType: "",
+        newBusinessCategory: "",
+        newState: "",
+        newPincode: "",
+        newAddress: "",
+        newLogo: "",
       });
     },
     resetAdminBusinessesState: () => {

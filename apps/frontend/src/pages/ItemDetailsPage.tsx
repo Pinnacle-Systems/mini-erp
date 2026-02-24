@@ -320,7 +320,7 @@ export function ItemDetailsPage() {
 
   if (!item) {
     return (
-      <main className="min-h-screen w-full p-4 sm:p-6 lg:p-8 xl:p-10">
+      <main className="h-auto w-full p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
         <Card className="mx-auto w-full max-w-2xl">
           <CardContent className="py-8">
             <p className="text-sm text-muted-foreground">Item not found.</p>
@@ -331,16 +331,16 @@ export function ItemDetailsPage() {
   }
 
   return (
-    <main className="min-h-screen w-full p-4 sm:p-6 lg:p-8 xl:p-10">
-      <Card className="mx-auto w-full max-w-6xl p-4">
+    <main className="h-auto w-full p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
+      <Card className="mx-auto w-full max-w-6xl p-3 lg:h-full lg:min-h-0">
         <CardHeader>
-          <CardTitle className="text-xl">Manage Item</CardTitle>
+          <CardTitle className="text-base">Manage Item</CardTitle>
           <CardDescription className="text-xs">
             Edit item details and variants.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="grid gap-2 lg:min-h-0 lg:overflow-y-auto">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <div className="grid gap-2">
               <Label>Name</Label>
               <Input
@@ -424,7 +424,7 @@ export function ItemDetailsPage() {
             </div>
           </div>
 
-          <div className="mt-2 grid gap-3">
+          <div className="mt-1 grid gap-2">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-foreground">Variants</p>
               <Button
