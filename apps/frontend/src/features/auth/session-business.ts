@@ -6,6 +6,46 @@ export const BUSINESS_CONTEXT_KEY = "mini_erp_business_context_v1";
 export type AssignedStore = {
   id: string;
   name: string;
+  license?: {
+    beginsOn: string;
+    endsOn: string;
+    bundleKey: "SALES_LITE" | "SALES_STOCK_OUT" | "TRADING" | "SERVICE_BILLING" | "CUSTOM";
+    addOnCapabilities: Array<
+      | "CATALOG_ITEMS"
+      | "CATALOG_SERVICES"
+      | "PARTIES_CUSTOMERS"
+      | "PARTIES_SUPPLIERS"
+      | "TXN_SALE_CREATE"
+      | "TXN_SALE_RETURN"
+      | "TXN_PURCHASE_CREATE"
+      | "TXN_PURCHASE_RETURN"
+      | "INV_STOCK_OUT"
+      | "INV_STOCK_IN"
+      | "INV_ADJUSTMENT"
+      | "INV_TRANSFER"
+      | "FINANCE_RECEIVABLES"
+      | "FINANCE_PAYABLES"
+    >;
+    removedCapabilities: Array<
+      | "CATALOG_ITEMS"
+      | "CATALOG_SERVICES"
+      | "PARTIES_CUSTOMERS"
+      | "PARTIES_SUPPLIERS"
+      | "TXN_SALE_CREATE"
+      | "TXN_SALE_RETURN"
+      | "TXN_PURCHASE_CREATE"
+      | "TXN_PURCHASE_RETURN"
+      | "INV_STOCK_OUT"
+      | "INV_STOCK_IN"
+      | "INV_ADJUSTMENT"
+      | "INV_TRANSFER"
+      | "FINANCE_RECEIVABLES"
+      | "FINANCE_PAYABLES"
+    >;
+    userLimitType: "MAX_USERS" | "MAX_CONCURRENT_USERS" | null;
+    userLimitValue: number | null;
+    fetchedAt: string;
+  } | null;
 };
 
 export type BusinessModules = {
@@ -24,6 +64,7 @@ type SessionState = {
   activeStore: string | null;
   activeBusinessModules: BusinessModules | null;
   businessModulesById: Record<string, BusinessModules>;
+  pendingOnlineLicenseValidationByStore: Record<string, boolean>;
   isBusinessSelected: boolean;
 };
 
@@ -40,6 +81,7 @@ type SessionActions = {
   }) => void;
   setActiveStore: (businessId: string | null) => void;
   setActiveBusinessModules: (modules: BusinessModules | null) => void;
+  setStoreNeedsOnlineLicenseValidation: (businessId: string, needsValidation: boolean) => void;
   setIsBusinessSelected: (value: boolean) => void;
   clearSession: () => void;
 };
@@ -52,6 +94,7 @@ const initialState: SessionState = {
   activeStore: null,
   activeBusinessModules: null,
   businessModulesById: {},
+  pendingOnlineLicenseValidationByStore: {},
   isBusinessSelected: false,
 };
 
@@ -70,6 +113,7 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           activeStore: null,
           activeBusinessModules: null,
           businessModulesById: {},
+          pendingOnlineLicenseValidationByStore: {},
           isBusinessSelected: false,
         });
       },
@@ -81,6 +125,7 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           activeStore: null,
           activeBusinessModules: null,
           businessModulesById: {},
+          pendingOnlineLicenseValidationByStore: {},
           isBusinessSelected: false,
         });
       },
@@ -101,6 +146,8 @@ export const useSessionStore = create<SessionState & SessionActions>()(
                 ? nextModulesById[activeStore]
                 : activeBusinessModules ?? null,
             businessModulesById: nextModulesById,
+            pendingOnlineLicenseValidationByStore:
+              state.pendingOnlineLicenseValidationByStore,
             isBusinessSelected,
           };
         });
@@ -123,6 +170,14 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           };
         });
       },
+      setStoreNeedsOnlineLicenseValidation: (businessId, needsValidation) => {
+        set((state) => ({
+          pendingOnlineLicenseValidationByStore: {
+            ...state.pendingOnlineLicenseValidationByStore,
+            [businessId]: needsValidation,
+          },
+        }));
+      },
       setIsBusinessSelected: (value) => {
         set({ isBusinessSelected: value });
       },
@@ -134,6 +189,7 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           activeStore: null,
           activeBusinessModules: null,
           businessModulesById: {},
+          pendingOnlineLicenseValidationByStore: {},
           isBusinessSelected: false,
           isHydratingSession: false,
         });
@@ -149,6 +205,7 @@ export const useSessionStore = create<SessionState & SessionActions>()(
         activeStore: state.activeStore,
         activeBusinessModules: state.activeBusinessModules,
         businessModulesById: state.businessModulesById,
+        pendingOnlineLicenseValidationByStore: state.pendingOnlineLicenseValidationByStore,
         isBusinessSelected: state.isBusinessSelected,
       }),
     },
@@ -165,12 +222,28 @@ export const setAssignedStores = (businesses: AssignedStore[]) => {
         allowedBusinessIds.has(businessId),
       ),
     ) as Record<string, BusinessModules>;
+    const filteredPendingValidationByStore = Object.fromEntries(
+      Object.entries(state.pendingOnlineLicenseValidationByStore).filter(([businessId]) =>
+        allowedBusinessIds.has(businessId),
+      ),
+    ) as Record<string, boolean>;
+    const nowIso = new Date().toISOString();
+    const normalizedBusinesses = businesses.map((business) => ({
+      ...business,
+      license: business.license
+        ? {
+            ...business.license,
+            fetchedAt: business.license.fetchedAt || nowIso,
+          }
+        : null,
+    }));
 
     return {
-      businesses,
+      businesses: normalizedBusinesses,
       activeStore: active?.id ?? null,
       activeBusinessModules: active?.id ? filteredModulesById[active.id] ?? null : null,
       businessModulesById: filteredModulesById,
+      pendingOnlineLicenseValidationByStore: filteredPendingValidationByStore,
     };
   });
 };
@@ -185,6 +258,7 @@ export const clearSessionBusinessContext = () => {
     activeStore: null,
     activeBusinessModules: null,
     businessModulesById: {},
+    pendingOnlineLicenseValidationByStore: {},
     isBusinessSelected: false,
   });
 };

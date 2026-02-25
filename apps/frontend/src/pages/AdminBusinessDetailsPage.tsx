@@ -7,15 +7,21 @@ import {
   Card,
   CardContent,
 } from "../design-system/molecules/Card";
+import { LicenseCapabilityPicklist } from "../design-system/molecules/LicenseCapabilityPicklist";
 import { BusinessDetailsFormPanes } from "../design-system/organisms/BusinessDetailsFormPanes";
 import { BusinessLogoPicker } from "../design-system/organisms/BusinessLogoPicker";
 import {
+  BUNDLE_CAPABILITY_MAP,
+  CAPABILITY_KEYS,
+  BUNDLE_KEYS,
   deleteAdminStore,
   getAdminStore,
   removeBusinessLogo,
   updateAdminStore,
   uploadBusinessLogo,
   type AdminStore,
+  type BundleKey,
+  type CapabilityKey,
 } from "../features/admin/businesses";
 
 export function AdminBusinessDetailsPage() {
@@ -36,6 +42,15 @@ export function AdminBusinessDetailsPage() {
     catalog: true,
     inventory: true,
     pricing: true,
+  });
+  const [licenseDraft, setLicenseDraft] = useState({
+    beginsOn: "",
+    endsOn: "",
+    bundleKey: "SALES_LITE" as BundleKey,
+    addOnCapabilities: [] as CapabilityKey[],
+    removedCapabilities: [] as CapabilityKey[],
+    userLimitType: "UNLIMITED" as "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS",
+    userLimitValue: "",
   });
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -58,6 +73,21 @@ export function AdminBusinessDetailsPage() {
     });
   };
 
+  const applyLicenseDraft = (source: AdminStore) => {
+    setLicenseDraft({
+      beginsOn: source.license?.beginsOn ?? "",
+      endsOn: source.license?.endsOn ?? "",
+      bundleKey: source.license?.bundleKey ?? "SALES_LITE",
+      addOnCapabilities: source.license?.addOnCapabilities ?? [],
+      removedCapabilities: source.license?.removedCapabilities ?? [],
+      userLimitType: source.license?.userLimitType ?? "UNLIMITED",
+      userLimitValue:
+        source.license?.userLimitType && source.license.userLimitValue
+          ? String(source.license.userLimitValue)
+          : "",
+    });
+  };
+
   const loadStore = useCallback(async () => {
     if (!businessId) {
       setError("Business not found");
@@ -77,6 +107,7 @@ export function AdminBusinessDetailsPage() {
         inventory: result.modules?.inventory ?? true,
         pricing: result.modules?.pricing ?? true,
       });
+      applyLicenseDraft(result);
       setIsEditingDetails(false);
     } catch (requestError) {
       setError(
@@ -149,6 +180,44 @@ export function AdminBusinessDetailsPage() {
           catalog: moduleDraft.catalog,
           inventory: moduleDraft.inventory,
           pricing: moduleDraft.pricing,
+        },
+      });
+    });
+  };
+
+  const onSaveLicense = async () => {
+    if (!businessId) return;
+    if (!licenseDraft.beginsOn || !licenseDraft.endsOn) {
+      setError("License begin and end dates are required.");
+      return;
+    }
+    if (licenseDraft.userLimitType !== "UNLIMITED") {
+      const parsedLimit = Number(licenseDraft.userLimitValue);
+      if (!Number.isInteger(parsedLimit) || parsedLimit <= 0 || parsedLimit > 999) {
+        setError("User limit must be a positive whole number up to 999.");
+        return;
+      }
+    }
+    const addOn = Array.from(new Set(licenseDraft.addOnCapabilities));
+    const removed = Array.from(
+      new Set(licenseDraft.removedCapabilities.filter((capability) => !addOn.includes(capability))),
+    );
+    await runMutation(async () => {
+      await updateAdminStore(businessId, {
+        license: {
+          beginsOn: licenseDraft.beginsOn,
+          endsOn: licenseDraft.endsOn,
+          bundleKey: licenseDraft.bundleKey,
+          addOnCapabilities: addOn,
+          removedCapabilities: removed,
+          userLimitType:
+            licenseDraft.userLimitType === "UNLIMITED"
+              ? null
+              : licenseDraft.userLimitType,
+          userLimitValue:
+            licenseDraft.userLimitType === "UNLIMITED"
+              ? null
+              : Number(licenseDraft.userLimitValue),
         },
       });
     });
@@ -245,9 +314,9 @@ export function AdminBusinessDetailsPage() {
     business?.owner?.name?.trim() || business?.owner?.phone || "";
 
   return (
-    <section className="h-auto lg:h-full lg:min-h-0">
-      <Card className="h-auto p-3 lg:h-full lg:min-h-0 lg:p-3">
-        <CardContent className="relative h-auto space-y-2 lg:h-full lg:min-h-0">
+    <section className="h-auto lg:h-full lg:min-h-0 lg:text-[12px]">
+      <Card className="h-auto p-2 lg:h-full lg:min-h-0 lg:p-2">
+        <CardContent className="relative h-auto space-y-2 lg:h-full lg:min-h-0 lg:[&_button]:text-[11px] lg:[&_input]:text-[11px] lg:[&_label]:text-[10px] lg:[&_p]:text-[11px] lg:[&_select]:text-[11px] lg:[&_span]:text-[11px]">
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
           {!business && !loading ? (
@@ -446,6 +515,172 @@ export function AdminBusinessDetailsPage() {
                   >
                     <Save className="h-4 w-4" aria-hidden="true" />
                     Save Modules
+                  </Button>
+                </div>
+                <div className="mt-4 space-y-2 border-t border-[#e3ebf5] pt-3">
+                  <p className="text-xs font-semibold text-foreground">
+                    Store License
+                  </p>
+                  <div className="grid gap-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                    <div className="grid content-start gap-1.5">
+                      <div className="grid gap-2 lg:grid-cols-2">
+                        <label className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+                          Begin date
+                          <input
+                            type="date"
+                            value={licenseDraft.beginsOn}
+                            onChange={(event) =>
+                              setLicenseDraft((current) => ({
+                                ...current,
+                                beginsOn: event.target.value,
+                              }))
+                            }
+                            disabled={saving}
+                            className="h-8 rounded-md border border-[#c6d5e6] px-2 text-xs text-foreground"
+                          />
+                        </label>
+                        <label className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+                          End date
+                          <input
+                            type="date"
+                            value={licenseDraft.endsOn}
+                            onChange={(event) =>
+                              setLicenseDraft((current) => ({
+                                ...current,
+                                endsOn: event.target.value,
+                              }))
+                            }
+                            disabled={saving}
+                            className="h-8 rounded-md border border-[#c6d5e6] px-2 text-xs text-foreground"
+                          />
+                        </label>
+                      </div>
+                      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_4.75rem] lg:gap-4">
+                        <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+                          User limit mode
+                          <select
+                            value={licenseDraft.userLimitType}
+                            onChange={(event) =>
+                              setLicenseDraft((current) => ({
+                                ...current,
+                                userLimitType: event.target
+                                  .value as "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS",
+                                userLimitValue:
+                                  event.target.value === "UNLIMITED"
+                                    ? ""
+                                    : current.userLimitValue,
+                              }))
+                            }
+                            disabled={saving}
+                            className="h-8 w-full min-w-0 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
+                          >
+                            <option value="UNLIMITED">Unlimited users</option>
+                            <option value="MAX_USERS">Max users per business</option>
+                            <option value="MAX_CONCURRENT_USERS">
+                              Max concurrent users
+                            </option>
+                          </select>
+                        </label>
+                        {licenseDraft.userLimitType !== "UNLIMITED" ? (
+                          <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+                            User limit
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={3}
+                              value={licenseDraft.userLimitValue}
+                              onChange={(event) =>
+                                setLicenseDraft((current) => ({
+                                  ...current,
+                                  userLimitValue: event.target.value.replace(/\D/g, "").slice(0, 3),
+                                }))
+                              }
+                              disabled={saving}
+                              className="h-8 w-full min-w-0 rounded-md border border-[#c6d5e6] px-2 text-xs text-foreground"
+                            />
+                          </label>
+                        ) : (
+                          <div />
+                        )}
+                      </div>
+                      <div className="hidden gap-1 text-[11px] text-muted-foreground lg:grid">
+                        Bundle
+                        <select
+                          value={licenseDraft.bundleKey}
+                          onChange={(event) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              bundleKey: event.target.value as BundleKey,
+                            }))
+                          }
+                          disabled={saving}
+                          className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
+                        >
+                          {BUNDLE_KEYS.map((bundleKey) => (
+                            <option key={bundleKey} value={bundleKey}>
+                              {bundleKey}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid content-start gap-1.5">
+                      <div className="grid gap-1 text-[11px] text-muted-foreground lg:hidden">
+                        Bundle
+                        <select
+                          value={licenseDraft.bundleKey}
+                          onChange={(event) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              bundleKey: event.target.value as BundleKey,
+                            }))
+                          }
+                          disabled={saving}
+                          className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
+                        >
+                          {BUNDLE_KEYS.map((bundleKey) => (
+                            <option key={bundleKey} value={bundleKey}>
+                              {bundleKey}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <LicenseCapabilityPicklist
+                        capabilities={CAPABILITY_KEYS}
+                        bundleCapabilities={BUNDLE_CAPABILITY_MAP[licenseDraft.bundleKey] ?? []}
+                        addOnCapabilities={licenseDraft.addOnCapabilities}
+                        removedCapabilities={licenseDraft.removedCapabilities}
+                        disabled={saving}
+                        onAddOnCapabilitiesChange={(next) =>
+                          setLicenseDraft((current) => ({
+                            ...current,
+                            addOnCapabilities: next as CapabilityKey[],
+                            removedCapabilities: current.removedCapabilities.filter(
+                              (capability) => !next.includes(capability),
+                            ),
+                          }))
+                        }
+                        onRemovedCapabilitiesChange={(next) =>
+                          setLicenseDraft((current) => ({
+                            ...current,
+                            removedCapabilities: next as CapabilityKey[],
+                            addOnCapabilities: current.addOnCapabilities.filter(
+                              (capability) => !next.includes(capability),
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={onSaveLicense}
+                    disabled={saving}
+                    className="w-full gap-1 text-[11px]"
+                  >
+                    <Save className="h-4 w-4" aria-hidden="true" />
+                    Save License
                   </Button>
                 </div>
               </div>

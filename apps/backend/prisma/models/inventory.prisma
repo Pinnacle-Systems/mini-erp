@@ -1,6 +1,6 @@
 model Location {
   id            String        @id @default(uuid()) @db.Uuid
-  business_id      String        @db.Uuid
+  business_id   String        @db.Uuid
   name          String
   stock_ledgers StockLedger[]
 

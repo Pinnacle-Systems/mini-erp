@@ -28,7 +28,7 @@ export function AdminLayout() {
 
   return (
     <main className="min-h-[calc(100vh-3.5rem)] w-full px-2 pt-1 pb-20 sm:min-h-[calc(100vh-4rem)] sm:px-3 sm:pt-1 sm:pb-24 lg:h-[calc(100vh-4rem)] lg:overflow-hidden lg:pb-3">
-      <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[220px_minmax(0,1fr)]">
+      <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[180px_minmax(0,1fr)]">
         <aside className="hidden h-full overflow-y-auto rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block">
           <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Admin Menu

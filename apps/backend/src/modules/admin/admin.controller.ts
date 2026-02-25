@@ -7,6 +7,15 @@ import { fileURLToPath } from "node:url";
 import { prisma } from "../../lib/prisma.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/utils/errors.js";
+import {
+  getBusinessModulesFromLicense,
+  hasLicenseInput,
+  LICENSE_SELECT,
+  toLicenseView,
+  upsertBusinessLicense,
+  type BusinessLicenseInput,
+} from "../license/license.service.js";
+import type { BusinessBundleKey, BusinessCapabilityKey } from "../license/license.types.js";
 
 const assertPlatformAdmin = (req) => {
   if (req.user?.system_role !== SystemRole.PLATFORM_ADMIN) {
@@ -16,7 +25,6 @@ const assertPlatformAdmin = (req) => {
 
 const DEFAULT_OWNER_PASSWORD = process.env.DEFAULT_BUSINESS_OWNER_PASSWORD?.trim() || "ChangeMe123!";
 const DUPLICATE_BUSINESS_NAME_ERROR = "Business name already exists for this owner";
-const MODULE_KEYS = ["CATALOG", "INVENTORY", "PRICING"] as const;
 const ALLOWED_LOGO_MIME_TYPES = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
@@ -26,6 +34,79 @@ const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const LOGO_UPLOAD_DIR = resolve(__dirname, "../../../uploads/business-logos");
+const MODULE_CAPABILITY_MAP = {
+  catalog: ["CATALOG_ITEMS", "CATALOG_SERVICES"],
+  inventory: ["INV_STOCK_OUT", "INV_STOCK_IN", "INV_ADJUSTMENT", "INV_TRANSFER"],
+  pricing: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
+} as const;
+const BUNDLE_CAPABILITY_MAP = {
+  SALES_LITE: [
+    "CATALOG_ITEMS",
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "FINANCE_RECEIVABLES",
+  ],
+  SALES_STOCK_OUT: [
+    "CATALOG_ITEMS",
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "INV_STOCK_OUT",
+    "FINANCE_RECEIVABLES",
+  ],
+  TRADING: [
+    "CATALOG_ITEMS",
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "PARTIES_SUPPLIERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "TXN_PURCHASE_CREATE",
+    "TXN_PURCHASE_RETURN",
+    "INV_STOCK_OUT",
+    "INV_STOCK_IN",
+    "INV_ADJUSTMENT",
+    "INV_TRANSFER",
+    "FINANCE_RECEIVABLES",
+    "FINANCE_PAYABLES",
+  ],
+  SERVICE_BILLING: [
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "FINANCE_RECEIVABLES",
+  ],
+  CUSTOM: [],
+} as const;
+
+const resolveEffectiveCapabilities = (license: {
+  bundleKey: BusinessBundleKey;
+  addOnCapabilities: BusinessCapabilityKey[];
+  removedCapabilities: BusinessCapabilityKey[];
+}) => {
+  const effective = new Set<BusinessCapabilityKey>(
+    (BUNDLE_CAPABILITY_MAP[license.bundleKey] ?? []) as BusinessCapabilityKey[],
+  );
+  for (const key of license.addOnCapabilities) effective.add(key);
+  for (const key of license.removedCapabilities) effective.delete(key);
+  return effective;
+};
+
+const deriveOverridesForBundle = (
+  bundleKey: BusinessBundleKey,
+  effective: Set<BusinessCapabilityKey>,
+) => {
+  const base = new Set<BusinessCapabilityKey>(
+    (BUNDLE_CAPABILITY_MAP[bundleKey] ?? []) as BusinessCapabilityKey[],
+  );
+  const addOnCapabilities = [...effective].filter((key) => !base.has(key));
+  const removedCapabilities = [...base].filter((key) => !effective.has(key));
+  return { addOnCapabilities, removedCapabilities };
+};
 
 const removeLocalLogoFile = async (logoPath: string | null | undefined) => {
   if (!logoPath?.startsWith("/uploads/business-logos/")) {
@@ -37,20 +118,6 @@ const removeLocalLogoFile = async (logoPath: string | null | undefined) => {
     return;
   }
   await fs.unlink(absolutePath).catch(() => undefined);
-};
-
-const toModuleState = (
-  rows: Array<{
-    module_key: (typeof MODULE_KEYS)[number];
-    enabled: boolean;
-  }>,
-) => {
-  const byKey = new Map(rows.map((row) => [row.module_key, row.enabled]));
-  return {
-    catalog: byKey.get("CATALOG") ?? true,
-    inventory: byKey.get("INVENTORY") ?? true,
-    pricing: byKey.get("PRICING") ?? true,
-  };
 };
 
 export const listStores = catchAsync(async (req, res) => {
@@ -115,6 +182,11 @@ export const listStores = catchAsync(async (req, res) => {
       orderBy: { name: "asc" },
       skip: (page - 1) * limit,
       take: limit,
+      include: {
+        license: {
+          select: LICENSE_SELECT,
+        },
+      },
     }),
   ]);
 
@@ -141,6 +213,7 @@ export const listStores = catchAsync(async (req, res) => {
       address: business.address,
       logo: business.logo,
       deletedAt: business.deleted_at,
+      license: toLicenseView(business.license),
       owner: ownerById.get(business.owner_id) ?? null,
     })),
     pagination: {
@@ -168,6 +241,7 @@ export const createStore = catchAsync(async (req, res) => {
     pincode,
     address,
     logo,
+    license,
   } = req.body as {
     name: string;
     ownerEmail?: string;
@@ -181,6 +255,7 @@ export const createStore = catchAsync(async (req, res) => {
     pincode?: string;
     address?: string;
     logo?: string;
+    license?: BusinessLicenseInput;
   };
   const normalizedEmail = ownerEmail?.trim().toLowerCase();
   const normalizedPhone = ownerPhone?.trim();
@@ -260,7 +335,20 @@ export const createStore = catchAsync(async (req, res) => {
         address: address ?? null,
         logo: logo ?? null,
       },
+      include: {
+        license: {
+          select: LICENSE_SELECT,
+        },
+      },
     });
+
+    if (hasLicenseInput(license)) {
+      const createdLicense = await upsertBusinessLicense(business.id, license ?? {});
+      business = {
+        ...business,
+        license: createdLicense,
+      };
+    }
 
     await prisma.businessMember.upsert({
       where: {
@@ -277,15 +365,6 @@ export const createStore = catchAsync(async (req, res) => {
         identity_id: ownerId,
         role: BusinessRole.OWNER,
       },
-    });
-
-    await prisma.businessModule.createMany({
-      data: MODULE_KEYS.map((moduleKey) => ({
-        business_id: business.id,
-        module_key: moduleKey,
-        enabled: true,
-      })),
-      skipDuplicates: true,
     });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) {
@@ -312,6 +391,7 @@ export const createStore = catchAsync(async (req, res) => {
       pincode: business.pincode,
       address: business.address,
       logo: business.logo,
+      license: toLicenseView(business.license),
     },
   });
 });
@@ -336,11 +416,8 @@ export const getStore = catchAsync(async (req, res) => {
       address: true,
       logo: true,
       deleted_at: true,
-      modules: {
-        select: {
-          module_key: true,
-          enabled: true,
-        },
+      license: {
+        select: LICENSE_SELECT,
       },
     },
   });
@@ -371,7 +448,8 @@ export const getStore = catchAsync(async (req, res) => {
       logo: business.logo,
       deletedAt: business.deleted_at,
       owner: owner ?? null,
-      modules: toModuleState(business.modules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>),
+      modules: await getBusinessModulesFromLicense(business.id),
+      license: toLicenseView(business.license),
     },
   });
 });
@@ -394,6 +472,7 @@ export const updateStore = catchAsync(async (req, res) => {
     pincode,
     address,
     logo,
+    license,
   } = req.body as {
     name?: string;
     ownerId?: string;
@@ -412,6 +491,7 @@ export const updateStore = catchAsync(async (req, res) => {
     pincode?: string | null;
     address?: string | null;
     logo?: string | null;
+    license?: BusinessLicenseInput;
   };
   const normalizedBusinessName = typeof name === "string" ? name.trim() : undefined;
   const hasField = (field: string) => Object.prototype.hasOwnProperty.call(req.body ?? {}, field);
@@ -476,36 +556,51 @@ export const updateStore = catchAsync(async (req, res) => {
         },
       });
 
-      if (modules) {
-        const moduleUpdates: Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }> = [];
-        if (typeof modules.catalog === "boolean") {
-          moduleUpdates.push({ module_key: "CATALOG", enabled: modules.catalog });
-        }
-        if (typeof modules.inventory === "boolean") {
-          moduleUpdates.push({ module_key: "INVENTORY", enabled: modules.inventory });
-        }
-        if (typeof modules.pricing === "boolean") {
-          moduleUpdates.push({ module_key: "PRICING", enabled: modules.pricing });
-        }
+      if (hasField("license") && hasLicenseInput(license)) {
+        await upsertBusinessLicense(updatedStore.id, license ?? {}, tx);
+      }
 
-        for (const moduleUpdate of moduleUpdates) {
-          await tx.businessModule.upsert({
-            where: {
-              business_id_module_key: {
-                business_id: updatedStore.id,
-                module_key: moduleUpdate.module_key,
-              },
-            },
-            update: {
-              enabled: moduleUpdate.enabled,
-            },
-            create: {
-              business_id: updatedStore.id,
-              module_key: moduleUpdate.module_key,
-              enabled: moduleUpdate.enabled,
-            },
-          });
+      if (modules) {
+        const currentLicense = await tx.businessLicense.findUnique({
+          where: { business_id: updatedStore.id },
+          select: LICENSE_SELECT,
+        });
+        const currentLicenseView = toLicenseView(currentLicense);
+        if (!currentLicenseView?.beginsOn || !currentLicenseView?.endsOn) {
+          throw new ConflictError("Set license dates before updating module access");
         }
+        const effective = resolveEffectiveCapabilities({
+          bundleKey: currentLicenseView.bundleKey,
+          addOnCapabilities: currentLicenseView.addOnCapabilities,
+          removedCapabilities: currentLicenseView.removedCapabilities,
+        });
+        const applyModule = (enabled: boolean | undefined, moduleKey: keyof typeof MODULE_CAPABILITY_MAP) => {
+          if (typeof enabled !== "boolean") return;
+          const capabilities = MODULE_CAPABILITY_MAP[moduleKey];
+          for (const capability of capabilities) {
+            if (enabled) effective.add(capability);
+            else effective.delete(capability);
+          }
+        };
+
+        applyModule(modules.catalog, "catalog");
+        applyModule(modules.inventory, "inventory");
+        applyModule(modules.pricing, "pricing");
+        const nextOverrides = deriveOverridesForBundle(currentLicenseView.bundleKey, effective);
+
+        await upsertBusinessLicense(
+          updatedStore.id,
+          {
+            beginsOn: license?.beginsOn ?? currentLicenseView?.beginsOn,
+            endsOn: license?.endsOn ?? currentLicenseView?.endsOn,
+            bundleKey: license?.bundleKey ?? currentLicenseView.bundleKey,
+            addOnCapabilities: nextOverrides.addOnCapabilities,
+            removedCapabilities: nextOverrides.removedCapabilities,
+            userLimitType: license?.userLimitType ?? currentLicenseView?.userLimitType ?? null,
+            userLimitValue: license?.userLimitValue ?? currentLicenseView?.userLimitValue ?? null,
+          },
+          tx,
+        );
       }
 
       await tx.businessMember.upsert({
@@ -538,17 +633,14 @@ export const updateStore = catchAsync(async (req, res) => {
         });
       }
 
-      const businessModules = await tx.businessModule.findMany({
+      const businessLicense = await tx.businessLicense.findUnique({
         where: { business_id: updatedStore.id },
-        select: {
-          module_key: true,
-          enabled: true,
-        },
+        select: LICENSE_SELECT,
       });
 
       return {
         ...updatedStore,
-        modules: businessModules as Array<{ module_key: (typeof MODULE_KEYS)[number]; enabled: boolean }>,
+        license: businessLicense,
       };
     });
   } catch (error) {
@@ -580,7 +672,8 @@ export const updateStore = catchAsync(async (req, res) => {
       address: business.address,
       logo: business.logo,
       deletedAt: business.deleted_at,
-      modules: toModuleState(business.modules),
+      modules: await getBusinessModulesFromLicense(business.id),
+      license: toLicenseView(business.license),
     },
   });
 });

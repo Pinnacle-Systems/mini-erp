@@ -65,10 +65,16 @@ CREATE TYPE "reporting"."ItemActivityStatus" AS ENUM ('DRAFT', 'POSTED', 'CANCEL
 CREATE TYPE "sync"."SyncOperation" AS ENUM ('CREATE', 'UPDATE', 'DELETE');
 
 -- CreateEnum
+CREATE TYPE "tenants"."BusinessLicenseLimitType" AS ENUM ('MAX_USERS', 'MAX_CONCURRENT_USERS');
+
+-- CreateEnum
 CREATE TYPE "tenants"."BusinessRole" AS ENUM ('OWNER', 'MANAGER', 'CASHIER');
 
 -- CreateEnum
-CREATE TYPE "tenants"."BusinessModuleKey" AS ENUM ('CATALOG', 'INVENTORY', 'PRICING');
+CREATE TYPE "tenants"."BusinessBundleKey" AS ENUM ('SALES_LITE', 'SALES_STOCK_OUT', 'TRADING', 'SERVICE_BILLING', 'CUSTOM');
+
+-- CreateEnum
+CREATE TYPE "tenants"."BusinessCapabilityKey" AS ENUM ('CATALOG_ITEMS', 'CATALOG_SERVICES', 'PARTIES_CUSTOMERS', 'PARTIES_SUPPLIERS', 'TXN_SALE_CREATE', 'TXN_SALE_RETURN', 'TXN_PURCHASE_CREATE', 'TXN_PURCHASE_RETURN', 'INV_STOCK_OUT', 'INV_STOCK_IN', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'FINANCE_RECEIVABLES', 'FINANCE_PAYABLES');
 
 -- CreateTable
 CREATE TABLE "accounts"."accounts" (
@@ -123,6 +129,7 @@ CREATE TABLE "auth"."identities" (
 CREATE TABLE "auth"."sessions" (
     "id" UUID NOT NULL,
     "identity_id" UUID NOT NULL,
+    "selected_business_id" UUID,
     "token_hash" TEXT NOT NULL,
     "user_agent" TEXT,
     "ip_address" TEXT,
@@ -465,6 +472,23 @@ CREATE TABLE "tenants"."businesses" (
 );
 
 -- CreateTable
+CREATE TABLE "tenants"."business_licenses" (
+    "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
+    "begins_at" TIMESTAMP(3) NOT NULL,
+    "ends_at" TIMESTAMP(3) NOT NULL,
+    "bundle_key" "tenants"."BusinessBundleKey" NOT NULL DEFAULT 'SALES_LITE',
+    "add_on_capability_keys" "tenants"."BusinessCapabilityKey"[] DEFAULT ARRAY[]::"tenants"."BusinessCapabilityKey"[],
+    "removed_capability_keys" "tenants"."BusinessCapabilityKey"[] DEFAULT ARRAY[]::"tenants"."BusinessCapabilityKey"[],
+    "user_limit_type" "tenants"."BusinessLicenseLimitType",
+    "user_limit_value" INTEGER,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "business_licenses_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "tenants"."business_members" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
@@ -472,18 +496,6 @@ CREATE TABLE "tenants"."business_members" (
     "role" "tenants"."BusinessRole" NOT NULL DEFAULT 'CASHIER',
 
     CONSTRAINT "business_members_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "tenants"."business_modules" (
-    "id" UUID NOT NULL,
-    "business_id" UUID NOT NULL,
-    "module_key" "tenants"."BusinessModuleKey" NOT NULL,
-    "enabled" BOOLEAN NOT NULL DEFAULT true,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "business_modules_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -497,6 +509,9 @@ CREATE UNIQUE INDEX "identities_email_key" ON "auth"."identities"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "sessions_token_hash_key" ON "auth"."sessions"("token_hash");
+
+-- CreateIndex
+CREATE INDEX "sessions_selected_business_id_expires_at_idx" ON "auth"."sessions"("selected_business_id", "expires_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "item_variants_business_id_sku_key" ON "catalog"."item_variants"("business_id", "sku");
@@ -604,13 +619,13 @@ CREATE INDEX "change_log_tenant_id_cursor_idx" ON "sync"."change_log"("tenant_id
 CREATE INDEX "change_log_tenant_id_entity_entity_id_server_version_idx" ON "sync"."change_log"("tenant_id", "entity", "entity_id", "server_version");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "business_licenses_business_id_key" ON "tenants"."business_licenses"("business_id");
+
+-- CreateIndex
+CREATE INDEX "business_licenses_business_id_begins_at_ends_at_idx" ON "tenants"."business_licenses"("business_id", "begins_at", "ends_at");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "business_members_business_id_identity_id_key" ON "tenants"."business_members"("business_id", "identity_id");
-
--- CreateIndex
-CREATE INDEX "business_modules_business_id_enabled_idx" ON "tenants"."business_modules"("business_id", "enabled");
-
--- CreateIndex
-CREATE UNIQUE INDEX "business_modules_business_id_module_key_key" ON "tenants"."business_modules"("business_id", "module_key");
 
 -- AddForeignKey
 ALTER TABLE "accounts"."ledger_entries" ADD CONSTRAINT "ledger_entries_journal_entry_id_fkey" FOREIGN KEY ("journal_entry_id") REFERENCES "accounts"."journal_entries"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -620,6 +635,9 @@ ALTER TABLE "accounts"."ledger_entries" ADD CONSTRAINT "ledger_entries_account_i
 
 -- AddForeignKey
 ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_identity_id_fkey" FOREIGN KEY ("identity_id") REFERENCES "auth"."identities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_selected_business_id_fkey" FOREIGN KEY ("selected_business_id") REFERENCES "tenants"."businesses"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "catalog"."item_variants" ADD CONSTRAINT "item_variants_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "catalog"."items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -670,7 +688,7 @@ ALTER TABLE "pricing"."discount_rule_price_books" ADD CONSTRAINT "discount_rule_
 ALTER TABLE "pricing"."discount_rule_price_books" ADD CONSTRAINT "discount_rule_price_books_price_book_id_fkey" FOREIGN KEY ("price_book_id") REFERENCES "pricing"."price_books"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "tenants"."business_members" ADD CONSTRAINT "business_members_business_id_fkey" FOREIGN KEY ("business_id") REFERENCES "tenants"."businesses"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "tenants"."business_licenses" ADD CONSTRAINT "business_licenses_business_id_fkey" FOREIGN KEY ("business_id") REFERENCES "tenants"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "tenants"."business_modules" ADD CONSTRAINT "business_modules_business_id_fkey" FOREIGN KEY ("business_id") REFERENCES "tenants"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "tenants"."business_members" ADD CONSTRAINT "business_members_business_id_fkey" FOREIGN KEY ("business_id") REFERENCES "tenants"."businesses"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

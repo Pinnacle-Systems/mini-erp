@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  CAPABILITY_KEYS,
   createAdminStore,
   listAdminStores,
   uploadBusinessLogo,
@@ -37,6 +38,17 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   const newState = useAdminBusinessesStore((state) => state.newState);
   const newPincode = useAdminBusinessesStore((state) => state.newPincode);
   const newAddress = useAdminBusinessesStore((state) => state.newAddress);
+  const newLicenseBeginsOn = useAdminBusinessesStore((state) => state.newLicenseBeginsOn);
+  const newLicenseEndsOn = useAdminBusinessesStore((state) => state.newLicenseEndsOn);
+  const newLicenseBundleKey = useAdminBusinessesStore((state) => state.newLicenseBundleKey);
+  const newLicenseAddOnCapabilities = useAdminBusinessesStore(
+    (state) => state.newLicenseAddOnCapabilities,
+  );
+  const newLicenseRemovedCapabilities = useAdminBusinessesStore(
+    (state) => state.newLicenseRemovedCapabilities,
+  );
+  const newLicenseUserLimitType = useAdminBusinessesStore((state) => state.newLicenseUserLimitType);
+  const newLicenseUserLimitValue = useAdminBusinessesStore((state) => state.newLicenseUserLimitValue);
   const setBusinessesPage = useAdminBusinessesStore((state) => state.setBusinessesPage);
   const setFilterBusinessName = useAdminBusinessesStore((state) => state.setFilterBusinessName);
   const setFilterOwnerPhone = useAdminBusinessesStore((state) => state.setFilterOwnerPhone);
@@ -55,6 +67,21 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   const setNewState = useAdminBusinessesStore((state) => state.setNewState);
   const setNewPincode = useAdminBusinessesStore((state) => state.setNewPincode);
   const setNewAddress = useAdminBusinessesStore((state) => state.setNewAddress);
+  const setNewLicenseBeginsOn = useAdminBusinessesStore((state) => state.setNewLicenseBeginsOn);
+  const setNewLicenseEndsOn = useAdminBusinessesStore((state) => state.setNewLicenseEndsOn);
+  const setNewLicenseBundleKey = useAdminBusinessesStore((state) => state.setNewLicenseBundleKey);
+  const setNewLicenseAddOnCapabilities = useAdminBusinessesStore(
+    (state) => state.setNewLicenseAddOnCapabilities,
+  );
+  const setNewLicenseRemovedCapabilities = useAdminBusinessesStore(
+    (state) => state.setNewLicenseRemovedCapabilities,
+  );
+  const setNewLicenseUserLimitType = useAdminBusinessesStore(
+    (state) => state.setNewLicenseUserLimitType,
+  );
+  const setNewLicenseUserLimitValue = useAdminBusinessesStore(
+    (state) => state.setNewLicenseUserLimitValue,
+  );
   const clearCreateDraft = useAdminBusinessesStore((state) => state.clearCreateDraft);
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -182,6 +209,17 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
       setError("Business name and owner phone is required.");
       return;
     }
+    if (Boolean(newLicenseBeginsOn) !== Boolean(newLicenseEndsOn)) {
+      setError("Provide both license begin and end dates.");
+      return;
+    }
+    if (newLicenseUserLimitType !== "UNLIMITED") {
+      const parsedLimit = Number(newLicenseUserLimitValue);
+      if (!Number.isInteger(parsedLimit) || parsedLimit <= 0 || parsedLimit > 999) {
+        setError("License user limit must be a positive whole number up to 999.");
+        return;
+      }
+    }
     const logoValidationError = validateLogoFile(logoFile);
     if (logoValidationError) {
       setError(logoValidationError);
@@ -192,6 +230,20 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
     setError(null);
     try {
       let logoUploadWarning: string | null = null;
+      const addOnCapabilities = Array.from(
+        new Set(
+          newLicenseAddOnCapabilities.filter((key) =>
+            CAPABILITY_KEYS.includes(key),
+          ),
+        ),
+      );
+      const removedCapabilities = Array.from(
+        new Set(
+          newLicenseRemovedCapabilities.filter(
+            (key) => CAPABILITY_KEYS.includes(key) && !addOnCapabilities.includes(key),
+          ),
+        ),
+      );
       const created = await createAdminStore(newBusinessName.trim(), {
         ...(newOwnerPhone.trim() ? { ownerPhone: newOwnerPhone.trim() } : {}),
         ...(newPhoneNumber.trim() ? { phoneNumber: newPhoneNumber.trim() } : {}),
@@ -202,6 +254,25 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         ...(newState.trim() ? { state: newState.trim() } : {}),
         ...(newPincode.trim() ? { pincode: newPincode.trim() } : {}),
         ...(newAddress.trim() ? { address: newAddress.trim() } : {}),
+        ...(newLicenseBeginsOn && newLicenseEndsOn
+          ? {
+              license: {
+                beginsOn: newLicenseBeginsOn,
+                endsOn: newLicenseEndsOn,
+                bundleKey: newLicenseBundleKey,
+                addOnCapabilities,
+                removedCapabilities,
+                userLimitType:
+                  newLicenseUserLimitType === "UNLIMITED"
+                    ? null
+                    : newLicenseUserLimitType,
+                userLimitValue:
+                  newLicenseUserLimitType === "UNLIMITED"
+                    ? null
+                    : Number(newLicenseUserLimitValue),
+              },
+            }
+          : {}),
       });
 
       if (logoFile) {
@@ -318,6 +389,13 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         newState={newState}
         newPincode={newPincode}
         newAddress={newAddress}
+        newLicenseBeginsOn={newLicenseBeginsOn}
+        newLicenseEndsOn={newLicenseEndsOn}
+        newLicenseBundleKey={newLicenseBundleKey}
+        newLicenseAddOnCapabilities={newLicenseAddOnCapabilities}
+        newLicenseRemovedCapabilities={newLicenseRemovedCapabilities}
+        newLicenseUserLimitType={newLicenseUserLimitType}
+        newLicenseUserLimitValue={newLicenseUserLimitValue}
         logoPreviewUrl={logoPreviewUrl}
         uploadingLogo={uploadingLogo}
         onFilterBusinessNameChange={setFilterBusinessName}
@@ -336,6 +414,13 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         onNewStateChange={setNewState}
         onNewPincodeChange={setNewPincode}
         onNewAddressChange={setNewAddress}
+        onNewLicenseBeginsOnChange={setNewLicenseBeginsOn}
+        onNewLicenseEndsOnChange={setNewLicenseEndsOn}
+        onNewLicenseBundleKeyChange={setNewLicenseBundleKey}
+        onNewLicenseAddOnCapabilitiesChange={setNewLicenseAddOnCapabilities}
+        onNewLicenseRemovedCapabilitiesChange={setNewLicenseRemovedCapabilities}
+        onNewLicenseUserLimitTypeChange={setNewLicenseUserLimitType}
+        onNewLicenseUserLimitValueChange={setNewLicenseUserLimitValue}
         onLogoFileChange={onLogoFileChange}
         onCreate={() => void onCreate()}
         onOpenStore={onOpenStore}

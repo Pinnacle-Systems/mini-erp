@@ -2,6 +2,30 @@ import { z } from "zod";
 import { INDIA_STATES } from "./india-states.js";
 import { BUSINESS_TYPES } from "./business-types.js";
 import { BUSINESS_CATEGORIES } from "./business-categories.js";
+const LICENSE_LIMIT_TYPES = ["MAX_USERS", "MAX_CONCURRENT_USERS"] as const;
+const BUSINESS_BUNDLE_KEYS = [
+  "SALES_LITE",
+  "SALES_STOCK_OUT",
+  "TRADING",
+  "SERVICE_BILLING",
+  "CUSTOM",
+] as const;
+const BUSINESS_CAPABILITY_KEYS = [
+  "CATALOG_ITEMS",
+  "CATALOG_SERVICES",
+  "PARTIES_CUSTOMERS",
+  "PARTIES_SUPPLIERS",
+  "TXN_SALE_CREATE",
+  "TXN_SALE_RETURN",
+  "TXN_PURCHASE_CREATE",
+  "TXN_PURCHASE_RETURN",
+  "INV_STOCK_OUT",
+  "INV_STOCK_IN",
+  "INV_ADJUSTMENT",
+  "INV_TRANSFER",
+  "FINANCE_RECEIVABLES",
+  "FINANCE_PAYABLES",
+] as const;
 
 const parseBooleanQueryParam = z.preprocess((value) => {
   if (typeof value === "boolean") {
@@ -63,6 +87,89 @@ const optionalNullableBusinessCategory = z.preprocess((value) => {
   return normalized === "" ? null : normalized;
 }, z.enum(BUSINESS_CATEGORIES).nullable().optional());
 
+const optionalNullableLicenseDate = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim();
+  return normalized === "" ? null : normalized;
+}, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "License date must be in YYYY-MM-DD format").nullable().optional());
+
+const optionalNullableLicenseLimitType = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const normalized = value.trim();
+  return normalized === "" ? null : normalized;
+}, z.enum(LICENSE_LIMIT_TYPES).nullable().optional());
+
+const optionalNullablePositiveInt = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (normalized === "") return null;
+    const asNumber = Number(normalized);
+    if (Number.isFinite(asNumber)) return asNumber;
+  }
+  return value;
+}, z.number().int().min(1).nullable().optional());
+
+const licenseSchema = z
+  .object({
+    beginsOn: optionalNullableLicenseDate,
+    endsOn: optionalNullableLicenseDate,
+    bundleKey: z.enum(BUSINESS_BUNDLE_KEYS).nullable().optional(),
+    addOnCapabilities: z.array(z.enum(BUSINESS_CAPABILITY_KEYS)).max(14).optional(),
+    removedCapabilities: z.array(z.enum(BUSINESS_CAPABILITY_KEYS)).max(14).optional(),
+    userLimitType: optionalNullableLicenseLimitType,
+    userLimitValue: optionalNullablePositiveInt,
+  })
+  .superRefine((value, ctx) => {
+    const hasAnyField =
+      value.beginsOn !== undefined ||
+      value.endsOn !== undefined ||
+      value.bundleKey !== undefined ||
+      value.addOnCapabilities !== undefined ||
+      value.removedCapabilities !== undefined ||
+      value.userLimitType !== undefined ||
+      value.userLimitValue !== undefined;
+    if (!hasAnyField) return;
+
+    if (!value.beginsOn) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "License begin date is required",
+        path: ["beginsOn"],
+      });
+    }
+    if (!value.endsOn) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "License end date is required",
+        path: ["endsOn"],
+      });
+    }
+
+    if (value.beginsOn && value.endsOn && value.beginsOn > value.endsOn) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "License end date must be on or after begin date",
+        path: ["endsOn"],
+      });
+    }
+
+    if (value.userLimitType && !value.userLimitValue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "User limit value is required when user limit type is set",
+        path: ["userLimitValue"],
+      });
+    }
+
+    if (value.userLimitValue && !value.userLimitType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "User limit type is required when user limit value is set",
+        path: ["userLimitType"],
+      });
+    }
+  });
+
 export const listBusinessesQuerySchema = z.object({
   query: z.object({
     businessName: z.string().trim().optional(),
@@ -104,6 +211,7 @@ export const createBusinessSchema = z.object({
       }, z.string().regex(/^\d{6}$/, "Pincode must be a 6-digit number").optional()),
       address: optionalTrimmedString,
       logo: optionalTrimmedString,
+      license: licenseSchema.optional(),
     }),
 });
 
@@ -142,6 +250,7 @@ export const updateBusinessSchema = z.object({
       }, z.string().regex(/^\d{6}$/, "Pincode must be a 6-digit number").nullable().optional()),
       address: optionalNullableTrimmedString,
       logo: optionalNullableTrimmedString,
+      license: licenseSchema.optional(),
     })
     .refine(
       (value) =>
@@ -157,7 +266,8 @@ export const updateBusinessSchema = z.object({
         value.state !== undefined ||
         value.pincode !== undefined ||
         value.address !== undefined ||
-        value.logo !== undefined,
+        value.logo !== undefined ||
+        value.license !== undefined,
       {
         error: "At least one update field is required",
       },

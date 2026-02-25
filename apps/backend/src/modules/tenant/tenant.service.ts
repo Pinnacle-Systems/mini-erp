@@ -1,7 +1,8 @@
 import { prisma } from "../../lib/prisma.js";
+import { LICENSE_SELECT, toLicenseView } from "../license/license.service.js";
 
 const getBusinessesForIdentity = async (identityId) => {
-  return prisma.business.findMany({
+  const businesses = await prisma.business.findMany({
     where: {
       members: {
         some: {
@@ -9,7 +10,28 @@ const getBusinessesForIdentity = async (identityId) => {
         },
       },
     },
+    select: {
+      id: true,
+      name: true,
+      license: {
+        select: {
+          ...LICENSE_SELECT,
+          updated_at: true,
+        },
+      },
+    },
   });
+
+  return businesses.map((business) => ({
+    id: business.id,
+    name: business.name,
+    license: business.license
+      ? {
+          ...toLicenseView(business.license),
+          fetchedAt: business.license.updated_at.toISOString(),
+        }
+      : null,
+  }));
 };
 
 const validateMembership = async (identityId, businessId) => {

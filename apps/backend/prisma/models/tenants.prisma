@@ -13,17 +13,44 @@ model Business {
   logo              String?
   deleted_at        DateTime?
   members           BusinessMember[]
-  modules           BusinessModule[]
+  license           BusinessLicense?
+  selected_sessions Session[]
 
   @@map("businesses")
   @@schema("tenants")
 }
 
+enum BusinessLicenseLimitType {
+  MAX_USERS
+  MAX_CONCURRENT_USERS
+
+  @@schema("tenants")
+}
+
+model BusinessLicense {
+  id                      String                    @id @default(uuid()) @db.Uuid
+  business_id             String                    @unique @db.Uuid
+  begins_at               DateTime
+  ends_at                 DateTime
+  bundle_key              BusinessBundleKey         @default(SALES_LITE)
+  add_on_capability_keys  BusinessCapabilityKey[]   @default([])
+  removed_capability_keys BusinessCapabilityKey[]   @default([])
+  user_limit_type         BusinessLicenseLimitType?
+  user_limit_value        Int?
+  created_at              DateTime                  @default(now())
+  updated_at              DateTime                  @updatedAt
+  business                Business                  @relation(fields: [business_id], references: [id], onDelete: Cascade)
+
+  @@index([business_id, begins_at, ends_at])
+  @@map("business_licenses")
+  @@schema("tenants")
+}
+
 model BusinessMember {
-  id          String    @id @default(uuid()) @db.Uuid
-  business       Business?    @relation(fields: [business_id], references: [id])
-  business_id    String    @db.Uuid
-  identity_id String    @db.Uuid
+  id          String       @id @default(uuid()) @db.Uuid
+  business    Business?    @relation(fields: [business_id], references: [id])
+  business_id String       @db.Uuid
+  identity_id String       @db.Uuid
   role        BusinessRole @default(CASHIER)
 
   @@unique([business_id, identity_id])
@@ -39,25 +66,31 @@ enum BusinessRole {
   @@schema("tenants")
 }
 
-enum BusinessModuleKey {
-  CATALOG
-  INVENTORY
-  PRICING
+enum BusinessBundleKey {
+  SALES_LITE
+  SALES_STOCK_OUT
+  TRADING
+  SERVICE_BILLING
+  CUSTOM
 
   @@schema("tenants")
 }
 
-model BusinessModule {
-  id         String         @id @default(uuid()) @db.Uuid
-  business_id   String         @db.Uuid
-  module_key BusinessModuleKey
-  enabled    Boolean        @default(true)
-  created_at DateTime       @default(now())
-  updated_at DateTime       @updatedAt
-  business      Business          @relation(fields: [business_id], references: [id], onDelete: Cascade)
+enum BusinessCapabilityKey {
+  CATALOG_ITEMS
+  CATALOG_SERVICES
+  PARTIES_CUSTOMERS
+  PARTIES_SUPPLIERS
+  TXN_SALE_CREATE
+  TXN_SALE_RETURN
+  TXN_PURCHASE_CREATE
+  TXN_PURCHASE_RETURN
+  INV_STOCK_OUT
+  INV_STOCK_IN
+  INV_ADJUSTMENT
+  INV_TRANSFER
+  FINANCE_RECEIVABLES
+  FINANCE_PAYABLES
 
-  @@unique([business_id, module_key])
-  @@index([business_id, enabled])
-  @@map("business_modules")
   @@schema("tenants")
 }

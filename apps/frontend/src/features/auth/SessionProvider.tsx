@@ -62,7 +62,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
         businesses.some((business) => business.id === cachedSession.activeStore)
           ? cachedSession.activeStore
           : null;
-      const selected = me.tenantId ?? cachedActiveStore ?? null;
+      const cachedStoreNeedsValidation = cachedActiveStore
+        ? cachedSession.pendingOnlineLicenseValidationByStore[cachedActiveStore] === true
+        : false;
+      const selected =
+        cachedStoreNeedsValidation
+          ? cachedActiveStore
+          : me.tenantId ?? cachedActiveStore ?? null;
       const selectedModules =
         me.modules ??
         (selected ? cachedSession.businessModulesById[selected] ?? null : null);

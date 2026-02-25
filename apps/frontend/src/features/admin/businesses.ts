@@ -1,5 +1,75 @@
 import { apiAssetUrl, apiFetch } from "../../lib/api";
 
+export const BUNDLE_KEYS = [
+  "SALES_LITE",
+  "SALES_STOCK_OUT",
+  "TRADING",
+  "SERVICE_BILLING",
+  "CUSTOM",
+] as const;
+export const CAPABILITY_KEYS = [
+  "CATALOG_ITEMS",
+  "CATALOG_SERVICES",
+  "PARTIES_CUSTOMERS",
+  "PARTIES_SUPPLIERS",
+  "TXN_SALE_CREATE",
+  "TXN_SALE_RETURN",
+  "TXN_PURCHASE_CREATE",
+  "TXN_PURCHASE_RETURN",
+  "INV_STOCK_OUT",
+  "INV_STOCK_IN",
+  "INV_ADJUSTMENT",
+  "INV_TRANSFER",
+  "FINANCE_RECEIVABLES",
+  "FINANCE_PAYABLES",
+] as const;
+export const BUNDLE_CAPABILITY_MAP: Record<BundleKey, CapabilityKey[]> = {
+  SALES_LITE: [
+    "CATALOG_ITEMS",
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "FINANCE_RECEIVABLES",
+  ],
+  SALES_STOCK_OUT: [
+    "CATALOG_ITEMS",
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "INV_STOCK_OUT",
+    "FINANCE_RECEIVABLES",
+  ],
+  TRADING: [
+    "CATALOG_ITEMS",
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "PARTIES_SUPPLIERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "TXN_PURCHASE_CREATE",
+    "TXN_PURCHASE_RETURN",
+    "INV_STOCK_OUT",
+    "INV_STOCK_IN",
+    "INV_ADJUSTMENT",
+    "INV_TRANSFER",
+    "FINANCE_RECEIVABLES",
+    "FINANCE_PAYABLES",
+  ],
+  SERVICE_BILLING: [
+    "CATALOG_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "FINANCE_RECEIVABLES",
+  ],
+  CUSTOM: [],
+};
+
+export type BundleKey = (typeof BUNDLE_KEYS)[number];
+export type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
+
 export type AdminStore = {
   id: string;
   name: string;
@@ -19,6 +89,15 @@ export type AdminStore = {
     inventory: boolean;
     pricing: boolean;
   };
+  license?: {
+    beginsOn: string;
+    endsOn: string;
+    bundleKey: BundleKey;
+    addOnCapabilities: CapabilityKey[];
+    removedCapabilities: CapabilityKey[];
+    userLimitType: "MAX_USERS" | "MAX_CONCURRENT_USERS" | null;
+    userLimitValue: number | null;
+  } | null;
   owner?: {
     id: string;
     name: string | null;
@@ -109,6 +188,15 @@ export const createAdminStore = async (
     pincode?: string;
     address?: string;
     logo?: string;
+    license?: {
+      beginsOn?: string | null;
+      endsOn?: string | null;
+      bundleKey?: BundleKey | null;
+      addOnCapabilities?: CapabilityKey[];
+      removedCapabilities?: CapabilityKey[];
+      userLimitType?: "MAX_USERS" | "MAX_CONCURRENT_USERS" | null;
+      userLimitValue?: number | null;
+    };
   },
 ): Promise<AdminStore> => {
   const response = await apiFetch("/api/admin/businesses", {
@@ -126,6 +214,7 @@ export const createAdminStore = async (
       ...(payload.pincode ? { pincode: payload.pincode.trim() } : {}),
       ...(payload.address ? { address: payload.address.trim() } : {}),
       ...(payload.logo ? { logo: payload.logo.trim() } : {}),
+      ...(payload.license ? { license: payload.license } : {}),
     }),
   });
 
@@ -156,6 +245,15 @@ export const updateAdminStore = async (
       catalog?: boolean;
       inventory?: boolean;
       pricing?: boolean;
+    };
+    license?: {
+      beginsOn?: string | null;
+      endsOn?: string | null;
+      bundleKey?: BundleKey | null;
+      addOnCapabilities?: CapabilityKey[];
+      removedCapabilities?: CapabilityKey[];
+      userLimitType?: "MAX_USERS" | "MAX_CONCURRENT_USERS" | null;
+      userLimitValue?: number | null;
     };
   },
 ): Promise<AdminStore> => {

@@ -26,7 +26,7 @@ enum DocumentStatus {
 
 model Document {
   id            String         @id @default(uuid()) @db.Uuid
-  business_id      String         @db.Uuid
+  business_id   String         @db.Uuid
   type          DocumentType
   status        DocumentStatus @default(DRAFT)
   doc_number    String

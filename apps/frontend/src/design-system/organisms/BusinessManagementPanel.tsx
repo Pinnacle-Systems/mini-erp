@@ -6,6 +6,8 @@ import {
 import type {
   AdminStore,
   AdminBusinessesPagination,
+  BundleKey,
+  CapabilityKey,
 } from "../../features/admin/businesses";
 import { BusinessManagementCreateView } from "./BusinessManagementCreateView";
 import { BusinessManagementListView } from "./BusinessManagementListView";
@@ -30,6 +32,13 @@ type BusinessManagementPanelProps = {
   newState: string;
   newPincode: string;
   newAddress: string;
+  newLicenseBeginsOn: string;
+  newLicenseEndsOn: string;
+  newLicenseBundleKey: BundleKey;
+  newLicenseAddOnCapabilities: CapabilityKey[];
+  newLicenseRemovedCapabilities: CapabilityKey[];
+  newLicenseUserLimitType: "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS";
+  newLicenseUserLimitValue: string;
   logoPreviewUrl: string | null;
   uploadingLogo: boolean;
   onFilterBusinessNameChange: (value: string) => void;
@@ -48,6 +57,15 @@ type BusinessManagementPanelProps = {
   onNewStateChange: (value: string) => void;
   onNewPincodeChange: (value: string) => void;
   onNewAddressChange: (value: string) => void;
+  onNewLicenseBeginsOnChange: (value: string) => void;
+  onNewLicenseEndsOnChange: (value: string) => void;
+  onNewLicenseBundleKeyChange: (value: BundleKey) => void;
+  onNewLicenseAddOnCapabilitiesChange: (value: CapabilityKey[]) => void;
+  onNewLicenseRemovedCapabilitiesChange: (value: CapabilityKey[]) => void;
+  onNewLicenseUserLimitTypeChange: (
+    value: "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS",
+  ) => void;
+  onNewLicenseUserLimitValueChange: (value: string) => void;
   onLogoFileChange: (file: File | null) => void;
   onCreate: () => void;
   onOpenStore: (business: AdminStore) => void;
@@ -75,6 +93,13 @@ export function BusinessManagementPanel({
   newState,
   newPincode,
   newAddress,
+  newLicenseBeginsOn,
+  newLicenseEndsOn,
+  newLicenseBundleKey,
+  newLicenseAddOnCapabilities,
+  newLicenseRemovedCapabilities,
+  newLicenseUserLimitType,
+  newLicenseUserLimitValue,
   logoPreviewUrl,
   uploadingLogo,
   onFilterBusinessNameChange,
@@ -93,6 +118,13 @@ export function BusinessManagementPanel({
   onNewStateChange,
   onNewPincodeChange,
   onNewAddressChange,
+  onNewLicenseBeginsOnChange,
+  onNewLicenseEndsOnChange,
+  onNewLicenseBundleKeyChange,
+  onNewLicenseAddOnCapabilitiesChange,
+  onNewLicenseRemovedCapabilitiesChange,
+  onNewLicenseUserLimitTypeChange,
+  onNewLicenseUserLimitValueChange,
   onLogoFileChange,
   onCreate,
   onOpenStore,
@@ -104,7 +136,7 @@ export function BusinessManagementPanel({
   return (
     <Card className="h-auto lg:h-full lg:min-h-0">
       <CardContent
-        className={`relative ${isListView ? "space-y-0" : "space-y-2"} lg:h-full lg:min-h-0 lg:overflow-y-auto`}
+        className={`relative ${isListView ? "space-y-0 lg:overflow-y-auto" : "space-y-2 lg:overflow-hidden"} lg:h-full lg:min-h-0`}
       >
         {isListView ? (
           <BusinessManagementListView
@@ -139,6 +171,13 @@ export function BusinessManagementPanel({
             newState={newState}
             newPincode={newPincode}
             newAddress={newAddress}
+            newLicenseBeginsOn={newLicenseBeginsOn}
+            newLicenseEndsOn={newLicenseEndsOn}
+            newLicenseBundleKey={newLicenseBundleKey}
+            newLicenseAddOnCapabilities={newLicenseAddOnCapabilities}
+            newLicenseRemovedCapabilities={newLicenseRemovedCapabilities}
+            newLicenseUserLimitType={newLicenseUserLimitType}
+            newLicenseUserLimitValue={newLicenseUserLimitValue}
             logoPreviewUrl={logoPreviewUrl}
             uploadingLogo={uploadingLogo}
             onNewBusinessNameChange={onNewBusinessNameChange}
@@ -151,6 +190,13 @@ export function BusinessManagementPanel({
             onNewStateChange={onNewStateChange}
             onNewPincodeChange={onNewPincodeChange}
             onNewAddressChange={onNewAddressChange}
+            onNewLicenseBeginsOnChange={onNewLicenseBeginsOnChange}
+            onNewLicenseEndsOnChange={onNewLicenseEndsOnChange}
+            onNewLicenseBundleKeyChange={onNewLicenseBundleKeyChange}
+            onNewLicenseAddOnCapabilitiesChange={onNewLicenseAddOnCapabilitiesChange}
+            onNewLicenseRemovedCapabilitiesChange={onNewLicenseRemovedCapabilitiesChange}
+            onNewLicenseUserLimitTypeChange={onNewLicenseUserLimitTypeChange}
+            onNewLicenseUserLimitValueChange={onNewLicenseUserLimitValueChange}
             onLogoFileChange={onLogoFileChange}
             onCreate={onCreate}
             onBackToList={onBackToList}

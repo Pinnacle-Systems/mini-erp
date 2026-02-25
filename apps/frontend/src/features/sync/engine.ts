@@ -1,4 +1,6 @@
 import { apiFetch } from "../../lib/api";
+import { selectStore } from "../auth/client";
+import { useSessionStore } from "../auth/session-business";
 import {
   applyDeltas,
   listEntities,
@@ -13,6 +15,18 @@ const CURSOR_KEY = "cursor";
 const DEVICE_ID_KEY = "mini_erp_device_id_v1";
 const isNetworkOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine;
+
+const ensureOnlineLicenseValidation = async (tenantId: string) => {
+  if (!isNetworkOnline()) return;
+
+  const sessionState = useSessionStore.getState();
+  const needsValidation = sessionState.pendingOnlineLicenseValidationByStore[tenantId];
+  if (!needsValidation) return;
+
+  const result = await selectStore(tenantId);
+  useSessionStore.getState().setActiveBusinessModules(result.modules ?? null);
+  useSessionStore.getState().setStoreNeedsOnlineLicenseValidation(tenantId, false);
+};
 
 const getOrCreateDeviceId = () => {
   const existing = window.localStorage.getItem(DEVICE_ID_KEY);
@@ -224,6 +238,7 @@ const pull = async (tenantId: string) => {
 
 export const syncOnce = async (tenantId: string) => {
   if (!isNetworkOnline()) return;
+  await ensureOnlineLicenseValidation(tenantId);
 
   await push(tenantId);
   await pull(tenantId);

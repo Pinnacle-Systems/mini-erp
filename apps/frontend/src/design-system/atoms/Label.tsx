@@ -4,7 +4,10 @@ import { cn } from "../../lib/utils";
 export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn("block text-xs font-medium tracking-[0.01em] text-muted-foreground", className)}
+      className={cn(
+        "block text-xs font-medium tracking-[0.01em] text-muted-foreground lg:text-[10px]",
+        className,
+      )}
       {...props}
     />
   );

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { selectStore } from "../features/auth/client";
 import { useSessionStore } from "../features/auth/session-business";
 import { BusinessPanel } from "../design-system/organisms/BusinessPanel";
+import { canSwitchStoreOffline } from "../features/auth/license-policy";
 
 export function BusinessSelectionPage() {
   const navigate = useNavigate();
@@ -10,10 +11,14 @@ export function BusinessSelectionPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
   const setActiveStore = useSessionStore((state) => state.setActiveStore);
   const setActiveBusinessModules = useSessionStore((state) => state.setActiveBusinessModules);
+  const setStoreNeedsOnlineLicenseValidation = useSessionStore(
+    (state) => state.setStoreNeedsOnlineLicenseValidation,
+  );
   const setIsBusinessSelected = useSessionStore((state) => state.setIsBusinessSelected);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const identityId = useSessionStore((state) => state.identityId);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedStore, setSelectedStore] = useState(activeStore ?? "");
   const isAuthenticated = Boolean(identityId);
   const activeBusinessName = useMemo(
@@ -30,16 +35,19 @@ export function BusinessSelectionPage() {
   }, [activeStore]);
 
   const onBusinessChange = (businessId: string) => {
+    setError(null);
     setSelectedStore(businessId);
   };
 
   const onApplyBusinessToken = async () => {
     if (!selectedStore) return;
     setLoading(true);
+    setError(null);
     try {
       const result = await selectStore(selectedStore);
       setActiveStore(selectedStore);
       setActiveBusinessModules(result.modules ?? null);
+      setStoreNeedsOnlineLicenseValidation(selectedStore, false);
       setIsBusinessSelected(true);
       navigate("/app", { replace: true });
     } catch (error) {
@@ -47,13 +55,20 @@ export function BusinessSelectionPage() {
         !navigator.onLine || error instanceof TypeError;
 
       if (isAuthenticated && isNetworkFailure) {
+        const selectedBusiness = businesses.find((business) => business.id === selectedStore);
+        const offlinePolicy = canSwitchStoreOffline(selectedBusiness);
+        if (!offlinePolicy.allowed) {
+          setError(offlinePolicy.reason ?? "Store cannot be selected offline.");
+          return;
+        }
         setActiveStore(selectedStore);
+        setStoreNeedsOnlineLicenseValidation(selectedStore, true);
         setIsBusinessSelected(true);
         navigate("/app", { replace: true });
         return;
       }
 
-      console.error(error);
+      setError(error instanceof Error ? error.message : "Unable to select business.");
     } finally {
       setLoading(false);
     }
@@ -68,6 +83,7 @@ export function BusinessSelectionPage() {
         <p className="text-xs text-muted-foreground">
           Choose the business you want to access for this session.
         </p>
+        {error ? <p className="text-xs text-red-600">{error}</p> : null}
       </header>
       <BusinessPanel
         businesses={businesses}

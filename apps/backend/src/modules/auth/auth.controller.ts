@@ -3,35 +3,17 @@ import { UnauthorizedError } from "../../shared/utils/errors.js";
 import { getClientIp } from "../../shared/utils/getIp.js";
 import authService, { REFRESH_TOKEN_EXPIRY_MS } from "./auth.service.js";
 import { SystemRole } from "../../../generated/prisma/enums.js";
-import { prisma } from "../../lib/prisma.js";
 import {
   signAccessToken,
   signTempToken,
   verifyAccessToken,
 } from "../../shared/utils/token.utils.js";
 import tenantService from "../tenant/tenant.service.js";
-
-const toModuleState = (
-  rows: Array<{ module_key: "CATALOG" | "INVENTORY" | "PRICING"; enabled: boolean }>,
-) => {
-  const byKey = new Map(rows.map((row) => [row.module_key, row.enabled]));
-  return {
-    catalog: byKey.get("CATALOG") ?? true,
-    inventory: byKey.get("INVENTORY") ?? true,
-    pricing: byKey.get("PRICING") ?? true,
-  };
-};
-
-const getBusinessModules = async (businessId: string) => {
-  const rows = await prisma.businessModule.findMany({
-    where: { business_id: businessId },
-    select: { module_key: true, enabled: true },
-  });
-
-  return toModuleState(
-    rows as Array<{ module_key: "CATALOG" | "INVENTORY" | "PRICING"; enabled: boolean }>,
-  );
-};
+import {
+  assertLicensedStoreAccess,
+  getBusinessModulesFromLicense,
+  setSessionSelectedBusiness,
+} from "../license/license.service.js";
 
 export const login = catchAsync(async (req, res) => {
   const { phone = "", password = "" } = req.body;
@@ -128,6 +110,8 @@ export const refresh = catchAsync(async (req, res) => {
       session.identity_id,
       currentBusinessId,
     );
+    await assertLicensedStoreAccess(currentBusinessId, session.id);
+    await setSessionSelectedBusiness(session.id, currentBusinessId);
 
     const token = await signAccessToken(session.identity, session, {
       tenantId: currentBusinessId,
@@ -176,6 +160,8 @@ export const selectStore = catchAsync(async (req, res) => {
   if (!member) {
     throw new UnauthorizedError("Access denied");
   }
+  await assertLicensedStoreAccess(businessId, payload.sid);
+  await setSessionSelectedBusiness(payload.sid, businessId);
 
   const accessToken = await signAccessToken(
     {
@@ -190,7 +176,7 @@ export const selectStore = catchAsync(async (req, res) => {
       memberRole: member.role,
     },
   );
-  const modules = await getBusinessModules(businessId);
+  const modules = await getBusinessModulesFromLicense(businessId);
 
   res.json({
     success: true,
@@ -220,7 +206,10 @@ export const getMe = catchAsync(async (req, res) => {
     businesses = await tenantService.getBusinessesForIdentity(payload.sub);
   }
   const tenantId = typeof payload.tenantId === "string" ? payload.tenantId : null;
-  const modules = tenantId ? await getBusinessModules(tenantId) : null;
+  if (tenantId && typeof payload.sid === "string") {
+    await setSessionSelectedBusiness(payload.sid, tenantId).catch(() => undefined);
+  }
+  const modules = tenantId ? await getBusinessModulesFromLicense(tenantId) : null;
 
   res.json({
     success: true,

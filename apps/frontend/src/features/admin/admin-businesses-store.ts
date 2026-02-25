@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import type { AdminStore, AdminBusinessesPagination } from "./businesses";
+import type {
+  AdminStore,
+  AdminBusinessesPagination,
+  BundleKey,
+  CapabilityKey,
+} from "./businesses";
 
 type AdminBusinessesState = {
   businesses: AdminStore[];
@@ -20,6 +25,13 @@ type AdminBusinessesState = {
   newPincode: string;
   newAddress: string;
   newLogo: string;
+  newLicenseBeginsOn: string;
+  newLicenseEndsOn: string;
+  newLicenseBundleKey: BundleKey;
+  newLicenseAddOnCapabilities: CapabilityKey[];
+  newLicenseRemovedCapabilities: CapabilityKey[];
+  newLicenseUserLimitType: "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS";
+  newLicenseUserLimitValue: string;
 };
 
 type AdminBusinessesActions = {
@@ -43,6 +55,15 @@ type AdminBusinessesActions = {
   setNewPincode: (value: string) => void;
   setNewAddress: (value: string) => void;
   setNewLogo: (value: string) => void;
+  setNewLicenseBeginsOn: (value: string) => void;
+  setNewLicenseEndsOn: (value: string) => void;
+  setNewLicenseBundleKey: (value: BundleKey) => void;
+  setNewLicenseAddOnCapabilities: (value: CapabilityKey[]) => void;
+  setNewLicenseRemovedCapabilities: (value: CapabilityKey[]) => void;
+  setNewLicenseUserLimitType: (
+    value: "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS",
+  ) => void;
+  setNewLicenseUserLimitValue: (value: string) => void;
   clearCreateDraft: () => void;
   resetAdminBusinessesState: () => void;
 };
@@ -73,6 +94,13 @@ const initialState: AdminBusinessesState = {
   newPincode: "",
   newAddress: "",
   newLogo: "",
+  newLicenseBeginsOn: "",
+  newLicenseEndsOn: "",
+  newLicenseBundleKey: "SALES_LITE",
+  newLicenseAddOnCapabilities: [],
+  newLicenseRemovedCapabilities: [],
+  newLicenseUserLimitType: "UNLIMITED",
+  newLicenseUserLimitValue: "",
 };
 
 export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusinessesActions>(
@@ -137,6 +165,31 @@ export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusine
     setNewLogo: (value) => {
       set({ newLogo: value });
     },
+    setNewLicenseBeginsOn: (value) => {
+      set({ newLicenseBeginsOn: value });
+    },
+    setNewLicenseEndsOn: (value) => {
+      set({ newLicenseEndsOn: value });
+    },
+    setNewLicenseBundleKey: (value) => {
+      set({ newLicenseBundleKey: value });
+    },
+    setNewLicenseAddOnCapabilities: (value) => {
+      set({ newLicenseAddOnCapabilities: value });
+    },
+    setNewLicenseRemovedCapabilities: (value) => {
+      set({ newLicenseRemovedCapabilities: value });
+    },
+    setNewLicenseUserLimitType: (value) => {
+      set((state) => ({
+        newLicenseUserLimitType: value,
+        newLicenseUserLimitValue:
+          value === "UNLIMITED" ? "" : state.newLicenseUserLimitValue,
+      }));
+    },
+    setNewLicenseUserLimitValue: (value) => {
+      set({ newLicenseUserLimitValue: value });
+    },
     clearCreateDraft: () => {
       set({
         newBusinessName: "",
@@ -150,6 +203,13 @@ export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusine
         newPincode: "",
         newAddress: "",
         newLogo: "",
+        newLicenseBeginsOn: "",
+        newLicenseEndsOn: "",
+        newLicenseBundleKey: "SALES_LITE",
+        newLicenseAddOnCapabilities: [],
+        newLicenseRemovedCapabilities: [],
+        newLicenseUserLimitType: "UNLIMITED",
+        newLicenseUserLimitValue: "",
       });
     },
     resetAdminBusinessesState: () => {

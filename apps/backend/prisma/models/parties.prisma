@@ -7,14 +7,14 @@ enum PartyType {
 }
 
 model Party {
-  id         String    @id @default(uuid()) @db.Uuid
-  business_id   String    @db.Uuid
-  name       String
-  email      String?
-  phone      String?
-  tax_id     String?
-  type       PartyType @default(CUSTOMER)
-  account_id String?   @db.Uuid
+  id                         String                @id @default(uuid()) @db.Uuid
+  business_id                String                @db.Uuid
+  name                       String
+  email                      String?
+  phone                      String?
+  tax_id                     String?
+  type                       PartyType             @default(CUSTOMER)
+  account_id                 String?               @db.Uuid
   customer_group_memberships CustomerGroupMember[]
 
   created_at DateTime @default(now())
@@ -25,14 +25,14 @@ model Party {
 }
 
 model CustomerGroup {
-  id             String                   @id @default(uuid()) @db.Uuid
-  business_id       String                   @db.Uuid
-  code           String
-  name           String
-  is_active      Boolean                  @default(true)
-  memberships    CustomerGroupMember[]
-  created_at     DateTime                 @default(now())
-  updated_at     DateTime                 @updatedAt
+  id          String                @id @default(uuid()) @db.Uuid
+  business_id String                @db.Uuid
+  code        String
+  name        String
+  is_active   Boolean               @default(true)
+  memberships CustomerGroupMember[]
+  created_at  DateTime              @default(now())
+  updated_at  DateTime              @updatedAt
 
   @@unique([business_id, code])
   @@map("customer_groups")
