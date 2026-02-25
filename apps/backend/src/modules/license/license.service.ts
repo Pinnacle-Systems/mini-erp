@@ -13,6 +13,9 @@ import {
 export type { BusinessLicenseInput, BusinessLicenseView } from "./license.types.js";
 
 export const LICENSE_SELECT = {
+  id: true,
+  version: true,
+  status: true,
   begins_at: true,
   ends_at: true,
   bundle_key: true,
@@ -23,6 +26,9 @@ export const LICENSE_SELECT = {
 } as const;
 
 type LicenseRecord = {
+  id: string;
+  version: number;
+  status: "ACTIVE" | "SUPERSEDED";
   begins_at: Date;
   ends_at: Date;
   bundle_key: BusinessBundleKey;
@@ -39,23 +45,23 @@ type SessionWriteDbClient = Pick<typeof prisma, "session">;
 type LegacyBusinessModuleKey = "CATALOG" | "INVENTORY" | "PRICING";
 
 const MODULE_TO_CAPABILITIES: Record<LegacyBusinessModuleKey, BusinessCapabilityKey[]> = {
-  CATALOG: ["CATALOG_ITEMS", "CATALOG_SERVICES"],
+  CATALOG: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
   INVENTORY: ["INV_STOCK_OUT", "INV_STOCK_IN", "INV_ADJUSTMENT", "INV_TRANSFER"],
   PRICING: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
 };
 
 const BUNDLE_CAPABILITIES: Record<BusinessBundleKey, BusinessCapabilityKey[]> = {
   SALES_LITE: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
     "FINANCE_RECEIVABLES",
   ],
   SALES_STOCK_OUT: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
@@ -63,8 +69,8 @@ const BUNDLE_CAPABILITIES: Record<BusinessBundleKey, BusinessCapabilityKey[]> = 
     "FINANCE_RECEIVABLES",
   ],
   TRADING: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "PARTIES_SUPPLIERS",
     "TXN_SALE_CREATE",
@@ -79,7 +85,7 @@ const BUNDLE_CAPABILITIES: Record<BusinessBundleKey, BusinessCapabilityKey[]> = 
     "FINANCE_PAYABLES",
   ],
   SERVICE_BILLING: [
-    "CATALOG_SERVICES",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
@@ -153,10 +159,7 @@ export const getBusinessModulesFromLicense = async (
   businessId: string,
   db: LicenseWriteDbClient = prisma,
 ) => {
-  const license = await db.businessLicense.findUnique({
-    where: { business_id: businessId },
-    select: LICENSE_SELECT,
-  });
+  const license = await findBusinessLicense(businessId, db);
 
   const effectiveCapabilities = license
     ? resolveBundleCapabilities({
@@ -186,19 +189,32 @@ export const upsertBusinessLicense = async (
   const endRange = toUtcDayRange(license.endsOn);
   const normalized = normalizeBundleInput(license);
 
-  return db.businessLicense.upsert({
-    where: { business_id: businessId },
-    update: {
-      begins_at: beginRange.start,
-      ends_at: endRange.end,
-      bundle_key: normalized.bundleKey,
-      add_on_capability_keys: normalized.addOnCapabilities,
-      removed_capability_keys: normalized.removedCapabilities,
-      user_limit_type: license.userLimitType ?? null,
-      user_limit_value: license.userLimitValue ?? null,
-    },
-    create: {
+  const activeLicense = await db.businessLicense.findFirst({
+    where: {
       business_id: businessId,
+      status: "ACTIVE",
+    },
+    orderBy: { version: "desc" },
+    select: { id: true, version: true },
+  });
+
+  if (activeLicense) {
+    await db.businessLicense.updateMany({
+      where: {
+        business_id: businessId,
+        status: "ACTIVE",
+      },
+      data: {
+        status: "SUPERSEDED",
+      },
+    });
+  }
+
+  return db.businessLicense.create({
+    data: {
+      business_id: businessId,
+      version: (activeLicense?.version ?? 0) + 1,
+      status: "ACTIVE",
       begins_at: beginRange.start,
       ends_at: endRange.end,
       bundle_key: normalized.bundleKey,
@@ -212,8 +228,12 @@ export const upsertBusinessLicense = async (
 };
 
 export const findBusinessLicense = async (businessId: string, db: LicenseWriteDbClient = prisma) =>
-  db.businessLicense.findUnique({
-    where: { business_id: businessId },
+  db.businessLicense.findFirst({
+    where: {
+      business_id: businessId,
+      status: "ACTIVE",
+    },
+    orderBy: { version: "desc" },
     select: LICENSE_SELECT,
   });
 

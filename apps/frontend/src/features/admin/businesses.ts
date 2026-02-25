@@ -8,8 +8,8 @@ export const BUNDLE_KEYS = [
   "CUSTOM",
 ] as const;
 export const CAPABILITY_KEYS = [
-  "CATALOG_ITEMS",
-  "CATALOG_SERVICES",
+  "ITEM_PRODUCTS",
+  "ITEM_SERVICES",
   "PARTIES_CUSTOMERS",
   "PARTIES_SUPPLIERS",
   "TXN_SALE_CREATE",
@@ -25,16 +25,16 @@ export const CAPABILITY_KEYS = [
 ] as const;
 export const BUNDLE_CAPABILITY_MAP: Record<BundleKey, CapabilityKey[]> = {
   SALES_LITE: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
     "FINANCE_RECEIVABLES",
   ],
   SALES_STOCK_OUT: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
@@ -42,8 +42,8 @@ export const BUNDLE_CAPABILITY_MAP: Record<BundleKey, CapabilityKey[]> = {
     "FINANCE_RECEIVABLES",
   ],
   TRADING: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "PARTIES_SUPPLIERS",
     "TXN_SALE_CREATE",
@@ -58,7 +58,7 @@ export const BUNDLE_CAPABILITY_MAP: Record<BundleKey, CapabilityKey[]> = {
     "FINANCE_PAYABLES",
   ],
   SERVICE_BILLING: [
-    "CATALOG_SERVICES",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",

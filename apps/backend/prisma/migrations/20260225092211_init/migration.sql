@@ -68,13 +68,16 @@ CREATE TYPE "sync"."SyncOperation" AS ENUM ('CREATE', 'UPDATE', 'DELETE');
 CREATE TYPE "tenants"."BusinessLicenseLimitType" AS ENUM ('MAX_USERS', 'MAX_CONCURRENT_USERS');
 
 -- CreateEnum
+CREATE TYPE "tenants"."BusinessLicenseStatus" AS ENUM ('ACTIVE', 'SUPERSEDED');
+
+-- CreateEnum
 CREATE TYPE "tenants"."BusinessRole" AS ENUM ('OWNER', 'MANAGER', 'CASHIER');
 
 -- CreateEnum
 CREATE TYPE "tenants"."BusinessBundleKey" AS ENUM ('SALES_LITE', 'SALES_STOCK_OUT', 'TRADING', 'SERVICE_BILLING', 'CUSTOM');
 
 -- CreateEnum
-CREATE TYPE "tenants"."BusinessCapabilityKey" AS ENUM ('CATALOG_ITEMS', 'CATALOG_SERVICES', 'PARTIES_CUSTOMERS', 'PARTIES_SUPPLIERS', 'TXN_SALE_CREATE', 'TXN_SALE_RETURN', 'TXN_PURCHASE_CREATE', 'TXN_PURCHASE_RETURN', 'INV_STOCK_OUT', 'INV_STOCK_IN', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'FINANCE_RECEIVABLES', 'FINANCE_PAYABLES');
+CREATE TYPE "tenants"."BusinessCapabilityKey" AS ENUM ('ITEM_PRODUCTS', 'ITEM_SERVICES', 'PARTIES_CUSTOMERS', 'PARTIES_SUPPLIERS', 'TXN_SALE_CREATE', 'TXN_SALE_RETURN', 'TXN_PURCHASE_CREATE', 'TXN_PURCHASE_RETURN', 'INV_STOCK_OUT', 'INV_STOCK_IN', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'FINANCE_RECEIVABLES', 'FINANCE_PAYABLES');
 
 -- CreateTable
 CREATE TABLE "accounts"."accounts" (
@@ -475,6 +478,8 @@ CREATE TABLE "tenants"."businesses" (
 CREATE TABLE "tenants"."business_licenses" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
+    "version" INTEGER NOT NULL,
+    "status" "tenants"."BusinessLicenseStatus" NOT NULL DEFAULT 'ACTIVE',
     "begins_at" TIMESTAMP(3) NOT NULL,
     "ends_at" TIMESTAMP(3) NOT NULL,
     "bundle_key" "tenants"."BusinessBundleKey" NOT NULL DEFAULT 'SALES_LITE',
@@ -619,10 +624,13 @@ CREATE INDEX "change_log_tenant_id_cursor_idx" ON "sync"."change_log"("tenant_id
 CREATE INDEX "change_log_tenant_id_entity_entity_id_server_version_idx" ON "sync"."change_log"("tenant_id", "entity", "entity_id", "server_version");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "business_licenses_business_id_key" ON "tenants"."business_licenses"("business_id");
+CREATE INDEX "business_licenses_business_id_status_version_idx" ON "tenants"."business_licenses"("business_id", "status", "version");
 
 -- CreateIndex
 CREATE INDEX "business_licenses_business_id_begins_at_ends_at_idx" ON "tenants"."business_licenses"("business_id", "begins_at", "ends_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "business_licenses_business_id_version_key" ON "tenants"."business_licenses"("business_id", "version");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "business_members_business_id_identity_id_key" ON "tenants"."business_members"("business_id", "identity_id");

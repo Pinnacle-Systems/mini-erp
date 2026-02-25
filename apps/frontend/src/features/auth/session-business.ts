@@ -11,8 +11,8 @@ export type AssignedStore = {
     endsOn: string;
     bundleKey: "SALES_LITE" | "SALES_STOCK_OUT" | "TRADING" | "SERVICE_BILLING" | "CUSTOM";
     addOnCapabilities: Array<
-      | "CATALOG_ITEMS"
-      | "CATALOG_SERVICES"
+      | "ITEM_PRODUCTS"
+      | "ITEM_SERVICES"
       | "PARTIES_CUSTOMERS"
       | "PARTIES_SUPPLIERS"
       | "TXN_SALE_CREATE"
@@ -27,8 +27,8 @@ export type AssignedStore = {
       | "FINANCE_PAYABLES"
     >;
     removedCapabilities: Array<
-      | "CATALOG_ITEMS"
-      | "CATALOG_SERVICES"
+      | "ITEM_PRODUCTS"
+      | "ITEM_SERVICES"
       | "PARTIES_CUSTOMERS"
       | "PARTIES_SUPPLIERS"
       | "TXN_SALE_CREATE"

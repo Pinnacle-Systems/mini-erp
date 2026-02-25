@@ -13,7 +13,10 @@ const getBusinessesForIdentity = async (identityId) => {
     select: {
       id: true,
       name: true,
-      license: {
+      licenses: {
+        where: { status: "ACTIVE" },
+        orderBy: { version: "desc" },
+        take: 1,
         select: {
           ...LICENSE_SELECT,
           updated_at: true,
@@ -25,10 +28,10 @@ const getBusinessesForIdentity = async (identityId) => {
   return businesses.map((business) => ({
     id: business.id,
     name: business.name,
-    license: business.license
+    license: business.licenses[0]
       ? {
-          ...toLicenseView(business.license),
-          fetchedAt: business.license.updated_at.toISOString(),
+          ...toLicenseView(business.licenses[0]),
+          fetchedAt: business.licenses[0].updated_at.toISOString(),
         }
       : null,
   }));

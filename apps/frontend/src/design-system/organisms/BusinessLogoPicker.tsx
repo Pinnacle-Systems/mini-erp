@@ -10,6 +10,7 @@ type BusinessLogoPickerProps = {
   logoUrl: string | null;
   disabled?: boolean;
   removing?: boolean;
+  showActions?: boolean;
   onApplyLogoFile: (file: File) => Promise<void> | void;
   onRemoveLogo?: () => Promise<void> | void;
 };
@@ -18,6 +19,7 @@ export function BusinessLogoPicker({
   logoUrl,
   disabled = false,
   removing = false,
+  showActions = true,
   onApplyLogoFile,
   onRemoveLogo,
 }: BusinessLogoPickerProps) {
@@ -197,17 +199,19 @@ export function BusinessLogoPicker({
             </div>
           )}
         </div>
-        <IconButton
-          icon={ImagePlus}
-          type="button"
-          variant="outline"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          className="absolute -bottom-2 -left-2 h-7 w-7 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
-          aria-label={disabled ? "Uploading logo" : "Upload logo"}
-          title={disabled ? "Uploading..." : "Upload logo"}
-        />
-        {logoUrl && onRemoveLogo ? (
+        {showActions ? (
+          <IconButton
+            icon={ImagePlus}
+            type="button"
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+            className="absolute -bottom-2 -left-2 h-7 w-7 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
+            aria-label={disabled ? "Uploading logo" : "Upload logo"}
+            title={disabled ? "Uploading..." : "Upload logo"}
+          />
+        ) : null}
+        {showActions && logoUrl && onRemoveLogo ? (
           <IconButton
             icon={Trash2}
             type="button"

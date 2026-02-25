@@ -35,22 +35,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const LOGO_UPLOAD_DIR = resolve(__dirname, "../../../uploads/business-logos");
 const MODULE_CAPABILITY_MAP = {
-  catalog: ["CATALOG_ITEMS", "CATALOG_SERVICES"],
+  catalog: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
   inventory: ["INV_STOCK_OUT", "INV_STOCK_IN", "INV_ADJUSTMENT", "INV_TRANSFER"],
   pricing: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
 } as const;
 const BUNDLE_CAPABILITY_MAP = {
   SALES_LITE: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
     "FINANCE_RECEIVABLES",
   ],
   SALES_STOCK_OUT: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
@@ -58,8 +58,8 @@ const BUNDLE_CAPABILITY_MAP = {
     "FINANCE_RECEIVABLES",
   ],
   TRADING: [
-    "CATALOG_ITEMS",
-    "CATALOG_SERVICES",
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "PARTIES_SUPPLIERS",
     "TXN_SALE_CREATE",
@@ -74,7 +74,7 @@ const BUNDLE_CAPABILITY_MAP = {
     "FINANCE_PAYABLES",
   ],
   SERVICE_BILLING: [
-    "CATALOG_SERVICES",
+    "ITEM_SERVICES",
     "PARTIES_CUSTOMERS",
     "TXN_SALE_CREATE",
     "TXN_SALE_RETURN",
@@ -183,7 +183,10 @@ export const listStores = catchAsync(async (req, res) => {
       skip: (page - 1) * limit,
       take: limit,
       include: {
-        license: {
+        licenses: {
+          where: { status: "ACTIVE" },
+          orderBy: { version: "desc" },
+          take: 1,
           select: LICENSE_SELECT,
         },
       },
@@ -213,7 +216,7 @@ export const listStores = catchAsync(async (req, res) => {
       address: business.address,
       logo: business.logo,
       deletedAt: business.deleted_at,
-      license: toLicenseView(business.license),
+      license: toLicenseView(business.licenses[0] ?? null),
       owner: ownerById.get(business.owner_id) ?? null,
     })),
     pagination: {
@@ -336,7 +339,10 @@ export const createStore = catchAsync(async (req, res) => {
         logo: logo ?? null,
       },
       include: {
-        license: {
+        licenses: {
+          where: { status: "ACTIVE" },
+          orderBy: { version: "desc" },
+          take: 1,
           select: LICENSE_SELECT,
         },
       },
@@ -346,7 +352,7 @@ export const createStore = catchAsync(async (req, res) => {
       const createdLicense = await upsertBusinessLicense(business.id, license ?? {});
       business = {
         ...business,
-        license: createdLicense,
+        licenses: createdLicense ? [createdLicense] : business.licenses,
       };
     }
 
@@ -391,7 +397,7 @@ export const createStore = catchAsync(async (req, res) => {
       pincode: business.pincode,
       address: business.address,
       logo: business.logo,
-      license: toLicenseView(business.license),
+      license: toLicenseView(business.licenses[0] ?? null),
     },
   });
 });
@@ -416,7 +422,10 @@ export const getStore = catchAsync(async (req, res) => {
       address: true,
       logo: true,
       deleted_at: true,
-      license: {
+      licenses: {
+        where: { status: "ACTIVE" },
+        orderBy: { version: "desc" },
+        take: 1,
         select: LICENSE_SELECT,
       },
     },
@@ -449,7 +458,7 @@ export const getStore = catchAsync(async (req, res) => {
       deletedAt: business.deleted_at,
       owner: owner ?? null,
       modules: await getBusinessModulesFromLicense(business.id),
-      license: toLicenseView(business.license),
+      license: toLicenseView(business.licenses[0] ?? null),
     },
   });
 });
@@ -561,8 +570,12 @@ export const updateStore = catchAsync(async (req, res) => {
       }
 
       if (modules) {
-        const currentLicense = await tx.businessLicense.findUnique({
-          where: { business_id: updatedStore.id },
+        const currentLicense = await tx.businessLicense.findFirst({
+          where: {
+            business_id: updatedStore.id,
+            status: "ACTIVE",
+          },
+          orderBy: { version: "desc" },
           select: LICENSE_SELECT,
         });
         const currentLicenseView = toLicenseView(currentLicense);
@@ -633,8 +646,12 @@ export const updateStore = catchAsync(async (req, res) => {
         });
       }
 
-      const businessLicense = await tx.businessLicense.findUnique({
-        where: { business_id: updatedStore.id },
+      const businessLicense = await tx.businessLicense.findFirst({
+        where: {
+          business_id: updatedStore.id,
+          status: "ACTIVE",
+        },
+        orderBy: { version: "desc" },
         select: LICENSE_SELECT,
       });
 

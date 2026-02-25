@@ -7,13 +7,10 @@ import {
   Card,
   CardContent,
 } from "../design-system/molecules/Card";
-import { LicenseCapabilityPicklist } from "../design-system/molecules/LicenseCapabilityPicklist";
 import { BusinessDetailsFormPanes } from "../design-system/organisms/BusinessDetailsFormPanes";
+import { BusinessLicensePane } from "../design-system/organisms/BusinessLicensePane";
 import { BusinessLogoPicker } from "../design-system/organisms/BusinessLogoPicker";
 import {
-  BUNDLE_CAPABILITY_MAP,
-  CAPABILITY_KEYS,
-  BUNDLE_KEYS,
   deleteAdminStore,
   getAdminStore,
   removeBusinessLogo,
@@ -23,6 +20,9 @@ import {
   type BundleKey,
   type CapabilityKey,
 } from "../features/admin/businesses";
+
+const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
+const ALLOWED_LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export function AdminBusinessDetailsPage() {
   const { businessId } = useParams<{ businessId: string }>();
@@ -38,11 +38,6 @@ export function AdminBusinessDetailsPage() {
     pincode: "",
     address: "",
   });
-  const [moduleDraft, setModuleDraft] = useState({
-    catalog: true,
-    inventory: true,
-    pricing: true,
-  });
   const [licenseDraft, setLicenseDraft] = useState({
     beginsOn: "",
     endsOn: "",
@@ -56,9 +51,30 @@ export function AdminBusinessDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [removingLogo, setRemovingLogo] = useState(false);
+  const [logoDraftFile, setLogoDraftFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [logoMarkedForRemoval, setLogoMarkedForRemoval] = useState(false);
   const showOverlayLoader = loading || saving;
+
+  const clearLogoDraft = () => {
+    setLogoDraftFile(null);
+    setLogoMarkedForRemoval(false);
+    setLogoPreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return null;
+    });
+  };
+
+  useEffect(
+    () => () => {
+      if (logoPreviewUrl) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+    },
+    [logoPreviewUrl],
+  );
 
   const applyDetailsDraft = (source: AdminStore) => {
     setDetailsDraft({
@@ -102,12 +118,8 @@ export function AdminBusinessDetailsPage() {
       setStore(result);
       setNameDraft(result.name);
       applyDetailsDraft(result);
-      setModuleDraft({
-        catalog: result.modules?.catalog ?? true,
-        inventory: result.modules?.inventory ?? true,
-        pricing: result.modules?.pricing ?? true,
-      });
       applyLicenseDraft(result);
+      clearLogoDraft();
       setIsEditingDetails(false);
     } catch (requestError) {
       setError(
@@ -172,21 +184,9 @@ export function AdminBusinessDetailsPage() {
     await onRestore();
   };
 
-  const onSaveModules = async () => {
-    if (!businessId) return;
-    await runMutation(async () => {
-      await updateAdminStore(businessId, {
-        modules: {
-          catalog: moduleDraft.catalog,
-          inventory: moduleDraft.inventory,
-          pricing: moduleDraft.pricing,
-        },
-      });
-    });
-  };
-
   const onSaveLicense = async () => {
     if (!businessId) return;
+    if (!isEditingDetails) return;
     if (!licenseDraft.beginsOn || !licenseDraft.endsOn) {
       setError("License begin and end dates are required.");
       return;
@@ -225,6 +225,7 @@ export function AdminBusinessDetailsPage() {
 
   const onSaveDetails = async () => {
     if (!businessId) return;
+    if (!isEditingDetails) return;
     if (!nameDraft.trim()) {
       setError("Business name is required.");
       return;
@@ -241,7 +242,19 @@ export function AdminBusinessDetailsPage() {
         pincode: detailsDraft.pincode.trim() || null,
         address: detailsDraft.address.trim() || null,
       });
+
+      if (logoDraftFile) {
+        const dataBase64 = await fileToBase64(logoDraftFile);
+        await uploadBusinessLogo(businessId, {
+          fileName: logoDraftFile.name,
+          mimeType: logoDraftFile.type,
+          dataBase64,
+        });
+      } else if (logoMarkedForRemoval) {
+        await removeBusinessLogo(businessId);
+      }
     });
+    clearLogoDraft();
     setIsEditingDetails(false);
   };
 
@@ -260,58 +273,59 @@ export function AdminBusinessDetailsPage() {
       reader.readAsDataURL(file);
     });
 
-  const onLogoFileChange = async (file: File) => {
-    if (!businessId || uploadingLogo) {
-      return;
+  const validateLogoFile = (file: File): string | null => {
+    if (!ALLOWED_LOGO_TYPES.has(file.type)) {
+      return "Logo must be PNG, JPG, or WEBP.";
     }
-
-    setError(null);
-    setUploadingLogo(true);
-    try {
-      const dataBase64 = await fileToBase64(file);
-      const result = await uploadBusinessLogo(businessId, {
-        fileName: file.name,
-        mimeType: file.type,
-        dataBase64,
-      });
-      setStore((current) =>
-        current ? { ...current, logo: result.logo } : current,
-      );
-      await loadStore();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Unable to upload logo",
-      );
-    } finally {
-      setUploadingLogo(false);
+    if (file.size > MAX_LOGO_SIZE_BYTES) {
+      return "Logo file is too large. Maximum allowed size is 2MB.";
     }
+    return null;
   };
 
-  const onRemoveLogo = async () => {
-    if (!businessId || removingLogo || uploadingLogo) {
+  const onLogoFileChange = (file: File) => {
+    if (!isEditingDetails || saving) {
       return;
     }
-    setError(null);
-    setRemovingLogo(true);
-    try {
-      await removeBusinessLogo(businessId);
-      setStore((current) => (current ? { ...current, logo: "" } : current));
-      await loadStore();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Unable to remove logo",
-      );
-    } finally {
-      setRemovingLogo(false);
+
+    const logoValidationError = validateLogoFile(file);
+    if (logoValidationError) {
+      setError(logoValidationError);
+      return;
     }
+
+    setError(null);
+    setLogoMarkedForRemoval(false);
+    setLogoDraftFile(file);
+    setLogoPreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return URL.createObjectURL(file);
+    });
+  };
+
+  const onRemoveLogo = () => {
+    if (!isEditingDetails || saving) {
+      return;
+    }
+
+    setError(null);
+    setLogoDraftFile(null);
+    setLogoMarkedForRemoval(true);
+    setLogoPreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return null;
+    });
   };
 
   const ownerDisplayValue =
     business?.owner?.name?.trim() || business?.owner?.phone || "";
+  const isFormLocked = !isEditingDetails;
+  const displayLogoUrl =
+    logoPreviewUrl ?? (logoMarkedForRemoval ? null : (business?.logo || null));
 
   return (
     <section className="h-auto lg:h-full lg:min-h-0 lg:text-[12px]">
@@ -322,340 +336,163 @@ export function AdminBusinessDetailsPage() {
           {!business && !loading ? (
             <p className="text-sm text-muted-foreground">Business not found.</p>
           ) : business ? (
-            <div className="grid gap-2 lg:h-full lg:min-h-0 xl:grid-cols-[minmax(0,1fr)_17rem]">
-              <div className="flex min-h-0 flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-2 p-2 lg:flex-nowrap">
-                  <BusinessLogoPicker
-                    logoUrl={business.logo || null}
-                    disabled={saving || uploadingLogo || removingLogo}
-                    removing={removingLogo}
-                    onApplyLogoFile={onLogoFileChange}
-                    onRemoveLogo={onRemoveLogo}
-                  />
-                  <div className="space-y-0.5">
-                    <p className="text-[11px] leading-tight text-muted-foreground">
-                      Use avatar icons to upload or remove logo.
-                    </p>
-                    <p className="text-[11px] leading-tight text-muted-foreground">
-                      PNG, JPG or WEBP up to 2MB.
-                    </p>
-                  </div>
-                  <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3 lg:ml-auto lg:w-auto lg:justify-end">
-                    {!isEditingDetails ? (
+            <div className="space-y-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/70 bg-white/65 p-2 lg:shrink-0">
+                <BusinessLogoPicker
+                  logoUrl={displayLogoUrl}
+                  disabled={saving || isFormLocked}
+                  removing={false}
+                  showActions={isEditingDetails}
+                  onApplyLogoFile={onLogoFileChange}
+                  onRemoveLogo={onRemoveLogo}
+                />
+                <div className="space-y-0.5">
+                  <p className="text-[11px] leading-tight text-muted-foreground">
+                    Use avatar icons to upload or remove logo.
+                  </p>
+                  <p className="text-[11px] leading-tight text-muted-foreground">
+                    PNG, JPG or WEBP up to 2MB.
+                  </p>
+                </div>
+                <div className="ml-auto flex w-full flex-wrap items-center gap-1.5 lg:w-auto">
+                  {!isEditingDetails ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setError(null);
+                        setIsEditingDetails(true);
+                      }}
+                      disabled={saving}
+                      className="h-7 gap-1 px-2 text-[11px]"
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                      Edit Details
+                    </Button>
+                  ) : (
+                    <>
                       <Button
                         variant="outline"
-                        onClick={() => setIsEditingDetails(true)}
+                        onClick={onSaveDetails}
                         disabled={saving}
                         className="h-7 gap-1 px-2 text-[11px]"
                       >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                        Edit Details
+                        <Save className="h-4 w-4" aria-hidden="true" />
+                        Save Details
                       </Button>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          variant="outline"
-                          onClick={onSaveDetails}
-                          disabled={saving}
-                          className="h-7 gap-1 px-2 text-[11px]"
-                        >
-                          <Save className="h-4 w-4" aria-hidden="true" />
-                          Save Details
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            applyDetailsDraft(business);
-                            setIsEditingDetails(false);
-                          }}
-                          disabled={saving}
-                          className="h-7 px-2 text-[11px]"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
-                    <div className="ml-auto flex items-center gap-1.5 lg:ml-0">
-                      <span className="text-[11px] font-medium text-muted-foreground">
-                        Active
-                      </span>
-                      <button
-                        id="business-active-status"
-                        type="button"
-                        role="switch"
-                        aria-checked={!business.deletedAt}
-                        aria-label="Toggle business active status"
+                      <Button
+                        variant="outline"
                         onClick={() => {
-                          void onToggleBusinessStatus(
-                            Boolean(business.deletedAt),
-                          );
+                          applyDetailsDraft(business);
+                          applyLicenseDraft(business);
+                          clearLogoDraft();
+                          setIsEditingDetails(false);
                         }}
                         disabled={saving}
-                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
-                          !business.deletedAt
-                            ? "border-[#2f6fb7] bg-[#4a8dd9]"
-                            : "border-[#b8cbe0] bg-[#e7eff8]"
+                        className="h-7 px-2 text-[11px]"
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  )}
+                  <div className="ml-auto flex items-center gap-1.5 lg:ml-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      Active
+                    </span>
+                    <button
+                      id="business-active-status"
+                      type="button"
+                      role="switch"
+                      aria-checked={!business.deletedAt}
+                      aria-label="Toggle business active status"
+                      onClick={() => {
+                        void onToggleBusinessStatus(Boolean(business.deletedAt));
+                      }}
+                      disabled={saving}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
+                        !business.deletedAt
+                          ? "border-[#2f6fb7] bg-[#4a8dd9]"
+                          : "border-[#b8cbe0] bg-[#e7eff8]"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
+                          !business.deletedAt ? "translate-x-6" : "translate-x-1"
                         }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                            !business.deletedAt
-                              ? "translate-x-6"
-                              : "translate-x-1"
-                          }`}
-                        />
-                      </button>
-                    </div>
+                      />
+                    </button>
                   </div>
                 </div>
-                <BusinessDetailsFormPanes
-                  values={{
-                    name: nameDraft,
-                    ownerPhone: business.owner?.phone ?? "",
-                    gstin: detailsDraft.gstin,
-                    phoneNumber: detailsDraft.phoneNumber,
-                    email: detailsDraft.email,
-                    state: detailsDraft.state,
-                    pincode: detailsDraft.pincode,
-                    address: detailsDraft.address,
-                    businessType: detailsDraft.businessType,
-                    businessCategory: detailsDraft.businessCategory,
-                  }}
-                  editable={isEditingDetails}
-                  disabled={saving}
-                  idPrefix="business"
-                  showOwnerPhoneInput={false}
-                  ownerDisplay={
-                    business.ownerId ? (
-                      <Link
-                        id="business-owner"
-                        to={`/app/users/${business.ownerId}`}
-                        className="flex h-8 items-center rounded-md text-xs leading-none text-[#24507e] underline underline-offset-2 transition hover:text-[#1f4167]"
-                      >
-                        {ownerDisplayValue || "View owner"}
-                      </Link>
-                    ) : (
-                      <p
-                        id="business-owner"
-                        className="flex h-8 items-center text-xs leading-none text-muted-foreground"
-                      >
-                        Owner unavailable
-                      </p>
-                    )
-                  }
-                  onFieldChange={(field, value) => {
-                    if (field === "name") {
-                      setNameDraft(value);
-                      return;
-                    }
-                    setDetailsDraft((current) => ({
-                      ...current,
-                      [field]: value,
-                    }));
-                  }}
-                />
               </div>
-              <div className="overflow-visible rounded-xl border border-[#d7e2ef] bg-white p-2 lg:min-h-0 lg:overflow-y-auto">
-                <div className="space-y-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4a647f]">
-                    Access Controls
-                  </p>
-                  <p className="text-xs font-semibold text-foreground">
-                    Enabled Modules
-                  </p>
-                  <div className="grid gap-2">
-                    <label className="flex items-center gap-2 text-xs text-foreground">
-                      <input
-                        type="checkbox"
-                        checked={moduleDraft.catalog}
-                        onChange={(event) =>
-                          setModuleDraft((current) => ({
-                            ...current,
-                            catalog: event.target.checked,
-                          }))
-                        }
-                        disabled={saving}
-                      />
-                      Catalog
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-foreground">
-                      <input
-                        type="checkbox"
-                        checked={moduleDraft.inventory}
-                        onChange={(event) =>
-                          setModuleDraft((current) => ({
-                            ...current,
-                            inventory: event.target.checked,
-                          }))
-                        }
-                        disabled={saving}
-                      />
-                      Inventory
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-foreground">
-                      <input
-                        type="checkbox"
-                        checked={moduleDraft.pricing}
-                        onChange={(event) =>
-                          setModuleDraft((current) => ({
-                            ...current,
-                            pricing: event.target.checked,
-                          }))
-                        }
-                        disabled={saving}
-                      />
-                      Pricing
-                    </label>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={onSaveModules}
-                    disabled={saving}
-                    className="w-full gap-1 text-[11px]"
-                  >
-                    <Save className="h-4 w-4" aria-hidden="true" />
-                    Save Modules
-                  </Button>
-                </div>
-                <div className="mt-4 space-y-2 border-t border-[#e3ebf5] pt-3">
-                  <p className="text-xs font-semibold text-foreground">
-                    Store License
-                  </p>
-                  <div className="grid gap-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                    <div className="grid content-start gap-1.5">
-                      <div className="grid gap-2 lg:grid-cols-2">
-                        <label className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-                          Begin date
-                          <input
-                            type="date"
-                            value={licenseDraft.beginsOn}
-                            onChange={(event) =>
-                              setLicenseDraft((current) => ({
-                                ...current,
-                                beginsOn: event.target.value,
-                              }))
-                            }
-                            disabled={saving}
-                            className="h-8 rounded-md border border-[#c6d5e6] px-2 text-xs text-foreground"
-                          />
-                        </label>
-                        <label className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-                          End date
-                          <input
-                            type="date"
-                            value={licenseDraft.endsOn}
-                            onChange={(event) =>
-                              setLicenseDraft((current) => ({
-                                ...current,
-                                endsOn: event.target.value,
-                              }))
-                            }
-                            disabled={saving}
-                            className="h-8 rounded-md border border-[#c6d5e6] px-2 text-xs text-foreground"
-                          />
-                        </label>
-                      </div>
-                      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_4.75rem] lg:gap-4">
-                        <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-                          User limit mode
-                          <select
-                            value={licenseDraft.userLimitType}
-                            onChange={(event) =>
-                              setLicenseDraft((current) => ({
-                                ...current,
-                                userLimitType: event.target
-                                  .value as "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS",
-                                userLimitValue:
-                                  event.target.value === "UNLIMITED"
-                                    ? ""
-                                    : current.userLimitValue,
-                              }))
-                            }
-                            disabled={saving}
-                            className="h-8 w-full min-w-0 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
-                          >
-                            <option value="UNLIMITED">Unlimited users</option>
-                            <option value="MAX_USERS">Max users per business</option>
-                            <option value="MAX_CONCURRENT_USERS">
-                              Max concurrent users
-                            </option>
-                          </select>
-                        </label>
-                        {licenseDraft.userLimitType !== "UNLIMITED" ? (
-                          <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-                            User limit
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={3}
-                              value={licenseDraft.userLimitValue}
-                              onChange={(event) =>
-                                setLicenseDraft((current) => ({
-                                  ...current,
-                                  userLimitValue: event.target.value.replace(/\D/g, "").slice(0, 3),
-                                }))
-                              }
-                              disabled={saving}
-                              className="h-8 w-full min-w-0 rounded-md border border-[#c6d5e6] px-2 text-xs text-foreground"
-                            />
-                          </label>
-                        ) : (
-                          <div />
-                        )}
-                      </div>
-                      <div className="hidden gap-1 text-[11px] text-muted-foreground lg:grid">
-                        Bundle
-                        <select
-                          value={licenseDraft.bundleKey}
-                          onChange={(event) =>
-                            setLicenseDraft((current) => ({
-                              ...current,
-                              bundleKey: event.target.value as BundleKey,
-                            }))
-                          }
-                          disabled={saving}
-                          className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
-                        >
-                          {BUNDLE_KEYS.map((bundleKey) => (
-                            <option key={bundleKey} value={bundleKey}>
-                              {bundleKey}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid content-start gap-1.5">
-                      <div className="grid gap-1 text-[11px] text-muted-foreground lg:hidden">
-                        Bundle
-                        <select
-                          value={licenseDraft.bundleKey}
-                          onChange={(event) =>
-                            setLicenseDraft((current) => ({
-                              ...current,
-                              bundleKey: event.target.value as BundleKey,
-                            }))
-                          }
-                          disabled={saving}
-                          className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
-                        >
-                          {BUNDLE_KEYS.map((bundleKey) => (
-                            <option key={bundleKey} value={bundleKey}>
-                              {bundleKey}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
 
-                      <LicenseCapabilityPicklist
-                        capabilities={CAPABILITY_KEYS}
-                        bundleCapabilities={BUNDLE_CAPABILITY_MAP[licenseDraft.bundleKey] ?? []}
+              <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+                <div className="lg:min-h-0 lg:flex-1">
+                  <BusinessDetailsFormPanes
+                    values={{
+                      name: nameDraft,
+                      ownerPhone: business.owner?.phone ?? "",
+                      gstin: detailsDraft.gstin,
+                      phoneNumber: detailsDraft.phoneNumber,
+                      email: detailsDraft.email,
+                      state: detailsDraft.state,
+                      pincode: detailsDraft.pincode,
+                      address: detailsDraft.address,
+                      businessType: detailsDraft.businessType,
+                      businessCategory: detailsDraft.businessCategory,
+                    }}
+                    editable={isEditingDetails}
+                    disabled={saving}
+                    idPrefix="business"
+                    showOwnerPhoneInput={false}
+                    ownerDisplay={
+                      business.ownerId ? (
+                        <Link
+                          id="business-owner"
+                          to={`/app/users/${business.ownerId}`}
+                          className="flex h-8 items-center rounded-md text-xs leading-none text-[#24507e] underline underline-offset-2 transition hover:text-[#1f4167]"
+                        >
+                          {ownerDisplayValue || "View owner"}
+                        </Link>
+                      ) : (
+                        <p
+                          id="business-owner"
+                          className="flex h-8 items-center text-xs leading-none text-muted-foreground"
+                        >
+                          Owner unavailable
+                        </p>
+                      )
+                    }
+                    rightColumnExtra={
+                      <BusinessLicensePane
+                        beginsOn={licenseDraft.beginsOn}
+                        endsOn={licenseDraft.endsOn}
+                        bundleKey={licenseDraft.bundleKey}
                         addOnCapabilities={licenseDraft.addOnCapabilities}
                         removedCapabilities={licenseDraft.removedCapabilities}
-                        disabled={saving}
+                        userLimitType={licenseDraft.userLimitType}
+                        userLimitValue={licenseDraft.userLimitValue}
+                        disabled={saving || isFormLocked}
+                        onBeginsOnChange={(value) =>
+                          setLicenseDraft((current) => ({
+                            ...current,
+                            beginsOn: value,
+                          }))
+                        }
+                        onEndsOnChange={(value) =>
+                          setLicenseDraft((current) => ({
+                            ...current,
+                            endsOn: value,
+                          }))
+                        }
+                        onBundleKeyChange={(value) =>
+                          setLicenseDraft((current) => ({
+                            ...current,
+                            bundleKey: value,
+                          }))
+                        }
                         onAddOnCapabilitiesChange={(next) =>
                           setLicenseDraft((current) => ({
                             ...current,
-                            addOnCapabilities: next as CapabilityKey[],
+                            addOnCapabilities: next,
                             removedCapabilities: current.removedCapabilities.filter(
                               (capability) => !next.includes(capability),
                             ),
@@ -664,24 +501,40 @@ export function AdminBusinessDetailsPage() {
                         onRemovedCapabilitiesChange={(next) =>
                           setLicenseDraft((current) => ({
                             ...current,
-                            removedCapabilities: next as CapabilityKey[],
+                            removedCapabilities: next,
                             addOnCapabilities: current.addOnCapabilities.filter(
                               (capability) => !next.includes(capability),
                             ),
                           }))
                         }
+                        onUserLimitTypeChange={(value) =>
+                          setLicenseDraft((current) => ({
+                            ...current,
+                            userLimitType: value,
+                            userLimitValue:
+                              value === "UNLIMITED" ? "" : current.userLimitValue,
+                          }))
+                        }
+                        onUserLimitValueChange={(value) =>
+                          setLicenseDraft((current) => ({
+                            ...current,
+                            userLimitValue: value,
+                          }))
+                        }
+                        onSave={onSaveLicense}
                       />
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={onSaveLicense}
-                    disabled={saving}
-                    className="w-full gap-1 text-[11px]"
-                  >
-                    <Save className="h-4 w-4" aria-hidden="true" />
-                    Save License
-                  </Button>
+                    }
+                    onFieldChange={(field, value) => {
+                      if (field === "name") {
+                        setNameDraft(value);
+                        return;
+                      }
+                      setDetailsDraft((current) => ({
+                        ...current,
+                        [field]: value,
+                      }));
+                    }}
+                  />
                 </div>
               </div>
             </div>
