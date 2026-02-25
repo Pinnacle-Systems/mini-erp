@@ -24,19 +24,25 @@ export function ItemsPage() {
 
   useEffect(() => {
     if (!activeStore) {
-      setItems([]);
       return;
     }
 
+    let cancelled = false;
     void getLocalItemsForDisplay(activeStore).then((nextItems) => {
+      if (cancelled) return;
       setItems(nextItems);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeStore]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const list = activeStore ? items : [];
 
-    return items.filter((item) => {
+    return list.filter((item) => {
       const matchesQuery =
         normalizedQuery.length === 0 ||
         item.name.toLowerCase().includes(normalizedQuery) ||
@@ -50,7 +56,7 @@ export function ItemsPage() {
 
       return matchesQuery && matchesVariants;
     });
-  }, [items, query, variantFilter]);
+  }, [activeStore, items, query, variantFilter]);
 
   return (
     <main className="h-auto w-full space-y-2 p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:space-y-2 lg:pb-3">

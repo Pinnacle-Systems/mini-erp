@@ -1,8 +1,7 @@
-import { ImagePlus, Pencil, Save, Trash2, User } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Pencil, Save } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Button } from "../design-system/atoms/Button";
-import { Label } from "../design-system/atoms/Label";
 import { LoadingOverlay } from "../design-system/atoms/LoadingOverlay";
 import {
   Card,
@@ -59,7 +58,7 @@ export function AdminBusinessDetailsPage() {
     });
   };
 
-  const loadStore = async () => {
+  const loadStore = useCallback(async () => {
     if (!businessId) {
       setError("Business not found");
       setLoading(false);
@@ -88,11 +87,11 @@ export function AdminBusinessDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [businessId]);
 
   useEffect(() => {
     void loadStore();
-  }, [businessId]);
+  }, [loadStore]);
 
   const runMutation = async (operation: () => Promise<void>) => {
     setSaving(true);

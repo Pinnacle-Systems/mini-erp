@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   createAdminStore,
@@ -88,27 +88,33 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
     return null;
   };
 
-  const loadAdminStores = async (
-    targetPage = page,
-    filters: {
-      businessName: string;
-      ownerPhone: string;
-      includeDeleted: boolean;
-    } = {
-      businessName: filterBusinessName,
-      ownerPhone: filterOwnerPhone,
-      includeDeleted: filterIncludeDeleted,
+  const loadAdminStores = useCallback(
+    async (
+      targetPage = page,
+      filters: {
+        businessName: string;
+        ownerPhone: string;
+        includeDeleted: boolean;
+      } = {
+        businessName: filterBusinessName,
+        ownerPhone: filterOwnerPhone,
+        includeDeleted: filterIncludeDeleted,
+      },
+    ) => {
+      const result = await listAdminStores({
+        businessName: filters.businessName,
+        ownerPhone: filters.ownerPhone,
+        includeDeleted: filters.includeDeleted,
+        page: targetPage,
+        limit: 10,
+      });
+      setBusinessesPage({
+        businesses: result.businesses,
+        pagination: result.pagination,
+      });
     },
-  ) => {
-    const result = await listAdminStores({
-      businessName: filters.businessName,
-      ownerPhone: filters.ownerPhone,
-      includeDeleted: filters.includeDeleted,
-      page: targetPage,
-      limit: 10,
-    });
-    setBusinessesPage({ businesses: result.businesses, pagination: result.pagination });
-  };
+    [filterBusinessName, filterIncludeDeleted, filterOwnerPhone, page, setBusinessesPage],
+  );
 
   useEffect(() => {
     if (mode !== "list") return;
@@ -128,7 +134,7 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
           setLoading(false);
         });
     }
-  }, [mode]);
+  }, [businesses.length, loadAdminStores, mode, setError]);
 
   useEffect(() => {
     if (mode !== "list") {
@@ -162,7 +168,14 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
     }, 350);
 
     return () => window.clearTimeout(timeoutId);
-  }, [mode, filterBusinessName, filterOwnerPhone, filterIncludeDeleted]);
+  }, [
+    filterBusinessName,
+    filterIncludeDeleted,
+    filterOwnerPhone,
+    loadAdminStores,
+    mode,
+    setError,
+  ]);
 
   const onCreate = async () => {
     if (!newBusinessName.trim() || !newOwnerPhone.trim()) {
