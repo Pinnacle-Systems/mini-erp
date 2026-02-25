@@ -113,6 +113,13 @@ export type AdminBusinessesPagination = {
   totalPages: number;
 };
 
+export type AdminOwnerLookupResult = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
 export type ListAdminBusinessesParams = {
   businessName?: string;
   ownerPhone?: string;
@@ -178,6 +185,7 @@ export const listAdminStores = async (
 export const createAdminStore = async (
   name: string,
   payload: {
+    ownerId?: string;
     ownerPhone?: string;
     phoneNumber?: string;
     gstin?: string;
@@ -204,6 +212,7 @@ export const createAdminStore = async (
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
+      ...(payload.ownerId ? { ownerId: payload.ownerId } : {}),
       ...(payload.ownerPhone ? { ownerPhone: payload.ownerPhone.trim() } : {}),
       ...(payload.phoneNumber ? { phoneNumber: payload.phoneNumber.trim() } : {}),
       ...(payload.gstin ? { gstin: payload.gstin.trim() } : {}),
@@ -224,6 +233,28 @@ export const createAdminStore = async (
 
   const responseBody = (await response.json()) as { business: AdminStore };
   return normalizeStore(responseBody.business);
+};
+
+export const lookupAdminOwners = async (
+  query: string,
+  limit = 8,
+): Promise<AdminOwnerLookupResult[]> => {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const encoded = new URLSearchParams({
+    q: trimmed,
+    limit: String(limit),
+  }).toString();
+  const response = await apiFetch(`/api/admin/owners/lookup?${encoded}`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Unable to load owners"));
+  }
+
+  const payload = (await response.json()) as { owners?: AdminOwnerLookupResult[] };
+  return payload.owners ?? [];
 };
 
 export const updateAdminStore = async (

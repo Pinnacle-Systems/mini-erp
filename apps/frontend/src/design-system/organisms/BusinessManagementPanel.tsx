@@ -6,6 +6,7 @@ import {
 import type {
   AdminStore,
   AdminBusinessesPagination,
+  AdminOwnerLookupResult,
   BundleKey,
   CapabilityKey,
 } from "../../features/admin/businesses";
@@ -23,7 +24,10 @@ type BusinessManagementPanelProps = {
   loading: boolean;
   error: string | null;
   newBusinessName: string;
+  newOwnerId: string | null;
   newOwnerPhone: string;
+  ownerLookupResults: AdminOwnerLookupResult[];
+  ownerLookupLoading: boolean;
   newPhoneNumber: string;
   newGstin: string;
   newEmail: string;
@@ -48,6 +52,8 @@ type BusinessManagementPanelProps = {
   onPrevPage: () => void;
   onNextPage: () => void;
   onNewBusinessNameChange: (value: string) => void;
+  onOwnerLookupQueryChange: (value: string) => void;
+  onOwnerSelect: (owner: AdminOwnerLookupResult) => void;
   onNewOwnerPhoneChange: (value: string) => void;
   onNewPhoneNumberChange: (value: string) => void;
   onNewGstinChange: (value: string) => void;
@@ -84,7 +90,10 @@ export function BusinessManagementPanel({
   loading,
   error,
   newBusinessName,
+  newOwnerId,
   newOwnerPhone,
+  ownerLookupResults,
+  ownerLookupLoading,
   newPhoneNumber,
   newGstin,
   newEmail,
@@ -109,6 +118,8 @@ export function BusinessManagementPanel({
   onPrevPage,
   onNextPage,
   onNewBusinessNameChange,
+  onOwnerLookupQueryChange,
+  onOwnerSelect,
   onNewOwnerPhoneChange,
   onNewPhoneNumberChange,
   onNewGstinChange,
@@ -162,7 +173,10 @@ export function BusinessManagementPanel({
             loading={loading}
             error={error}
             newBusinessName={newBusinessName}
+            newOwnerId={newOwnerId}
             newOwnerPhone={newOwnerPhone}
+            ownerLookupResults={ownerLookupResults}
+            ownerLookupLoading={ownerLookupLoading}
             newPhoneNumber={newPhoneNumber}
             newGstin={newGstin}
             newEmail={newEmail}
@@ -181,6 +195,8 @@ export function BusinessManagementPanel({
             logoPreviewUrl={logoPreviewUrl}
             uploadingLogo={uploadingLogo}
             onNewBusinessNameChange={onNewBusinessNameChange}
+            onOwnerLookupQueryChange={onOwnerLookupQueryChange}
+            onOwnerSelect={onOwnerSelect}
             onNewOwnerPhoneChange={onNewOwnerPhoneChange}
             onNewPhoneNumberChange={onNewPhoneNumberChange}
             onNewGstinChange={onNewGstinChange}

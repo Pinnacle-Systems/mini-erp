@@ -2,29 +2,20 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { useSessionStore } from "../features/auth/session-business";
 import { useLogoutFlow } from "../features/auth/useLogoutFlow";
-import { LoginPage } from "../pages/LoginPage";
-import { AppHomePage } from "../pages/AppHomePage";
-import { AdminLayout } from "../pages/AdminLayout";
-import { AdminBusinessesPage } from "../pages/AdminBusinessesPage";
-import { AdminBusinessDetailsPage } from "../pages/AdminBusinessDetailsPage";
-import { AdminUsersPage } from "../pages/AdminUsersPage";
-import { AdminUserDetailsPage } from "../pages/AdminUserDetailsPage";
-import { BusinessSelectionPage } from "../pages/BusinessSelectionPage";
-import { ItemsPage } from "../pages/ItemsPage";
-import { AddItemPage } from "../pages/AddItemPage";
-import { ItemDetailsPage } from "../pages/ItemDetailsPage";
-import { OfflinePage } from "../pages/OfflinePage";
+import { LoginPage } from "../pages/auth";
+import { AppHomePage } from "../pages/shell";
+import { AdminLayout } from "../pages/admin/layout";
+import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/businesses";
+import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
+import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
+import { OfflinePage } from "../pages/system";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import { RequireAuth, RequireHydrated, RequireRole } from "./guards";
 
 function AppEntryRoute() {
   const role = useSessionStore((state) => state.role);
-  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
 
   if (role === "PLATFORM_ADMIN") return <Navigate to="/app/businesses" replace />;
-  if (role === "USER" && !isBusinessSelected) {
-    return <Navigate to="/app/select-business" replace />;
-  }
   return <AppHomePage />;
 }
 
@@ -102,7 +93,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
           <div className="px-2 py-2 sm:px-3 md:px-4">
             <SessionHeader
               showBack={!isPlatformAdmin && location.pathname !== "/app"}
-              showSwitchStore={location.pathname !== "/app/select-business"}
+              showSwitchStore
               contextTitle={headerContext?.title}
               contextSubtitle={headerContext?.subtitle}
               onLogout={onLogout}
@@ -162,13 +153,12 @@ export function AppRoutes() {
 
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout onLogout={() => void onLogout()} />}>
-            <Route path="/app" element={<AppEntryRoute />} />
-
-            <Route element={<RequireRole role="USER" />}>
-              <Route path="/app/select-business" element={<BusinessSelectionPage />} />
-              <Route path="/app/items" element={<ItemsPage />} />
-              <Route path="/app/items/new" element={<AddItemPage />} />
-              <Route path="/app/items/:itemId" element={<ItemDetailsPage />} />
+            <Route path="/app" element={<AppEntryRoute />}>
+              <Route element={<RequireRole role="USER" />}>
+                <Route path="items" element={<ItemsPage />} />
+                <Route path="items/new" element={<AddItemPage />} />
+                <Route path="items/:itemId" element={<ItemDetailsPage />} />
+              </Route>
             </Route>
 
             <Route element={<RequireRole role="PLATFORM_ADMIN" />}>

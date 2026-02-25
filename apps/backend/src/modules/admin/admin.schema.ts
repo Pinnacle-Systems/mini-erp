@@ -181,15 +181,35 @@ export const listBusinessesQuerySchema = z.object({
   }),
 });
 
+export const listUsersQuerySchema = z.object({
+  query: z.object({
+    name: z.string().trim().optional(),
+    email: z.string().trim().optional(),
+    phone: z.string().trim().optional(),
+    includeDeleted: parseBooleanQueryParam.default(false),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(10),
+  }),
+});
+
+export const ownerLookupQuerySchema = z.object({
+  query: z.object({
+    q: z.string().trim().min(1, "Search text is required"),
+    limit: z.coerce.number().int().min(1).max(20).default(8),
+  }),
+});
+
 export const createBusinessSchema = z.object({
   body: z
     .object({
       name: z.string().trim().min(2, "Business name is required"),
+      ownerId: z.uuid("Owner ID must be a valid UUID").optional(),
       ownerEmail: z.string().trim().email().optional(),
       ownerPhone: z
         .string()
         .trim()
-        .regex(/^\d{10}$/, "Owner phone must be numeric and 10 digits long"),
+        .regex(/^\d{10}$/, "Owner phone must be numeric and 10 digits long")
+        .optional(),
       phoneNumber: optionalTrimmedString,
       gstin: z.preprocess((value) => {
         if (typeof value !== "string") return value;
@@ -212,7 +232,14 @@ export const createBusinessSchema = z.object({
       address: optionalTrimmedString,
       logo: optionalTrimmedString,
       license: licenseSchema.optional(),
-    }),
+    })
+    .refine(
+      (value) => value.ownerId !== undefined || Boolean(value.ownerPhone?.trim()),
+      {
+        error: "Select an owner",
+        path: ["ownerId"],
+      },
+    ),
 });
 
 export const updateBusinessSchema = z.object({
@@ -274,9 +301,41 @@ export const updateBusinessSchema = z.object({
     ),
 });
 
+export const updateUserSchema = z.object({
+  body: z
+    .object({
+      name: optionalNullableTrimmedString,
+      email: z.preprocess((value) => {
+        if (typeof value !== "string") return value;
+        const normalized = value.trim();
+        return normalized === "" ? null : normalized;
+      }, z.string().email("User email is invalid").nullable().optional()),
+      phone: z.preprocess((value) => {
+        if (typeof value !== "string") return value;
+        const normalized = value.trim();
+        return normalized === "" ? null : normalized;
+      }, z.string().regex(/^\d{10}$/, "Phone must be numeric and 10 digits long").nullable().optional()),
+    })
+    .refine(
+      (value) =>
+        value.name !== undefined ||
+        value.email !== undefined ||
+        value.phone !== undefined,
+      {
+        error: "At least one update field is required",
+      },
+    ),
+});
+
 export const businessParamsSchema = z.object({
   params: z.object({
     businessId: z.uuid("Business ID must be a valid UUID"),
+  }),
+});
+
+export const userParamsSchema = z.object({
+  params: z.object({
+    userId: z.uuid("User ID must be a valid UUID"),
   }),
 });
 

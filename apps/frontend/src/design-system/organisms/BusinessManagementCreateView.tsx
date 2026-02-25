@@ -4,6 +4,7 @@ import { BusinessDetailsFormPanes } from "./BusinessDetailsFormPanes";
 import { BusinessLicensePane } from "./BusinessLicensePane";
 import { BusinessLogoPicker } from "./BusinessLogoPicker";
 import {
+  type AdminOwnerLookupResult,
   type BundleKey,
   type CapabilityKey,
 } from "../../features/admin/businesses";
@@ -12,7 +13,10 @@ type BusinessManagementCreateViewProps = {
   loading: boolean;
   error: string | null;
   newBusinessName: string;
+  newOwnerId: string | null;
   newOwnerPhone: string;
+  ownerLookupResults: AdminOwnerLookupResult[];
+  ownerLookupLoading: boolean;
   newPhoneNumber: string;
   newGstin: string;
   newEmail: string;
@@ -31,6 +35,8 @@ type BusinessManagementCreateViewProps = {
   logoPreviewUrl: string | null;
   uploadingLogo: boolean;
   onNewBusinessNameChange: (value: string) => void;
+  onOwnerLookupQueryChange: (value: string) => void;
+  onOwnerSelect: (owner: AdminOwnerLookupResult) => void;
   onNewOwnerPhoneChange: (value: string) => void;
   onNewPhoneNumberChange: (value: string) => void;
   onNewGstinChange: (value: string) => void;
@@ -58,7 +64,10 @@ export function BusinessManagementCreateView({
   loading,
   error,
   newBusinessName,
+  newOwnerId,
   newOwnerPhone,
+  ownerLookupResults,
+  ownerLookupLoading,
   newPhoneNumber,
   newGstin,
   newEmail,
@@ -77,6 +86,8 @@ export function BusinessManagementCreateView({
   logoPreviewUrl,
   uploadingLogo,
   onNewBusinessNameChange,
+  onOwnerLookupQueryChange,
+  onOwnerSelect,
   onNewOwnerPhoneChange,
   onNewPhoneNumberChange,
   onNewGstinChange,
@@ -124,7 +135,7 @@ export function BusinessManagementCreateView({
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Button
             onClick={onCreate}
-            disabled={loading || !newBusinessName.trim() || !newOwnerPhone.trim()}
+            disabled={loading || !newBusinessName.trim() || !newOwnerId}
             className="h-7 px-2 text-[11px]"
           >
             Create Business
@@ -161,8 +172,50 @@ export function BusinessManagementCreateView({
           showOwnerPhoneInput
           nameRequired
           ownerPhoneRequired
+          ownerPhoneLabel="Owner"
           namePlaceholder="Sunrise Traders"
-          ownerPhonePlaceholder="10 digit phone"
+          ownerPhonePlaceholder="Search owner by name, phone or email"
+          ownerInput={
+            <div className="relative space-y-1">
+              <input
+                id="new-owner-phone"
+                value={newOwnerPhone}
+                onChange={(event) => onOwnerLookupQueryChange(event.target.value)}
+                placeholder="Search owner by name, phone or email"
+                disabled={loading}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                className="h-8 w-full rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
+              />
+              {ownerLookupLoading ? (
+                <p className="text-[10px] text-muted-foreground">Searching owners...</p>
+              ) : null}
+              {ownerLookupResults.length > 0 ? (
+                <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1 shadow-sm">
+                  <div className="grid gap-1">
+                    {ownerLookupResults.map((owner) => (
+                      <button
+                        key={owner.id}
+                        type="button"
+                        onClick={() => onOwnerSelect(owner)}
+                        disabled={loading}
+                        className="rounded-md border border-[#e5edf7] px-2 py-1 text-left text-[11px] text-foreground hover:bg-[#f6faff]"
+                      >
+                        <div className="truncate font-medium">
+                          {(owner.name?.trim() || "Unnamed owner") + (owner.phone ? ` | ${owner.phone}` : " | No phone")}
+                        </div>
+                        <div className="truncate text-[10px] text-muted-foreground">
+                          {owner.email || "No email"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          }
           rightColumnExtra={
             <BusinessLicensePane
               beginsOn={newLicenseBeginsOn}

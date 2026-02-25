@@ -228,11 +228,105 @@ export const listStores = catchAsync(async (req, res) => {
   });
 });
 
+export const listUsers = catchAsync(async (req, res) => {
+  assertPlatformAdmin(req);
+  const {
+    name: rawName = "",
+    email: rawEmail = "",
+    phone: rawPhone = "",
+    includeDeleted: rawIncludeDeleted = false,
+    page: rawPage = "1",
+    limit: rawLimit = "10",
+  } = req.query as {
+    name?: string;
+    email?: string;
+    phone?: string;
+    includeDeleted?: string | boolean;
+    page?: string;
+    limit?: string;
+  };
+  const name = String(rawName);
+  const email = String(rawEmail);
+  const phone = String(rawPhone);
+  const includeDeleted =
+    rawIncludeDeleted === true ||
+    (typeof rawIncludeDeleted === "string" &&
+      rawIncludeDeleted.trim().toLowerCase() === "true");
+  const page = Number(rawPage);
+  const limit = Number(rawLimit);
+
+  const where = {
+    ...(includeDeleted ? {} : { deleted_at: null }),
+    ...(name ? { name: { contains: name, mode: "insensitive" as const } } : {}),
+    ...(email ? { email: { contains: email, mode: "insensitive" as const } } : {}),
+    ...(phone ? { phone: { contains: phone } } : {}),
+  };
+
+  const [total, users] = await Promise.all([
+    prisma.identity.count({ where }),
+    prisma.identity.findMany({
+      where,
+      orderBy: { updated_at: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        system_role: true,
+        deleted_at: true,
+        updated_at: true,
+      },
+    }),
+  ]);
+
+  const userIds = users.map((user) => user.id);
+  const memberships = userIds.length
+    ? await prisma.businessMember.findMany({
+        where: { identity_id: { in: userIds } },
+        select: {
+          identity_id: true,
+          role: true,
+        },
+      })
+    : [];
+
+  const businessCounts = new Map<string, number>();
+  for (const membership of memberships) {
+    businessCounts.set(
+      membership.identity_id,
+      (businessCounts.get(membership.identity_id) ?? 0) + 1,
+    );
+  }
+
+  res.json({
+    success: true,
+    users: users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      systemRole: user.system_role,
+      deletedAt: user.deleted_at,
+      updatedAt: user.updated_at,
+      businessCount: businessCounts.get(user.id) ?? 0,
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  });
+});
+
 export const createStore = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
   const {
     name,
+    ownerId: providedOwnerId,
     ownerEmail,
     ownerPhone,
     phoneNumber,
@@ -247,6 +341,7 @@ export const createStore = catchAsync(async (req, res) => {
     license,
   } = req.body as {
     name: string;
+    ownerId?: string;
     ownerEmail?: string;
     ownerPhone?: string;
     phoneNumber?: string;
@@ -290,10 +385,19 @@ export const createStore = catchAsync(async (req, res) => {
     throw new ConflictError("Provided email and phone match different identities");
   }
 
-  let ownerId = ownerByPhone?.id ?? ownerByEmail?.id;
+  let ownerId = providedOwnerId ?? ownerByPhone?.id ?? ownerByEmail?.id;
   const normalizedBusinessName = name.trim();
 
-  if (!ownerId) {
+  if (providedOwnerId) {
+    const owner = await prisma.identity.findUnique({
+      where: { id: providedOwnerId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!owner) {
+      throw new NotFoundError("Owner identity not found");
+    }
+    ownerId = owner.id;
+  } else if (!ownerId) {
     const passwordHash = await argon2.hash(DEFAULT_OWNER_PASSWORD);
     const createdOwner = await prisma.identity.create({
       data: {
@@ -399,6 +503,180 @@ export const createStore = catchAsync(async (req, res) => {
       logo: business.logo,
       license: toLicenseView(business.licenses[0] ?? null),
     },
+  });
+});
+
+export const getUser = catchAsync(async (req, res) => {
+  assertPlatformAdmin(req);
+  const { userId } = req.params;
+
+  const user = await prisma.identity.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      system_role: true,
+      deleted_at: true,
+      updated_at: true,
+      created_at: true,
+    },
+  });
+
+  if (!user) {
+    throw new NotFoundError("User not found");
+  }
+
+  const memberships = await prisma.businessMember.findMany({
+    where: { identity_id: user.id },
+    select: {
+      business_id: true,
+      role: true,
+      business: {
+        select: {
+          id: true,
+          name: true,
+          deleted_at: true,
+        },
+      },
+    },
+    orderBy: { business: { name: "asc" } },
+  });
+
+  res.json({
+    success: true,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      systemRole: user.system_role,
+      deletedAt: user.deleted_at,
+      updatedAt: user.updated_at,
+      createdAt: user.created_at,
+      memberships: memberships.map((membership) => ({
+        businessId: membership.business_id,
+        businessName: membership.business?.name ?? "Unknown business",
+        businessDeletedAt: membership.business?.deleted_at ?? null,
+        role: membership.role,
+      })),
+    },
+  });
+});
+
+export const updateUser = catchAsync(async (req, res) => {
+  assertPlatformAdmin(req);
+  const { userId } = req.params;
+  const { name, email, phone } = req.body as {
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  };
+
+  const hasField = (field: string) => Object.prototype.hasOwnProperty.call(req.body ?? {}, field);
+
+  let updatedUser;
+  try {
+    updatedUser = await prisma.identity.update({
+      where: { id: userId },
+      data: {
+        ...(hasField("name") ? { name: name ?? null } : {}),
+        ...(hasField("email") ? { email: email ? email.toLowerCase() : null } : {}),
+        ...(hasField("phone") ? { phone: phone ?? null } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        system_role: true,
+        deleted_at: true,
+        updated_at: true,
+        created_at: true,
+      },
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error) {
+      const code = String(error.code);
+      if (code === "P2025") {
+        throw new NotFoundError("User not found");
+      }
+      if (code === "P2002") {
+        throw new ConflictError("A user with the same email or phone already exists");
+      }
+    }
+    throw error;
+  }
+
+  const memberships = await prisma.businessMember.findMany({
+    where: { identity_id: updatedUser.id },
+    select: {
+      business_id: true,
+      role: true,
+      business: {
+        select: {
+          id: true,
+          name: true,
+          deleted_at: true,
+        },
+      },
+    },
+    orderBy: { business: { name: "asc" } },
+  });
+
+  res.json({
+    success: true,
+    user: {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      phone: updatedUser.phone,
+      systemRole: updatedUser.system_role,
+      deletedAt: updatedUser.deleted_at,
+      updatedAt: updatedUser.updated_at,
+      createdAt: updatedUser.created_at,
+      memberships: memberships.map((membership) => ({
+        businessId: membership.business_id,
+        businessName: membership.business?.name ?? "Unknown business",
+        businessDeletedAt: membership.business?.deleted_at ?? null,
+        role: membership.role,
+      })),
+    },
+  });
+});
+
+export const lookupOwners = catchAsync(async (req, res) => {
+  assertPlatformAdmin(req);
+  const { q: rawQuery = "", limit: rawLimit = "8" } = req.query as {
+    q?: string;
+    limit?: string;
+  };
+  const query = String(rawQuery).trim();
+  const limit = Number(rawLimit) || 8;
+
+  const owners = await prisma.identity.findMany({
+    where: {
+      deleted_at: null,
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },
+        { email: { contains: query, mode: "insensitive" } },
+        { phone: { contains: query } },
+      ],
+    },
+    orderBy: { updated_at: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+    },
+  });
+
+  res.json({
+    success: true,
+    owners,
   });
 });
 

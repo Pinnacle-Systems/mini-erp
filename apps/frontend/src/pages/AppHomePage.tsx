@@ -21,7 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useSessionStore, type BusinessModules } from "../features/auth/session-business";
 import { useSyncActions } from "../features/sync/SyncProvider";
 import { useUserAppStore } from "../features/sync/user-app-business";
@@ -245,29 +245,70 @@ const folders: Array<{
   },
 ];
 
-const folderGroups: Array<{
-  id: FolderGroupId;
+const landingQuickActions: Array<{
   label: string;
   description: string;
+  folderId: UserFolderId;
+  appId: UserAppId;
+  Icon: LucideIcon;
 }> = [
   {
-    id: "daily-ops",
-    label: "Daily Ops",
-    description: "Frequent counterside actions",
+    label: "New Bill",
+    description: "Start billing",
+    folderId: "sell",
+    appId: "sales-bills",
+    Icon: HandCoins,
   },
   {
-    id: "merchandising",
-    label: "Merchandising",
-    description: "Catalog, people, and promotions",
+    label: "Find Item",
+    description: "Open item catalog",
+    folderId: "products",
+    appId: "catalog-items",
+    Icon: Package,
   },
   {
-    id: "control",
-    label: "Control",
-    description: "Reports and admin tooling",
+    label: "Adjust Stock",
+    description: "Update stock levels",
+    folderId: "stock",
+    appId: "stock-adjustments",
+    Icon: ClipboardList,
   },
 ];
 
+const landingAttentionCards = [
+  {
+    label: "Low stock",
+    value: "14",
+    detail: "3 items below reorder level",
+  },
+  {
+    label: "Pending returns",
+    value: "6",
+    detail: "2 require manager review",
+  },
+  {
+    label: "Open orders",
+    value: "11",
+    detail: "5 due before 6 PM",
+  },
+];
+
+const landingRecentActivity = [
+  "Bill #B-2041 edited by Rina",
+  "Item 'Basmati Rice 5KG' repriced",
+  "Customer 'Asha Traders' added",
+  "Stock adjusted for SKU ST-992",
+  "Promo code 'WEEKEND5' activated",
+];
+
+const landingBusinessPulse = [
+  { label: "Today sales", value: "INR 42,860" },
+  { label: "Bills", value: "87" },
+  { label: "Avg bill value", value: "INR 493" },
+];
+
 export function AppHomePage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
@@ -323,6 +364,7 @@ export function AppHomePage() {
         .find((app) => app.id === activeAppId) ?? null,
     [activeAppId, visibleFolders],
   );
+  const isItemsRoute = location.pathname.startsWith("/app/items");
 
   useEffect(() => {
     if (visibleFolders.length === 0) {
@@ -346,6 +388,18 @@ export function AppHomePage() {
       }
     }
   }, [activeAppId, activeFolderId, visibleFolders]);
+
+  useEffect(() => {
+    if (!isItemsRoute) {
+      return;
+    }
+    if (activeFolderId !== "products") {
+      setActiveFolderId("products");
+    }
+    if (activeAppId !== "catalog-items") {
+      setActiveAppId("catalog-items");
+    }
+  }, [activeAppId, activeFolderId, isItemsRoute]);
 
   useEffect(() => {
     if (!activeStore || !isBusinessSelected) {
@@ -400,9 +454,12 @@ export function AppHomePage() {
 
   const handleAppSelect = (appId: UserAppId) => {
     if (appId === "catalog-items") {
-      setActiveAppId(null);
+      setActiveAppId("catalog-items");
       navigate("/app/items");
       return;
+    }
+    if (isItemsRoute) {
+      navigate("/app");
     }
     setActiveAppId(appId);
   };
@@ -506,49 +563,174 @@ export function AppHomePage() {
     );
   };
 
+  const renderLandingPlaceholder = () => {
+    return (
+      <section className="space-y-2 lg:grid lg:h-full lg:grid-cols-12 lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-2 lg:space-y-0 lg:overflow-hidden">
+        <Card className="p-2 lg:col-span-8">
+          <CardHeader className="mb-0">
+            <CardTitle className="text-base">Today Ops</CardTitle>
+            <CardDescription className="text-xs">
+              Placeholder dashboard for <strong>{activeBusinessName}</strong>. Replace each card with live data as modules are implemented.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-3">
+            {landingQuickActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => {
+                  setActiveFolderId(action.folderId);
+                  handleAppSelect(action.appId);
+                }}
+                className="flex items-center gap-2 rounded-xl border border-white/75 bg-white/70 px-3 py-2 text-left transition hover:bg-white"
+              >
+                <action.Icon className="h-4 w-4 shrink-0 text-[#24507e]" />
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-semibold text-foreground">
+                    {action.label}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {action.description}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-2 sm:grid-cols-3 lg:col-span-4">
+          {landingBusinessPulse.map((metric) => (
+            <Card key={metric.label} className="p-2">
+              <CardContent className="p-0">
+                <p className="text-[11px] text-muted-foreground">{metric.label}</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{metric.value}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid gap-2 lg:col-span-8 lg:min-h-0 lg:grid-cols-2">
+          <Card className="p-2">
+            <CardHeader className="mb-1 p-0">
+              <CardTitle className="text-sm">Needs Attention</CardTitle>
+              <CardDescription className="text-xs">
+                Dummy operational alerts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2 p-0">
+              {landingAttentionCards.map((card) => (
+                <div
+                  key={card.label}
+                  className="rounded-xl border border-[#d6e4f5] bg-[#f8fbff] p-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-foreground">{card.label}</p>
+                    <span className="rounded-full bg-[#e8f2ff] px-2 py-0.5 text-[10px] font-semibold text-[#24507e]">
+                      {card.value}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{card.detail}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="p-2">
+            <CardHeader className="mb-1 p-0">
+              <CardTitle className="text-sm">Recent Work</CardTitle>
+              <CardDescription className="text-xs">
+                Dummy recent activity feed.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ul className="space-y-1.5">
+                {landingRecentActivity.slice(0, 4).map((entry) => (
+                  <li
+                    key={entry}
+                    className="rounded-lg border border-white/75 bg-white/70 px-2 py-1.5 text-[11px] text-foreground/85"
+                  >
+                    {entry}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="p-2 lg:col-span-4 lg:min-h-0">
+          <CardHeader className="mb-1 p-0">
+            <CardTitle className="text-sm">Search + Sync</CardTitle>
+            <CardDescription className="text-xs">
+              Placeholder for global lookup and sync controls.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 p-0">
+            <div className="rounded-lg border border-dashed border-[#c6d8ef] bg-[#f7fbff] px-3 py-2 text-[11px] text-muted-foreground">
+              Search box placeholder: try name, SKU, barcode, or phone.
+            </div>
+            <div className="rounded-lg border border-[#dce8f6] bg-[#fbfdff] px-3 py-2 text-[11px] text-muted-foreground">
+              <p>
+                Pending outbox items:{" "}
+                <span className="font-semibold text-foreground">{pendingOutboxCount}</span>
+              </p>
+              <p>
+                Current state:{" "}
+                <span className="font-semibold text-foreground">
+                  {resyncing || loading ? "Sync in progress" : "Ready"}
+                </span>
+              </p>
+              <p>Last successful sync: 09:42 AM (dummy)</p>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => navigate("/app/settings")}
+                className="h-8 rounded-full border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] px-3 text-[11px] font-semibold text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] transition hover:from-[#ffffff] hover:to-[#edf5ff]"
+              >
+                Open settings
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  };
+
   return (
-    <main className="h-auto w-full p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
-      <div className="mx-auto grid w-full max-w-6xl gap-2 lg:h-full lg:grid-cols-[220px_minmax(0,1fr)]">
+    <main className="h-auto w-full pb-20 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
+      <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="hidden rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block lg:h-full lg:overflow-y-auto">
-          {folderGroups.map((group) =>
-            visibleFolders.some((folder) => folder.group === group.id) ? (
-              <section key={group.id} className="mb-4 space-y-2 last:mb-0">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                    {group.label}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground/80">{group.description}</p>
-                </div>
-                <div className="space-y-1.5">
-                  {visibleFolders
-                    .filter((folder) => folder.group === group.id)
-                    .map((folder) => (
-                      <button
-                        key={folder.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveFolderId(folder.id);
-                          setActiveAppId(null);
-                        }}
-                        aria-current={activeFolder?.id === folder.id ? "page" : undefined}
-                        className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
-                          activeFolder?.id === folder.id
-                            ? "bg-[#e8f2ff] text-[#163a63]"
-                            : "text-foreground/80 hover:bg-white/70"
-                        }`}
-                      >
-                        <folder.Icon className="h-4 w-4 shrink-0" />
-                        <span>{folder.label}</span>
-                      </button>
-                    ))}
-                </div>
-              </section>
-            ) : null,
-          )}
+          <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            Navigation
+          </p>
+          <div className="space-y-1.5">
+            {visibleFolders.map((folder) => (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => {
+                  setActiveFolderId(folder.id);
+                  setActiveAppId(null);
+                  if (isItemsRoute) {
+                    navigate("/app");
+                  }
+                }}
+                aria-current={activeFolder?.id === folder.id ? "page" : undefined}
+                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
+                  activeFolder?.id === folder.id
+                    ? "bg-[#e8f2ff] text-[#163a63]"
+                    : "text-foreground/80 hover:bg-white/70"
+                }`}
+              >
+                <folder.Icon className="h-4 w-4 shrink-0" />
+                <span>{folder.label}</span>
+              </button>
+            ))}
+          </div>
         </aside>
 
         <section className="space-y-2 lg:flex lg:min-h-0 lg:flex-col">
-          <div className="rounded-2xl border border-white/70 bg-white/60 p-3 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl">
+          <div className="rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl">
             <div className="mb-3">
               <p className="text-xs font-semibold tracking-[0.01em] text-foreground/90">
                 {activeFolder?.label ?? "Apps"}
@@ -557,13 +739,13 @@ export function AppHomePage() {
                 Choose an app to continue.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
               {activeFolder?.apps.map((app) => (
                 <button
                   key={app.id}
                   type="button"
                   onClick={() => handleAppSelect(app.id)}
-                  className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition ${
+                  className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-left text-xs transition ${
                     activeAppId === app.id
                       ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
                       : "border-border/70 bg-white/70 text-foreground/80 hover:bg-white"
@@ -576,35 +758,42 @@ export function AppHomePage() {
             </div>
           </div>
 
-          <div className="space-y-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-            {activeAppId ? (
+          <div
+            className={`space-y-2 lg:min-h-0 ${
+              isItemsRoute
+                ? "lg:flex-1 lg:overflow-hidden"
+                : activeAppId
+                  ? "lg:overflow-y-auto lg:pr-1"
+                  : "lg:flex-1 lg:overflow-hidden"
+            }`}
+          >
+            {isItemsRoute ? (
+              <section className="space-y-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+                <Outlet />
+              </section>
+            ) : activeAppId ? (
               <section className="space-y-2">{renderFolderContent()}</section>
             ) : (
-              <Card className="p-3">
-                <CardHeader className="mb-0">
-                  <CardTitle className="text-base">Pick an app</CardTitle>
-                  <CardDescription className="text-xs">
-                    Select one app from {activeFolder?.label ?? "navigation"}.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+              renderLandingPlaceholder()
             )}
 
-            <section className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => navigate("/app/settings")}
-                className="h-8 rounded-full border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] px-3 text-[11px] font-semibold text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] transition hover:from-[#ffffff] hover:to-[#edf5ff]"
-              >
-                Open settings
-              </button>
-            </section>
+            {activeAppId && !isItemsRoute ? (
+              <section className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => navigate("/app/settings")}
+                  className="h-8 rounded-full border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] px-3 text-[11px] font-semibold text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] transition hover:from-[#ffffff] hover:to-[#edf5ff]"
+                >
+                  Open settings
+                </button>
+              </section>
+            ) : null}
           </div>
         </section>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/70 bg-white/90 p-2 backdrop-blur-xl lg:hidden">
-        <div className="mx-auto flex max-w-4xl gap-1 overflow-x-auto pb-1">
+        <div className="flex gap-1 overflow-x-auto pb-1">
           {visibleFolders.map((folder) => (
             <button
               key={folder.id}
@@ -612,6 +801,9 @@ export function AppHomePage() {
               onClick={() => {
                 setActiveFolderId(folder.id);
                 setActiveAppId(null);
+                if (isItemsRoute) {
+                  navigate("/app");
+                }
               }}
               aria-current={activeFolder?.id === folder.id ? "page" : undefined}
               className={`flex min-h-14 min-w-[4.8rem] flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight transition ${

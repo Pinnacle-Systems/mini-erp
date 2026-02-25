@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useSessionStore } from "../features/auth/session-business";
-import { SessionSplashPage } from "../pages/SessionSplashPage";
+import { SessionSplashPage } from "../pages/system";
 
 export function RequireHydrated() {
   const isHydratingSession = useSessionStore(

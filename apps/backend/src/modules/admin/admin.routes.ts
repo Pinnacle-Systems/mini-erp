@@ -5,16 +5,24 @@ import {
   createStore,
   deleteStore,
   getStore,
+  getUser,
   listStores,
+  listUsers,
+  lookupOwners,
   removeBusinessLogo,
+  updateUser,
   updateStore,
   uploadBusinessLogo,
 } from "./admin.controller.js";
 import {
   createBusinessSchema,
   listBusinessesQuerySchema,
+  listUsersQuerySchema,
+  ownerLookupQuerySchema,
   businessParamsSchema,
+  userParamsSchema,
   updateBusinessSchema,
+  updateUserSchema,
   uploadBusinessLogoSchema,
 } from "./admin.schema.js";
 
@@ -22,6 +30,15 @@ const adminRouter = Router();
 
 adminRouter.use(protect);
 adminRouter.get("/businesses", validateRequest(listBusinessesQuerySchema), listStores);
+adminRouter.get("/users", validateRequest(listUsersQuerySchema), listUsers);
+adminRouter.get("/users/:userId", validateRequest(userParamsSchema), getUser);
+adminRouter.patch(
+  "/users/:userId",
+  validateRequest(userParamsSchema),
+  validateRequest(updateUserSchema),
+  updateUser,
+);
+adminRouter.get("/owners/lookup", validateRequest(ownerLookupQuerySchema), lookupOwners);
 adminRouter.post("/businesses", validateRequest(createBusinessSchema), createStore);
 adminRouter.get("/businesses/:businessId", validateRequest(businessParamsSchema), getStore);
 adminRouter.patch(

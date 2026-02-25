@@ -27,6 +27,7 @@ type BusinessDetailsFormPanesProps = {
   onFieldChange: (field: keyof BusinessDetailsFormValues, value: string) => void;
   showOwnerPhoneInput: boolean;
   ownerDisplay?: ReactNode;
+  ownerInput?: ReactNode;
   nameRequired?: boolean;
   ownerPhoneRequired?: boolean;
   nameLabel?: string;
@@ -44,6 +45,7 @@ export function BusinessDetailsFormPanes({
   onFieldChange,
   showOwnerPhoneInput,
   ownerDisplay,
+  ownerInput,
   nameRequired = false,
   ownerPhoneRequired = false,
   nameLabel = "Business name",
@@ -81,15 +83,17 @@ export function BusinessDetailsFormPanes({
                 {ownerPhoneRequired ? " *" : ""}
               </Label>
               {showOwnerPhoneInput ? (
-                <Input
-                  id={`${idPrefix}-owner-phone`}
-                  value={values.ownerPhone}
-                  onChange={(event) => onFieldChange("ownerPhone", event.target.value)}
-                  placeholder={ownerPhonePlaceholder}
-                  readOnly={!editable}
-                  disabled={disabled}
-                  required={ownerPhoneRequired}
-                />
+                ownerInput ?? (
+                  <Input
+                    id={`${idPrefix}-owner-phone`}
+                    value={values.ownerPhone}
+                    onChange={(event) => onFieldChange("ownerPhone", event.target.value)}
+                    placeholder={ownerPhonePlaceholder}
+                    readOnly={!editable}
+                    disabled={disabled}
+                    required={ownerPhoneRequired}
+                  />
+                )
               ) : (
                 ownerDisplay
               )}

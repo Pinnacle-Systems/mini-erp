@@ -48,36 +48,6 @@ export function BusinessManagementListView({
 }: BusinessManagementListViewProps) {
   const navigate = useNavigate();
 
-  const renderModules = (business: AdminStore) => {
-    const modules = business.modules;
-    if (!modules) {
-      return <span className="text-xs text-muted-foreground">Not configured</span>;
-    }
-
-    const enabled = [
-      modules.catalog ? "Catalog" : null,
-      modules.inventory ? "Inventory" : null,
-      modules.pricing ? "Pricing" : null,
-    ].filter(Boolean) as string[];
-
-    if (enabled.length === 0) {
-      return <span className="text-xs text-muted-foreground">None</span>;
-    }
-
-    return (
-      <div className="flex flex-wrap gap-1">
-        {enabled.map((moduleName) => (
-          <span
-            key={`${business.id}-${moduleName}`}
-            className="rounded-full border border-[#c6d8ef] bg-[#f4f8ff] px-2 py-0.5 text-[11px] font-medium text-[#24486f]"
-          >
-            {moduleName}
-          </span>
-        ))}
-      </div>
-    );
-  };
-
   return (
     <>
       <div className="flex flex-col gap-2 min-[1192px]:flex-row min-[1192px]:items-center min-[1192px]:gap-2">
@@ -170,6 +140,10 @@ export function BusinessManagementListView({
       <div className="space-y-2 min-[860px]:hidden">
         {businesses.map((business) => {
           const isDeleted = Boolean(business.deletedAt);
+          const ownerDisplay = business.owner?.name?.trim() || business.owner?.phone || "-";
+          const licenseDates = business.license
+            ? `${business.license.beginsOn} to ${business.license.endsOn}`
+            : "Not configured";
           return (
             <div
               key={business.id}
@@ -198,20 +172,9 @@ export function BusinessManagementListView({
                   >
                     {business.name}
                   </p>
-                  {business.ownerId ? (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate(`/app/users/${business.ownerId}`);
-                      }}
-                      className="mt-0.5 text-left text-xs text-[#24507e] underline-offset-2 transition hover:underline"
-                    >
-                      {business.owner?.name?.trim() || business.owner?.phone || "Unknown owner"}
-                    </button>
-                  ) : (
-                    <p className="mt-0.5 text-xs text-muted-foreground">Unknown owner</p>
-                  )}
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Owner: {ownerDisplay}
+                  </p>
                 </div>
                 <span
                   className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
@@ -224,7 +187,12 @@ export function BusinessManagementListView({
                 </span>
               </div>
 
-              <div className="mt-2">{renderModules(business)}</div>
+              <div className="mt-2 grid gap-1 text-[11px] text-muted-foreground">
+                <p>
+                  Type/Category: {business.businessType || "-"} / {business.businessCategory || "-"}
+                </p>
+                <p>License: {licenseDates}</p>
+              </div>
 
               <div className="mt-2 flex items-center justify-end gap-1.5">
                 <IconButton
@@ -244,17 +212,22 @@ export function BusinessManagementListView({
       <div className="hidden overflow-x-auto rounded-2xl border border-white/70 bg-white/60 min-[860px]:block">
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-white/70 bg-white/70 text-left text-xs uppercase tracking-[0.05em] text-muted-foreground">
-              <th className="px-3 py-2 font-semibold">Business</th>
-              <th className="px-3 py-2 font-semibold">Owner</th>
-              <th className="px-3 py-2 font-semibold">Modules</th>
-              <th className="px-3 py-2 font-semibold">Status</th>
-              <th className="px-3 py-2 text-right font-semibold">Action</th>
+            <tr className="border-b border-white/70 bg-white/70 text-left text-[10px] uppercase tracking-[0.05em] text-muted-foreground">
+              <th className="px-2 py-1.5 font-semibold">Business</th>
+              <th className="px-2 py-1.5 font-semibold">Owner</th>
+              <th className="px-2 py-1.5 font-semibold">Type / Category</th>
+              <th className="px-2 py-1.5 font-semibold">License Dates</th>
+              <th className="px-2 py-1.5 font-semibold">Active</th>
+              <th className="px-2 py-1.5 text-right font-semibold">Action</th>
             </tr>
           </thead>
           <tbody>
             {businesses.map((business) => {
               const isDeleted = Boolean(business.deletedAt);
+              const ownerDisplay = business.owner?.name?.trim() || business.owner?.phone || "-";
+              const licenseDates = business.license
+                ? `${business.license.beginsOn} to ${business.license.endsOn}`
+                : "Not configured";
               return (
                 <tr
                   key={business.id}
@@ -262,48 +235,43 @@ export function BusinessManagementListView({
                     isDeleted ? "bg-[#fff7f7]" : "hover:bg-white/70"
                   }`}
                 >
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5">
                     <p
-                      className={`font-semibold ${
+                      className={`text-xs font-semibold ${
                         isDeleted ? "text-[#8a2b2b]" : "text-foreground"
                       }`}
                     >
                       {business.name}
                     </p>
                   </td>
-                  <td className="px-3 py-2">
-                    {business.ownerId ? (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/app/users/${business.ownerId}`)}
-                        className="text-left font-medium text-[#24507e] underline-offset-2 transition hover:underline"
-                      >
-                        {business.owner?.name?.trim() || business.owner?.phone || "Unknown owner"}
-                      </button>
-                    ) : (
-                      <p className="font-medium text-foreground/90">Unknown owner</p>
-                    )}
+                  <td className="px-2 py-1.5 text-xs text-foreground/90">
+                    {ownerDisplay}
                   </td>
-                  <td className="px-3 py-2">{renderModules(business)}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5 text-xs text-foreground/90">
+                    {(business.businessType || "-") + " / " + (business.businessCategory || "-")}
+                  </td>
+                  <td className="px-2 py-1.5 text-xs text-foreground/90">
+                    {licenseDates}
+                  </td>
+                  <td className="px-2 py-1.5">
                     <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         isDeleted
                           ? "bg-[#fce8e8] text-[#8a2b2b]"
                           : "bg-[#e8f2ff] text-[#24507e]"
                       }`}
                     >
-                      {isDeleted ? "Deleted" : "Active"}
+                      {isDeleted ? "No" : "Yes"}
                     </span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5">
                     <div className="flex justify-end">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => onOpenStore(business)}
                         disabled={loading}
-                        className="gap-1.5"
+                        className="h-7 gap-1 px-2 text-[11px]"
                       >
                         Open
                         <ChevronRight className="h-4 w-4" aria-hidden="true" />

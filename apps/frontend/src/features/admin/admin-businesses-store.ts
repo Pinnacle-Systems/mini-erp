@@ -15,6 +15,7 @@ type AdminBusinessesState = {
   filterIncludeDeleted: boolean;
   error: string | null;
   newBusinessName: string;
+  newOwnerId: string | null;
   newOwnerPhone: string;
   newPhoneNumber: string;
   newGstin: string;
@@ -45,6 +46,7 @@ type AdminBusinessesActions = {
   clearFilters: () => void;
   setError: (value: string | null) => void;
   setNewBusinessName: (value: string) => void;
+  setNewOwnerId: (value: string | null) => void;
   setNewOwnerPhone: (value: string) => void;
   setNewPhoneNumber: (value: string) => void;
   setNewGstin: (value: string) => void;
@@ -84,6 +86,7 @@ const initialState: AdminBusinessesState = {
   filterIncludeDeleted: false,
   error: null,
   newBusinessName: "",
+  newOwnerId: null,
   newOwnerPhone: "",
   newPhoneNumber: "",
   newGstin: "",
@@ -134,6 +137,9 @@ export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusine
     },
     setNewBusinessName: (value) => {
       set({ newBusinessName: value });
+    },
+    setNewOwnerId: (value) => {
+      set({ newOwnerId: value });
     },
     setNewOwnerPhone: (value) => {
       set({ newOwnerPhone: value });
@@ -193,6 +199,7 @@ export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusine
     clearCreateDraft: () => {
       set({
         newBusinessName: "",
+        newOwnerId: null,
         newOwnerPhone: "",
         newPhoneNumber: "",
         newGstin: "",

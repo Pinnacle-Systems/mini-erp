@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import {
   CAPABILITY_KEYS,
   createAdminStore,
+  lookupAdminOwners,
   listAdminStores,
   uploadBusinessLogo,
   type AdminStore,
+  type AdminOwnerLookupResult,
 } from "../features/admin/businesses";
 import { useAdminBusinessesStore } from "../features/admin/admin-businesses-store";
 import { BusinessManagementPanel } from "../design-system/organisms/BusinessManagementPanel";
@@ -29,6 +31,7 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   );
   const error = useAdminBusinessesStore((state) => state.error);
   const newBusinessName = useAdminBusinessesStore((state) => state.newBusinessName);
+  const newOwnerId = useAdminBusinessesStore((state) => state.newOwnerId);
   const newOwnerPhone = useAdminBusinessesStore((state) => state.newOwnerPhone);
   const newPhoneNumber = useAdminBusinessesStore((state) => state.newPhoneNumber);
   const newGstin = useAdminBusinessesStore((state) => state.newGstin);
@@ -58,6 +61,7 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   const clearFilters = useAdminBusinessesStore((state) => state.clearFilters);
   const setError = useAdminBusinessesStore((state) => state.setError);
   const setNewBusinessName = useAdminBusinessesStore((state) => state.setNewBusinessName);
+  const setNewOwnerId = useAdminBusinessesStore((state) => state.setNewOwnerId);
   const setNewOwnerPhone = useAdminBusinessesStore((state) => state.setNewOwnerPhone);
   const setNewPhoneNumber = useAdminBusinessesStore((state) => state.setNewPhoneNumber);
   const setNewGstin = useAdminBusinessesStore((state) => state.setNewGstin);
@@ -87,6 +91,8 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [ownerLookupResults, setOwnerLookupResults] = useState<AdminOwnerLookupResult[]>([]);
+  const [ownerLookupLoading, setOwnerLookupLoading] = useState(false);
   const filterReadyRef = useRef(false);
 
   const fileToBase64 = (file: File) =>
@@ -204,9 +210,44 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
     setError,
   ]);
 
+  useEffect(() => {
+    if (mode !== "new") {
+      setOwnerLookupResults([]);
+      setOwnerLookupLoading(false);
+      return;
+    }
+    const query = newOwnerPhone.trim();
+    if (query.length < 2) {
+      setOwnerLookupResults([]);
+      setOwnerLookupLoading(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setOwnerLookupLoading(true);
+      void lookupAdminOwners(query)
+        .then((owners) => {
+          setOwnerLookupResults(owners);
+        })
+        .catch((requestError) => {
+          setOwnerLookupResults([]);
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Unable to load owners",
+          );
+        })
+        .finally(() => {
+          setOwnerLookupLoading(false);
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [mode, newOwnerPhone, setError]);
+
   const onCreate = async () => {
-    if (!newBusinessName.trim() || !newOwnerPhone.trim()) {
-      setError("Business name and owner phone is required.");
+    if (!newBusinessName.trim() || !newOwnerId) {
+      setError("Business name and owner selection is required.");
       return;
     }
     if (Boolean(newLicenseBeginsOn) !== Boolean(newLicenseEndsOn)) {
@@ -245,7 +286,7 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         ),
       );
       const created = await createAdminStore(newBusinessName.trim(), {
-        ...(newOwnerPhone.trim() ? { ownerPhone: newOwnerPhone.trim() } : {}),
+        ownerId: newOwnerId,
         ...(newPhoneNumber.trim() ? { phoneNumber: newPhoneNumber.trim() } : {}),
         ...(newGstin.trim() ? { gstin: newGstin.trim() } : {}),
         ...(newEmail.trim() ? { email: newEmail.trim() } : {}),
@@ -298,13 +339,14 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
       clearCreateDraft();
       setLogoFile(null);
       setLogoPreviewUrl(null);
+      setOwnerLookupResults([]);
       await loadAdminStores(1);
       if (logoUploadWarning) {
         setError(
           `Business created successfully, but logo was not set: ${logoUploadWarning}. You can upload it later from business details.`,
         );
       }
-      navigate(`/app/businesses/${created.id}`, { replace: true });
+      navigate("/app/businesses", { replace: true });
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -380,7 +422,10 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         loading={loading}
         error={error}
         newBusinessName={newBusinessName}
+        newOwnerId={newOwnerId}
         newOwnerPhone={newOwnerPhone}
+        ownerLookupResults={ownerLookupResults}
+        ownerLookupLoading={ownerLookupLoading}
         newPhoneNumber={newPhoneNumber}
         newGstin={newGstin}
         newEmail={newEmail}
@@ -405,6 +450,19 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         onPrevPage={() => void loadAdminStores(Math.max(1, page - 1))}
         onNextPage={() => void loadAdminStores(page + 1)}
         onNewBusinessNameChange={setNewBusinessName}
+        onOwnerLookupQueryChange={(value) => {
+          setNewOwnerPhone(value);
+          setNewOwnerId(null);
+        }}
+        onOwnerSelect={(owner) => {
+          const displayValue = owner.name?.trim()
+            ? `${owner.name.trim()}${owner.phone ? ` | ${owner.phone}` : ""}`
+            : owner.phone || owner.email || "Unnamed owner";
+          setNewOwnerPhone(displayValue);
+          setNewOwnerId(owner.id);
+          setOwnerLookupResults([]);
+          setError(null);
+        }}
         onNewOwnerPhoneChange={setNewOwnerPhone}
         onNewPhoneNumberChange={setNewPhoneNumber}
         onNewGstinChange={setNewGstin}
