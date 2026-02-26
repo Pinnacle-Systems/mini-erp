@@ -1,10 +1,17 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../shared/utils/errors.js";
 
-const SUPPORTED_ENTITIES = new Set(["item", "item_variant"]);
+const SUPPORTED_ENTITIES = new Set([
+  "item",
+  "item_variant",
+  "item_category",
+  "item_collection",
+  "item_collection_item",
+]);
 const SUPPORTED_ITEM_FIELDS = new Set([
   "sku",
   "name",
+  "category",
   "unit",
   "itemType",
   "variants",
@@ -12,6 +19,7 @@ const SUPPORTED_ITEM_FIELDS = new Set([
 type ItemPayload = {
   sku?: string | null;
   name?: string;
+  category?: string | null;
   unit?: string;
   itemType?: string;
   variants?: VariantPayload[];
@@ -110,6 +118,32 @@ const normalizeSku = (value: unknown) => {
   return trimmed ? trimmed : undefined;
 };
 
+const normalizeCategory = (value: unknown) => {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const ensureCategoryExists = async (tx, tenantId: string, category: string) => {
+  const trimmed = category.trim();
+  if (!trimmed) return;
+  const txAny = tx as any;
+  await txAny.itemCategory.upsert({
+    where: {
+      business_id_name: {
+        business_id: tenantId,
+        name: trimmed,
+      },
+    },
+    update: {},
+    create: {
+      business_id: tenantId,
+      name: trimmed,
+    },
+  });
+};
+
 const buildItemForCreate = (payload) => {
   const normalized = sanitizeItemPayload(payload);
 
@@ -119,6 +153,7 @@ const buildItemForCreate = (payload) => {
         typeof normalized.name === "string" && normalized.name.trim()
           ? normalized.name.trim()
           : DEFAULT_ITEM_VALUES.name,
+      category: normalizeCategory(normalized.category) ?? null,
       unit:
         typeof normalized.unit === "string" ? normalized.unit : DEFAULT_ITEM_VALUES.unit,
       item_type:
@@ -139,6 +174,7 @@ const buildItemForUpdate = (payload) => {
   const normalized = sanitizeItemPayload(payload);
   const patch: ItemPayload & { item_type?: string } = {};
   let sku: string | null | undefined = undefined;
+  let category: string | null | undefined = undefined;
 
   const normalizedSku = normalizeSku(normalized.sku);
   if (normalized.sku === null) {
@@ -149,6 +185,12 @@ const buildItemForUpdate = (payload) => {
   if (typeof normalized.name === "string" && normalized.name.trim()) {
     patch.name = normalized.name.trim();
   }
+  const normalizedCategory = normalizeCategory(normalized.category);
+  if (normalized.category === null) {
+    category = null;
+  } else if (normalizedCategory !== undefined) {
+    category = normalizedCategory;
+  }
   if (typeof normalized.unit === "string") {
     patch.unit = normalized.unit;
   }
@@ -158,6 +200,7 @@ const buildItemForUpdate = (payload) => {
 
   return {
     itemPatch: patch,
+    category,
     sku,
   };
 };
@@ -169,6 +212,7 @@ const toItemSnapshot = (item, defaultVariant) => {
     item_type: item.item_type,
     itemType: item.item_type,
     name: item.name,
+    category: item.category ?? null,
     unit: item.unit,
     sku: defaultVariant?.sku ?? null,
     default_variant_id: defaultVariant?.id ?? null,
@@ -200,6 +244,67 @@ const toVariantSnapshot = (
     is_locked: isLocked,
     isLocked,
   };
+};
+
+const toItemCategorySnapshot = (category) => {
+  return {
+    id: category.id,
+    business_id: category.business_id,
+    name: category.name,
+  };
+};
+
+const toItemCollectionSnapshot = (collection) => {
+  return {
+    id: collection.id,
+    business_id: collection.business_id,
+    name: collection.name,
+  };
+};
+
+const toItemCollectionItemSnapshot = (membership) => {
+  return {
+    id: membership.id,
+    business_id: membership.business_id,
+    collection_id: membership.collection_id,
+    collectionId: membership.collection_id,
+    item_id: membership.item_id,
+    itemId: membership.item_id,
+  };
+};
+
+const getNextServerVersion = async (txAny, tenantId, entity, entityId) => {
+  const latestEntityChange = await txAny.syncChangeLog.findFirst({
+    where: {
+      tenant_id: tenantId,
+      entity,
+      entity_id: entityId,
+    },
+    orderBy: { server_version: "desc" },
+    select: { server_version: true },
+  });
+  return (latestEntityChange?.server_version ?? 0) + 1;
+};
+
+const appendSyncChange = async (
+  txAny,
+  tenantId,
+  entity,
+  entityId,
+  operation,
+  data,
+) => {
+  const serverVersion = await getNextServerVersion(txAny, tenantId, entity, entityId);
+  await txAny.syncChangeLog.create({
+    data: {
+      tenant_id: tenantId,
+      entity,
+      entity_id: entityId,
+      operation,
+      data,
+      server_version: serverVersion,
+    },
+  });
 };
 
 const getDefaultVariant = async (tx, tenantId, itemId) => {
@@ -439,6 +544,9 @@ const getTenantCursor = async (tenantId) => {
 const applyItemMutation = async (tx, tenantId, mutation) => {
   if (mutation.op === "create") {
     const createData = buildItemForCreate(mutation.payload);
+    if (createData.item.category) {
+      await ensureCategoryExists(tx, tenantId, createData.item.category);
+    }
     const item = await tx.item.create({
       data: {
         id: mutation.entityId,
@@ -518,13 +626,18 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     return null;
   }
 
-  const { itemPatch, sku } = buildItemForUpdate(mutation.payload);
+  const { itemPatch, category, sku } = buildItemForUpdate(mutation.payload);
+  const itemPatchWithCategory =
+    category !== undefined ? { ...itemPatch, category } : itemPatch;
+  if (typeof category === "string" && category.trim()) {
+    await ensureCategoryExists(tx, tenantId, category);
+  }
   let nextItem = current;
 
-  if (Object.keys(itemPatch).length > 0) {
+  if (Object.keys(itemPatchWithCategory).length > 0) {
     nextItem = await tx.item.update({
       where: { id: mutation.entityId },
-      data: itemPatch,
+      data: itemPatchWithCategory,
     });
   }
 
@@ -695,6 +808,341 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
   return toVariantSnapshot(variant, optionValues, nextUsageCount);
 };
 
+const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
+  const payload = mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
+  const payloadName = typeof payload.name === "string" ? payload.name.trim() : "";
+
+  if (mutation.op === "create") {
+    if (!payloadName) {
+      throw new AppError("Category name is required", 400);
+    }
+
+    const existing = await tx.itemCategory.findFirst({
+      where: {
+        business_id: tenantId,
+        name: payloadName,
+      },
+    });
+    if (existing) {
+      throw new AppError("Category already exists", 400);
+    }
+
+    const created = await tx.itemCategory.create({
+      data: {
+        id: mutation.entityId,
+        business_id: tenantId,
+        name: payloadName,
+      },
+    });
+    return {
+      snapshot: toItemCategorySnapshot(created),
+      additionalChanges: [],
+    };
+  }
+
+  const current = await tx.itemCategory.findUnique({
+    where: { id: mutation.entityId },
+  });
+
+  if (!current || current.business_id !== tenantId) {
+    if (mutation.op === "delete") {
+      return {
+        snapshot: null,
+        additionalChanges: [],
+      };
+    }
+    throw new AppError("Category not found in business", 404);
+  }
+
+  if (mutation.op === "delete") {
+    const itemsWithCategory = await tx.item.findMany({
+      where: {
+        business_id: tenantId,
+        category: current.name,
+      },
+      select: { id: true },
+    });
+
+    await tx.item.updateMany({
+      where: {
+        business_id: tenantId,
+        category: current.name,
+      },
+      data: {
+        category: null,
+      },
+    });
+
+    await tx.itemCategory.delete({
+      where: { id: mutation.entityId },
+    });
+
+    const additionalChanges = await Promise.all(
+      itemsWithCategory.map(async (item) => ({
+        entity: "item",
+        entityId: item.id,
+        operation: "UPDATE",
+        data: await getItemSnapshot(tx, tenantId, item.id),
+      })),
+    );
+
+    return {
+      snapshot: null,
+      additionalChanges,
+    };
+  }
+
+  if (mutation.op === "update") {
+    if (!payloadName) {
+      throw new AppError("Category name is required", 400);
+    }
+
+    const existing = await tx.itemCategory.findFirst({
+      where: {
+        business_id: tenantId,
+        name: payloadName,
+        id: {
+          not: current.id,
+        },
+      },
+    });
+    if (existing) {
+      throw new AppError("Category already exists", 400);
+    }
+
+    const needsRename = payloadName !== current.name;
+    const itemsWithCategory = needsRename
+      ? await tx.item.findMany({
+          where: {
+            business_id: tenantId,
+            category: current.name,
+          },
+          select: { id: true },
+        })
+      : [];
+
+    if (needsRename) {
+      await tx.item.updateMany({
+        where: {
+          business_id: tenantId,
+          category: current.name,
+        },
+        data: {
+          category: payloadName,
+        },
+      });
+    }
+
+    const updated = await tx.itemCategory.update({
+      where: { id: mutation.entityId },
+      data: {
+        name: payloadName,
+      },
+    });
+
+    const additionalChanges = needsRename
+      ? await Promise.all(
+          itemsWithCategory.map(async (item) => ({
+            entity: "item",
+            entityId: item.id,
+            operation: "UPDATE",
+            data: await getItemSnapshot(tx, tenantId, item.id),
+          })),
+        )
+      : [];
+
+    return {
+      snapshot: toItemCategorySnapshot(updated),
+      additionalChanges,
+    };
+  }
+
+  throw new AppError("Unsupported operation for item category", 400);
+};
+
+const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
+  const txAny = tx as any;
+  const payload = mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
+  const payloadName = typeof payload.name === "string" ? payload.name.trim() : "";
+
+  if (mutation.op === "create") {
+    if (!payloadName) {
+      throw new AppError("Collection name is required", 400);
+    }
+
+    const existing = await txAny.itemCollection.findFirst({
+      where: {
+        business_id: tenantId,
+        name: payloadName,
+      },
+    });
+    if (existing) {
+      throw new AppError("Collection already exists", 400);
+    }
+
+    const created = await txAny.itemCollection.create({
+      data: {
+        id: mutation.entityId,
+        business_id: tenantId,
+        name: payloadName,
+      },
+    });
+    return {
+      snapshot: toItemCollectionSnapshot(created),
+      additionalChanges: [],
+    };
+  }
+
+  const current = await txAny.itemCollection.findUnique({
+    where: { id: mutation.entityId },
+  });
+
+  if (!current || current.business_id !== tenantId) {
+    if (mutation.op === "delete") {
+      return {
+        snapshot: null,
+        additionalChanges: [],
+      };
+    }
+    throw new AppError("Collection not found in business", 404);
+  }
+
+  if (mutation.op === "delete") {
+    const memberships = await txAny.itemCollectionItem.findMany({
+      where: {
+        business_id: tenantId,
+        collection_id: current.id,
+      },
+      select: { id: true },
+    });
+
+    await txAny.itemCollectionItem.deleteMany({
+      where: {
+        business_id: tenantId,
+        collection_id: current.id,
+      },
+    });
+
+    await txAny.itemCollection.delete({
+      where: { id: mutation.entityId },
+    });
+
+    const additionalChanges = memberships.map((membership) => ({
+      entity: "item_collection_item",
+      entityId: membership.id,
+      operation: "DELETE" as const,
+      data: {},
+    }));
+
+    return {
+      snapshot: null,
+      additionalChanges,
+    };
+  }
+
+  if (mutation.op === "update") {
+    if (!payloadName) {
+      throw new AppError("Collection name is required", 400);
+    }
+
+    const existing = await txAny.itemCollection.findFirst({
+      where: {
+        business_id: tenantId,
+        name: payloadName,
+        id: { not: current.id },
+      },
+    });
+    if (existing) {
+      throw new AppError("Collection already exists", 400);
+    }
+
+    const updated = await txAny.itemCollection.update({
+      where: { id: mutation.entityId },
+      data: {
+        name: payloadName,
+      },
+    });
+
+    return {
+      snapshot: toItemCollectionSnapshot(updated),
+      additionalChanges: [],
+    };
+  }
+
+  throw new AppError("Unsupported operation for item collection", 400);
+};
+
+const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
+  const txAny = tx as any;
+  const payload = mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
+  const collectionId =
+    typeof payload.collectionId === "string"
+      ? payload.collectionId
+      : typeof payload.collection_id === "string"
+        ? payload.collection_id
+        : "";
+  const itemId =
+    typeof payload.itemId === "string"
+      ? payload.itemId
+      : typeof payload.item_id === "string"
+        ? payload.item_id
+        : "";
+
+  if (mutation.op === "create") {
+    if (!collectionId || !itemId) {
+      throw new AppError("collectionId and itemId are required", 400);
+    }
+
+    const [collection, item] = await Promise.all([
+      txAny.itemCollection.findUnique({ where: { id: collectionId } }),
+      tx.item.findUnique({ where: { id: itemId } }),
+    ]);
+    if (!collection || collection.business_id !== tenantId) {
+      throw new AppError("Collection not found in business", 404);
+    }
+    if (!item || item.business_id !== tenantId) {
+      throw new AppError("Item not found in business", 404);
+    }
+
+    const existing = await txAny.itemCollectionItem.findFirst({
+      where: {
+        business_id: tenantId,
+        collection_id: collectionId,
+        item_id: itemId,
+      },
+    });
+    if (existing) {
+      throw new AppError("Item is already in this collection", 400);
+    }
+
+    const created = await txAny.itemCollectionItem.create({
+      data: {
+        id: mutation.entityId,
+        business_id: tenantId,
+        collection_id: collectionId,
+        item_id: itemId,
+      },
+    });
+    return toItemCollectionItemSnapshot(created);
+  }
+
+  if (mutation.op === "delete") {
+    const current = await txAny.itemCollectionItem.findUnique({
+      where: { id: mutation.entityId },
+    });
+    if (!current) return null;
+    if (current.business_id !== tenantId) {
+      throw new AppError("Collection item link not found in business", 404);
+    }
+    await txAny.itemCollectionItem.delete({
+      where: { id: mutation.entityId },
+    });
+    return null;
+  }
+
+  throw new AppError("Unsupported operation for item collection item", 400);
+};
+
 const applyMutation = async (tenantId, mutation) => {
   return prisma.$transaction(async (tx) => {
     const txAny = tx as any;
@@ -708,24 +1156,29 @@ const applyMutation = async (tenantId, mutation) => {
     }
 
     let snapshot = null;
+    let additionalChanges: Array<{
+      entity: string;
+      entityId: string;
+      operation: "CREATE" | "UPDATE" | "DELETE";
+      data: Record<string, unknown>;
+    }> = [];
     if (mutation.entity === "item") {
       snapshot = await applyItemMutation(tx, tenantId, mutation);
     } else if (mutation.entity === "item_variant") {
       snapshot = await applyItemVariantMutation(tx, tenantId, mutation);
+    } else if (mutation.entity === "item_category") {
+      const categoryResult = await applyItemCategoryMutation(tx, tenantId, mutation);
+      snapshot = categoryResult.snapshot;
+      additionalChanges = categoryResult.additionalChanges;
+    } else if (mutation.entity === "item_collection") {
+      const collectionResult = await applyItemCollectionMutation(tx, tenantId, mutation);
+      snapshot = collectionResult.snapshot;
+      additionalChanges = collectionResult.additionalChanges;
+    } else if (mutation.entity === "item_collection_item") {
+      snapshot = await applyItemCollectionItemMutation(tx, tenantId, mutation);
     } else {
       throw new AppError(`Unsupported entity '${mutation.entity}'`, 400);
     }
-
-    const latestEntityChange = await txAny.syncChangeLog.findFirst({
-      where: {
-        tenant_id: tenantId,
-        entity: mutation.entity,
-        entity_id: mutation.entityId,
-      },
-      orderBy: { server_version: "desc" },
-      select: { server_version: true },
-    });
-    const serverVersion = (latestEntityChange?.server_version ?? 0) + 1;
 
     const operation = toPrismaSyncOperation(mutation.op);
 
@@ -744,16 +1197,25 @@ const applyMutation = async (tenantId, mutation) => {
       },
     });
 
-    await txAny.syncChangeLog.create({
-      data: {
-        tenant_id: tenantId,
-        entity: mutation.entity,
-        entity_id: mutation.entityId,
-        operation,
-        data: snapshot ?? {},
-        server_version: serverVersion,
-      },
-    });
+    await appendSyncChange(
+      txAny,
+      tenantId,
+      mutation.entity,
+      mutation.entityId,
+      operation,
+      snapshot ?? {},
+    );
+
+    for (const change of additionalChanges) {
+      await appendSyncChange(
+        txAny,
+        tenantId,
+        change.entity,
+        change.entityId,
+        change.operation,
+        change.data,
+      );
+    }
 
     return { status: "applied" };
   });
@@ -836,7 +1298,90 @@ const getDeltasSinceCursor = async (tenantId, cursor, limit) => {
   };
 };
 
+const getOptionKeys = async (tenantId: string) => {
+  const optionRows = await prisma.itemOption.findMany({
+    where: {
+      item: {
+        business_id: tenantId,
+      },
+    },
+    select: {
+      name: true,
+      values: {
+        select: {
+          value: true,
+        },
+      },
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const valueSetsByKey = new Map<string, Set<string>>();
+  for (const row of optionRows) {
+    const key = row.name.trim();
+    if (!key) continue;
+
+    const values = valueSetsByKey.get(key) ?? new Set<string>();
+    for (const optionValue of row.values) {
+      const value = optionValue.value.trim();
+      if (value) {
+        values.add(value);
+      }
+    }
+    valueSetsByKey.set(key, values);
+  }
+
+  const optionKeys = Array.from(valueSetsByKey.keys()).sort((a, b) => a.localeCompare(b));
+  const optionValuesByKey = Object.fromEntries(
+    optionKeys.map((key) => {
+      const values = Array.from(valueSetsByKey.get(key) ?? []).sort((a, b) =>
+        a.localeCompare(b),
+      );
+      return [key, values];
+    }),
+  );
+
+  return {
+    optionKeys,
+    optionValuesByKey,
+  };
+};
+
+const getItemCategories = async (tenantId: string, query?: string, limit = 30) => {
+  const normalizedQuery = query?.trim();
+  const rows = await prismaAny.itemCategory.findMany({
+    where: {
+      business_id: tenantId,
+      name: normalizedQuery
+        ? {
+            contains: normalizedQuery,
+            mode: "insensitive",
+          }
+        : undefined,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+    take: limit,
+  });
+
+  return rows
+    .map((row) => ({
+      id: String(row.id),
+      name: String(row.name ?? "").trim(),
+    }))
+    .filter((row) => row.name.length > 0);
+};
+
 export default {
   processMutations,
   getDeltasSinceCursor,
+  getOptionKeys,
+  getItemCategories,
 };

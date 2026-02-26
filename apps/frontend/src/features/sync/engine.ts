@@ -71,6 +71,7 @@ export type VariantInput = {
 export type ItemInput = {
   sku?: string;
   name?: string;
+  category?: string | null;
   unit?: "PCS" | "KG" | "M" | "BOX";
   itemType?: "PRODUCT" | "SERVICE";
   variants?: VariantInput[];
@@ -82,6 +83,7 @@ export const queueItemCreate = async (
   payload: {
     sku?: string;
     name: string;
+    category?: string;
     unit: "PCS" | "KG" | "M" | "BOX";
     itemType: "PRODUCT" | "SERVICE";
     variants?: VariantInput[];
@@ -284,6 +286,7 @@ export type ItemDisplay = {
   entityId: string;
   name: string;
   sku: string;
+  category: string;
   variantSkus: string[];
   variantCount: number;
   pending: boolean;
@@ -438,10 +441,7 @@ export const getLocalItemsForDisplay = async (
         } satisfies ItemVariantDisplay;
       });
 
-      const mergedVariants =
-        overlayVariants.length > 0
-          ? mergeVariants([], overlayVariants)
-          : mergeVariants(baseVariants, []);
+      const mergedVariants = mergeVariants(baseVariants, overlayVariants);
       const variantSkus = mergedVariants
         .map((variant) => variant.sku.trim())
         .filter((sku) => sku.length > 0);
@@ -457,6 +457,7 @@ export const getLocalItemsForDisplay = async (
         entityId: item.entityId,
         name: String(item.data.name ?? "Untitled Item"),
         sku: primarySku,
+        category: String(item.data.category ?? ""),
         variantSkus,
         variantCount: mergedVariants.length,
         pending: false,
@@ -471,6 +472,7 @@ export const getLocalItemsForDisplay = async (
       const payload = item.payload as {
         sku?: unknown;
         name?: unknown;
+        category?: unknown;
         variants?: unknown;
       };
       const variants = Array.isArray(payload.variants)
@@ -497,6 +499,7 @@ export const getLocalItemsForDisplay = async (
         entityId: item.entityId,
         name: String(payload.name ?? "Untitled Item"),
         sku: variantSku || String(payload.sku ?? ""),
+        category: String(payload.category ?? ""),
         variantSkus,
         variantCount: variants.length,
         pending: true,
@@ -563,10 +566,7 @@ export const getLocalItemDetailForDisplay = async (
   const fallbackFromItem = extractVariantsFromItemData(item.data, item.entityId).filter(
     (variant) => !deletedVariantIds.has(variant.id),
   );
-  const mergedVariants =
-    variantRows.length > 0
-      ? mergeVariants([], variantRows)
-      : mergeVariants(fallbackFromItem, []);
+  const mergedVariants = mergeVariants(fallbackFromItem, variantRows);
   const variants =
     mergedVariants.length > 0
       ? mergedVariants
@@ -604,4 +604,432 @@ export const getLocalItemLabels = async (tenantId: string) => {
     const pendingSuffix = item.pending ? " (pending sync)" : "";
     return `${item.sku}: ${item.name}${pendingSuffix}`;
   });
+};
+
+export type OptionDiscovery = {
+  optionKeys: string[];
+  optionValuesByKey: Record<string, string[]>;
+};
+
+export type ItemCategoryEntry = {
+  id: string;
+  name: string;
+};
+
+export type ItemCollectionEntry = {
+  id: string;
+  name: string;
+};
+
+export type ItemCollectionMembership = {
+  id: string;
+  collectionId: string;
+  itemId: string;
+};
+
+export const queueItemCategoryCreate = async (
+  tenantId: string,
+  userId: string,
+  name: string,
+) => {
+  const entityId = crypto.randomUUID();
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_category",
+    entityId,
+    op: "create",
+    payload: {
+      name,
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCategoryDelete = async (
+  tenantId: string,
+  userId: string,
+  categoryId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_category",
+    entityId: categoryId,
+    op: "delete",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCollectionCreate = async (
+  tenantId: string,
+  userId: string,
+  name: string,
+) => {
+  const entityId = crypto.randomUUID();
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_collection",
+    entityId,
+    op: "create",
+    payload: {
+      name,
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCollectionUpdate = async (
+  tenantId: string,
+  userId: string,
+  collectionId: string,
+  name: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_collection",
+    entityId: collectionId,
+    op: "update",
+    payload: {
+      name,
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCollectionDelete = async (
+  tenantId: string,
+  userId: string,
+  collectionId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_collection",
+    entityId: collectionId,
+    op: "delete",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCollectionMembershipCreate = async (
+  tenantId: string,
+  userId: string,
+  collectionId: string,
+  itemId: string,
+) => {
+  const entityId = crypto.randomUUID();
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_collection_item",
+    entityId,
+    op: "create",
+    payload: {
+      collectionId,
+      itemId,
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCollectionMembershipDelete = async (
+  tenantId: string,
+  userId: string,
+  membershipId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_collection_item",
+    entityId: membershipId,
+    op: "delete",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCategoryUpdate = async (
+  tenantId: string,
+  userId: string,
+  categoryId: string,
+  name: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_category",
+    entityId: categoryId,
+    op: "update",
+    payload: {
+      name,
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+const addOptionValue = (
+  map: Map<string, Set<string>>,
+  rawKey: unknown,
+  rawValue: unknown,
+) => {
+  if (typeof rawKey !== "string" || typeof rawValue !== "string") return;
+  const key = rawKey.trim();
+  const value = rawValue.trim();
+  if (!key || !value) return;
+
+  const values = map.get(key) ?? new Set<string>();
+  values.add(value);
+  map.set(key, values);
+};
+
+const toOptionDiscovery = (valueMap: Map<string, Set<string>>): OptionDiscovery => {
+  const optionKeys = Array.from(valueMap.keys()).sort((a, b) => a.localeCompare(b));
+  const optionValuesByKey = Object.fromEntries(
+    optionKeys.map((key) => {
+      const values = Array.from(valueMap.get(key) ?? []).sort((a, b) =>
+        a.localeCompare(b),
+      );
+      return [key, values];
+    }),
+  );
+
+  return {
+    optionKeys,
+    optionValuesByKey,
+  };
+};
+
+export const getLocalOptionDiscoveryForStore = async (
+  tenantId: string,
+): Promise<OptionDiscovery> => {
+  const [itemEntities, variantEntities] = await Promise.all([
+    listEntities(tenantId, "item"),
+    listEntities(tenantId, "item_variant"),
+  ]);
+
+  const optionMap = new Map<string, Set<string>>();
+
+  for (const item of itemEntities) {
+    if (item.deletedAt) continue;
+    const variants = Array.isArray(item.data.variants) ? item.data.variants : [];
+    for (const variant of variants) {
+      if (!variant || typeof variant !== "object") continue;
+      const variantRecord = variant as Record<string, unknown>;
+      const optionValues =
+        variantRecord.optionValues && typeof variantRecord.optionValues === "object"
+          ? variantRecord.optionValues
+          : variantRecord.option_values && typeof variantRecord.option_values === "object"
+            ? variantRecord.option_values
+            : undefined;
+      if (!optionValues || typeof optionValues !== "object") continue;
+
+      for (const [key, value] of Object.entries(optionValues as Record<string, unknown>)) {
+        addOptionValue(optionMap, key, value);
+      }
+    }
+  }
+
+  for (const variant of variantEntities) {
+    if (variant.deletedAt) continue;
+    const optionValues =
+      variant.data.optionValues && typeof variant.data.optionValues === "object"
+        ? variant.data.optionValues
+        : variant.data.option_values && typeof variant.data.option_values === "object"
+          ? variant.data.option_values
+          : undefined;
+    if (!optionValues || typeof optionValues !== "object") continue;
+
+    for (const [key, value] of Object.entries(optionValues as Record<string, unknown>)) {
+      addOptionValue(optionMap, key, value);
+    }
+  }
+
+  return toOptionDiscovery(optionMap);
+};
+
+export const getRemoteOptionDiscoveryForStore = async (
+  tenantId: string,
+): Promise<OptionDiscovery> => {
+  const params = new URLSearchParams({ tenantId });
+  const response = await apiFetch(`/api/sync/option-keys?${params.toString()}`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Option key discovery failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    optionKeys?: unknown;
+    optionValuesByKey?: unknown;
+  };
+
+  const optionMap = new Map<string, Set<string>>();
+
+  if (Array.isArray(payload.optionKeys)) {
+    for (const rawKey of payload.optionKeys) {
+      if (typeof rawKey !== "string") continue;
+      const key = rawKey.trim();
+      if (!key) continue;
+      if (!optionMap.has(key)) {
+        optionMap.set(key, new Set<string>());
+      }
+    }
+  }
+
+  const rawValuesByKey =
+    payload.optionValuesByKey && typeof payload.optionValuesByKey === "object"
+      ? (payload.optionValuesByKey as Record<string, unknown>)
+      : {};
+  for (const [key, rawValues] of Object.entries(rawValuesByKey)) {
+    if (!Array.isArray(rawValues)) continue;
+    for (const rawValue of rawValues) {
+      addOptionValue(optionMap, key, rawValue);
+    }
+  }
+
+  return toOptionDiscovery(optionMap);
+};
+
+export const getLocalItemCategoriesForStore = async (
+  tenantId: string,
+): Promise<string[]> => {
+  const [itemEntities, categoryEntities] = await Promise.all([
+    listEntities(tenantId, "item"),
+    listEntities(tenantId, "item_category"),
+  ]);
+  const categoriesFromItems = itemEntities
+    .filter((item) => !item.deletedAt)
+    .map((item) => String(item.data.category ?? "").trim())
+    .filter((category) => category.length > 0);
+  const categoriesFromEntries = categoryEntities
+    .filter((entry) => !entry.deletedAt)
+    .map((entry) => String(entry.data.name ?? "").trim())
+    .filter((name) => name.length > 0);
+
+  return Array.from(new Set([...categoriesFromItems, ...categoriesFromEntries])).sort((a, b) =>
+    a.localeCompare(b),
+  );
+};
+
+export const getLocalItemCategoryEntriesForStore = async (
+  tenantId: string,
+): Promise<ItemCategoryEntry[]> => {
+  const categoryEntities = await listEntities(tenantId, "item_category");
+  return categoryEntities
+    .filter((entry) => !entry.deletedAt)
+    .map((entry) => ({
+      id: entry.entityId,
+      name: String(entry.data.name ?? "").trim(),
+    }))
+    .filter((entry) => entry.id.length > 0 && entry.name.length > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
+};
+
+export const getLocalItemCollectionEntriesForStore = async (
+  tenantId: string,
+): Promise<ItemCollectionEntry[]> => {
+  const collectionEntities = await listEntities(tenantId, "item_collection");
+  return collectionEntities
+    .filter((entry) => !entry.deletedAt)
+    .map((entry) => ({
+      id: entry.entityId,
+      name: String(entry.data.name ?? "").trim(),
+    }))
+    .filter((entry) => entry.id.length > 0 && entry.name.length > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
+};
+
+export const getLocalItemCollectionMembershipsForStore = async (
+  tenantId: string,
+): Promise<ItemCollectionMembership[]> => {
+  const membershipEntities = await listEntities(tenantId, "item_collection_item");
+  return membershipEntities
+    .filter((entry) => !entry.deletedAt)
+    .map((entry) => {
+      const collectionId = String(
+        entry.data.collectionId ?? entry.data.collection_id ?? "",
+      );
+      const itemId = String(entry.data.itemId ?? entry.data.item_id ?? "");
+      return {
+        id: entry.entityId,
+        collectionId,
+        itemId,
+      } satisfies ItemCollectionMembership;
+    })
+    .filter(
+      (entry) =>
+        entry.id.length > 0 && entry.collectionId.length > 0 && entry.itemId.length > 0,
+    );
+};
+
+export const getRemoteItemCategoriesForStore = async (
+  tenantId: string,
+  query?: string,
+  limit = 50,
+): Promise<string[]> => {
+  const entries = await getRemoteItemCategoryEntriesForStore(tenantId, query, limit);
+  return entries.map((entry) => entry.name);
+};
+
+export const getRemoteItemCategoryEntriesForStore = async (
+  tenantId: string,
+  query?: string,
+  limit = 50,
+): Promise<ItemCategoryEntry[]> => {
+  const params = new URLSearchParams({
+    tenantId,
+    limit: String(limit),
+  });
+  if (query?.trim()) {
+    params.set("q", query.trim());
+  }
+
+  const response = await apiFetch(`/api/sync/item-categories?${params.toString()}`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Category discovery failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    entries?: unknown;
+    categories?: unknown;
+  };
+  if (Array.isArray(payload.entries)) {
+    return payload.entries
+      .filter((value) => typeof value === "object" && value !== null)
+      .map((value) => {
+        const record = value as Record<string, unknown>;
+        return {
+          id: String(record.id ?? ""),
+          name: String(record.name ?? "").trim(),
+        } satisfies ItemCategoryEntry;
+      })
+      .filter((entry) => entry.id.length > 0 && entry.name.length > 0)
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+  if (!Array.isArray(payload.categories)) return [];
+  return payload.categories
+    .filter((value): value is string => typeof value === "string")
+    .map((name) => ({
+      id: name.trim().toLowerCase(),
+      name: name.trim(),
+    }))
+    .filter((entry) => entry.name.length > 0)
+    .sort((left, right) => left.name.localeCompare(right.name));
 };

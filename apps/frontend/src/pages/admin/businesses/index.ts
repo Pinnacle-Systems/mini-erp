@@ -1,2 +1,2 @@
-export { AdminBusinessesPage } from "../../AdminBusinessesPage";
-export { AdminBusinessDetailsPage } from "../../AdminBusinessDetailsPage";
+export { AdminBusinessesPage } from "./AdminBusinessesPage";
+export { AdminBusinessDetailsPage } from "./AdminBusinessDetailsPage";

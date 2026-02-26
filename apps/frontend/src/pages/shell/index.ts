@@ -1,1 +1,1 @@
-export { AppHomePage } from "../AppHomePage";
+export { AppHomePage } from "./AppHomePage";

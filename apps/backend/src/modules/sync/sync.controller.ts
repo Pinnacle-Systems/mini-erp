@@ -38,3 +38,39 @@ export const pull = catchAsync(async (req, res) => {
     deltas: result.deltas,
   });
 });
+
+export const optionKeys = catchAsync(async (req, res) => {
+  const { tenantId } = req.query;
+  const member = await tenantService.validateMembership(req.user.id, tenantId);
+  if (!member) {
+    throw new ForbiddenError("Access denied");
+  }
+
+  const optionDiscovery = await syncService.getOptionKeys(String(tenantId));
+
+  res.json({
+    success: true,
+    optionKeys: optionDiscovery.optionKeys,
+    optionValuesByKey: optionDiscovery.optionValuesByKey,
+  });
+});
+
+export const itemCategories = catchAsync(async (req, res) => {
+  const { tenantId, q, limit = 30 } = req.query;
+  const member = await tenantService.validateMembership(req.user.id, tenantId);
+  if (!member) {
+    throw new ForbiddenError("Access denied");
+  }
+
+  const categories = await syncService.getItemCategories(
+    String(tenantId),
+    typeof q === "string" ? q : undefined,
+    Number(limit),
+  );
+
+  res.json({
+    success: true,
+    categories: categories.map((category) => category.name),
+    entries: categories,
+  });
+});

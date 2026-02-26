@@ -1,43 +1,124 @@
 import { Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "../design-system/atoms/Button";
-import { Input } from "../design-system/atoms/Input";
-import { Label } from "../design-system/atoms/Label";
-import { Select } from "../design-system/atoms/Select";
+import { Button } from "../../../design-system/atoms/Button";
+import { Input } from "../../../design-system/atoms/Input";
+import { Label } from "../../../design-system/atoms/Label";
+import { Select } from "../../../design-system/atoms/Select";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../design-system/molecules/Card";
-import { useSessionStore } from "../features/auth/session-business";
-import { queueItemCreate, syncOnce, type VariantInput } from "../features/sync/engine";
+} from "../../../design-system/molecules/Card";
+import { LookupDropdownInput } from "../../../design-system/molecules/LookupDropdownInput";
+import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
+import {
+  ItemVariantCardsEditor,
+  type ItemVariantDraft,
+} from "../../../design-system/organisms/ItemVariantCardsEditor";
+import { VariantOptionModal } from "../../../design-system/organisms/VariantOptionModal";
+import { useSessionStore } from "../../../features/auth/session-business";
+import {
+  getLocalItemCategoriesForStore,
+  getLocalOptionDiscoveryForStore,
+  getRemoteItemCategoriesForStore,
+  getRemoteOptionDiscoveryForStore,
+  queueItemCreate,
+  syncOnce,
+  type OptionDiscovery,
+  type VariantInput,
+} from "../../../features/sync/engine";
 
 const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
 const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
 const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
-const OPTION_KEYS_STORAGE_KEY = "mini-erp-option-key-suggestions";
+const OPTION_DISCOVERY_STORAGE_KEY = "mini-erp-option-discovery";
+const ITEM_CATEGORIES_STORAGE_KEY = "mini-erp-item-categories";
+const getOptionDiscoveryStorageKey = (storeId: string) =>
+  `${OPTION_DISCOVERY_STORAGE_KEY}:${storeId}`;
+const getItemCategoriesStorageKey = (storeId: string) =>
+  `${ITEM_CATEGORIES_STORAGE_KEY}:${storeId}`;
 
-type VariantDraft = {
-  id: string;
-  name: string;
-  sku: string;
-  barcode: string;
-  optionRows: Array<{ id: string; key: string; value: string }>;
-  isDefault: boolean;
+const emptyOptionDiscovery = (): OptionDiscovery => ({
+  optionKeys: [],
+  optionValuesByKey: {},
+});
+
+const sortUnique = (values: string[]) =>
+  Array.from(
+    new Set(values.map((value) => value.trim()).filter((value) => value.length > 0)),
+  ).sort((a, b) => a.localeCompare(b));
+const normalizeCategory = (value: string) => value.trim();
+
+const readStoredItemCategories = (storeId: string): string[] => {
+  try {
+    const raw = window.localStorage.getItem(getItemCategoriesStorageKey(storeId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return sortUnique(parsed.filter((value): value is string => typeof value === "string"));
+  } catch {
+    return [];
+  }
+};
+
+const readStoredOptionDiscovery = (storeId: string): OptionDiscovery => {
+  try {
+    const raw = window.localStorage.getItem(getOptionDiscoveryStorageKey(storeId));
+    if (!raw) return emptyOptionDiscovery();
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return {
+        optionKeys: sortUnique(
+          parsed.filter((value): value is string => typeof value === "string"),
+        ),
+        optionValuesByKey: {},
+      };
+    }
+    if (!parsed || typeof parsed !== "object") return emptyOptionDiscovery();
+
+    const parsedRecord = parsed as Record<string, unknown>;
+    const optionKeys = Array.isArray(parsedRecord.optionKeys)
+      ? sortUnique(
+          parsedRecord.optionKeys.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        )
+      : [];
+    const rawOptionValues =
+      parsedRecord.optionValuesByKey && typeof parsedRecord.optionValuesByKey === "object"
+        ? (parsedRecord.optionValuesByKey as Record<string, unknown>)
+        : {};
+    const optionValuesByKey = Object.fromEntries(
+      Object.entries(rawOptionValues).map(([key, values]) => {
+        const nextValues = Array.isArray(values)
+          ? sortUnique(values.filter((value): value is string => typeof value === "string"))
+          : [];
+        return [key.trim(), nextValues];
+      }),
+    ) as Record<string, string[]>;
+
+    return {
+      optionKeys: sortUnique([...optionKeys, ...Object.keys(optionValuesByKey)]),
+      optionValuesByKey,
+    };
+  } catch {
+    return emptyOptionDiscovery();
+  }
 };
 
 type QuickItemDraft = {
   id: string;
   name: string;
   sku: string;
+  category: string;
   unit: (typeof UNIT_OPTIONS)[number];
   itemType: "PRODUCT" | "SERVICE";
 };
 
-const EMPTY_VARIANT = (): VariantDraft => ({
+const EMPTY_VARIANT = (): ItemVariantDraft => ({
   id: crypto.randomUUID(),
   name: "",
   sku: "",
@@ -50,6 +131,7 @@ const EMPTY_QUICK_ROW = (): QuickItemDraft => ({
   id: crypto.randomUUID(),
   name: "",
   sku: "",
+  category: "",
   unit: "PCS",
   itemType: "PRODUCT",
 });
@@ -67,23 +149,18 @@ export function AddItemPage() {
   const [hasVariants, setHasVariants] = useState(false);
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
   const [unit, setUnit] = useState<(typeof UNIT_OPTIONS)[number]>("PCS");
-  const [variants, setVariants] = useState<VariantDraft[]>([EMPTY_VARIANT()]);
+  const [variants, setVariants] = useState<ItemVariantDraft[]>([EMPTY_VARIANT()]);
   const [quickRows, setQuickRows] = useState<QuickItemDraft[]>(buildInitialRows());
   const [optionModalVariantId, setOptionModalVariantId] = useState<string | null>(null);
   const [optionKeyDraft, setOptionKeyDraft] = useState("");
   const [optionValueDraft, setOptionValueDraft] = useState("");
-  const [savedOptionKeys, setSavedOptionKeys] = useState<string[]>(() => {
-    try {
-      const raw = window.localStorage.getItem(OPTION_KEYS_STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((value): value is string => typeof value === "string");
-    } catch {
-      return [];
-    }
-  });
+  const [savedOptionKeys, setSavedOptionKeys] = useState<string[]>([]);
+  const [savedOptionValuesByKey, setSavedOptionValuesByKey] = useState<
+    Record<string, string[]>
+  >({});
+  const [savedCategories, setSavedCategories] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -96,6 +173,135 @@ export function AddItemPage() {
       a.localeCompare(b),
     );
   }, [savedOptionKeys, variants]);
+
+  const optionValueSuggestions = useMemo(() => {
+    const key = optionKeyDraft.trim();
+    if (!key) return [];
+
+    const fromSaved = savedOptionValuesByKey[key] ?? [];
+    const fromVariants = variants
+      .flatMap((variant) => variant.optionRows)
+      .filter((row) => row.key.trim() === key)
+      .map((row) => row.value.trim())
+      .filter(Boolean);
+
+    return sortUnique([...fromSaved, ...fromVariants]);
+  }, [optionKeyDraft, savedOptionValuesByKey, variants]);
+
+  const categorySuggestions = useMemo(
+    () => sortUnique([...savedCategories, category, ...quickRows.map((row) => row.category)]),
+    [category, quickRows, savedCategories],
+  );
+
+  const persistOptionDiscovery = (
+    storeId: string,
+    optionKeys: string[],
+    optionValuesByKey: Record<string, string[]>,
+  ) => {
+    try {
+      window.localStorage.setItem(
+        getOptionDiscoveryStorageKey(storeId),
+        JSON.stringify({
+          optionKeys,
+          optionValuesByKey,
+        } satisfies OptionDiscovery),
+      );
+    } catch {
+      // Ignore storage failures and keep in-memory suggestions.
+    }
+  };
+
+  useEffect(() => {
+    if (!activeStore) return;
+    persistOptionDiscovery(activeStore, savedOptionKeys, savedOptionValuesByKey);
+  }, [activeStore, savedOptionKeys, savedOptionValuesByKey]);
+
+  useEffect(() => {
+    if (!activeStore) return;
+    try {
+      window.localStorage.setItem(
+        getItemCategoriesStorageKey(activeStore),
+        JSON.stringify(savedCategories),
+      );
+    } catch {
+      // Ignore storage failures and keep in-memory suggestions.
+    }
+  }, [activeStore, savedCategories]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOptionSuggestions = async () => {
+      if (!activeStore) {
+        setSavedOptionKeys([]);
+        setSavedOptionValuesByKey({});
+        return;
+      }
+
+      const persisted = readStoredOptionDiscovery(activeStore);
+      const [localDiscovered, remoteDiscovered] = await Promise.all([
+        getLocalOptionDiscoveryForStore(activeStore).catch(() => emptyOptionDiscovery()),
+        getRemoteOptionDiscoveryForStore(activeStore).catch(() => emptyOptionDiscovery()),
+      ]);
+      if (cancelled) return;
+
+      const mergedValuesByKey = Object.fromEntries(
+        sortUnique([
+          ...Object.keys(persisted.optionValuesByKey),
+          ...Object.keys(localDiscovered.optionValuesByKey),
+          ...Object.keys(remoteDiscovered.optionValuesByKey),
+        ]).map((key) => [
+          key,
+          sortUnique([
+            ...(persisted.optionValuesByKey[key] ?? []),
+            ...(localDiscovered.optionValuesByKey[key] ?? []),
+            ...(remoteDiscovered.optionValuesByKey[key] ?? []),
+          ]),
+        ]),
+      ) as Record<string, string[]>;
+      const mergedKeys = sortUnique([
+        ...persisted.optionKeys,
+        ...localDiscovered.optionKeys,
+        ...remoteDiscovered.optionKeys,
+        ...Object.keys(mergedValuesByKey),
+      ]);
+
+      setSavedOptionKeys(mergedKeys);
+      setSavedOptionValuesByKey(mergedValuesByKey);
+    };
+
+    void loadOptionSuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCategorySuggestions = async () => {
+      if (!activeStore) {
+        setSavedCategories([]);
+        return;
+      }
+
+      const persisted = readStoredItemCategories(activeStore);
+      const [localCategories, remoteCategories] = await Promise.all([
+        getLocalItemCategoriesForStore(activeStore).catch(() => []),
+        getRemoteItemCategoriesForStore(activeStore).catch(() => []),
+      ]);
+      if (cancelled) return;
+
+      setSavedCategories(sortUnique([...persisted, ...localCategories, ...remoteCategories]));
+    };
+
+    void loadCategorySuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore]);
 
   const closeOptionModal = () => {
     setOptionModalVariantId(null);
@@ -122,16 +328,12 @@ export function AddItemPage() {
           : entry,
       ),
     );
-    setSavedOptionKeys((current) => {
-      const next = Array.from(new Set([...current, key])).sort((a, b) =>
-        a.localeCompare(b),
-      );
-      try {
-        window.localStorage.setItem(OPTION_KEYS_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // Ignore storage failures; autocomplete still works in-memory for this session.
-      }
-      return next;
+    setSavedOptionKeys((current) => sortUnique([...current, key]));
+    setSavedOptionValuesByKey((current) => {
+      return {
+        ...current,
+        [key]: sortUnique([...(current[key] ?? []), value]),
+      };
     });
     closeOptionModal();
   };
@@ -149,6 +351,7 @@ export function AddItemPage() {
             ...row,
             name: row.name.trim(),
             sku: row.sku.trim(),
+            category: normalizeCategory(row.category),
           }))
           .filter((row) => row.name.length > 0);
 
@@ -162,9 +365,13 @@ export function AddItemPage() {
             itemType: row.itemType,
             sku: row.sku || undefined,
             name: row.name,
+            category: row.category || undefined,
             unit: row.unit,
           });
         }
+        setSavedCategories((current) =>
+          sortUnique([...current, ...rowsToCreate.map((row) => row.category)]),
+        );
 
         await syncOnce(activeStore).catch(() => null);
         navigate("/app/items");
@@ -199,9 +406,13 @@ export function AddItemPage() {
         itemType,
         sku: undefined,
         name: name.trim(),
+        category: normalizeCategory(category) || undefined,
         unit,
         variants: variantPayload,
       });
+      setSavedCategories((current) =>
+        sortUnique([...current, normalizeCategory(category)]),
+      );
       await syncOnce(activeStore).catch(() => null);
       navigate("/app/items");
     } catch (error) {
@@ -225,27 +436,17 @@ export function AddItemPage() {
                 Compact quick-entry for multiple items. Toggle variant mode for advanced single-item setup.
               </CardDescription>
             </div>
-            <div className="flex flex-wrap justify-end gap-1.5 lg:flex-nowrap">
-              <Button
-                type="submit"
-                form="add-items-form"
-                size="sm"
-                className="h-7 px-2"
-                disabled={loading}
-              >
-                {loading ? "Saving..." : hasVariants ? "Save Variant Item" : "Save Items"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-2"
-                onClick={() => navigate("/app/items")}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-            </div>
+            <PageActionBar
+              primaryType="submit"
+              primaryForm="add-items-form"
+              primaryLabel={hasVariants ? "Add Variant Item" : "Add Items"}
+              primaryLoading={loading}
+              primaryLoadingLabel="Saving..."
+              primaryDisabled={loading}
+              secondaryLabel="Cancel"
+              secondaryDisabled={loading}
+              onSecondaryClick={() => navigate("/app/items")}
+            />
           </div>
         </CardHeader>
 
@@ -253,7 +454,7 @@ export function AddItemPage() {
           <form
             id="add-items-form"
             onSubmit={onSubmit}
-            className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1"
+            className="space-y-1.5 pb-20 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1 lg:pb-0"
           >
             <div className="rounded-xl border border-white/70 bg-white/60 p-1.5">
               <label
@@ -277,11 +478,12 @@ export function AddItemPage() {
               {!hasVariants ? (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
                 <div className="overflow-hidden rounded-xl border border-white/75 bg-white/70 lg:flex lg:min-h-0 lg:flex-col">
-                  <div className="hidden grid-cols-[minmax(0,2.6fr)_minmax(0,1.8fr)_84px_92px_50px] gap-1 border-b border-white/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0">
+                  <div className="hidden grid-cols-[minmax(0,2.4fr)_minmax(0,1.6fr)_84px_84px_minmax(0,1.8fr)_50px] gap-1 border-b border-white/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0">
                     <span>Name</span>
                     <span>SKU</span>
                     <span>Unit</span>
                     <span>Type</span>
+                    <span>Category</span>
                     <span className="text-right">Del</span>
                   </div>
 
@@ -289,7 +491,7 @@ export function AddItemPage() {
                     {quickRows.map((row, index) => (
                       <div
                         key={row.id}
-                        className="grid gap-1 rounded-lg border border-white/70 bg-white/80 p-1 lg:grid-cols-[minmax(0,2.6fr)_minmax(0,1.8fr)_84px_92px_50px] lg:items-center lg:border-0 lg:bg-transparent lg:p-0"
+                        className="grid gap-1 rounded-lg border border-white/70 bg-white/80 p-1 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1.6fr)_84px_84px_minmax(0,1.8fr)_50px] lg:items-center lg:border-0 lg:bg-transparent lg:p-0"
                       >
                         <Input
                           className={DENSE_INPUT_CLASS}
@@ -360,6 +562,37 @@ export function AddItemPage() {
                           <option value="PRODUCT">Product</option>
                           <option value="SERVICE">Service</option>
                         </Select>
+                        <LookupDropdownInput
+                          value={row.category}
+                          onValueChange={(value) =>
+                            setQuickRows((current) =>
+                              current.map((entry) =>
+                                entry.id === row.id
+                                  ? { ...entry, category: value }
+                                  : entry,
+                              ),
+                            )
+                          }
+                          placeholder="Category"
+                          options={categorySuggestions}
+                          getOptionKey={(categoryValue) => categoryValue}
+                          getOptionSearchText={(categoryValue) => categoryValue}
+                          onOptionSelect={(categoryValue) =>
+                            setQuickRows((current) =>
+                              current.map((entry) =>
+                                entry.id === row.id
+                                  ? { ...entry, category: categoryValue }
+                                  : entry,
+                              ),
+                            )
+                          }
+                          renderOption={(categoryValue) => (
+                            <div className="truncate font-medium">{categoryValue}</div>
+                          )}
+                          maxVisibleOptions={10}
+                          inputClassName={DENSE_INPUT_CLASS}
+                          optionClassName="text-[10px]"
+                        />
                         <div className="flex justify-end">
                           <Button
                             type="button"
@@ -415,7 +648,7 @@ export function AddItemPage() {
               </div>
             ) : (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
-                <div className="grid gap-1.5 rounded-xl border border-white/70 bg-white/65 p-1.5 lg:grid-cols-10 lg:items-end">
+                <div className="grid gap-1.5 rounded-xl border border-white/70 bg-white/65 p-1.5 lg:grid-cols-12 lg:items-end">
                   <div className="grid gap-1 lg:col-span-4">
                     <Label htmlFor="name">Name</Label>
                     <Input
@@ -426,18 +659,15 @@ export function AddItemPage() {
                       required={hasVariants}
                     />
                   </div>
-                  <div className="grid gap-1 lg:col-span-3">
-                    <Label>Item type</Label>
-                    <Select
-                      className={`${DENSE_SELECT_CLASS} w-full`}
-                      value={itemType}
-                      onChange={(event) =>
-                        setItemType(event.target.value as "PRODUCT" | "SERVICE")
-                      }
-                    >
-                      <option value="PRODUCT">Product</option>
-                      <option value="SERVICE">Service</option>
-                    </Select>
+                  <div className="grid gap-1 lg:col-span-2">
+                    <Label htmlFor="sku">Base SKU</Label>
+                    <Input
+                      id="sku"
+                      className={DENSE_INPUT_CLASS}
+                      value={sku}
+                      onChange={(event) => setSku(event.target.value)}
+                      placeholder="Optional"
+                    />
                   </div>
                   <div className="grid gap-1 lg:col-span-1">
                     <Label htmlFor="unit">Unit</Label>
@@ -457,182 +687,49 @@ export function AddItemPage() {
                     </Select>
                   </div>
                   <div className="grid gap-1 lg:col-span-2">
-                    <Label htmlFor="sku">Base SKU</Label>
-                    <Input
-                      id="sku"
-                      className={DENSE_INPUT_CLASS}
-                      value={sku}
-                      onChange={(event) => setSku(event.target.value)}
-                      placeholder="Optional"
+                    <Label>Type</Label>
+                    <Select
+                      className={`${DENSE_SELECT_CLASS} w-full`}
+                      value={itemType}
+                      onChange={(event) =>
+                        setItemType(event.target.value as "PRODUCT" | "SERVICE")
+                      }
+                    >
+                      <option value="PRODUCT">Product</option>
+                      <option value="SERVICE">Service</option>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1 lg:col-span-3">
+                    <Label htmlFor="category">Category</Label>
+                    <LookupDropdownInput
+                      id="category"
+                      value={category}
+                      onValueChange={setCategory}
+                      placeholder="Category"
+                      options={categorySuggestions}
+                      getOptionKey={(categoryValue) => categoryValue}
+                      getOptionSearchText={(categoryValue) => categoryValue}
+                      onOptionSelect={setCategory}
+                      renderOption={(categoryValue) => (
+                        <div className="truncate font-medium">{categoryValue}</div>
+                      )}
+                      maxVisibleOptions={10}
+                      inputClassName={DENSE_INPUT_CLASS}
+                      optionClassName="text-[10px]"
                     />
                   </div>
                 </div>
 
-                <div className="grid gap-1.5 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
-                  <div className="flex items-center justify-between gap-1.5 lg:shrink-0">
-                    <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2"
-                      onClick={() => {
-                        setVariants((current) => [...current, EMPTY_VARIANT()]);
-                      }}
-                    >
-                      Add Variant
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-1.5 lg:min-h-0 lg:overflow-y-auto">
-                    {variants.map((variant, index) => (
-                      <div
-                        key={variant.id}
-                        className="rounded-xl border border-white/80 bg-white/65 p-1.5"
-                      >
-                      <div className="grid gap-1.5 lg:grid-cols-12 lg:items-center">
-                        <div className="grid gap-1 lg:col-span-1">
-                          <Label className="text-[10px] text-muted-foreground">Default</Label>
-                          <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground lg:text-[10px]">
-                            <input
-                              type="radio"
-                              name="defaultVariant"
-                              checked={variant.isDefault || index === 0}
-                              onChange={() =>
-                                setVariants((current) =>
-                                  current.map((entry) => ({
-                                    ...entry,
-                                    isDefault: entry.id === variant.id,
-                                  })),
-                                )
-                              }
-                            />
-                            Set
-                          </label>
-                        </div>
-                        <div className="grid gap-1 lg:col-span-2">
-                          <Label>Name</Label>
-                          <Input
-                            className={DENSE_INPUT_CLASS}
-                            value={variant.name}
-                            onChange={(event) =>
-                              setVariants((current) =>
-                                current.map((entry) =>
-                                  entry.id === variant.id
-                                    ? { ...entry, name: event.target.value }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            placeholder="Variant name"
-                          />
-                        </div>
-                        <div className="grid gap-1 lg:col-span-2">
-                          <Label>SKU</Label>
-                          <Input
-                            className={DENSE_INPUT_CLASS}
-                            value={variant.sku}
-                            onChange={(event) =>
-                              setVariants((current) =>
-                                current.map((entry) =>
-                                  entry.id === variant.id
-                                    ? { ...entry, sku: event.target.value }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            placeholder="Variant SKU"
-                          />
-                        </div>
-                        <div className="grid gap-1 lg:col-span-2">
-                          <Label>Barcode</Label>
-                          <Input
-                            className={DENSE_INPUT_CLASS}
-                            value={variant.barcode}
-                            onChange={(event) =>
-                              setVariants((current) =>
-                                current.map((entry) =>
-                                  entry.id === variant.id
-                                    ? { ...entry, barcode: event.target.value }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            placeholder="Optional barcode"
-                          />
-                        </div>
-                        <div className="grid gap-1 lg:col-span-4 lg:content-center">
-                          <Label>Options</Label>
-                          <div className="flex min-h-7 flex-wrap content-center items-center gap-1 rounded-lg border border-white/75 bg-white/75 px-1.5 py-1">
-                            {variant.optionRows.length === 0 ? (
-                              <p className="text-[10px] text-muted-foreground">No options</p>
-                            ) : (
-                              variant.optionRows.map((row) => (
-                                <span
-                                  key={row.id}
-                                  className="inline-flex items-center gap-1 rounded-full border border-[#d6e4f5] bg-[#f4f8ff] px-2 py-0.5 text-[10px] text-[#1f4167]"
-                                >
-                                  <span className="font-medium">{row.key}</span>
-                                  <span className="text-[#2f5f92]">{row.value}</span>
-                                  <button
-                                    type="button"
-                                    className="rounded-full text-[10px] leading-none text-[#2f5f92] hover:text-[#17395b]"
-                                    aria-label={`Remove option ${row.key} ${row.value}`}
-                                    onClick={() =>
-                                      setVariants((current) =>
-                                        current.map((entry) =>
-                                          entry.id === variant.id
-                                            ? {
-                                                ...entry,
-                                                optionRows: entry.optionRows.filter(
-                                                  (optionRow) => optionRow.id !== row.id,
-                                                ),
-                                              }
-                                            : entry,
-                                        ),
-                                      )
-                                    }
-                                  >
-                                    x
-                                  </button>
-                                </span>
-                              ))
-                            )}
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-6 px-2"
-                              onClick={() => {
-                                setFormError(null);
-                                setOptionModalVariantId(variant.id);
-                              }}
-                            >
-                              + Option
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="grid gap-1 lg:col-span-1">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2"
-                            disabled={variants.length <= 1}
-                            onClick={() =>
-                              setVariants((current) =>
-                                current.filter((entry) => entry.id !== variant.id),
-                              )
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <ItemVariantCardsEditor
+                  variants={variants}
+                  onVariantsChange={setVariants}
+                  onAddVariant={() => setVariants((current) => [...current, EMPTY_VARIANT()])}
+                  onOpenOptionModal={(variantId) => {
+                    setFormError(null);
+                    setOptionModalVariantId(variantId);
+                  }}
+                  denseInputClassName={DENSE_INPUT_CLASS}
+                />
               </div>
               )}
             </div>
@@ -645,60 +742,19 @@ export function AddItemPage() {
         </CardContent>
       </Card>
 
-      {optionModalVariantId ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-3">
-          <div className="w-full max-w-sm rounded-xl border border-white/70 bg-white p-2.5 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.45)]">
-            <p className="text-[11px] font-semibold text-foreground lg:text-[10px]">Add Option</p>
-            <div className="mt-2 grid gap-1.5">
-              <div className="grid gap-1">
-                <Label htmlFor="option-key">Key</Label>
-                <Input
-                  id="option-key"
-                  list="option-key-suggestions"
-                  className={DENSE_INPUT_CLASS}
-                  value={optionKeyDraft}
-                  onChange={(event) => setOptionKeyDraft(event.target.value)}
-                  placeholder="Size"
-                />
-                <datalist id="option-key-suggestions">
-                  {optionKeySuggestions.map((key) => (
-                    <option key={key} value={key} />
-                  ))}
-                </datalist>
-              </div>
-              <div className="grid gap-1">
-                <Label htmlFor="option-value">Value</Label>
-                <Input
-                  id="option-value"
-                  className={DENSE_INPUT_CLASS}
-                  value={optionValueDraft}
-                  onChange={(event) => setOptionValueDraft(event.target.value)}
-                  placeholder="M"
-                />
-              </div>
-            </div>
-            <div className="mt-2 flex justify-end gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-2"
-                onClick={closeOptionModal}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="h-7 px-2"
-                onClick={saveOptionChip}
-              >
-                + Option
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <VariantOptionModal
+        open={Boolean(optionModalVariantId)}
+        idPrefix="add-item"
+        keyDraft={optionKeyDraft}
+        valueDraft={optionValueDraft}
+        keySuggestions={optionKeySuggestions}
+        valueSuggestions={optionValueSuggestions}
+        inputClassName={DENSE_INPUT_CLASS}
+        onKeyDraftChange={setOptionKeyDraft}
+        onValueDraftChange={setOptionValueDraft}
+        onClose={closeOptionModal}
+        onConfirm={saveOptionChip}
+      />
     </section>
   );
 }

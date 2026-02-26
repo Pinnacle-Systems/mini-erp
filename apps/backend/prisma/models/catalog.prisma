@@ -19,11 +19,55 @@ model Item {
   business_id String        @db.Uuid
   item_type   ItemType      @default(PRODUCT)
   name        String
+  category    String?
   unit        UnitType      @default(PCS)
   variants    ItemVariant[]
   options     ItemOption[]
+  collections ItemCollectionItem[]
 
   @@map("items")
+  @@schema("catalog")
+}
+
+model ItemCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  business_id String   @db.Uuid
+  name        String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([business_id, name])
+  @@index([business_id, name])
+  @@map("item_categories")
+  @@schema("catalog")
+}
+
+model ItemCollection {
+  id          String               @id @default(uuid()) @db.Uuid
+  business_id String               @db.Uuid
+  name        String
+  created_at  DateTime             @default(now())
+  updated_at  DateTime             @updatedAt
+  items       ItemCollectionItem[]
+
+  @@unique([business_id, name])
+  @@index([business_id, name])
+  @@map("item_collections")
+  @@schema("catalog")
+}
+
+model ItemCollectionItem {
+  id            String         @id @default(uuid()) @db.Uuid
+  business_id   String         @db.Uuid
+  collection_id String         @db.Uuid
+  item_id       String         @db.Uuid
+  collection    ItemCollection @relation(fields: [collection_id], references: [id], onDelete: Cascade)
+  item          Item           @relation(fields: [item_id], references: [id], onDelete: Cascade)
+
+  @@unique([collection_id, item_id])
+  @@index([business_id, collection_id])
+  @@index([business_id, item_id])
+  @@map("item_collection_items")
   @@schema("catalog")
 }
 

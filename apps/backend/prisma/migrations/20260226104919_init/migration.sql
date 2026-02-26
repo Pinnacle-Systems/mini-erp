@@ -149,9 +149,42 @@ CREATE TABLE "catalog"."items" (
     "business_id" UUID NOT NULL,
     "item_type" "catalog"."ItemType" NOT NULL DEFAULT 'PRODUCT',
     "name" TEXT NOT NULL,
+    "category" TEXT,
     "unit" "catalog"."UnitType" NOT NULL DEFAULT 'PCS',
 
     CONSTRAINT "items_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "catalog"."item_categories" (
+    "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "item_categories_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "catalog"."item_collections" (
+    "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "item_collections_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "catalog"."item_collection_items" (
+    "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
+    "collection_id" UUID NOT NULL,
+    "item_id" UUID NOT NULL,
+
+    CONSTRAINT "item_collection_items_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -519,6 +552,27 @@ CREATE UNIQUE INDEX "sessions_token_hash_key" ON "auth"."sessions"("token_hash")
 CREATE INDEX "sessions_selected_business_id_expires_at_idx" ON "auth"."sessions"("selected_business_id", "expires_at");
 
 -- CreateIndex
+CREATE INDEX "item_categories_business_id_name_idx" ON "catalog"."item_categories"("business_id", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "item_categories_business_id_name_key" ON "catalog"."item_categories"("business_id", "name");
+
+-- CreateIndex
+CREATE INDEX "item_collections_business_id_name_idx" ON "catalog"."item_collections"("business_id", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "item_collections_business_id_name_key" ON "catalog"."item_collections"("business_id", "name");
+
+-- CreateIndex
+CREATE INDEX "item_collection_items_business_id_collection_id_idx" ON "catalog"."item_collection_items"("business_id", "collection_id");
+
+-- CreateIndex
+CREATE INDEX "item_collection_items_business_id_item_id_idx" ON "catalog"."item_collection_items"("business_id", "item_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "item_collection_items_collection_id_item_id_key" ON "catalog"."item_collection_items"("collection_id", "item_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "item_variants_business_id_sku_key" ON "catalog"."item_variants"("business_id", "sku");
 
 -- CreateIndex
@@ -646,6 +700,12 @@ ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_identity_id_fkey" FOREIGN
 
 -- AddForeignKey
 ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_selected_business_id_fkey" FOREIGN KEY ("selected_business_id") REFERENCES "tenants"."businesses"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalog"."item_collection_items" ADD CONSTRAINT "item_collection_items_collection_id_fkey" FOREIGN KEY ("collection_id") REFERENCES "catalog"."item_collections"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "catalog"."item_collection_items" ADD CONSTRAINT "item_collection_items_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "catalog"."items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "catalog"."item_variants" ADD CONSTRAINT "item_variants_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "catalog"."items"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -1,25 +1,32 @@
 import { ChevronRight, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "../design-system/atoms/Button";
-import { IconButton } from "../design-system/atoms/IconButton";
-import { Input } from "../design-system/atoms/Input";
-import { Label } from "../design-system/atoms/Label";
+import { Button } from "../../../design-system/atoms/Button";
+import { IconButton } from "../../../design-system/atoms/IconButton";
+import { Input } from "../../../design-system/atoms/Input";
+import { Label } from "../../../design-system/atoms/Label";
 import {
   Card,
   CardContent,
-} from "../design-system/molecules/Card";
+} from "../../../design-system/molecules/Card";
 import {
   listAdminUsers,
   type AdminUser,
   type AdminUsersPagination,
-} from "../features/admin/users";
+} from "../../../features/admin/users";
 
 const initialPagination: AdminUsersPagination = {
   page: 1,
   limit: 10,
   total: 0,
   totalPages: 0,
+};
+
+type UserFilters = {
+  name: string;
+  phone: string;
+  email: string;
+  includeDeleted: boolean;
 };
 
 export function AdminUsersPage() {
@@ -35,22 +42,17 @@ export function AdminUsersPage() {
   const [filterIncludeDeleted, setFilterIncludeDeleted] = useState(false);
   const filterReadyRef = useRef(false);
 
-  const loadUsers = useCallback(
+  const requestUsers = useCallback(
     async (
       targetPage = page,
-      filters: {
-        name: string;
-        phone: string;
-        email: string;
-        includeDeleted: boolean;
-      } = {
+      filters: UserFilters = {
         name: filterName,
         phone: filterPhone,
         email: filterEmail,
         includeDeleted: filterIncludeDeleted,
       },
     ) => {
-      const result = await listAdminUsers({
+      return listAdminUsers({
         name: filters.name,
         phone: filters.phone,
         email: filters.email,
@@ -58,17 +60,21 @@ export function AdminUsersPage() {
         page: targetPage,
         limit: 10,
       });
-      setUsers(result.users);
-      setPage(result.pagination.page);
-      setPagination(result.pagination);
     },
     [filterEmail, filterIncludeDeleted, filterName, filterPhone, page],
   );
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    void loadUsers(1)
+    queueMicrotask(() => {
+      setLoading(true);
+      setError(null);
+    });
+    void requestUsers(1)
+      .then((result) => {
+        setUsers(result.users);
+        setPage(result.pagination.page);
+        setPagination(result.pagination);
+      })
       .catch((requestError) => {
         setError(
           requestError instanceof Error
@@ -79,7 +85,7 @@ export function AdminUsersPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [loadUsers]);
+  }, [requestUsers]);
 
   useEffect(() => {
     if (!filterReadyRef.current) {
@@ -90,12 +96,17 @@ export function AdminUsersPage() {
     const timeoutId = window.setTimeout(() => {
       setLoading(true);
       setError(null);
-      void loadUsers(1, {
+      void requestUsers(1, {
         name: filterName,
         phone: filterPhone,
         email: filterEmail,
         includeDeleted: filterIncludeDeleted,
       })
+        .then((result) => {
+          setUsers(result.users);
+          setPage(result.pagination.page);
+          setPagination(result.pagination);
+        })
         .catch((requestError) => {
           setError(
             requestError instanceof Error
@@ -109,7 +120,7 @@ export function AdminUsersPage() {
     }, 300);
 
     return () => window.clearTimeout(timeoutId);
-  }, [filterEmail, filterIncludeDeleted, filterName, filterPhone, loadUsers]);
+  }, [filterEmail, filterIncludeDeleted, filterName, filterPhone, requestUsers]);
 
   const onClearFilters = () => {
     setFilterName("");
@@ -118,12 +129,17 @@ export function AdminUsersPage() {
     setFilterIncludeDeleted(false);
     setLoading(true);
     setError(null);
-    void loadUsers(1, {
+    void requestUsers(1, {
       name: "",
       phone: "",
       email: "",
       includeDeleted: false,
     })
+      .then((result) => {
+        setUsers(result.users);
+        setPage(result.pagination.page);
+        setPagination(result.pagination);
+      })
       .catch((requestError) => {
         setError(
           requestError instanceof Error
@@ -139,7 +155,12 @@ export function AdminUsersPage() {
   const onReload = () => {
     setLoading(true);
     setError(null);
-    void loadUsers(page)
+    void requestUsers(page)
+      .then((result) => {
+        setUsers(result.users);
+        setPage(result.pagination.page);
+        setPagination(result.pagination);
+      })
       .catch((requestError) => {
         setError(
           requestError instanceof Error

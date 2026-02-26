@@ -24,7 +24,6 @@ type BusinessManagementPanelProps = {
   loading: boolean;
   error: string | null;
   newBusinessName: string;
-  newOwnerId: string | null;
   newOwnerPhone: string;
   ownerLookupResults: AdminOwnerLookupResult[];
   ownerLookupLoading: boolean;
@@ -45,6 +44,7 @@ type BusinessManagementPanelProps = {
   newLicenseUserLimitValue: string;
   logoPreviewUrl: string | null;
   uploadingLogo: boolean;
+  canCreate: boolean;
   onFilterBusinessNameChange: (value: string) => void;
   onFilterOwnerPhoneChange: (value: string) => void;
   onFilterIncludeDeletedChange: (value: boolean) => void;
@@ -90,7 +90,6 @@ export function BusinessManagementPanel({
   loading,
   error,
   newBusinessName,
-  newOwnerId,
   newOwnerPhone,
   ownerLookupResults,
   ownerLookupLoading,
@@ -111,6 +110,7 @@ export function BusinessManagementPanel({
   newLicenseUserLimitValue,
   logoPreviewUrl,
   uploadingLogo,
+  canCreate,
   onFilterBusinessNameChange,
   onFilterOwnerPhoneChange,
   onFilterIncludeDeletedChange,
@@ -173,7 +173,6 @@ export function BusinessManagementPanel({
             loading={loading}
             error={error}
             newBusinessName={newBusinessName}
-            newOwnerId={newOwnerId}
             newOwnerPhone={newOwnerPhone}
             ownerLookupResults={ownerLookupResults}
             ownerLookupLoading={ownerLookupLoading}
@@ -194,6 +193,7 @@ export function BusinessManagementPanel({
             newLicenseUserLimitValue={newLicenseUserLimitValue}
             logoPreviewUrl={logoPreviewUrl}
             uploadingLogo={uploadingLogo}
+            canCreate={canCreate}
             onNewBusinessNameChange={onNewBusinessNameChange}
             onOwnerLookupQueryChange={onOwnerLookupQueryChange}
             onOwnerSelect={onOwnerSelect}

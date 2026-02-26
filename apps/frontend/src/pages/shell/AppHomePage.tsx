@@ -20,26 +20,24 @@ import {
   UserRoundCog,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useSessionStore, type BusinessModules } from "../features/auth/session-business";
-import { useSyncActions } from "../features/sync/SyncProvider";
-import { useUserAppStore } from "../features/sync/user-app-business";
-import { SyncPanel } from "../design-system/organisms/SyncPanel";
-import { SettingsPanel } from "../design-system/organisms/SettingsPanel";
+import { useSessionStore, type BusinessModules } from "../../features/auth/session-business";
+import { getPendingOutboxCount } from "../../features/sync/engine";
+import { Button } from "../../design-system/atoms/Button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../design-system/molecules/Card";
-import {
-  getPendingOutboxCount,
-  resetTenantSyncState,
-} from "../features/sync/engine";
+} from "../../design-system/molecules/Card";
+import { AppNavButton } from "../../design-system/molecules/AppNavButton";
+import { AppTabButton } from "../../design-system/molecules/AppTabButton";
+import { LandingAttentionCard } from "../../design-system/molecules/LandingAttentionCard";
+import { LandingQuickActionButton } from "../../design-system/molecules/LandingQuickActionButton";
+import { LandingRecentActivityItem } from "../../design-system/molecules/LandingRecentActivityItem";
 
-type FolderGroupId = "daily-ops" | "merchandising" | "control";
 type UserFolderId =
   | "sell"
   | "products"
@@ -55,6 +53,7 @@ type UserAppId =
   | "catalog-items"
   | "catalog-pricing"
   | "catalog-categories"
+  | "catalog-collections"
   | "stock-sync"
   | "stock-levels"
   | "stock-adjustments"
@@ -69,6 +68,7 @@ type UserAppId =
   | "report-stock"
   | "admin-settings"
   | "admin-sync";
+type RoutableAppId = Exclude<UserAppId, "catalog-items">;
 
 type UserFolderApp = {
   id: UserAppId;
@@ -76,9 +76,35 @@ type UserFolderApp = {
   Icon: LucideIcon;
 };
 
+const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
+  "sales-bills": "sales-bills",
+  "sales-orders": "sales-orders",
+  "sales-returns": "sales-returns",
+  "catalog-pricing": "item-pricing",
+  "catalog-categories": "item-categories",
+  "catalog-collections": "item-collections",
+  "stock-sync": "item-sync",
+  "stock-levels": "stock-levels",
+  "stock-adjustments": "stock-adjustments",
+  "people-customers": "customers",
+  "people-groups": "customer-groups",
+  "people-suppliers": "suppliers",
+  "promo-rules": "promo-rules",
+  "promo-bundles": "promo-bundles",
+  "promo-codes": "promo-codes",
+  "report-sales": "sales-report",
+  "report-items": "top-items-report",
+  "report-stock": "stock-value-report",
+  "admin-settings": "settings",
+  "admin-sync": "data-sync",
+};
+
+const APP_ID_BY_ROUTE_SEGMENT = Object.fromEntries(
+  Object.entries(APP_ROUTE_SEGMENT_BY_ID).map(([appId, segment]) => [segment, appId]),
+) as Record<string, RoutableAppId>;
+
 const folders: Array<{
   id: UserFolderId;
-  group: FolderGroupId;
   label: string;
   Icon: LucideIcon;
   requiredModule?: keyof BusinessModules;
@@ -86,7 +112,6 @@ const folders: Array<{
 }> = [
   {
     id: "sell",
-    group: "daily-ops",
     label: "Sell",
     Icon: HandCoins,
     apps: [
@@ -109,7 +134,6 @@ const folders: Array<{
   },
   {
     id: "products",
-    group: "merchandising",
     label: "Catalog",
     Icon: FolderKanban,
     requiredModule: "catalog",
@@ -129,11 +153,15 @@ const folders: Array<{
         label: "Categories",
         Icon: Boxes,
       },
+      {
+        id: "catalog-collections",
+        label: "Collections",
+        Icon: PackageSearch,
+      },
     ],
   },
   {
     id: "stock",
-    group: "daily-ops",
     label: "Stock",
     Icon: Boxes,
     requiredModule: "inventory",
@@ -157,7 +185,6 @@ const folders: Array<{
   },
   {
     id: "people",
-    group: "merchandising",
     label: "People",
     Icon: Users,
     apps: [
@@ -180,7 +207,6 @@ const folders: Array<{
   },
   {
     id: "promotions",
-    group: "merchandising",
     label: "Promotions",
     Icon: Percent,
     requiredModule: "pricing",
@@ -204,7 +230,6 @@ const folders: Array<{
   },
   {
     id: "reports",
-    group: "control",
     label: "Reports",
     Icon: ChartColumn,
     apps: [
@@ -227,7 +252,6 @@ const folders: Array<{
   },
   {
     id: "admin",
-    group: "control",
     label: "Admin",
     Icon: ShieldCheck,
     apps: [
@@ -298,7 +322,6 @@ const landingRecentActivity = [
   "Item 'Basmati Rice 5KG' repriced",
   "Customer 'Asha Traders' added",
   "Stock adjusted for SKU ST-992",
-  "Promo code 'WEEKEND5' activated",
 ];
 
 const landingBusinessPulse = [
@@ -313,26 +336,18 @@ export function AppHomePage() {
   const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
   const activeBusinessModules = useSessionStore((state) => state.activeBusinessModules);
-  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
-  const identityId = useSessionStore((state) => state.identityId);
-  const sku = useUserAppStore((state) => state.sku);
-  const name = useUserAppStore((state) => state.name);
-  const localItems = useUserAppStore((state) => state.localItems);
-  const setLocalItems = useUserAppStore((state) => state.setLocalItems);
-  const setSku = useUserAppStore((state) => state.setSku);
-  const setName = useUserAppStore((state) => state.setName);
-  const { loading, onQueueItemCreate, onSyncNow } = useSyncActions();
   const activeBusinessName = useMemo(
     () =>
       businesses.find((business) => business.id === activeStore)?.name ??
       "No business selected",
     [activeStore, businesses],
   );
-  const isAuthenticated = Boolean(identityId);
   const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(null);
-  const [activeAppId, setActiveAppId] = useState<UserAppId | null>(null);
+  const [pendingFolderId, setPendingFolderId] = useState<UserFolderId | null>(null);
   const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
-  const [resyncing, setResyncing] = useState(false);
+  const appTabsScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showAppTabsLeftFade, setShowAppTabsLeftFade] = useState(false);
+  const [showAppTabsRightFade, setShowAppTabsRightFade] = useState(false);
   const enabledModules = useMemo(
     () =>
       activeBusinessModules ?? {
@@ -357,53 +372,113 @@ export function AppHomePage() {
     [activeFolderId, visibleFolders],
   );
 
-  const activeApp = useMemo(
-    () =>
-      visibleFolders
-        .flatMap((folder) => folder.apps)
-        .find((app) => app.id === activeAppId) ?? null,
-    [activeAppId, visibleFolders],
-  );
   const isItemsRoute = location.pathname.startsWith("/app/items");
+  const routeDrivenAppId: UserAppId | null = useMemo(() => {
+    if (isItemsRoute) return "catalog-items";
+    if (!location.pathname.startsWith("/app/")) return null;
+    const appSegment = location.pathname.slice("/app/".length).split("/")[0] ?? "";
+    if (!appSegment) return null;
+    return APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null;
+  }, [isItemsRoute, location.pathname]);
+
+  const updateAppTabsOverflow = useCallback(() => {
+    const container = appTabsScrollRef.current;
+    if (!container) {
+      setShowAppTabsLeftFade(false);
+      setShowAppTabsRightFade(false);
+      return;
+    }
+
+    const hasOverflow = container.scrollWidth - container.clientWidth > 1;
+    if (!hasOverflow) {
+      setShowAppTabsLeftFade(false);
+      setShowAppTabsRightFade(false);
+      return;
+    }
+
+    setShowAppTabsLeftFade(container.scrollLeft > 4);
+    setShowAppTabsRightFade(
+      container.scrollLeft + container.clientWidth < container.scrollWidth - 4,
+    );
+  }, []);
 
   useEffect(() => {
     if (visibleFolders.length === 0) {
-      setActiveFolderId(null);
-      setActiveAppId(null);
+      queueMicrotask(() => {
+        setActiveFolderId(null);
+      });
       return;
     }
 
     if (!activeFolderId || !visibleFolders.some((folder) => folder.id === activeFolderId)) {
-      setActiveFolderId(visibleFolders[0]?.id ?? null);
-      setActiveAppId(null);
+      queueMicrotask(() => {
+        setActiveFolderId(visibleFolders[0]?.id ?? null);
+      });
+    }
+  }, [activeFolderId, visibleFolders]);
+
+  useEffect(() => {
+    if (!routeDrivenAppId) {
+      return;
+    }
+    const matchedFolder = visibleFolders.find((folder) =>
+      folder.apps.some((app) => app.id === routeDrivenAppId),
+    );
+    if (matchedFolder && matchedFolder.id !== activeFolderId) {
+      queueMicrotask(() => {
+        setActiveFolderId(matchedFolder.id);
+      });
+    }
+  }, [activeFolderId, routeDrivenAppId, visibleFolders]);
+
+  useEffect(() => {
+    if (!pendingFolderId) return;
+    if (isItemsRoute || routeDrivenAppId) return;
+    queueMicrotask(() => {
+      setActiveFolderId(pendingFolderId);
+      setPendingFolderId(null);
+    });
+  }, [isItemsRoute, pendingFolderId, routeDrivenAppId]);
+
+  useEffect(() => {
+    const initialFrameId = window.requestAnimationFrame(() => {
+      updateAppTabsOverflow();
+    });
+    const handleResize = () => updateAppTabsOverflow();
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.cancelAnimationFrame(initialFrameId);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [updateAppTabsOverflow, activeFolderId, visibleFolders.length]);
+
+  useEffect(() => {
+    const container = appTabsScrollRef.current;
+    if (!container || !routeDrivenAppId) {
       return;
     }
 
-    if (activeAppId) {
-      const appVisible = visibleFolders.some((folder) =>
-        folder.apps.some((app) => app.id === activeAppId),
-      );
-      if (!appVisible) {
-        setActiveAppId(null);
-      }
-    }
-  }, [activeAppId, activeFolderId, visibleFolders]);
+    const activeButton = container.querySelector<HTMLButtonElement>(
+      `button[data-app-id="${routeDrivenAppId}"]`,
+    );
+    activeButton?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+
+    const animationFrameId = window.requestAnimationFrame(updateAppTabsOverflow);
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [routeDrivenAppId, updateAppTabsOverflow]);
 
   useEffect(() => {
-    if (!isItemsRoute) {
-      return;
-    }
-    if (activeFolderId !== "products") {
-      setActiveFolderId("products");
-    }
-    if (activeAppId !== "catalog-items") {
-      setActiveAppId("catalog-items");
-    }
-  }, [activeAppId, activeFolderId, isItemsRoute]);
-
-  useEffect(() => {
-    if (!activeStore || !isBusinessSelected) {
-      setPendingOutboxCount(0);
+    if (!activeStore) {
+      queueMicrotask(() => {
+        setPendingOutboxCount(0);
+      });
       return;
     }
 
@@ -421,146 +496,24 @@ export function AppHomePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeStore, isBusinessSelected, loading, resyncing]);
-
-  const handleResync = async () => {
-    if (!activeStore || !isBusinessSelected || resyncing) {
-      return;
-    }
-
-    const pendingWarning =
-      pendingOutboxCount > 0
-        ? `Warning: ${pendingOutboxCount} pending outbox item${pendingOutboxCount === 1 ? "" : "s"} will be deleted and data will be lost.\n\n`
-        : "";
-
-    const confirmed = window.confirm(
-      `${pendingWarning}This clears local sync data for the active business and pulls a fresh copy from server. Continue?`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    setResyncing(true);
-    try {
-      setLocalItems([]);
-      await resetTenantSyncState(activeStore);
-      await onSyncNow();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setResyncing(false);
-    }
-  };
+  }, [activeStore]);
 
   const handleAppSelect = (appId: UserAppId) => {
     if (appId === "catalog-items") {
-      setActiveAppId("catalog-items");
       navigate("/app/items");
       return;
     }
-    if (isItemsRoute) {
-      navigate("/app");
-    }
-    setActiveAppId(appId);
+    navigate(`/app/${APP_ROUTE_SEGMENT_BY_ID[appId]}`);
   };
 
-  const renderFolderContent = () => {
-    if (!activeAppId) {
-      return null;
+  const handleFolderSelect = (folderId: UserFolderId) => {
+    if (isItemsRoute || routeDrivenAppId) {
+      setPendingFolderId(folderId);
+      navigate("/app");
+      return;
     }
 
-    if (activeAppId === "stock-sync") {
-      return (
-        <SyncPanel
-          sku={sku}
-          name={name}
-          localItems={localItems}
-          loading={loading}
-          isAuthenticated={isAuthenticated}
-          activeStore={activeStore}
-          isBusinessSelected={isBusinessSelected}
-          onSkuChange={setSku}
-          onNameChange={setName}
-          onQueueItemCreate={onQueueItemCreate}
-          onSyncNow={onSyncNow}
-        />
-      );
-    }
-
-    if (activeAppId === "admin-sync") {
-      return (
-        <SettingsPanel
-          pendingOutboxCount={pendingOutboxCount}
-          loading={resyncing || loading}
-          disabled={!isAuthenticated || !activeStore || !isBusinessSelected}
-          onResync={() => {
-            void handleResync();
-          }}
-        />
-      );
-    }
-
-    if (activeAppId.startsWith("sales")) {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Sell</CardTitle>
-            <CardDescription>
-              <strong>{activeBusinessName}</strong> sell app: {activeApp?.label ?? "Sell"}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              App content will be added here.
-            </p>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    if (activeAppId.startsWith("catalog")) {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Catalog</CardTitle>
-            <CardDescription>
-              <strong>{activeBusinessName}</strong> catalog app: {activeApp?.label ?? "Catalog"}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              App content will be added here.
-            </p>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    const sectionLabel = activeAppId.startsWith("stock")
-      ? "Stock"
-      : activeAppId.startsWith("people")
-        ? "People"
-        : activeAppId.startsWith("promo")
-          ? "Promotions"
-          : activeAppId.startsWith("report")
-            ? "Reports"
-            : "Admin";
-
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{sectionLabel}</CardTitle>
-          <CardDescription>
-            <strong>{activeBusinessName}</strong> {sectionLabel.toLowerCase()} app: {activeApp?.label ?? sectionLabel}.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            App content will be added here.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    setActiveFolderId(folderId);
   };
 
   const renderLandingPlaceholder = () => {
@@ -573,30 +526,22 @@ export function AppHomePage() {
               Placeholder dashboard for <strong>{activeBusinessName}</strong>. Replace each card with live data as modules are implemented.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-3">
-            {landingQuickActions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => {
-                  setActiveFolderId(action.folderId);
-                  handleAppSelect(action.appId);
-                }}
-                className="flex items-center gap-2 rounded-xl border border-white/75 bg-white/70 px-3 py-2 text-left transition hover:bg-white"
-              >
-                <action.Icon className="h-4 w-4 shrink-0 text-[#24507e]" />
-                <span className="min-w-0">
-                  <span className="block truncate text-xs font-semibold text-foreground">
-                    {action.label}
-                  </span>
-                  <span className="block truncate text-[11px] text-muted-foreground">
-                    {action.description}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+            <CardContent className="grid gap-2 sm:grid-cols-3">
+              {landingQuickActions.map((action) => (
+                <LandingQuickActionButton
+                  key={action.label}
+                  type="button"
+                  Icon={action.Icon}
+                  label={action.label}
+                  description={action.description}
+                  onClick={() => {
+                    setActiveFolderId(action.folderId);
+                    handleAppSelect(action.appId);
+                  }}
+                />
+              ))}
+            </CardContent>
+          </Card>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:col-span-4">
           {landingBusinessPulse.map((metric) => (
@@ -619,18 +564,12 @@ export function AppHomePage() {
             </CardHeader>
             <CardContent className="grid gap-2 p-0">
               {landingAttentionCards.map((card) => (
-                <div
+                <LandingAttentionCard
                   key={card.label}
-                  className="rounded-xl border border-[#d6e4f5] bg-[#f8fbff] p-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-foreground">{card.label}</p>
-                    <span className="rounded-full bg-[#e8f2ff] px-2 py-0.5 text-[10px] font-semibold text-[#24507e]">
-                      {card.value}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{card.detail}</p>
-                </div>
+                  label={card.label}
+                  value={card.value}
+                  detail={card.detail}
+                />
               ))}
             </CardContent>
           </Card>
@@ -645,12 +584,7 @@ export function AppHomePage() {
             <CardContent className="p-0">
               <ul className="space-y-1.5">
                 {landingRecentActivity.slice(0, 4).map((entry) => (
-                  <li
-                    key={entry}
-                    className="rounded-lg border border-white/75 bg-white/70 px-2 py-1.5 text-[11px] text-foreground/85"
-                  >
-                    {entry}
-                  </li>
+                  <LandingRecentActivityItem key={entry} entry={entry} />
                 ))}
               </ul>
             </CardContent>
@@ -676,19 +610,21 @@ export function AppHomePage() {
               <p>
                 Current state:{" "}
                 <span className="font-semibold text-foreground">
-                  {resyncing || loading ? "Sync in progress" : "Ready"}
+                  Ready
                 </span>
               </p>
               <p>Last successful sync: 09:42 AM (dummy)</p>
             </div>
             <div className="flex justify-end">
-              <button
-                type="button"
+              <Button
                 onClick={() => navigate("/app/settings")}
-                className="h-8 rounded-full border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] px-3 text-[11px] font-semibold text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] transition hover:from-[#ffffff] hover:to-[#edf5ff]"
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-[11px]"
               >
                 Open settings
-              </button>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -705,32 +641,21 @@ export function AppHomePage() {
           </p>
           <div className="space-y-1.5">
             {visibleFolders.map((folder) => (
-              <button
+              <AppNavButton
                 key={folder.id}
                 type="button"
-                onClick={() => {
-                  setActiveFolderId(folder.id);
-                  setActiveAppId(null);
-                  if (isItemsRoute) {
-                    navigate("/app");
-                  }
-                }}
+                onClick={() => handleFolderSelect(folder.id)}
+                Icon={folder.Icon}
+                label={folder.label}
+                active={activeFolder?.id === folder.id}
                 aria-current={activeFolder?.id === folder.id ? "page" : undefined}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
-                  activeFolder?.id === folder.id
-                    ? "bg-[#e8f2ff] text-[#163a63]"
-                    : "text-foreground/80 hover:bg-white/70"
-                }`}
-              >
-                <folder.Icon className="h-4 w-4 shrink-0" />
-                <span>{folder.label}</span>
-              </button>
+              />
             ))}
           </div>
         </aside>
 
-        <section className="space-y-2 lg:flex lg:min-h-0 lg:flex-col">
-          <div className="rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl">
+        <section className="min-w-0 space-y-2 lg:flex lg:min-h-0 lg:flex-col">
+          <div className="min-w-0 rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl">
             <div className="mb-3">
               <p className="text-xs font-semibold tracking-[0.01em] text-foreground/90">
                 {activeFolder?.label ?? "Apps"}
@@ -739,55 +664,43 @@ export function AppHomePage() {
                 Choose an app to continue.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-              {activeFolder?.apps.map((app) => (
-                <button
-                  key={app.id}
-                  type="button"
-                  onClick={() => handleAppSelect(app.id)}
-                  className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-left text-xs transition ${
-                    activeAppId === app.id
-                      ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
-                      : "border-border/70 bg-white/70 text-foreground/80 hover:bg-white"
-                  }`}
-                >
-                  <app.Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{app.label}</span>
-                </button>
-              ))}
+            <div className="relative w-full max-w-full overflow-hidden">
+              <div
+                ref={appTabsScrollRef}
+                onScroll={updateAppTabsOverflow}
+                className="flex w-full max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1"
+              >
+                {activeFolder?.apps.map((app) => (
+                  <AppTabButton
+                    key={app.id}
+                    data-app-id={app.id}
+                    type="button"
+                    onClick={() => handleAppSelect(app.id)}
+                    Icon={app.Icon}
+                    label={app.label}
+                    active={routeDrivenAppId === app.id}
+                  />
+                ))}
+              </div>
+              {showAppTabsLeftFade ? (
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-white/95 via-white/70 to-transparent" />
+              ) : null}
+              {showAppTabsRightFade ? (
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white/95 via-white/70 to-transparent" />
+              ) : null}
             </div>
           </div>
 
-          <div
-            className={`space-y-2 lg:min-h-0 ${
-              isItemsRoute
-                ? "lg:flex-1 lg:overflow-hidden"
-                : activeAppId
-                  ? "lg:overflow-y-auto lg:pr-1"
-                  : "lg:flex-1 lg:overflow-hidden"
-            }`}
-          >
-            {isItemsRoute ? (
-              <section className="space-y-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+          <div className="lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+            {routeDrivenAppId ? (
+              <section className="h-auto min-h-0 lg:h-full lg:overflow-hidden">
                 <Outlet />
               </section>
-            ) : activeAppId ? (
-              <section className="space-y-2">{renderFolderContent()}</section>
             ) : (
-              renderLandingPlaceholder()
-            )}
-
-            {activeAppId && !isItemsRoute ? (
-              <section className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => navigate("/app/settings")}
-                  className="h-8 rounded-full border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] px-3 text-[11px] font-semibold text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] transition hover:from-[#ffffff] hover:to-[#edf5ff]"
-                >
-                  Open settings
-                </button>
+              <section className="h-auto min-h-0 lg:h-full lg:overflow-hidden">
+                {renderLandingPlaceholder()}
               </section>
-            ) : null}
+            )}
           </div>
         </section>
       </div>
@@ -795,26 +708,16 @@ export function AppHomePage() {
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/70 bg-white/90 p-2 backdrop-blur-xl lg:hidden">
         <div className="flex gap-1 overflow-x-auto pb-1">
           {visibleFolders.map((folder) => (
-            <button
+            <AppNavButton
               key={folder.id}
               type="button"
-              onClick={() => {
-                setActiveFolderId(folder.id);
-                setActiveAppId(null);
-                if (isItemsRoute) {
-                  navigate("/app");
-                }
-              }}
+              onClick={() => handleFolderSelect(folder.id)}
+              Icon={folder.Icon}
+              label={folder.label}
+              active={activeFolder?.id === folder.id}
+              compact
               aria-current={activeFolder?.id === folder.id ? "page" : undefined}
-              className={`flex min-h-14 min-w-[4.8rem] flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight transition ${
-                activeFolder?.id === folder.id
-                  ? "bg-[#e8f2ff] text-[#163a63]"
-                  : "text-foreground/75 hover:bg-white/80"
-              }`}
-            >
-              <folder.Icon className="h-4 w-4" />
-              <span className="text-center">{folder.label}</span>
-            </button>
+            />
           ))}
         </div>
       </nav>

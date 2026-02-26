@@ -1,12 +1,11 @@
-import { Pencil, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Button } from "../design-system/atoms/Button";
+import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
 import {
   Card,
   CardContent,
-} from "../design-system/molecules/Card";
-import { getAdminUser, updateAdminUser, type AdminUserDetails } from "../features/admin/users";
+} from "../../../design-system/molecules/Card";
+import { getAdminUser, updateAdminUser, type AdminUserDetails } from "../../../features/admin/users";
 
 export function AdminUserDetailsPage() {
   const { userId } = useParams<{ userId: string }>();
@@ -89,44 +88,33 @@ export function AdminUserDetailsPage() {
             <p className="text-sm text-muted-foreground">User not found.</p>
           ) : user ? (
             <>
-              <div className="flex justify-end">
+              <div className="pb-20 lg:pb-0">
                 {!isEditing ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsEditing(true)}
-                    disabled={saving}
-                    className="h-7 gap-1 px-2 text-[11px]"
-                  >
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                    Edit Details
-                  </Button>
+                  <PageActionBar
+                    className="flex justify-end"
+                    primaryLabel="Edit Details"
+                    onPrimaryClick={() => setIsEditing(true)}
+                    primaryDisabled={saving}
+                  />
                 ) : (
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="outline"
-                      onClick={() => void onSave()}
-                      disabled={saving}
-                      className="h-7 gap-1 px-2 text-[11px]"
-                    >
-                      <Save className="h-4 w-4" aria-hidden="true" />
-                      Save Details
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setDraft({
-                          name: user.name ?? "",
-                          email: user.email ?? "",
-                          phone: user.phone ?? "",
-                        });
-                        setIsEditing(false);
-                      }}
-                      disabled={saving}
-                      className="h-7 px-2 text-[11px]"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+                  <PageActionBar
+                    className="flex justify-end"
+                    primaryLabel="Save Changes"
+                    onPrimaryClick={() => void onSave()}
+                    primaryDisabled={saving}
+                    primaryLoading={saving}
+                    primaryLoadingLabel="Saving..."
+                    secondaryLabel="Cancel"
+                    secondaryDisabled={saving}
+                    onSecondaryClick={() => {
+                      setDraft({
+                        name: user.name ?? "",
+                        email: user.email ?? "",
+                        phone: user.phone ?? "",
+                      });
+                      setIsEditing(false);
+                    }}
+                  />
                 )}
               </div>
 

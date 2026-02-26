@@ -1,15 +1,14 @@
-import { Pencil, Save } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Button } from "../design-system/atoms/Button";
-import { LoadingOverlay } from "../design-system/atoms/LoadingOverlay";
+import { LoadingOverlay } from "../../../design-system/atoms/LoadingOverlay";
 import {
   Card,
   CardContent,
-} from "../design-system/molecules/Card";
-import { BusinessDetailsFormPanes } from "../design-system/organisms/BusinessDetailsFormPanes";
-import { BusinessLicensePane } from "../design-system/organisms/BusinessLicensePane";
-import { BusinessLogoPicker } from "../design-system/organisms/BusinessLogoPicker";
+} from "../../../design-system/molecules/Card";
+import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
+import { BusinessDetailsFormPanes } from "../../../design-system/organisms/BusinessDetailsFormPanes";
+import { BusinessLicensePane } from "../../../design-system/organisms/BusinessLicensePane";
+import { BusinessLogoPicker } from "../../../design-system/organisms/BusinessLogoPicker";
 import {
   deleteAdminStore,
   getAdminStore,
@@ -19,7 +18,7 @@ import {
   type AdminStore,
   type BundleKey,
   type CapabilityKey,
-} from "../features/admin/businesses";
+} from "../../../features/admin/businesses";
 
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -336,7 +335,7 @@ export function AdminBusinessDetailsPage() {
           {!business && !loading ? (
             <p className="text-sm text-muted-foreground">Business not found.</p>
           ) : business ? (
-            <div className="space-y-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+            <div className="space-y-2 pb-20 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:pb-0">
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/70 bg-white/65 p-2 lg:shrink-0">
                 <BusinessLogoPicker
                   logoUrl={displayLogoUrl}
@@ -356,43 +355,30 @@ export function AdminBusinessDetailsPage() {
                 </div>
                 <div className="ml-auto flex w-full flex-wrap items-center gap-1.5 lg:w-auto">
                   {!isEditingDetails ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
+                    <PageActionBar
+                      primaryLabel="Edit Details"
+                      onPrimaryClick={() => {
                         setError(null);
                         setIsEditingDetails(true);
                       }}
-                      disabled={saving}
-                      className="h-7 gap-1 px-2 text-[11px]"
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      Edit Details
-                    </Button>
+                      primaryDisabled={saving}
+                    />
                   ) : (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={onSaveDetails}
-                        disabled={saving}
-                        className="h-7 gap-1 px-2 text-[11px]"
-                      >
-                        <Save className="h-4 w-4" aria-hidden="true" />
-                        Save Details
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          applyDetailsDraft(business);
-                          applyLicenseDraft(business);
-                          clearLogoDraft();
-                          setIsEditingDetails(false);
-                        }}
-                        disabled={saving}
-                        className="h-7 px-2 text-[11px]"
-                      >
-                        Cancel
-                      </Button>
-                    </>
+                    <PageActionBar
+                      primaryLabel="Save Changes"
+                      onPrimaryClick={onSaveDetails}
+                      primaryDisabled={saving}
+                      primaryLoading={saving}
+                      primaryLoadingLabel="Saving..."
+                      secondaryLabel="Cancel"
+                      secondaryDisabled={saving}
+                      onSecondaryClick={() => {
+                        applyDetailsDraft(business);
+                        applyLicenseDraft(business);
+                        clearLogoDraft();
+                        setIsEditingDetails(false);
+                      }}
+                    />
                   )}
                   <div className="ml-auto flex items-center gap-1.5 lg:ml-1">
                     <span className="text-[11px] font-medium text-muted-foreground">

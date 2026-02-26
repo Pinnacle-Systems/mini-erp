@@ -1,2 +1,2 @@
-export { OfflinePage } from "../OfflinePage";
-export { SessionSplashPage } from "../SessionSplashPage";
+export { OfflinePage } from "./OfflinePage";
+export { SessionSplashPage } from "./SessionSplashPage";

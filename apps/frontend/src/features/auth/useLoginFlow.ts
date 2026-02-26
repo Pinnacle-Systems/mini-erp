@@ -47,10 +47,19 @@ export function useLoginFlow() {
           const me = await refreshSession();
           if (!me?.identityId) return;
           if (me.role === "USER" && !me.tenantId) {
-            setPendingBusinesses(me.businesses ?? []);
+            const businesses = me.businesses ?? [];
+            if (businesses.length === 1) {
+              await selectPendingBusiness(businesses[0].id);
+              return;
+            }
+            setPendingBusinesses(businesses);
             return;
           }
           navigate("/app", { replace: true });
+          return;
+        }
+        if (availableBusinesses.length === 1) {
+          await selectPendingBusiness(availableBusinesses[0].id);
           return;
         }
         setPendingBusinesses(availableBusinesses);
@@ -63,7 +72,12 @@ export function useLoginFlow() {
       }
 
       if (me.role === "USER" && !me.tenantId) {
-        setPendingBusinesses(me.businesses ?? []);
+        const businesses = me.businesses ?? [];
+        if (businesses.length === 1) {
+          await selectPendingBusiness(businesses[0].id);
+          return;
+        }
+        setPendingBusinesses(businesses);
         return;
       }
 

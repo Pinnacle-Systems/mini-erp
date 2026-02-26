@@ -77,6 +77,44 @@ const initialPagination: AdminBusinessesPagination = {
   totalPages: 0,
 };
 
+const toIsoDate = (value: Date) => value.toISOString().slice(0, 10);
+
+const getDefaultLicenseWindow = () => {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const endsOn = new Date(today);
+  endsOn.setUTCDate(endsOn.getUTCDate() + 14);
+  return {
+    beginsOn: toIsoDate(today),
+    endsOn: toIsoDate(endsOn),
+  };
+};
+
+const createInitialCreateDraft = () => {
+  const defaultLicenseWindow = getDefaultLicenseWindow();
+  return {
+    newBusinessName: "",
+    newOwnerId: null,
+    newOwnerPhone: "",
+    newPhoneNumber: "",
+    newGstin: "",
+    newEmail: "",
+    newBusinessType: "",
+    newBusinessCategory: "",
+    newState: "",
+    newPincode: "",
+    newAddress: "",
+    newLogo: "",
+    newLicenseBeginsOn: defaultLicenseWindow.beginsOn,
+    newLicenseEndsOn: defaultLicenseWindow.endsOn,
+    newLicenseBundleKey: "SALES_LITE" as BundleKey,
+    newLicenseAddOnCapabilities: [] as CapabilityKey[],
+    newLicenseRemovedCapabilities: [] as CapabilityKey[],
+    newLicenseUserLimitType: "UNLIMITED" as const,
+    newLicenseUserLimitValue: "",
+  };
+};
+
 const initialState: AdminBusinessesState = {
   businesses: [],
   page: 1,
@@ -85,25 +123,7 @@ const initialState: AdminBusinessesState = {
   filterOwnerPhone: "",
   filterIncludeDeleted: false,
   error: null,
-  newBusinessName: "",
-  newOwnerId: null,
-  newOwnerPhone: "",
-  newPhoneNumber: "",
-  newGstin: "",
-  newEmail: "",
-  newBusinessType: "",
-  newBusinessCategory: "",
-  newState: "",
-  newPincode: "",
-  newAddress: "",
-  newLogo: "",
-  newLicenseBeginsOn: "",
-  newLicenseEndsOn: "",
-  newLicenseBundleKey: "SALES_LITE",
-  newLicenseAddOnCapabilities: [],
-  newLicenseRemovedCapabilities: [],
-  newLicenseUserLimitType: "UNLIMITED",
-  newLicenseUserLimitValue: "",
+  ...createInitialCreateDraft(),
 };
 
 export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusinessesActions>(
@@ -198,29 +218,14 @@ export const useAdminBusinessesStore = create<AdminBusinessesState & AdminBusine
     },
     clearCreateDraft: () => {
       set({
-        newBusinessName: "",
-        newOwnerId: null,
-        newOwnerPhone: "",
-        newPhoneNumber: "",
-        newGstin: "",
-        newEmail: "",
-        newBusinessType: "",
-        newBusinessCategory: "",
-        newState: "",
-        newPincode: "",
-        newAddress: "",
-        newLogo: "",
-        newLicenseBeginsOn: "",
-        newLicenseEndsOn: "",
-        newLicenseBundleKey: "SALES_LITE",
-        newLicenseAddOnCapabilities: [],
-        newLicenseRemovedCapabilities: [],
-        newLicenseUserLimitType: "UNLIMITED",
-        newLicenseUserLimitValue: "",
+        ...createInitialCreateDraft(),
       });
     },
     resetAdminBusinessesState: () => {
-      set(initialState);
+      set({
+        ...initialState,
+        ...createInitialCreateDraft(),
+      });
     },
   }),
 );

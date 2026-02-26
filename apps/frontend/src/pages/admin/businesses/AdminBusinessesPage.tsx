@@ -8,9 +8,9 @@ import {
   uploadBusinessLogo,
   type AdminStore,
   type AdminOwnerLookupResult,
-} from "../features/admin/businesses";
-import { useAdminBusinessesStore } from "../features/admin/admin-businesses-store";
-import { BusinessManagementPanel } from "../design-system/organisms/BusinessManagementPanel";
+} from "../../../features/admin/businesses";
+import { useAdminBusinessesStore } from "../../../features/admin/admin-businesses-store";
+import { BusinessManagementPanel } from "../../../design-system/organisms/BusinessManagementPanel";
 
 type AdminBusinessesPageProps = {
   mode: "list" | "new";
@@ -246,8 +246,10 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   }, [mode, newOwnerPhone, setError]);
 
   const onCreate = async () => {
-    if (!newBusinessName.trim() || !newOwnerId) {
-      setError("Business name and owner selection is required.");
+    const normalizedOwnerPhone = newOwnerPhone.trim().replace(/\D/g, "");
+    const canUseOwnerPhone = /^\d{10}$/.test(normalizedOwnerPhone);
+    if (!newBusinessName.trim() || (!newOwnerId && !canUseOwnerPhone)) {
+      setError("Business name and either owner selection or a 10-digit owner phone is required.");
       return;
     }
     if (Boolean(newLicenseBeginsOn) !== Boolean(newLicenseEndsOn)) {
@@ -286,7 +288,8 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         ),
       );
       const created = await createAdminStore(newBusinessName.trim(), {
-        ownerId: newOwnerId,
+        ...(newOwnerId ? { ownerId: newOwnerId } : {}),
+        ...(!newOwnerId && canUseOwnerPhone ? { ownerPhone: normalizedOwnerPhone } : {}),
         ...(newPhoneNumber.trim() ? { phoneNumber: newPhoneNumber.trim() } : {}),
         ...(newGstin.trim() ? { gstin: newGstin.trim() } : {}),
         ...(newEmail.trim() ? { email: newEmail.trim() } : {}),
@@ -443,6 +446,10 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         newLicenseUserLimitValue={newLicenseUserLimitValue}
         logoPreviewUrl={logoPreviewUrl}
         uploadingLogo={uploadingLogo}
+        canCreate={Boolean(
+          newBusinessName.trim() &&
+            (newOwnerId || /^\d{10}$/.test(newOwnerPhone.trim().replace(/\D/g, ""))),
+        )}
         onFilterBusinessNameChange={setFilterBusinessName}
         onFilterOwnerPhoneChange={setFilterOwnerPhone}
         onFilterIncludeDeletedChange={setFilterIncludeDeleted}

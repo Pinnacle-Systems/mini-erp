@@ -1,7 +1,7 @@
 import { Search, X } from "lucide-react";
 import { useState } from "react";
-import { LoginCard } from "../design-system/organisms/LoginCard";
-import { useLoginFlow } from "../features/auth/useLoginFlow";
+import { LoginCard } from "../../design-system/organisms/LoginCard";
+import { useLoginFlow } from "../../features/auth/useLoginFlow";
 
 export function LoginPage() {
   const [username, setUsername] = useState("5551234567");

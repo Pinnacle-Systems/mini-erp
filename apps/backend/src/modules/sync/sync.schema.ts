@@ -28,3 +28,17 @@ export const pullSchema = z.object({
     limit: z.coerce.number().int().min(1).max(1000).default(200),
   }),
 });
+
+export const optionKeysSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+  }),
+});
+
+export const itemCategoriesSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    q: z.string().trim().max(64).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  }),
+});

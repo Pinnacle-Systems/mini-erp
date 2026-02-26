@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Button } from "../atoms/Button";
+import { LookupDropdownInput } from "../molecules/LookupDropdownInput";
+import { PageActionBar } from "../molecules/PageActionBar";
 import { BusinessDetailsFormPanes } from "./BusinessDetailsFormPanes";
 import { BusinessLicensePane } from "./BusinessLicensePane";
 import { BusinessLogoPicker } from "./BusinessLogoPicker";
@@ -13,7 +14,6 @@ type BusinessManagementCreateViewProps = {
   loading: boolean;
   error: string | null;
   newBusinessName: string;
-  newOwnerId: string | null;
   newOwnerPhone: string;
   ownerLookupResults: AdminOwnerLookupResult[];
   ownerLookupLoading: boolean;
@@ -34,6 +34,7 @@ type BusinessManagementCreateViewProps = {
   newLicenseUserLimitValue: string;
   logoPreviewUrl: string | null;
   uploadingLogo: boolean;
+  canCreate: boolean;
   onNewBusinessNameChange: (value: string) => void;
   onOwnerLookupQueryChange: (value: string) => void;
   onOwnerSelect: (owner: AdminOwnerLookupResult) => void;
@@ -64,7 +65,6 @@ export function BusinessManagementCreateView({
   loading,
   error,
   newBusinessName,
-  newOwnerId,
   newOwnerPhone,
   ownerLookupResults,
   ownerLookupLoading,
@@ -85,6 +85,7 @@ export function BusinessManagementCreateView({
   newLicenseUserLimitValue,
   logoPreviewUrl,
   uploadingLogo,
+  canCreate,
   onNewBusinessNameChange,
   onOwnerLookupQueryChange,
   onOwnerSelect,
@@ -111,7 +112,7 @@ export function BusinessManagementCreateView({
   const [removingPreviewLogo, setRemovingPreviewLogo] = useState(false);
 
   return (
-    <div className="space-y-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+    <div className="space-y-2 pb-20 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:pb-0">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/70 bg-white/65 p-2 lg:shrink-0">
         <BusinessLogoPicker
           logoUrl={logoPreviewUrl}
@@ -132,23 +133,17 @@ export function BusinessManagementCreateView({
           <p className="text-[11px] leading-tight text-muted-foreground">Use the avatar icons to upload or remove logo.</p>
           <p className="text-[11px] leading-tight text-muted-foreground">PNG, JPG or WEBP up to 2MB.</p>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <Button
-            onClick={onCreate}
-            disabled={loading || !newBusinessName.trim() || !newOwnerId}
-            className="h-7 px-2 text-[11px]"
-          >
-            Create Business
-          </Button>
-          <Button
-            variant="outline"
-            onClick={onBackToList}
-            disabled={loading}
-            className="h-7 px-2 text-[11px]"
-          >
-            Cancel
-          </Button>
-        </div>
+        <PageActionBar
+          className="ml-auto"
+          primaryLabel="Create Business"
+          onPrimaryClick={onCreate}
+          primaryDisabled={loading || !canCreate}
+          primaryLoading={loading}
+          primaryLoadingLabel="Saving..."
+          secondaryLabel="Cancel"
+          onSecondaryClick={onBackToList}
+          secondaryDisabled={loading}
+        />
       </div>
 
       <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
@@ -176,45 +171,39 @@ export function BusinessManagementCreateView({
           namePlaceholder="Sunrise Traders"
           ownerPhonePlaceholder="Search owner by name, phone or email"
           ownerInput={
-            <div className="relative space-y-1">
-              <input
-                id="new-owner-phone"
-                value={newOwnerPhone}
-                onChange={(event) => onOwnerLookupQueryChange(event.target.value)}
-                placeholder="Search owner by name, phone or email"
-                disabled={loading}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                className="h-8 w-full rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
-              />
-              {ownerLookupLoading ? (
-                <p className="text-[10px] text-muted-foreground">Searching owners...</p>
-              ) : null}
-              {ownerLookupResults.length > 0 ? (
-                <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1 shadow-sm">
-                  <div className="grid gap-1">
-                    {ownerLookupResults.map((owner) => (
-                      <button
-                        key={owner.id}
-                        type="button"
-                        onClick={() => onOwnerSelect(owner)}
-                        disabled={loading}
-                        className="rounded-md border border-[#e5edf7] px-2 py-1 text-left text-[11px] text-foreground hover:bg-[#f6faff]"
-                      >
-                        <div className="truncate font-medium">
-                          {(owner.name?.trim() || "Unnamed owner") + (owner.phone ? ` | ${owner.phone}` : " | No phone")}
-                        </div>
-                        <div className="truncate text-[10px] text-muted-foreground">
-                          {owner.email || "No email"}
-                        </div>
-                      </button>
-                    ))}
+            <LookupDropdownInput
+              id="new-owner-phone"
+              value={newOwnerPhone}
+              onValueChange={onOwnerLookupQueryChange}
+              placeholder="Search owner by name, phone or email"
+              disabled={loading}
+              inputProps={{
+                autoComplete: "off",
+                autoCorrect: "off",
+                autoCapitalize: "off",
+                spellCheck: false,
+              }}
+              loading={ownerLookupLoading}
+              loadingLabel="Searching owners..."
+              options={ownerLookupResults}
+              getOptionKey={(owner) => owner.id}
+              getOptionSearchText={(owner) =>
+                `${owner.name ?? ""} ${owner.phone ?? ""} ${owner.email ?? ""}`
+              }
+              onOptionSelect={onOwnerSelect}
+              renderOption={(owner) => (
+                <>
+                  <div className="truncate font-medium">
+                    {(owner.name?.trim() || "Unnamed owner") +
+                      (owner.phone ? ` | ${owner.phone}` : " | No phone")}
                   </div>
-                </div>
-              ) : null}
-            </div>
+                  <div className="truncate text-[10px] text-muted-foreground">
+                    {owner.email || "No email"}
+                  </div>
+                </>
+              )}
+              inputClassName="h-8 w-full rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
+            />
           }
           rightColumnExtra={
             <BusinessLicensePane

@@ -8,6 +8,9 @@ import { AdminLayout } from "../pages/admin/layout";
 import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/businesses";
 import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
+import { CatalogCategoriesPage } from "../pages/CatalogCategoriesPage";
+import { CatalogCollectionsPage } from "../pages/CatalogCollectionsPage";
+import { AppFeaturePlaceholderPage, DataSyncAppPage, StockSyncAppPage } from "../pages/shell/UserAppPages";
 import { OfflinePage } from "../pages/system";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import { RequireAuth, RequireHydrated, RequireRole } from "./guards";
@@ -26,6 +29,10 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
 
   const isAuthenticated = Boolean(identityId);
   const isPlatformAdmin = role === "PLATFORM_ADMIN";
+  const shouldShowUserBack =
+    !isPlatformAdmin &&
+    (/^\/app\/items\/new$/.test(location.pathname) ||
+      /^\/app\/items\/[^/]+$/.test(location.pathname));
   const headerContext = (() => {
     if (!isPlatformAdmin) return null;
     const { pathname } = location;
@@ -92,7 +99,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
         <div className="fixed inset-x-0 top-0 z-40 border-b border-white/60 bg-white/80 backdrop-blur-xl">
           <div className="px-2 py-2 sm:px-3 md:px-4">
             <SessionHeader
-              showBack={!isPlatformAdmin && location.pathname !== "/app"}
+              showBack={shouldShowUserBack}
               showSwitchStore
               contextTitle={headerContext?.title}
               contextSubtitle={headerContext?.subtitle}
@@ -155,6 +162,26 @@ export function AppRoutes() {
           <Route element={<AppLayout onLogout={() => void onLogout()} />}>
             <Route path="/app" element={<AppEntryRoute />}>
               <Route element={<RequireRole role="USER" />}>
+                <Route path="sales-bills" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Bills" />} />
+                <Route path="sales-orders" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Orders" />} />
+                <Route path="sales-returns" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Returns" />} />
+                <Route path="item-pricing" element={<AppFeaturePlaceholderPage sectionTitle="Catalog" appLabel="Pricing" />} />
+                <Route path="item-categories" element={<CatalogCategoriesPage />} />
+                <Route path="item-collections" element={<CatalogCollectionsPage />} />
+                <Route path="item-sync" element={<StockSyncAppPage />} />
+                <Route path="stock-levels" element={<AppFeaturePlaceholderPage sectionTitle="Stock" appLabel="Levels" />} />
+                <Route path="stock-adjustments" element={<AppFeaturePlaceholderPage sectionTitle="Stock" appLabel="Adjustments" />} />
+                <Route path="customers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Customers" />} />
+                <Route path="customer-groups" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />} />
+                <Route path="suppliers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Suppliers" />} />
+                <Route path="promo-rules" element={<AppFeaturePlaceholderPage sectionTitle="Promotions" appLabel="Rules" />} />
+                <Route path="promo-bundles" element={<AppFeaturePlaceholderPage sectionTitle="Promotions" appLabel="Bundles" />} />
+                <Route path="promo-codes" element={<AppFeaturePlaceholderPage sectionTitle="Promotions" appLabel="Codes" />} />
+                <Route path="sales-report" element={<AppFeaturePlaceholderPage sectionTitle="Reports" appLabel="Sales" />} />
+                <Route path="top-items-report" element={<AppFeaturePlaceholderPage sectionTitle="Reports" appLabel="Top Items" />} />
+                <Route path="stock-value-report" element={<AppFeaturePlaceholderPage sectionTitle="Reports" appLabel="Stock Value" />} />
+                <Route path="settings" element={<AppFeaturePlaceholderPage sectionTitle="Admin" appLabel="Business Settings" />} />
+                <Route path="data-sync" element={<DataSyncAppPage />} />
                 <Route path="items" element={<ItemsPage />} />
                 <Route path="items/new" element={<AddItemPage />} />
                 <Route path="items/:itemId" element={<ItemDetailsPage />} />
