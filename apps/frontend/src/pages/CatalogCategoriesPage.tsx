@@ -1,5 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Check, CircleMinus, CirclePlus, Pencil, Trash2, X } from "lucide-react";
+import {
+  Check,
+  CircleMinus,
+  CirclePlus,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../design-system/atoms/Button";
 import { Input } from "../design-system/atoms/Input";
@@ -42,14 +49,20 @@ export function CatalogCategoriesPage() {
   const [entries, setEntries] = useState<ItemCategoryEntry[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [draftCategory, setDraftCategory] = useState("");
-  const [pendingCreatedCategory, setPendingCreatedCategory] = useState<string | null>(null);
+  const [pendingCreatedCategory, setPendingCreatedCategory] = useState<
+    string | null
+  >(null);
   const [isEditingCategoryName, setIsEditingCategoryName] = useState(false);
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedItemIds, setExpandedItemIds] = useState<string[]>([]);
-  const [itemDetailsById, setItemDetailsById] = useState<Record<string, ItemDetailDisplay>>({});
-  const [loadingDetailsById, setLoadingDetailsById] = useState<Record<string, boolean>>({});
+  const [itemDetailsById, setItemDetailsById] = useState<
+    Record<string, ItemDetailDisplay>
+  >({});
+  const [loadingDetailsById, setLoadingDetailsById] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     if (!activeStore) {
@@ -121,19 +134,23 @@ export function CatalogCategoriesPage() {
   }, [entries, items]);
 
   const selectedBucket = selectedCategory
-    ? buckets.find((bucket) => bucket.name === selectedCategory) ?? null
+    ? (buckets.find((bucket) => bucket.name === selectedCategory) ?? null)
     : null;
-  const activeBucket: CategoryBucket | null =
-    selectedBucket ??
-    (pendingCreatedCategory &&
-    selectedCategory &&
-    pendingCreatedCategory === selectedCategory
-      ? {
-          id: null,
-          name: selectedCategory,
-          items: [],
-        }
-      : buckets[0] ?? null);
+  const activeBucket = useMemo<CategoryBucket | null>(() => {
+    if (selectedBucket) return selectedBucket;
+    if (
+      pendingCreatedCategory &&
+      selectedCategory &&
+      pendingCreatedCategory === selectedCategory
+    ) {
+      return {
+        id: null,
+        name: selectedCategory,
+        items: [],
+      };
+    }
+    return buckets[0] ?? null;
+  }, [buckets, pendingCreatedCategory, selectedBucket, selectedCategory]);
 
   useEffect(() => {
     if (!activeBucket) {
@@ -217,8 +234,7 @@ export function CatalogCategoriesPage() {
   };
 
   const onDeleteCategory = async (category: CategoryBucket) => {
-    if (!activeStore || !identityId || !isBusinessSelected)
-      return;
+    if (!activeStore || !identityId || !isBusinessSelected) return;
     const hasTaggedItems = category.items.length > 0;
     const confirmed = window.confirm(
       hasTaggedItems
@@ -249,7 +265,8 @@ export function CatalogCategoriesPage() {
   };
 
   const onRenameCategory = async () => {
-    if (!activeStore || !identityId || !isBusinessSelected || !activeBucket) return;
+    if (!activeStore || !identityId || !isBusinessSelected || !activeBucket)
+      return;
     const nextName = categoryNameDraft.trim();
     if (!nextName) {
       setError("Category name is required.");
@@ -464,7 +481,9 @@ export function CatalogCategoriesPage() {
                       }
                     }}
                   >
-                    <p className="text-xs font-semibold text-foreground">{item.name}</p>
+                    <p className="text-xs font-semibold text-foreground">
+                      {item.name}
+                    </p>
                     <p className="text-[11px] text-muted-foreground">
                       {item.variantCount > 1
                         ? `Variants: ${item.variantCount}`
@@ -487,10 +506,14 @@ export function CatalogCategoriesPage() {
                   </thead>
                   <tbody>
                     {activeBucket.items.map((item) => {
-                      const isExpanded = expandedItemIds.includes(item.entityId);
+                      const isExpanded = expandedItemIds.includes(
+                        item.entityId,
+                      );
                       const detail = itemDetailsById[item.entityId];
                       const variants = detail?.variants ?? [];
-                      const isLoading = Boolean(loadingDetailsById[item.entityId]);
+                      const isLoading = Boolean(
+                        loadingDetailsById[item.entityId],
+                      );
 
                       return (
                         <Fragment key={item.entityId}>
@@ -502,7 +525,11 @@ export function CatalogCategoriesPage() {
                                 size="icon"
                                 className="h-7 w-7 rounded-full text-[#2f6fb7] hover:bg-[#e9f2ff]"
                                 onClick={() => toggleExpand(item.entityId)}
-                                aria-label={isExpanded ? "Collapse variants" : "Expand variants"}
+                                aria-label={
+                                  isExpanded
+                                    ? "Collapse variants"
+                                    : "Expand variants"
+                                }
                               >
                                 {isExpanded ? <CircleMinus /> : <CirclePlus />}
                               </Button>
@@ -521,7 +548,9 @@ export function CatalogCategoriesPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => navigate(`/app/items/${item.entityId}`)}
+                                onClick={() =>
+                                  navigate(`/app/items/${item.entityId}`)
+                                }
                               >
                                 Manage
                               </Button>
@@ -531,42 +560,76 @@ export function CatalogCategoriesPage() {
                             <tr className="border-t border-white/40 bg-white/40 text-sm">
                               <td colSpan={5} className="px-3 py-3">
                                 {isLoading ? (
-                                  <p className="text-xs text-muted-foreground">Loading variants...</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Loading variants...
+                                  </p>
                                 ) : variants.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground">No variants found.</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    No variants found.
+                                  </p>
                                 ) : (
                                   <div className="overflow-x-auto rounded-lg border border-white/65 bg-white/70">
                                     <table className="w-full min-w-[760px] table-fixed border-collapse text-left">
                                       <thead className="bg-white/75 text-[10px] uppercase tracking-[0.04em] text-muted-foreground">
                                         <tr>
-                                          <th className="w-20 px-2 py-1.5">Default</th>
-                                          <th className="w-20 px-2 py-1.5">Active</th>
-                                          <th className="px-2 py-1.5">Variant Name</th>
+                                          <th className="w-20 px-2 py-1.5">
+                                            Default
+                                          </th>
+                                          <th className="w-20 px-2 py-1.5">
+                                            Active
+                                          </th>
+                                          <th className="px-2 py-1.5">
+                                            Variant Name
+                                          </th>
                                           <th className="px-2 py-1.5">SKU</th>
-                                          <th className="px-2 py-1.5">Barcode</th>
-                                          <th className="px-2 py-1.5">Options</th>
-                                          <th className="w-20 px-2 py-1.5">Usage</th>
+                                          <th className="px-2 py-1.5">
+                                            Barcode
+                                          </th>
+                                          <th className="px-2 py-1.5">
+                                            Options
+                                          </th>
+                                          <th className="w-20 px-2 py-1.5">
+                                            Usage
+                                          </th>
                                         </tr>
                                       </thead>
                                       <tbody>
                                         {variants.map((variant) => {
-                                          const optionPairs = Object.entries(variant.optionValues);
+                                          const optionPairs = Object.entries(
+                                            variant.optionValues,
+                                          );
                                           return (
-                                            <tr key={variant.id} className="border-t border-white/60 text-xs">
+                                            <tr
+                                              key={variant.id}
+                                              className="border-t border-white/60 text-xs"
+                                            >
                                               <td className="px-2 py-1.5 text-muted-foreground">
-                                                {variant.isDefault ? "Yes" : "No"}
+                                                {variant.isDefault
+                                                  ? "Yes"
+                                                  : "No"}
                                               </td>
                                               <td className="px-2 py-1.5 text-muted-foreground">
-                                                {variant.isActive ? "Yes" : "No"}
+                                                {variant.isActive
+                                                  ? "Yes"
+                                                  : "No"}
                                               </td>
-                                              <td className="truncate px-2 py-1.5">{variant.name || "-"}</td>
-                                              <td className="truncate px-2 py-1.5">{variant.sku || "-"}</td>
-                                              <td className="truncate px-2 py-1.5">{variant.barcode || "-"}</td>
+                                              <td className="truncate px-2 py-1.5">
+                                                {variant.name || "-"}
+                                              </td>
+                                              <td className="truncate px-2 py-1.5">
+                                                {variant.sku || "-"}
+                                              </td>
+                                              <td className="truncate px-2 py-1.5">
+                                                {variant.barcode || "-"}
+                                              </td>
                                               <td className="px-2 py-1.5 text-muted-foreground">
                                                 {optionPairs.length === 0
                                                   ? "-"
                                                   : optionPairs
-                                                      .map(([key, value]) => `${key}: ${value}`)
+                                                      .map(
+                                                        ([key, value]) =>
+                                                          `${key}: ${value}`,
+                                                      )
                                                       .join(", ")}
                                               </td>
                                               <td className="px-2 py-1.5 text-muted-foreground">

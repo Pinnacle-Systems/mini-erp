@@ -309,6 +309,7 @@ export type ItemVariantDisplay = {
 export type ItemDetailDisplay = {
   id: string;
   name: string;
+  category: string;
   unit: "PCS" | "KG" | "M" | "BOX";
   itemType: "PRODUCT" | "SERVICE";
   pending: boolean;
@@ -589,6 +590,7 @@ export const getLocalItemDetailForDisplay = async (
   return {
     id: item.entityId,
     name: String(item.data.name ?? "Untitled Item"),
+    category: String(item.data.category ?? ""),
     unit: String(item.data.unit ?? "PCS") as "PCS" | "KG" | "M" | "BOX",
     itemType: String(item.data.itemType ?? item.data.item_type ?? "PRODUCT") as
       | "PRODUCT"
@@ -624,7 +626,12 @@ export type ItemCollectionEntry = {
 export type ItemCollectionMembership = {
   id: string;
   collectionId: string;
+  variantId: string;
   itemId: string;
+  variantName?: string;
+  variantSku?: string;
+  variantIsDefault?: boolean;
+  variantIsActive?: boolean;
 };
 
 export const queueItemCategoryCreate = async (
@@ -725,7 +732,7 @@ export const queueItemCollectionMembershipCreate = async (
   tenantId: string,
   userId: string,
   collectionId: string,
-  itemId: string,
+  variantId: string,
 ) => {
   const entityId = crypto.randomUUID();
   await queueMutation(tenantId, {
@@ -737,7 +744,7 @@ export const queueItemCollectionMembershipCreate = async (
     op: "create",
     payload: {
       collectionId,
-      itemId,
+      variantId,
     },
     clientTimestamp: new Date().toISOString(),
   });
@@ -956,23 +963,89 @@ export const getLocalItemCollectionEntriesForStore = async (
 export const getLocalItemCollectionMembershipsForStore = async (
   tenantId: string,
 ): Promise<ItemCollectionMembership[]> => {
-  const membershipEntities = await listEntities(tenantId, "item_collection_item");
+  const [membershipEntities, variantEntities, itemEntities] = await Promise.all([
+    listEntities(tenantId, "item_collection_item"),
+    listEntities(tenantId, "item_variant"),
+    listEntities(tenantId, "item"),
+  ]);
+  const itemIdByVariantId = new Map<string, string>(
+    variantEntities
+      .filter((entry) => !entry.deletedAt)
+      .map((entry) => [
+        entry.entityId,
+        String(entry.data.itemId ?? entry.data.item_id ?? ""),
+      ]),
+  );
+  const variantMetaByVariantId = new Map<
+    string,
+    {
+      name: string;
+      sku: string;
+      isDefault: boolean;
+      isActive: boolean;
+    }
+  >(
+    variantEntities
+      .filter((entry) => !entry.deletedAt)
+      .map((entry) => [
+        entry.entityId,
+        {
+          name: String(entry.data.name ?? ""),
+          sku: String(entry.data.sku ?? ""),
+          isDefault: Boolean(entry.data.isDefault ?? entry.data.is_default ?? false),
+          isActive: Boolean(entry.data.isActive ?? entry.data.is_active ?? true),
+        },
+      ]),
+  );
+  for (const itemEntity of itemEntities) {
+    if (itemEntity.deletedAt) continue;
+    const itemId = itemEntity.entityId;
+    const variants = extractVariantsFromItemData(itemEntity.data, itemId);
+    for (const variant of variants) {
+      if (!variant.id) continue;
+      if (!itemIdByVariantId.has(variant.id)) {
+        itemIdByVariantId.set(variant.id, variant.itemId || itemId);
+      }
+      if (!variantMetaByVariantId.has(variant.id)) {
+        variantMetaByVariantId.set(variant.id, {
+          name: variant.name,
+          sku: variant.sku,
+          isDefault: variant.isDefault,
+          isActive: variant.isActive,
+        });
+      }
+    }
+  }
   return membershipEntities
     .filter((entry) => !entry.deletedAt)
     .map((entry) => {
       const collectionId = String(
         entry.data.collectionId ?? entry.data.collection_id ?? "",
       );
-      const itemId = String(entry.data.itemId ?? entry.data.item_id ?? "");
+      const variantId = String(
+        entry.data.variantId ?? entry.data.variant_id ?? "",
+      );
+      const itemId =
+        itemIdByVariantId.get(variantId) ??
+        String(entry.data.itemId ?? entry.data.item_id ?? "");
+      const variantMeta = variantMetaByVariantId.get(variantId);
       return {
         id: entry.entityId,
         collectionId,
+        variantId,
         itemId,
+        variantName: variantMeta?.name,
+        variantSku: variantMeta?.sku,
+        variantIsDefault: variantMeta?.isDefault,
+        variantIsActive: variantMeta?.isActive,
       } satisfies ItemCollectionMembership;
     })
     .filter(
       (entry) =>
-        entry.id.length > 0 && entry.collectionId.length > 0 && entry.itemId.length > 0,
+        entry.id.length > 0 &&
+        entry.collectionId.length > 0 &&
+        entry.variantId.length > 0 &&
+        entry.itemId.length > 0,
     );
 };
 

@@ -182,7 +182,7 @@ CREATE TABLE "catalog"."item_collection_items" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
     "collection_id" UUID NOT NULL,
-    "item_id" UUID NOT NULL,
+    "variant_id" UUID NOT NULL,
 
     CONSTRAINT "item_collection_items_pkey" PRIMARY KEY ("id")
 );
@@ -567,10 +567,10 @@ CREATE UNIQUE INDEX "item_collections_business_id_name_key" ON "catalog"."item_c
 CREATE INDEX "item_collection_items_business_id_collection_id_idx" ON "catalog"."item_collection_items"("business_id", "collection_id");
 
 -- CreateIndex
-CREATE INDEX "item_collection_items_business_id_item_id_idx" ON "catalog"."item_collection_items"("business_id", "item_id");
+CREATE INDEX "item_collection_items_business_id_variant_id_idx" ON "catalog"."item_collection_items"("business_id", "variant_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "item_collection_items_collection_id_item_id_key" ON "catalog"."item_collection_items"("collection_id", "item_id");
+CREATE UNIQUE INDEX "item_collection_items_collection_id_variant_id_key" ON "catalog"."item_collection_items"("collection_id", "variant_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "item_variants_business_id_sku_key" ON "catalog"."item_variants"("business_id", "sku");
@@ -705,7 +705,7 @@ ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_selected_business_id_fkey
 ALTER TABLE "catalog"."item_collection_items" ADD CONSTRAINT "item_collection_items_collection_id_fkey" FOREIGN KEY ("collection_id") REFERENCES "catalog"."item_collections"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "catalog"."item_collection_items" ADD CONSTRAINT "item_collection_items_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "catalog"."items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "catalog"."item_collection_items" ADD CONSTRAINT "item_collection_items_variant_id_fkey" FOREIGN KEY ("variant_id") REFERENCES "catalog"."item_variants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "catalog"."item_variants" ADD CONSTRAINT "item_variants_item_id_fkey" FOREIGN KEY ("item_id") REFERENCES "catalog"."items"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -58,7 +58,7 @@ export function LookupDropdownInput<T>({
   }, [getOptionSearchText, maxVisibleOptions, options, value]);
 
   return (
-    <div className="relative space-y-1">
+    <div className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
       <Input
         {...inputProps}
         id={id}
@@ -78,7 +78,7 @@ export function LookupDropdownInput<T>({
       {isFocused && filteredOptions.length > 0 ? (
         <div
           className={cn(
-            "absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1 shadow-sm",
+            "absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1 shadow-sm",
             dropdownClassName,
           )}
         >

@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../../../design-system/molecules/Card";
+import { LookupDropdownInput } from "../../../design-system/molecules/LookupDropdownInput";
 import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
 import {
   ItemVariantCardsEditor,
@@ -20,6 +21,8 @@ import { VariantOptionModal } from "../../../design-system/organisms/VariantOpti
 import { useSessionStore } from "../../../features/auth/session-business";
 import {
   getLocalItemDetailForDisplay,
+  getLocalItemCategoriesForStore,
+  getRemoteItemCategoriesForStore,
   queueItemUpdate,
   queueItemVariantCreate,
   queueItemVariantDelete,
@@ -42,10 +45,16 @@ type DraftVariant = ItemVariantDraft & {
 type DraftItem = {
   id: string;
   name: string;
+  category: string;
   unit: "PCS" | "KG" | "M" | "BOX";
   itemType: "PRODUCT" | "SERVICE";
   variants: DraftVariant[];
 };
+
+const sortUnique = (values: string[]) =>
+  Array.from(
+    new Set(values.map((value) => value.trim()).filter((value) => value.length > 0)),
+  ).sort((a, b) => a.localeCompare(b));
 
 const toOptionRows = (optionValues: Record<string, string>) =>
   Object.entries(optionValues).map(([key, value], index) => ({
@@ -108,6 +117,7 @@ const hasIncompleteOptionRows = (variant: DraftVariant) => {
 const toDraft = (item: ItemDetailDisplay): DraftItem => ({
   id: item.id,
   name: item.name,
+  category: item.category,
   unit: item.unit,
   itemType: item.itemType,
   variants: item.variants.map((variant, index) => ({
@@ -137,6 +147,7 @@ export function ItemDetailsPage() {
   const [optionModalVariantId, setOptionModalVariantId] = useState<string | null>(null);
   const [optionKeyDraft, setOptionKeyDraft] = useState("");
   const [optionValueDraft, setOptionValueDraft] = useState("");
+  const [savedCategories, setSavedCategories] = useState<string[]>([]);
 
   useEffect(() => {
     if (!activeStore || !itemId) return;
@@ -153,6 +164,26 @@ export function ItemDetailsPage() {
       setSaveError(null);
     });
   }, [activeStore, itemId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCategorySuggestions = async () => {
+      if (!activeStore) {
+        setSavedCategories([]);
+        return;
+      }
+      const [localCategories, remoteCategories] = await Promise.all([
+        getLocalItemCategoriesForStore(activeStore).catch(() => []),
+        getRemoteItemCategoriesForStore(activeStore).catch(() => []),
+      ]);
+      if (cancelled) return;
+      setSavedCategories(sortUnique([...localCategories, ...remoteCategories]));
+    };
+    void loadCategorySuggestions();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore]);
 
   const isDirty = useMemo(
     () =>
@@ -191,6 +222,11 @@ export function ItemDetailsPage() {
       ),
     ).sort((a, b) => a.localeCompare(b));
   }, [item, optionKeyDraft]);
+
+  const categorySuggestions = useMemo(
+    () => sortUnique([...savedCategories, item?.category ?? ""]),
+    [item?.category, savedCategories],
+  );
 
   const ensureSingleDefault = (variants: DraftVariant[]) => {
     if (variants.length === 0) return variants;
@@ -241,6 +277,7 @@ export function ItemDetailsPage() {
     try {
       const shouldUpdateItemRecord =
         nextItem.name !== initialItem.name ||
+        nextItem.category !== initialItem.category ||
         nextItem.unit !== initialItem.unit ||
         nextItem.itemType !== initialItem.itemType ||
         (nextIsImplicitMode && nextDefaultSkuValue !== initialDefaultSkuValue);
@@ -250,6 +287,7 @@ export function ItemDetailsPage() {
       ) {
         await queueItemUpdate(activeStore, identityId, nextItem.id, {
           name: nextItem.name,
+          category: nextItem.category.trim() || null,
           unit: nextItem.unit,
           itemType: nextItem.itemType,
           sku: nextIsImplicitMode ? nextDefaultSkuValue : undefined,
@@ -413,7 +451,7 @@ export function ItemDetailsPage() {
         </CardHeader>
         <CardContent className="grid gap-1.5 pb-20 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pb-0">
           <div className="grid gap-1.5 rounded-xl border border-white/70 bg-white/65 p-1.5 lg:shrink-0 lg:grid-cols-12 lg:items-end">
-            <div className="grid gap-1 lg:col-span-6">
+            <div className="grid gap-1 lg:col-span-4">
               <Label>Name</Label>
               <Input
                 className={DENSE_INPUT_CLASS}
@@ -421,8 +459,26 @@ export function ItemDetailsPage() {
                 onChange={(event) => setItem({ ...item, name: event.target.value })}
               />
             </div>
+            <div className="grid gap-1 lg:col-span-3">
+              <Label>Category</Label>
+              <LookupDropdownInput
+                value={item.category}
+                onValueChange={(value) => setItem({ ...item, category: value })}
+                placeholder="Category"
+                options={categorySuggestions}
+                getOptionKey={(categoryValue) => categoryValue}
+                getOptionSearchText={(categoryValue) => categoryValue}
+                onOptionSelect={(categoryValue) => setItem({ ...item, category: categoryValue })}
+                renderOption={(categoryValue) => (
+                  <div className="truncate font-medium">{categoryValue}</div>
+                )}
+                maxVisibleOptions={10}
+                inputClassName={DENSE_INPUT_CLASS}
+                optionClassName="text-[10px]"
+              />
+            </div>
             {shouldHideDefaultVariant ? (
-              <div className="grid gap-1 lg:col-span-3">
+              <div className="grid gap-1 lg:col-span-2">
                 <Label>Item SKU</Label>
                 <Input
                   className={DENSE_INPUT_CLASS}

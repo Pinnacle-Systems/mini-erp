@@ -268,8 +268,8 @@ const toItemCollectionItemSnapshot = (membership) => {
     business_id: membership.business_id,
     collection_id: membership.collection_id,
     collectionId: membership.collection_id,
-    item_id: membership.item_id,
-    itemId: membership.item_id,
+    variant_id: membership.variant_id,
+    variantId: membership.variant_id,
   };
 };
 
@@ -1081,38 +1081,38 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
       : typeof payload.collection_id === "string"
         ? payload.collection_id
         : "";
-  const itemId =
-    typeof payload.itemId === "string"
-      ? payload.itemId
-      : typeof payload.item_id === "string"
-        ? payload.item_id
+  const variantId =
+    typeof payload.variantId === "string"
+      ? payload.variantId
+      : typeof payload.variant_id === "string"
+        ? payload.variant_id
         : "";
 
   if (mutation.op === "create") {
-    if (!collectionId || !itemId) {
-      throw new AppError("collectionId and itemId are required", 400);
+    if (!collectionId || !variantId) {
+      throw new AppError("collectionId and variantId are required", 400);
     }
 
-    const [collection, item] = await Promise.all([
+    const [collection, variant] = await Promise.all([
       txAny.itemCollection.findUnique({ where: { id: collectionId } }),
-      tx.item.findUnique({ where: { id: itemId } }),
+      tx.itemVariant.findUnique({ where: { id: variantId } }),
     ]);
     if (!collection || collection.business_id !== tenantId) {
       throw new AppError("Collection not found in business", 404);
     }
-    if (!item || item.business_id !== tenantId) {
-      throw new AppError("Item not found in business", 404);
+    if (!variant || variant.business_id !== tenantId) {
+      throw new AppError("Variant not found in business", 404);
     }
 
     const existing = await txAny.itemCollectionItem.findFirst({
       where: {
         business_id: tenantId,
         collection_id: collectionId,
-        item_id: itemId,
+        variant_id: variantId,
       },
     });
     if (existing) {
-      throw new AppError("Item is already in this collection", 400);
+      throw new AppError("Variant is already in this collection", 400);
     }
 
     const created = await txAny.itemCollectionItem.create({
@@ -1120,7 +1120,7 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
         id: mutation.entityId,
         business_id: tenantId,
         collection_id: collectionId,
-        item_id: itemId,
+        variant_id: variantId,
       },
     });
     return toItemCollectionItemSnapshot(created);

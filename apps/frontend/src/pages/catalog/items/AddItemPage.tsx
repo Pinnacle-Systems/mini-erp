@@ -477,7 +477,7 @@ export function AddItemPage() {
             <div className="space-y-1.5 lg:flex-1 lg:min-h-0 lg:space-y-1">
               {!hasVariants ? (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
-                <div className="overflow-hidden rounded-xl border border-white/75 bg-white/70 lg:flex lg:min-h-0 lg:flex-col">
+                <div className="overflow-visible rounded-xl border border-white/75 bg-white/70 lg:flex lg:min-h-0 lg:flex-col">
                   <div className="hidden grid-cols-[minmax(0,2.4fr)_minmax(0,1.6fr)_84px_84px_minmax(0,1.8fr)_50px] gap-1 border-b border-white/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0">
                     <span>Name</span>
                     <span>SKU</span>
