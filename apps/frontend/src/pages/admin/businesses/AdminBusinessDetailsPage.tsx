@@ -173,7 +173,7 @@ export function AdminBusinessDetailsPage() {
 
     if (!nextActive) {
       const confirmed = window.confirm(
-        "Mark this business as inactive? You can restore it later.",
+        "Mark this business as inactive? You can reactivate it later.",
       );
       if (!confirmed) return;
       await onDelete();
@@ -183,43 +183,37 @@ export function AdminBusinessDetailsPage() {
     await onRestore();
   };
 
-  const onSaveLicense = async () => {
-    if (!businessId) return;
-    if (!isEditingDetails) return;
+  const buildLicenseUpdatePayload = () => {
     if (!licenseDraft.beginsOn || !licenseDraft.endsOn) {
       setError("License begin and end dates are required.");
-      return;
+      return null;
     }
     if (licenseDraft.userLimitType !== "UNLIMITED") {
       const parsedLimit = Number(licenseDraft.userLimitValue);
       if (!Number.isInteger(parsedLimit) || parsedLimit <= 0 || parsedLimit > 999) {
         setError("User limit must be a positive whole number up to 999.");
-        return;
+        return null;
       }
     }
+
     const addOn = Array.from(new Set(licenseDraft.addOnCapabilities));
     const removed = Array.from(
       new Set(licenseDraft.removedCapabilities.filter((capability) => !addOn.includes(capability))),
     );
-    await runMutation(async () => {
-      await updateAdminStore(businessId, {
-        license: {
-          beginsOn: licenseDraft.beginsOn,
-          endsOn: licenseDraft.endsOn,
-          bundleKey: licenseDraft.bundleKey,
-          addOnCapabilities: addOn,
-          removedCapabilities: removed,
-          userLimitType:
-            licenseDraft.userLimitType === "UNLIMITED"
-              ? null
-              : licenseDraft.userLimitType,
-          userLimitValue:
-            licenseDraft.userLimitType === "UNLIMITED"
-              ? null
-              : Number(licenseDraft.userLimitValue),
-        },
-      });
-    });
+
+    return {
+      beginsOn: licenseDraft.beginsOn,
+      endsOn: licenseDraft.endsOn,
+      bundleKey: licenseDraft.bundleKey,
+      addOnCapabilities: addOn,
+      removedCapabilities: removed,
+      userLimitType:
+        licenseDraft.userLimitType === "UNLIMITED" ? null : licenseDraft.userLimitType,
+      userLimitValue:
+        licenseDraft.userLimitType === "UNLIMITED"
+          ? null
+          : Number(licenseDraft.userLimitValue),
+    };
   };
 
   const onSaveDetails = async () => {
@@ -229,6 +223,9 @@ export function AdminBusinessDetailsPage() {
       setError("Business name is required.");
       return;
     }
+    const licensePayload = buildLicenseUpdatePayload();
+    if (!licensePayload) return;
+
     await runMutation(async () => {
       await updateAdminStore(businessId, {
         name: nameDraft.trim(),
@@ -240,6 +237,7 @@ export function AdminBusinessDetailsPage() {
         state: detailsDraft.state.trim() || null,
         pincode: detailsDraft.pincode.trim() || null,
         address: detailsDraft.address.trim() || null,
+        license: licensePayload,
       });
 
       if (logoDraftFile) {
@@ -382,14 +380,14 @@ export function AdminBusinessDetailsPage() {
                   )}
                   <div className="ml-auto flex items-center gap-1.5 lg:ml-1">
                     <span className="text-[11px] font-medium text-muted-foreground">
-                      Active
+                      {business.deletedAt ? "Inactive" : "Active"}
                     </span>
                     <button
                       id="business-active-status"
                       type="button"
                       role="switch"
                       aria-checked={!business.deletedAt}
-                      aria-label="Toggle business active status"
+                      aria-label="Toggle business active state"
                       onClick={() => {
                         void onToggleBusinessStatus(Boolean(business.deletedAt));
                       }}
@@ -507,7 +505,6 @@ export function AdminBusinessDetailsPage() {
                             userLimitValue: value,
                           }))
                         }
-                        onSave={onSaveLicense}
                       />
                     }
                     onFieldChange={(field, value) => {

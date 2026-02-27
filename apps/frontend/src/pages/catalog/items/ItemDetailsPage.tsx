@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Button } from "../../../design-system/atoms/Button";
 import { Input } from "../../../design-system/atoms/Input";
 import { Label } from "../../../design-system/atoms/Label";
 import { Select } from "../../../design-system/atoms/Select";
@@ -51,10 +50,13 @@ type DraftItem = {
   variants: DraftVariant[];
 };
 
+const isItemActive = (variants: DraftVariant[]) => variants.some((variant) => variant.isActive);
+
 const sortUnique = (values: string[]) =>
   Array.from(
     new Set(values.map((value) => value.trim()).filter((value) => value.length > 0)),
   ).sort((a, b) => a.localeCompare(b));
+const normalizeOptionKey = (value: string) => value.trim().toLowerCase();
 
 const toOptionRows = (optionValues: Record<string, string>) =>
   Object.entries(optionValues).map(([key, value], index) => ({
@@ -73,7 +75,6 @@ const normalizeVariantForCreate = (variant: DraftVariant): VariantInput => {
     name: variant.name.trim() || undefined,
     sku: variant.sku.trim() || undefined,
     barcode: variant.barcode.trim() || undefined,
-    isDefault: variant.isDefault,
     isActive: variant.isActive,
     optionValues: Object.keys(optionValues).length > 0 ? optionValues : undefined,
   };
@@ -89,7 +90,6 @@ const normalizeVariantForUpdate = (variant: DraftVariant): VariantInput => {
     name: variant.name.trim() || null,
     sku: variant.sku.trim() || null,
     barcode: variant.barcode.trim() || null,
-    isDefault: variant.isDefault,
     isActive: variant.isActive,
     optionValues,
   };
@@ -120,12 +120,11 @@ const toDraft = (item: ItemDetailDisplay): DraftItem => ({
   category: item.category,
   unit: item.unit,
   itemType: item.itemType,
-  variants: item.variants.map((variant, index) => ({
+  variants: item.variants.map((variant) => ({
     id: variant.id,
     name: variant.name,
     sku: variant.sku,
     barcode: variant.barcode,
-    isDefault: variant.isDefault || index === 0,
     isActive: variant.isActive,
     optionRows: toOptionRows(variant.optionValues),
     usageCount: variant.usageCount,
@@ -143,7 +142,7 @@ export function ItemDetailsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [item, setItem] = useState<DraftItem | null>(null);
   const [initialItem, setInitialItem] = useState<DraftItem | null>(null);
-  const [hasEnteredVariantMode, setHasEnteredVariantMode] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [optionModalVariantId, setOptionModalVariantId] = useState<string | null>(null);
   const [optionKeyDraft, setOptionKeyDraft] = useState("");
   const [optionValueDraft, setOptionValueDraft] = useState("");
@@ -155,12 +154,16 @@ export function ItemDetailsPage() {
       if (!detail) {
         setItem(null);
         setInitialItem(null);
+        setIsEditing(false);
         return;
       }
       const draft = toDraft(detail);
       setItem(draft);
       setInitialItem(draft);
-      setHasEnteredVariantMode(false);
+      setIsEditing(false);
+      setOptionModalVariantId(null);
+      setOptionKeyDraft("");
+      setOptionValueDraft("");
       setSaveError(null);
     });
   }, [activeStore, itemId]);
@@ -209,14 +212,14 @@ export function ItemDetailsPage() {
 
   const optionValueSuggestions = useMemo(() => {
     if (!item) return [];
-    const key = optionKeyDraft.trim();
-    if (!key) return [];
+    const normalizedKey = normalizeOptionKey(optionKeyDraft);
+    if (!normalizedKey) return [];
 
     return Array.from(
       new Set(
         item.variants
           .flatMap((variant) => variant.optionRows)
-          .filter((row) => row.key.trim() === key)
+          .filter((row) => normalizeOptionKey(row.key) === normalizedKey)
           .map((row) => row.value.trim())
           .filter(Boolean),
       ),
@@ -228,49 +231,16 @@ export function ItemDetailsPage() {
     [item?.category, savedCategories],
   );
 
-  const ensureSingleDefault = (variants: DraftVariant[]) => {
-    if (variants.length === 0) return variants;
-    if (variants.some((variant) => variant.isDefault)) return variants;
-    return variants.map((variant, index) =>
-      index === 0 ? { ...variant, isDefault: true } : variant,
-    );
-  };
-
-  const isImplicitDefaultVariant = (variants: DraftVariant[]) => {
-    if (variants.length !== 1) return false;
-    const [variant] = variants;
-    const hasOptions = variant.optionRows.some(
-      (entry) => entry.key.trim().length > 0 && entry.value.trim().length > 0,
-    );
-    return (
-      variant.isDefault &&
-      variant.name.trim().length === 0 &&
-      variant.barcode.trim().length === 0 &&
-      !hasOptions
-    );
-  };
-
-  const shouldHideDefaultVariant =
-    item && isImplicitDefaultVariant(item.variants) && !hasEnteredVariantMode;
-  const visibleVariants = shouldHideDefaultVariant ? [] : item?.variants ?? [];
-  const defaultVariantId = item?.variants.find((variant) => variant.isDefault)?.id;
-  const defaultVariantSku =
-    item?.variants.find((variant) => variant.id === defaultVariantId)?.sku ?? "";
+  const itemActiveState = useMemo(
+    () => (item ? isItemActive(item.variants) : true),
+    [item],
+  );
 
   const onSave = async () => {
     if (!item || !initialItem || !identityId || !activeStore || !isBusinessSelected) return;
+    if (!isEditing) return;
     if (item.variants.length === 0) return;
-
-    const nextItem = {
-      ...item,
-      variants: ensureSingleDefault(item.variants),
-    };
-    setItem(nextItem);
-    const nextIsImplicitMode = isImplicitDefaultVariant(nextItem.variants);
-    const nextDefaultSkuValue =
-      nextItem.variants.find((variant) => variant.isDefault)?.sku.trim() ?? "";
-    const initialDefaultSkuValue =
-      initialItem.variants.find((variant) => variant.isDefault)?.sku.trim() ?? "";
+    const nextItem = item;
 
     setSaveError(null);
     setLoading(true);
@@ -279,8 +249,7 @@ export function ItemDetailsPage() {
         nextItem.name !== initialItem.name ||
         nextItem.category !== initialItem.category ||
         nextItem.unit !== initialItem.unit ||
-        nextItem.itemType !== initialItem.itemType ||
-        (nextIsImplicitMode && nextDefaultSkuValue !== initialDefaultSkuValue);
+        nextItem.itemType !== initialItem.itemType;
 
       if (
         shouldUpdateItemRecord
@@ -290,7 +259,6 @@ export function ItemDetailsPage() {
           category: nextItem.category.trim() || null,
           unit: nextItem.unit,
           itemType: nextItem.itemType,
-          sku: nextIsImplicitMode ? nextDefaultSkuValue : undefined,
         });
       }
 
@@ -306,7 +274,7 @@ export function ItemDetailsPage() {
             JSON.stringify(normalizeVariantForUpdate(variant)) !==
               JSON.stringify(normalizeVariantForUpdate(initialVariant)));
 
-        const mustValidate = isChangedOrNew && !variant.isDefault;
+        const mustValidate = isChangedOrNew;
         if (!mustValidate) continue;
 
         if (!hasAtLeastOneVariantDetail(variant)) {
@@ -348,25 +316,6 @@ export function ItemDetailsPage() {
         if (!initialVariant) continue;
 
         const payload = normalizeVariantForUpdate(variant);
-
-        if (nextIsImplicitMode && variant.isDefault) {
-          const initialPayload = normalizeVariantForUpdate(initialVariant);
-          const nextPayloadWithoutSku = { ...payload, sku: undefined };
-          const initialPayloadWithoutSku = { ...initialPayload, sku: undefined };
-          if (
-            JSON.stringify(nextPayloadWithoutSku) !==
-            JSON.stringify(initialPayloadWithoutSku)
-          ) {
-            await queueItemVariantUpdate(
-              activeStore,
-              identityId,
-              variant.id,
-              nextPayloadWithoutSku,
-            );
-          }
-          continue;
-        }
-
         if (
           JSON.stringify(payload) !==
           JSON.stringify(normalizeVariantForUpdate(initialVariant))
@@ -376,7 +325,16 @@ export function ItemDetailsPage() {
       }
 
       await syncOnce(activeStore);
-      navigate("/app/items", { replace: true });
+      const refreshedDetail = await getLocalItemDetailForDisplay(activeStore, nextItem.id);
+      if (!refreshedDetail) {
+        navigate("/app/items", { replace: true });
+        return;
+      }
+      const refreshedDraft = toDraft(refreshedDetail);
+      setItem(refreshedDraft);
+      setInitialItem(refreshedDraft);
+      setIsEditing(false);
+      closeOptionModal();
     } catch (error) {
       console.error(error);
       setSaveError("Unable to save changes. Some variant fields may be locked after usage.");
@@ -392,6 +350,7 @@ export function ItemDetailsPage() {
   };
 
   const saveOptionChip = () => {
+    if (!isEditing) return;
     if (!item || !optionModalVariantId) return;
     const key = optionKeyDraft.trim();
     const value = optionValueDraft.trim();
@@ -399,6 +358,11 @@ export function ItemDetailsPage() {
       setSaveError("Option key and value are required.");
       return;
     }
+    const normalizedKey = normalizeOptionKey(key);
+    const canonicalKey =
+      optionKeySuggestions.find(
+        (optionKey) => normalizeOptionKey(optionKey) === normalizedKey,
+      ) ?? key;
 
     setItem({
       ...item,
@@ -406,12 +370,23 @@ export function ItemDetailsPage() {
         entry.id === optionModalVariantId
           ? {
               ...entry,
-              optionRows: [...entry.optionRows, { id: crypto.randomUUID(), key, value }],
+              optionRows: [
+                ...entry.optionRows,
+                { id: crypto.randomUUID(), key: canonicalKey, value },
+              ],
             }
           : entry,
       ),
     });
     closeOptionModal();
+  };
+
+  const onBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/app/items");
   };
 
   if (!item) {
@@ -437,16 +412,75 @@ export function ItemDetailsPage() {
                 Edit item details and variants.
               </CardDescription>
             </div>
-            <PageActionBar
-              primaryLabel="Save Changes"
-              onPrimaryClick={() => void onSave()}
-              primaryDisabled={loading || !isDirty}
-              primaryLoading={loading}
-              primaryLoadingLabel="Saving..."
-              secondaryLabel="Cancel"
-              secondaryDisabled={loading}
-              onSecondaryClick={() => navigate("/app/items")}
-            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex items-center gap-1.5 rounded-full bg-white/75 px-2 py-1">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {itemActiveState ? "Active" : "Inactive"}
+                </span>
+                <button
+                  id="item-active-status"
+                  type="button"
+                  role="switch"
+                  aria-checked={itemActiveState}
+                  aria-label="Toggle item active state"
+                  onClick={() => {
+                    if (!isEditing || loading) return;
+                    setItem((current) =>
+                      current
+                        ? {
+                            ...current,
+                            variants: current.variants.map((variant) => ({
+                              ...variant,
+                              isActive: !itemActiveState,
+                            })),
+                          }
+                        : current,
+                    );
+                  }}
+                  disabled={loading || !isEditing}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    itemActiveState
+                      ? "bg-[#4a8dd9]"
+                      : "bg-[#e7eff8]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
+                      itemActiveState ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              {isEditing ? (
+                <PageActionBar
+                  primaryLabel="Save Changes"
+                  onPrimaryClick={() => void onSave()}
+                  primaryDisabled={loading || !isDirty}
+                  primaryLoading={loading}
+                  primaryLoadingLabel="Saving..."
+                  secondaryLabel="Cancel"
+                  secondaryDisabled={loading}
+                  onSecondaryClick={() => {
+                    if (!initialItem) return;
+                    setItem(initialItem);
+                    setSaveError(null);
+                    setIsEditing(false);
+                    closeOptionModal();
+                  }}
+                />
+              ) : (
+                <PageActionBar
+                  primaryLabel="Edit Details"
+                  onPrimaryClick={() => {
+                    setSaveError(null);
+                    setIsEditing(true);
+                  }}
+                  primaryDisabled={loading}
+                  secondaryLabel="Back"
+                  onSecondaryClick={onBack}
+                />
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="grid gap-1.5 pb-20 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pb-0">
@@ -456,6 +490,7 @@ export function ItemDetailsPage() {
               <Input
                 className={DENSE_INPUT_CLASS}
                 value={item.name}
+                disabled={!isEditing || loading}
                 onChange={(event) => setItem({ ...item, name: event.target.value })}
               />
             </div>
@@ -463,6 +498,7 @@ export function ItemDetailsPage() {
               <Label>Category</Label>
               <LookupDropdownInput
                 value={item.category}
+                disabled={!isEditing || loading}
                 onValueChange={(value) => setItem({ ...item, category: value })}
                 placeholder="Category"
                 options={categorySuggestions}
@@ -477,31 +513,12 @@ export function ItemDetailsPage() {
                 optionClassName="text-[10px]"
               />
             </div>
-            {shouldHideDefaultVariant ? (
-              <div className="grid gap-1 lg:col-span-2">
-                <Label>Item SKU</Label>
-                <Input
-                  className={DENSE_INPUT_CLASS}
-                  value={defaultVariantSku}
-                  onChange={(event) =>
-                    setItem({
-                      ...item,
-                      variants: item.variants.map((variant) =>
-                        variant.id === defaultVariantId
-                          ? { ...variant, sku: event.target.value }
-                          : variant,
-                      ),
-                    })
-                  }
-                  placeholder="Item SKU"
-                />
-              </div>
-            ) : null}
             <div className="grid gap-1 lg:col-span-1">
               <Label>Unit</Label>
               <Select
                 className={`${DENSE_SELECT_CLASS} w-full`}
                 value={item.unit}
+                disabled={!isEditing || loading}
                 onChange={(event) =>
                   setItem({
                     ...item,
@@ -521,6 +538,7 @@ export function ItemDetailsPage() {
               <Select
                 className={`${DENSE_SELECT_CLASS} w-full`}
                 value={item.itemType}
+                disabled={!isEditing || loading}
                 onChange={(event) =>
                   setItem({
                     ...item,
@@ -535,83 +553,45 @@ export function ItemDetailsPage() {
           </div>
 
           <div className="mt-1 grid gap-1.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
-            {shouldHideDefaultVariant ? (
-              <div className="flex items-center justify-between gap-2 rounded-xl border border-white/70 bg-white/60 p-2">
-                <p className="text-[11px] text-muted-foreground lg:text-[10px]">
-                  No variants added yet. Item SKU is mapped to the default variant.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={() => {
-                    setHasEnteredVariantMode(true);
-                    setItem({
-                      ...item,
-                      variants: [
-                        ...item.variants,
-                        {
-                          id: `temp-${crypto.randomUUID()}`,
-                          name: "",
-                          sku: "",
-                          barcode: "",
-                          isDefault: false,
-                          isActive: true,
-                          optionRows: [],
-                          usageCount: 0,
-                          isLocked: false,
-                        },
-                      ],
-                    });
-                  }}
-                >
-                  Add Variant
-                </Button>
-              </div>
-            ) : null}
-
-            {!shouldHideDefaultVariant ? (
-              <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
-                <ItemVariantCardsEditor
-                  variants={visibleVariants}
-                  onVariantsChange={(next) =>
-                    setItem({
-                      ...item,
-                      variants: next as DraftVariant[],
-                    })
-                  }
-                  onAddVariant={() => {
-                    setHasEnteredVariantMode(true);
-                    setItem({
-                      ...item,
-                      variants: [
-                        ...item.variants,
-                        {
-                          id: `temp-${crypto.randomUUID()}`,
-                          name: "",
-                          sku: "",
-                          barcode: "",
-                          isDefault: false,
-                          isActive: true,
-                          optionRows: [],
-                          usageCount: 0,
-                          isLocked: false,
-                        },
-                      ],
-                    });
-                  }}
-                  onOpenOptionModal={(variantId) => {
-                    setSaveError(null);
-                    setOptionModalVariantId(variantId);
-                  }}
-                  addVariantLabel="Add Variant"
-                  removeVariantLabel="Remove"
-                  denseInputClassName={DENSE_INPUT_CLASS}
-                  showActiveToggle
-                />
-              </div>
-            ) : null}
+            <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+              <ItemVariantCardsEditor
+                variants={item.variants}
+                onVariantsChange={(next) =>
+                  setItem({
+                    ...item,
+                    variants: next as DraftVariant[],
+                  })
+                }
+                onAddVariant={() => {
+                  if (!isEditing || loading) return;
+                  setItem({
+                    ...item,
+                    variants: [
+                      ...item.variants,
+                      {
+                        id: `temp-${crypto.randomUUID()}`,
+                        name: "",
+                        sku: "",
+                        barcode: "",
+                        isActive: itemActiveState,
+                        optionRows: [],
+                        usageCount: 0,
+                        isLocked: false,
+                      },
+                    ],
+                  });
+                }}
+                onOpenOptionModal={(variantId) => {
+                  if (!isEditing || loading) return;
+                  setSaveError(null);
+                  setOptionModalVariantId(variantId);
+                }}
+                addVariantLabel="Add Variant"
+                denseInputClassName={DENSE_INPUT_CLASS}
+                showActiveToggle
+                disabled={!isEditing || loading}
+              />
+            </div>
           </div>
 
           {saveError ? (
@@ -621,7 +601,7 @@ export function ItemDetailsPage() {
       </Card>
 
       <VariantOptionModal
-        open={Boolean(optionModalVariantId)}
+        open={isEditing && Boolean(optionModalVariantId)}
         idPrefix="manage-item"
         keyDraft={optionKeyDraft}
         valueDraft={optionValueDraft}

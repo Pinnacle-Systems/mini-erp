@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../shared/utils/errors.js";
+import { getBusinessModulesFromLicense } from "../license/license.service.js";
 
 const SUPPORTED_ENTITIES = new Set([
   "item",
@@ -7,6 +8,7 @@ const SUPPORTED_ENTITIES = new Set([
   "item_category",
   "item_collection",
   "item_collection_item",
+  "item_price",
 ]);
 const SUPPORTED_ITEM_FIELDS = new Set([
   "sku",
@@ -39,6 +41,9 @@ const DEFAULT_ITEM_VALUES = {
   unit: "PCS",
   itemType: "PRODUCT",
 };
+const DEFAULT_PRICE_BOOK_CODE = "STANDARD";
+const DEFAULT_PRICE_BOOK_NAME = "Standard";
+const DEFAULT_PRICE_CURRENCY = "INR";
 const prismaAny = prisma as any;
 
 const toPrismaSyncOperation = (op) => {
@@ -284,6 +289,41 @@ const getNextServerVersion = async (txAny, tenantId, entity, entityId) => {
     select: { server_version: true },
   });
   return (latestEntityChange?.server_version ?? 0) + 1;
+};
+
+const getCurrentEntityServerVersion = async (txAny, tenantId, entity, entityId) => {
+  const latestEntityChange = await txAny.syncChangeLog.findFirst({
+    where: {
+      tenant_id: tenantId,
+      entity,
+      entity_id: entityId,
+    },
+    orderBy: { server_version: "desc" },
+    select: { server_version: true },
+  });
+  return latestEntityChange?.server_version ?? 0;
+};
+
+const assertEntityBaseVersion = async (
+  txAny,
+  tenantId,
+  entity,
+  entityId,
+  baseVersion?: number,
+) => {
+  if (baseVersion === undefined) return;
+  const currentVersion = await getCurrentEntityServerVersion(
+    txAny,
+    tenantId,
+    entity,
+    entityId,
+  );
+  if (baseVersion !== currentVersion) {
+    throw new AppError(
+      `Version conflict for ${entity}:${entityId}. Current version is ${currentVersion}, but mutation was based on ${baseVersion}.`,
+      409,
+    );
+  }
 };
 
 const appendSyncChange = async (
@@ -1143,6 +1183,54 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
   throw new AppError("Unsupported operation for item collection item", 400);
 };
 
+const applyItemPriceMutation = async (tx, tenantId, mutation) => {
+  const modules = await getBusinessModulesFromLicense(tenantId, tx);
+  if (!modules.pricing) {
+    throw new AppError("Pricing module is not enabled for this store license", 403);
+  }
+
+  const payload = mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
+  const variantId =
+    typeof payload.variantId === "string" && payload.variantId
+      ? payload.variantId
+      : mutation.entityId;
+  const rawAmount = (payload as Record<string, unknown>).amount;
+  const amount =
+    rawAmount === null
+      ? null
+      : typeof rawAmount === "number" && Number.isFinite(rawAmount) && rawAmount >= 0
+        ? rawAmount
+        : typeof rawAmount === "string" && rawAmount.trim()
+          ? Number(rawAmount)
+          : undefined;
+  const currency = typeof payload.currency === "string" ? payload.currency : undefined;
+
+  if (!variantId) {
+    throw new AppError("variantId is required for item price mutation", 400);
+  }
+
+  if (mutation.op === "delete") {
+    return upsertItemPriceInTx(tx, tenantId, variantId, {
+      amount: null,
+      currency,
+      actorUserId: mutation.userId,
+    });
+  }
+
+  if (
+    amount === undefined ||
+    (amount !== null && (!Number.isFinite(amount) || amount < 0))
+  ) {
+    throw new AppError("Price amount must be a non-negative number or null", 400);
+  }
+
+  return upsertItemPriceInTx(tx, tenantId, variantId, {
+    amount,
+    currency,
+    actorUserId: mutation.userId,
+  });
+};
+
 const applyMutation = async (tenantId, mutation) => {
   return prisma.$transaction(async (tx) => {
     const txAny = tx as any;
@@ -1154,6 +1242,14 @@ const applyMutation = async (tenantId, mutation) => {
     if (existing) {
       return { status: "applied" };
     }
+
+    await assertEntityBaseVersion(
+      txAny,
+      tenantId,
+      mutation.entity,
+      mutation.entityId,
+      mutation.baseVersion,
+    );
 
     let snapshot = null;
     let additionalChanges: Array<{
@@ -1176,6 +1272,8 @@ const applyMutation = async (tenantId, mutation) => {
       additionalChanges = collectionResult.additionalChanges;
     } else if (mutation.entity === "item_collection_item") {
       snapshot = await applyItemCollectionItemMutation(tx, tenantId, mutation);
+    } else if (mutation.entity === "item_price") {
+      snapshot = await applyItemPriceMutation(tx, tenantId, mutation);
     } else {
       throw new AppError(`Unsupported entity '${mutation.entity}'`, 400);
     }
@@ -1379,9 +1477,363 @@ const getItemCategories = async (tenantId: string, query?: string, limit = 30) =
     .filter((row) => row.name.length > 0);
 };
 
+const ensureDefaultPriceBook = async (
+  txAny: any,
+  tenantId: string,
+  preferredCurrency?: string,
+) => {
+  const currency = (preferredCurrency?.trim().toUpperCase() || DEFAULT_PRICE_CURRENCY).slice(
+    0,
+    3,
+  );
+  const existingDefault = await txAny.priceBook.findFirst({
+    where: {
+      business_id: tenantId,
+      is_default: true,
+    },
+    orderBy: {
+      created_at: "asc",
+    },
+  });
+  if (existingDefault) {
+    return existingDefault;
+  }
+
+  const standardBook = await txAny.priceBook.findUnique({
+    where: {
+      business_id_code: {
+        business_id: tenantId,
+        code: DEFAULT_PRICE_BOOK_CODE,
+      },
+    },
+  });
+  if (standardBook) {
+    return txAny.priceBook.update({
+      where: { id: standardBook.id },
+      data: { is_default: true },
+    });
+  }
+
+  return txAny.priceBook.create({
+    data: {
+      business_id: tenantId,
+      code: DEFAULT_PRICE_BOOK_CODE,
+      name: DEFAULT_PRICE_BOOK_NAME,
+      default_currency: currency,
+      is_default: true,
+      is_active: true,
+      priority: 0,
+    },
+  });
+};
+
+const upsertItemPriceInTx = async (
+  tx: any,
+  tenantId: string,
+  variantId: string,
+  input: {
+    amount: number | null;
+    currency?: string;
+    actorUserId?: string;
+  },
+) => {
+  const txAny = tx as any;
+  const variant = await tx.itemVariant.findUnique({
+    where: { id: variantId },
+    include: {
+      item: {
+        select: {
+          name: true,
+          category: true,
+        },
+      },
+    },
+  });
+  if (!variant || variant.business_id !== tenantId) {
+    throw new AppError("Variant not found in business", 404);
+  }
+
+  const defaultPriceBook = await ensureDefaultPriceBook(txAny, tenantId, input.currency);
+  const normalizedCurrency = (
+    input.currency?.trim().toUpperCase() ||
+    defaultPriceBook.default_currency ||
+    DEFAULT_PRICE_CURRENCY
+  ).slice(0, 3);
+  const now = new Date();
+  const eventScopeWhere = {
+    business_id: tenantId,
+    price_book_id: defaultPriceBook.id,
+    variant_id: variantId,
+    customer_group_id: null,
+    min_qty: 1,
+    max_qty: null,
+    ended_at: null,
+  };
+  await txAny.itemPriceEvent.updateMany({
+    where: eventScopeWhere,
+    data: {
+      ended_at: now,
+    },
+  });
+
+  if (input.amount === null) {
+    await txAny.itemPriceEvent.create({
+      data: {
+        business_id: tenantId,
+        price_book_id: defaultPriceBook.id,
+        variant_id: variantId,
+        customer_group_id: null,
+        min_qty: 1,
+        max_qty: null,
+        amount: null,
+        currency: normalizedCurrency,
+        event_type: "CLEARED",
+        effective_at: now,
+        created_by: input.actorUserId,
+      },
+    });
+    await txAny.itemPrice.deleteMany({
+      where: {
+        business_id: tenantId,
+        price_book_id: defaultPriceBook.id,
+        variant_id: variantId,
+        customer_group_id: null,
+        min_qty: 1,
+        max_qty: null,
+      },
+    });
+    return {
+      variantId,
+      itemId: variant.item_id,
+      itemName: variant.item?.name ?? "Untitled Item",
+      itemCategory: variant.item?.category ?? "",
+      variantName: variant.name ?? "",
+      sku: variant.sku ?? "",
+      isDefaultVariant: Boolean(variant.is_default),
+      isActive: Boolean(variant.is_active),
+      amount: null,
+      currency: normalizedCurrency,
+      updatedAt: null,
+    };
+  }
+
+  const existing = await txAny.itemPrice.findFirst({
+    where: {
+      business_id: tenantId,
+      price_book_id: defaultPriceBook.id,
+      variant_id: variantId,
+      customer_group_id: null,
+      min_qty: 1,
+      max_qty: null,
+    },
+    orderBy: [{ priority: "desc" }, { updated_at: "desc" }],
+  });
+
+  const amountAsString = input.amount.toFixed(2);
+  await txAny.itemPriceEvent.create({
+    data: {
+      business_id: tenantId,
+      price_book_id: defaultPriceBook.id,
+      variant_id: variantId,
+      customer_group_id: null,
+      min_qty: 1,
+      max_qty: null,
+      amount: amountAsString,
+      currency: normalizedCurrency,
+      event_type: "SET",
+      effective_at: now,
+      created_by: input.actorUserId,
+    },
+  });
+  const saved = existing
+    ? await txAny.itemPrice.update({
+        where: { id: existing.id },
+        data: {
+          amount: amountAsString,
+          currency: normalizedCurrency,
+          is_active: true,
+          starts_at: null,
+          ends_at: null,
+          priority: 0,
+        },
+      })
+    : await txAny.itemPrice.create({
+        data: {
+          business_id: tenantId,
+          price_book_id: defaultPriceBook.id,
+          variant_id: variantId,
+          customer_group_id: null,
+          min_qty: 1,
+          max_qty: null,
+          amount: amountAsString,
+          currency: normalizedCurrency,
+          is_active: true,
+          starts_at: null,
+          ends_at: null,
+          priority: 0,
+        },
+      });
+
+  return {
+    variantId,
+    itemId: variant.item_id,
+    itemName: variant.item?.name ?? "Untitled Item",
+    itemCategory: variant.item?.category ?? "",
+    variantName: variant.name ?? "",
+    sku: variant.sku ?? "",
+    isDefaultVariant: Boolean(variant.is_default),
+    isActive: Boolean(variant.is_active),
+    amount: Number(saved.amount),
+    currency: saved.currency,
+    updatedAt: saved.updated_at.toISOString(),
+  };
+};
+
+const getItemPrices = async (
+  tenantId: string,
+  params: {
+    q?: string;
+    includeInactive?: boolean;
+    page?: number;
+    limit?: number;
+  } = {},
+) => {
+  const query = params.q?.trim();
+  const includeInactive = Boolean(params.includeInactive);
+  const page = Math.max(1, Number(params.page ?? 1));
+  const limit = Math.min(200, Math.max(1, Number(params.limit ?? 50)));
+
+  const [defaultPriceBook, total, variants] = await Promise.all([
+    ensureDefaultPriceBook(prismaAny, tenantId),
+    prisma.itemVariant.count({
+      where: {
+        business_id: tenantId,
+        ...(includeInactive ? {} : { is_active: true }),
+        ...(query
+          ? {
+              OR: [
+                { sku: { contains: query, mode: "insensitive" } },
+                { name: { contains: query, mode: "insensitive" } },
+                { item: { name: { contains: query, mode: "insensitive" } } },
+                { item: { category: { contains: query, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      },
+    }),
+    prisma.itemVariant.findMany({
+      where: {
+        business_id: tenantId,
+        ...(includeInactive ? {} : { is_active: true }),
+        ...(query
+          ? {
+              OR: [
+                { sku: { contains: query, mode: "insensitive" } },
+                { name: { contains: query, mode: "insensitive" } },
+                { item: { name: { contains: query, mode: "insensitive" } } },
+                { item: { category: { contains: query, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        item: {
+          select: {
+            name: true,
+            category: true,
+          },
+        },
+      },
+      orderBy: [{ item: { name: "asc" } }, { is_default: "desc" }, { name: "asc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+  ]);
+
+  const variantIds = variants.map((variant) => variant.id);
+  const prices = variantIds.length
+    ? await prismaAny.itemPrice.findMany({
+        where: {
+          business_id: tenantId,
+          price_book_id: defaultPriceBook.id,
+          variant_id: {
+            in: variantIds,
+          },
+          customer_group_id: null,
+          min_qty: 1,
+          max_qty: null,
+          is_active: true,
+        },
+        orderBy: [{ priority: "desc" }, { updated_at: "desc" }],
+      })
+    : [];
+
+  const priceByVariantId = new Map<string, any>();
+  for (const price of prices) {
+    if (!priceByVariantId.has(price.variant_id)) {
+      priceByVariantId.set(price.variant_id, price);
+    }
+  }
+
+  return {
+    priceBook: {
+      id: String(defaultPriceBook.id),
+      name: String(defaultPriceBook.name),
+      currency: String(defaultPriceBook.default_currency),
+    },
+    rows: variants.map((variant) => {
+      const activePrice = priceByVariantId.get(variant.id);
+      return {
+        variantId: variant.id,
+        itemId: variant.item_id,
+        itemName: variant.item?.name ?? "Untitled Item",
+        itemCategory: variant.item?.category ?? "",
+        variantName: variant.name ?? "",
+        sku: variant.sku ?? "",
+        isDefaultVariant: Boolean(variant.is_default),
+        isActive: Boolean(variant.is_active),
+        amount: activePrice ? Number(activePrice.amount) : null,
+        currency: activePrice?.currency ?? defaultPriceBook.default_currency,
+        updatedAt: activePrice?.updated_at?.toISOString() ?? null,
+      };
+    }),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+};
+
+const upsertItemPrice = async (
+  tenantId: string,
+  variantId: string,
+  input: {
+    amount: number | null;
+    currency?: string;
+    actorUserId?: string;
+    baseVersion?: number;
+  },
+) => {
+  return prisma.$transaction(async (tx) => {
+    const txAny = tx as any;
+    await assertEntityBaseVersion(
+      txAny,
+      tenantId,
+      "item_price",
+      variantId,
+      input.baseVersion,
+    );
+    return upsertItemPriceInTx(tx, tenantId, variantId, input);
+  });
+};
+
 export default {
   processMutations,
   getDeltasSinceCursor,
   getOptionKeys,
   getItemCategories,
+  getItemPrices,
+  upsertItemPrice,
 };

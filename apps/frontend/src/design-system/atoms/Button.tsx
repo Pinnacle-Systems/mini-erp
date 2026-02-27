@@ -20,10 +20,10 @@ const variantStyles: Record<ButtonVariant, string> = {
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
-  sm: "h-8 px-3.5 text-xs",
-  md: "h-9 px-4 text-xs",
-  lg: "h-10 px-5 text-sm",
-  icon: "h-8 w-8 p-0 text-xs"
+  sm: "h-8 px-3.5 text-xs lg:h-7 lg:px-2.5 lg:text-[11px]",
+  md: "h-9 px-4 text-xs lg:h-8 lg:px-3 lg:text-[11px]",
+  lg: "h-10 px-5 text-sm lg:h-9 lg:px-4 lg:text-xs",
+  icon: "h-8 w-8 p-0 text-xs lg:h-7 lg:w-7 lg:text-[11px]"
 };
 
 export function Button({ className, variant = "default", size = "md", children, ...props }: ButtonProps) {

@@ -51,6 +51,7 @@ const sortUnique = (values: string[]) =>
     new Set(values.map((value) => value.trim()).filter((value) => value.length > 0)),
   ).sort((a, b) => a.localeCompare(b));
 const normalizeCategory = (value: string) => value.trim();
+const normalizeOptionKey = (value: string) => value.trim().toLowerCase();
 
 const readStoredItemCategories = (storeId: string): string[] => {
   try {
@@ -124,7 +125,6 @@ const EMPTY_VARIANT = (): ItemVariantDraft => ({
   sku: "",
   barcode: "",
   optionRows: [],
-  isDefault: false,
 });
 
 const EMPTY_QUICK_ROW = (): QuickItemDraft => ({
@@ -147,7 +147,6 @@ export function AddItemPage() {
 
   const [itemType, setItemType] = useState<"PRODUCT" | "SERVICE">("PRODUCT");
   const [hasVariants, setHasVariants] = useState(false);
-  const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [unit, setUnit] = useState<(typeof UNIT_OPTIONS)[number]>("PCS");
@@ -175,13 +174,15 @@ export function AddItemPage() {
   }, [savedOptionKeys, variants]);
 
   const optionValueSuggestions = useMemo(() => {
-    const key = optionKeyDraft.trim();
-    if (!key) return [];
+    const normalizedKey = normalizeOptionKey(optionKeyDraft);
+    if (!normalizedKey) return [];
 
-    const fromSaved = savedOptionValuesByKey[key] ?? [];
+    const fromSaved = Object.entries(savedOptionValuesByKey)
+      .filter(([key]) => normalizeOptionKey(key) === normalizedKey)
+      .flatMap(([, values]) => values);
     const fromVariants = variants
       .flatMap((variant) => variant.optionRows)
-      .filter((row) => row.key.trim() === key)
+      .filter((row) => normalizeOptionKey(row.key) === normalizedKey)
       .map((row) => row.value.trim())
       .filter(Boolean);
 
@@ -317,22 +318,40 @@ export function AddItemPage() {
       setFormError("Option key and value are required.");
       return;
     }
+    const normalizedKey = normalizeOptionKey(key);
+    const canonicalKey =
+      optionKeySuggestions.find(
+        (optionKey) => normalizeOptionKey(optionKey) === normalizedKey,
+      ) ?? key;
 
     setVariants((current) =>
       current.map((entry) =>
         entry.id === optionModalVariantId
           ? {
               ...entry,
-              optionRows: [...entry.optionRows, { id: crypto.randomUUID(), key, value }],
+              optionRows: [
+                ...entry.optionRows,
+                { id: crypto.randomUUID(), key: canonicalKey, value },
+              ],
             }
           : entry,
       ),
     );
-    setSavedOptionKeys((current) => sortUnique([...current, key]));
+    setSavedOptionKeys((current) => sortUnique([...current, canonicalKey]));
     setSavedOptionValuesByKey((current) => {
+      const mergedValues = sortUnique([
+        ...Object.entries(current)
+          .filter(([optionKey]) => normalizeOptionKey(optionKey) === normalizedKey)
+          .flatMap(([, values]) => values),
+        value,
+      ]);
       return {
-        ...current,
-        [key]: sortUnique([...(current[key] ?? []), value]),
+        ...Object.fromEntries(
+          Object.entries(current).filter(
+            ([optionKey]) => normalizeOptionKey(optionKey) !== normalizedKey,
+          ),
+        ),
+        [canonicalKey]: mergedValues,
       };
     });
     closeOptionModal();
@@ -363,10 +382,14 @@ export function AddItemPage() {
         for (const row of rowsToCreate) {
           await queueItemCreate(activeStore, identityId, {
             itemType: row.itemType,
-            sku: row.sku || undefined,
             name: row.name,
             category: row.category || undefined,
             unit: row.unit,
+            variants: [
+              {
+                sku: row.sku || undefined,
+              },
+            ],
           });
         }
         setSavedCategories((current) =>
@@ -387,7 +410,7 @@ export function AddItemPage() {
         return;
       }
 
-      const variantPayload: VariantInput[] = variants.map((variant, index) => {
+      const variantPayload: VariantInput[] = variants.map((variant) => {
         const optionValues = Object.fromEntries(
           variant.optionRows
             .map((entry) => [entry.key.trim(), entry.value.trim()] as const)
@@ -397,14 +420,12 @@ export function AddItemPage() {
           name: variant.name.trim() || undefined,
           sku: variant.sku.trim() || undefined,
           barcode: variant.barcode.trim() || undefined,
-          isDefault: variant.isDefault || index === 0,
           optionValues: Object.keys(optionValues).length > 0 ? optionValues : undefined,
         };
       });
 
       await queueItemCreate(activeStore, identityId, {
         itemType,
-        sku: undefined,
         name: name.trim(),
         category: normalizeCategory(category) || undefined,
         unit,
@@ -657,16 +678,6 @@ export function AddItemPage() {
                       value={name}
                       onChange={(event) => setName(event.target.value)}
                       required={hasVariants}
-                    />
-                  </div>
-                  <div className="grid gap-1 lg:col-span-2">
-                    <Label htmlFor="sku">Base SKU</Label>
-                    <Input
-                      id="sku"
-                      className={DENSE_INPUT_CLASS}
-                      value={sku}
-                      onChange={(event) => setSku(event.target.value)}
-                      placeholder="Optional"
                     />
                   </div>
                   <div className="grid gap-1 lg:col-span-1">

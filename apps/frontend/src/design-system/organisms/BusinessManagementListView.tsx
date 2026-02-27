@@ -1,4 +1,4 @@
-import { ChevronRight, RefreshCw, X } from "lucide-react";
+import { Eye, RefreshCw, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
@@ -62,14 +62,14 @@ export function BusinessManagementListView({
             Add Business
           </Button>
         </div>
-        <fieldset className="rounded-xl border border-[#c6d8ef] bg-[#f4f8ff] p-2 min-[1192px]:order-1 min-[1192px]:flex-1 min-[1192px]:min-w-0">
-          <legend className="rounded-full border border-[#c6d8ef] bg-[#eef5ff] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#35597f]">
+        <fieldset className="app-filter-panel min-[1192px]:order-1 min-[1192px]:flex-1 min-[1192px]:min-w-0">
+          <legend className="app-filter-legend">
             Filters
           </legend>
-          <p className="mb-2 text-[11px] leading-tight text-[#4c6e93]">
+          <p className="app-filter-help">
             Refine the businesses shown below.
           </p>
-          <div className="flex w-full flex-col gap-1.5 min-[642px]:flex-row min-[642px]:flex-wrap min-[642px]:items-center min-[642px]:gap-x-0 min-[642px]:gap-y-1.5 min-[1192px]:gap-y-0">
+          <div className="app-filter-row min-[642px]:gap-x-0 min-[642px]:gap-y-1.5 min-[1192px]:gap-y-0">
             <Input
               className="w-full min-w-0 min-[642px]:flex-1 min-[642px]:min-w-[12rem] min-[1192px]:w-52 min-[1192px]:flex-none"
               value={filterBusinessName}
@@ -86,11 +86,11 @@ export function BusinessManagementListView({
               <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                 <div className="flex items-center gap-2">
                   <button
-                    id="include-deleted-businesses"
+                    id="include-inactive-businesses"
                     type="button"
                     role="switch"
                     aria-checked={filterIncludeDeleted}
-                    aria-label="Include deleted businesses"
+                    aria-label="Include inactive businesses"
                     onClick={() => onFilterIncludeDeletedChange(!filterIncludeDeleted)}
                     disabled={loading}
                     className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
@@ -105,8 +105,8 @@ export function BusinessManagementListView({
                       }`}
                     />
                   </button>
-                  <Label htmlFor="include-deleted-businesses" className="shrink-0">
-                    Include deleted
+                  <Label htmlFor="include-inactive-businesses" className="shrink-0">
+                    Include inactive
                   </Label>
                 </div>
                 <Button
@@ -161,7 +161,7 @@ export function BusinessManagementListView({
                   ? "border-[#f3c3c0] bg-[#fff5f5]"
                   : "border-white/80 bg-white/75"
               }`}
-              title={isDeleted ? "Deleted business" : "Open business details"}
+              title={isDeleted ? "Inactive business" : "Open business details"}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -183,7 +183,7 @@ export function BusinessManagementListView({
                       : "bg-[#e8f2ff] text-[#24507e]"
                   }`}
                 >
-                  {isDeleted ? "Deleted" : "Active"}
+                  {isDeleted ? "Inactive" : "Active"}
                 </span>
               </div>
 
@@ -194,16 +194,6 @@ export function BusinessManagementListView({
                 <p>License: {licenseDates}</p>
               </div>
 
-              <div className="mt-2 flex items-center justify-end gap-1.5">
-                <IconButton
-                  icon={ChevronRight}
-                  variant="outline"
-                  disabled={loading}
-                  className="h-8 w-8 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
-                  aria-label={`Open details for ${business.name}`}
-                  title="Open details"
-                />
-              </div>
             </div>
           );
         })}
@@ -217,7 +207,7 @@ export function BusinessManagementListView({
               <th className="px-2 py-1.5 font-semibold">Owner</th>
               <th className="px-2 py-1.5 font-semibold">Type / Category</th>
               <th className="px-2 py-1.5 font-semibold">License Dates</th>
-              <th className="px-2 py-1.5 font-semibold">Active</th>
+              <th className="px-2 py-1.5 font-semibold">Status</th>
               <th className="px-2 py-1.5 text-right font-semibold">Action</th>
             </tr>
           </thead>
@@ -231,11 +221,11 @@ export function BusinessManagementListView({
               return (
                 <tr
                   key={business.id}
-                  className={`border-b border-white/60 align-top transition-colors last:border-b-0 ${
+                  className={`h-9 border-b border-white/60 align-middle transition-colors last:border-b-0 ${
                     isDeleted ? "bg-[#fff7f7]" : "hover:bg-white/70"
                   }`}
                 >
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-0 align-middle">
                     <p
                       className={`text-xs font-semibold ${
                         isDeleted ? "text-[#8a2b2b]" : "text-foreground"
@@ -244,16 +234,16 @@ export function BusinessManagementListView({
                       {business.name}
                     </p>
                   </td>
-                  <td className="px-2 py-1.5 text-xs text-foreground/90">
+                  <td className="px-2 py-0 align-middle text-xs text-foreground/90">
                     {ownerDisplay}
                   </td>
-                  <td className="px-2 py-1.5 text-xs text-foreground/90">
+                  <td className="px-2 py-0 align-middle text-xs text-foreground/90">
                     {(business.businessType || "-") + " / " + (business.businessCategory || "-")}
                   </td>
-                  <td className="px-2 py-1.5 text-xs text-foreground/90">
+                  <td className="px-2 py-0 align-middle text-xs text-foreground/90">
                     {licenseDates}
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-0 align-middle">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         isDeleted
@@ -261,21 +251,20 @@ export function BusinessManagementListView({
                           : "bg-[#e8f2ff] text-[#24507e]"
                       }`}
                     >
-                      {isDeleted ? "No" : "Yes"}
+                      {isDeleted ? "Inactive" : "Active"}
                     </span>
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-0 align-middle">
                     <div className="flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
+                      <IconButton
+                        icon={Eye}
+                        variant="ghost"
                         onClick={() => onOpenStore(business)}
                         disabled={loading}
-                        className="h-7 gap-1 px-2 text-[11px]"
-                      >
-                        Open
-                        <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                      </Button>
+                        className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                        aria-label={`View details for ${business.name}`}
+                        title="View details"
+                      />
                     </div>
                   </td>
                 </tr>

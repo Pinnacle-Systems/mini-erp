@@ -56,6 +56,9 @@ CREATE TYPE "pricing"."DiscountRuleType" AS ENUM ('VOLUME', 'BUNDLE', 'DISCOUNT_
 CREATE TYPE "pricing"."DiscountValueType" AS ENUM ('FIXED_AMOUNT', 'PERCENTAGE');
 
 -- CreateEnum
+CREATE TYPE "pricing"."PriceEventType" AS ENUM ('SET', 'CLEARED');
+
+-- CreateEnum
 CREATE TYPE "reporting"."ItemActivitySourceType" AS ENUM ('POS_SALE', 'SALES_QUOTATION', 'SALES_ORDER', 'SALES_INVOICE', 'SALES_RETURN', 'PURCHASE_ORDER', 'GOODS_RECEIPT', 'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'STOCK_ADJUSTMENT', 'STOCK_TRANSFER', 'STOCK_COUNT');
 
 -- CreateEnum
@@ -375,6 +378,26 @@ CREATE TABLE "pricing"."item_prices" (
 );
 
 -- CreateTable
+CREATE TABLE "pricing"."item_price_events" (
+    "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
+    "price_book_id" UUID NOT NULL,
+    "variant_id" UUID NOT NULL,
+    "customer_group_id" UUID,
+    "min_qty" INTEGER NOT NULL DEFAULT 1,
+    "max_qty" INTEGER,
+    "amount" DECIMAL(12,2),
+    "currency" VARCHAR(3) NOT NULL,
+    "event_type" "pricing"."PriceEventType" NOT NULL,
+    "effective_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "ended_at" TIMESTAMP(3),
+    "created_by" UUID,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "item_price_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "pricing"."discount_rules" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
@@ -621,6 +644,15 @@ CREATE INDEX "item_prices_business_id_price_book_id_customer_group_id_idx" ON "p
 CREATE INDEX "item_prices_business_id_is_active_starts_at_ends_at_idx" ON "pricing"."item_prices"("business_id", "is_active", "starts_at", "ends_at");
 
 -- CreateIndex
+CREATE INDEX "item_price_events_business_id_variant_id_effective_at_idx" ON "pricing"."item_price_events"("business_id", "variant_id", "effective_at");
+
+-- CreateIndex
+CREATE INDEX "item_price_events_business_id_variant_id_ended_at_idx" ON "pricing"."item_price_events"("business_id", "variant_id", "ended_at");
+
+-- CreateIndex
+CREATE INDEX "item_price_events_business_id_price_book_id_customer_group__idx" ON "pricing"."item_price_events"("business_id", "price_book_id", "customer_group_id", "min_qty", "max_qty");
+
+-- CreateIndex
 CREATE INDEX "discount_rules_business_id_rule_type_idx" ON "pricing"."discount_rules"("business_id", "rule_type");
 
 -- CreateIndex
@@ -742,6 +774,9 @@ ALTER TABLE "pricing"."price_book_customer_groups" ADD CONSTRAINT "price_book_cu
 
 -- AddForeignKey
 ALTER TABLE "pricing"."item_prices" ADD CONSTRAINT "item_prices_price_book_id_fkey" FOREIGN KEY ("price_book_id") REFERENCES "pricing"."price_books"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pricing"."item_price_events" ADD CONSTRAINT "item_price_events_price_book_id_fkey" FOREIGN KEY ("price_book_id") REFERENCES "pricing"."price_books"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "pricing"."discount_rule_variants" ADD CONSTRAINT "discount_rule_variants_rule_id_fkey" FOREIGN KEY ("rule_id") REFERENCES "pricing"."discount_rules"("id") ON DELETE CASCADE ON UPDATE CASCADE;

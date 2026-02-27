@@ -57,7 +57,7 @@ export function AdminLayout() {
           </div>
         </aside>
 
-        <section className="space-y-2 overflow-visible lg:h-full lg:overflow-hidden">
+        <section className="app-page-density app-page-typography space-y-2 overflow-visible lg:h-full lg:overflow-hidden">
           <Outlet />
         </section>
       </div>

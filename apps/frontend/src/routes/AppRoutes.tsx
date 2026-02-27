@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { X } from "lucide-react";
 import { useSessionStore } from "../features/auth/session-business";
 import { useLogoutFlow } from "../features/auth/useLogoutFlow";
+import { useSyncActions } from "../features/sync/SyncProvider";
 import { LoginPage } from "../pages/auth";
 import { AppHomePage } from "../pages/shell";
 import { AdminLayout } from "../pages/admin/layout";
@@ -10,10 +12,11 @@ import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
 import { CatalogCategoriesPage } from "../pages/CatalogCategoriesPage";
 import { CatalogCollectionsPage } from "../pages/CatalogCollectionsPage";
+import { CatalogPricingPage } from "../pages/CatalogPricingPage";
 import { AppFeaturePlaceholderPage, DataSyncAppPage, StockSyncAppPage } from "../pages/shell/UserAppPages";
 import { OfflinePage } from "../pages/system";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
-import { RequireAuth, RequireHydrated, RequireRole } from "./guards";
+import { RequireAuth, RequireHydrated, RequireModule, RequireRole } from "./guards";
 
 function AppEntryRoute() {
   const role = useSessionStore((state) => state.role);
@@ -26,6 +29,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
   const location = useLocation();
   const identityId = useSessionStore((state) => state.identityId);
   const role = useSessionStore((state) => state.role);
+  const { lastSyncError, clearSyncError } = useSyncActions();
 
   const isAuthenticated = Boolean(identityId);
   const isPlatformAdmin = role === "PLATFORM_ADMIN";
@@ -106,10 +110,25 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
               onLogout={onLogout}
             />
           </div>
+          {lastSyncError ? (
+            <div className="border-t border-red-200 bg-red-50/95 px-2 py-1.5 sm:px-3 md:px-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[11px] text-red-700">{lastSyncError}</p>
+                <button
+                  type="button"
+                  onClick={clearSyncError}
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-red-700 transition hover:bg-red-100"
+                  aria-label="Dismiss sync error"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div
-        className={`overflow-visible overflow-x-hidden lg:h-full lg:overflow-y-auto ${isAuthenticated ? "pt-14 sm:pt-16" : ""}`}
+        className={`overflow-visible overflow-x-hidden lg:h-full lg:overflow-y-auto ${isAuthenticated ? (lastSyncError ? "pt-24 sm:pt-[6.5rem]" : "pt-14 sm:pt-16") : ""}`}
       >
         <Outlet />
       </div>
@@ -165,7 +184,9 @@ export function AppRoutes() {
                 <Route path="sales-bills" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Bills" />} />
                 <Route path="sales-orders" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Orders" />} />
                 <Route path="sales-returns" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Returns" />} />
-                <Route path="item-pricing" element={<AppFeaturePlaceholderPage sectionTitle="Catalog" appLabel="Pricing" />} />
+                <Route element={<RequireModule moduleKey="pricing" />}>
+                  <Route path="item-pricing" element={<CatalogPricingPage />} />
+                </Route>
                 <Route path="item-categories" element={<CatalogCategoriesPage />} />
                 <Route path="item-collections" element={<CatalogCollectionsPage />} />
                 <Route path="item-sync" element={<StockSyncAppPage />} />

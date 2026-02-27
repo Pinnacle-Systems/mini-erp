@@ -63,13 +63,11 @@ export type VariantInput = {
   name?: string | null;
   sku?: string | null;
   barcode?: string | null;
-  isDefault?: boolean;
   isActive?: boolean;
   optionValues?: Record<string, string>;
 };
 
 export type ItemInput = {
-  sku?: string;
   name?: string;
   category?: string | null;
   unit?: "PCS" | "KG" | "M" | "BOX";
@@ -81,7 +79,6 @@ export const queueItemCreate = async (
   tenantId: string,
   userId: string,
   payload: {
-    sku?: string;
     name: string;
     category?: string;
     unit: "PCS" | "KG" | "M" | "BOX";
@@ -217,6 +214,12 @@ const push = async (tenantId: string) => {
       });
     }
   });
+
+  const rejectedReasons = payload.acknowledgements
+    .filter((ack) => ack.status === "rejected")
+    .map((ack) => ack.reason || "One or more mutations were rejected.");
+
+  return rejectedReasons;
 };
 
 const pull = async (tenantId: string) => {
@@ -242,8 +245,11 @@ export const syncOnce = async (tenantId: string) => {
   if (!isNetworkOnline()) return;
   await ensureOnlineLicenseValidation(tenantId);
 
-  await push(tenantId);
+  const rejectedReasons = (await push(tenantId)) ?? [];
   await pull(tenantId);
+  if (rejectedReasons.length > 0) {
+    throw new Error(rejectedReasons[0]);
+  }
 };
 
 export const resetLocalSyncState = async () => {
@@ -287,6 +293,7 @@ export type ItemDisplay = {
   name: string;
   sku: string;
   category: string;
+  isActive: boolean;
   variantSkus: string[];
   variantCount: number;
   pending: boolean;
@@ -298,7 +305,6 @@ export type ItemVariantDisplay = {
   name: string;
   sku: string;
   barcode: string;
-  isDefault: boolean;
   isActive: boolean;
   optionValues: Record<string, string>;
   usageCount: number;
@@ -342,7 +348,6 @@ const extractVariantsFromItemData = (itemData: Record<string, unknown>, itemId: 
         name: String(variant.name ?? ""),
         sku: String(variant.sku ?? ""),
         barcode: String(variant.barcode ?? ""),
-        isDefault: Boolean(variant.isDefault ?? variant.is_default ?? false),
         isActive: Boolean(variant.isActive ?? variant.is_active ?? true),
         optionValues,
         usageCount: Number(variant.usageCount ?? variant.usage_count ?? 0),
@@ -365,12 +370,7 @@ const mergeVariants = (
     map.set(variant.id, variant);
   }
 
-  const merged = Array.from(map.values());
-  if (merged.length === 0) return merged;
-  if (merged.some((variant) => variant.isDefault)) return merged;
-  return merged.map((variant, index) =>
-    index === 0 ? { ...variant, isDefault: true } : variant,
-  );
+  return Array.from(map.values());
 };
 
 export const getLocalItemsForDisplay = async (
@@ -433,7 +433,6 @@ export const getLocalItemsForDisplay = async (
           name: String(variant.data.name ?? ""),
           sku: String(variant.data.sku ?? ""),
           barcode: String(variant.data.barcode ?? ""),
-          isDefault: Boolean(variant.data.isDefault ?? variant.data.is_default ?? false),
           isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
           optionValues,
           usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
@@ -443,24 +442,37 @@ export const getLocalItemsForDisplay = async (
       });
 
       const mergedVariants = mergeVariants(baseVariants, overlayVariants);
-      const variantSkus = mergedVariants
+      const variants =
+        mergedVariants.length > 0
+          ? mergedVariants
+          : [
+              {
+                id: `temp-${item.entityId}`,
+                itemId: item.entityId,
+                name: "",
+                sku: "",
+                barcode: "",
+                isActive: true,
+                optionValues: {},
+                usageCount: 0,
+                isLocked: false,
+                pending: false,
+              } satisfies ItemVariantDisplay,
+            ];
+      const variantSkus = variants
         .map((variant) => variant.sku.trim())
         .filter((sku) => sku.length > 0);
-      const primarySku = (() => {
-        if (mergedVariants.length > 0) {
-          const defaultVariant = mergedVariants.find((variant) => variant.isDefault) ?? mergedVariants[0];
-          return defaultVariant.sku;
-        }
-        return String(item.data.sku ?? "");
-      })();
+      const primarySku = variants[0]?.sku ?? "";
+      const isActive = variants.some((variant) => variant.isActive);
 
       return {
         entityId: item.entityId,
         name: String(item.data.name ?? "Untitled Item"),
         sku: primarySku,
         category: String(item.data.category ?? ""),
+        isActive,
         variantSkus,
-        variantCount: mergedVariants.length,
+        variantCount: variants.length,
         pending: false,
       } satisfies ItemDisplay;
     });
@@ -471,7 +483,6 @@ export const getLocalItemsForDisplay = async (
     .filter((item) => !confirmedByEntityId.has(item.entityId))
     .map((item) => {
       const payload = item.payload as {
-        sku?: unknown;
         name?: unknown;
         category?: unknown;
         variants?: unknown;
@@ -479,16 +490,9 @@ export const getLocalItemsForDisplay = async (
       const variants = Array.isArray(payload.variants)
         ? payload.variants.filter((value) => typeof value === "object" && value !== null)
         : [];
-      const defaultVariant =
-        variants.find(
-          (variant) =>
-            "isDefault" in variant &&
-            Boolean((variant as { isDefault?: unknown }).isDefault),
-        ) ?? variants[0];
       const variantSku =
-        defaultVariant &&
-        typeof (defaultVariant as { sku?: unknown }).sku === "string"
-          ? String((defaultVariant as { sku?: unknown }).sku)
+        variants.length > 0 && typeof (variants[0] as { sku?: unknown }).sku === "string"
+          ? String((variants[0] as { sku?: unknown }).sku)
           : "";
       const variantSkus = variants
         .map((variant) => {
@@ -496,13 +500,17 @@ export const getLocalItemsForDisplay = async (
           return typeof sku === "string" ? sku.trim() : "";
         })
         .filter((sku) => sku.length > 0);
+      const isActive =
+        variants.length === 0 ||
+        variants.some((variant) => (variant as { isActive?: unknown }).isActive !== false);
       return {
         entityId: item.entityId,
         name: String(payload.name ?? "Untitled Item"),
-        sku: variantSku || String(payload.sku ?? ""),
+        sku: variantSku,
         category: String(payload.category ?? ""),
+        isActive,
         variantSkus,
-        variantCount: variants.length,
+        variantCount: Math.max(variants.length, 1),
         pending: true,
       } satisfies ItemDisplay;
     });
@@ -546,7 +554,6 @@ export const getLocalItemDetailForDisplay = async (
         name: String(variant.data.name ?? ""),
         sku: String(variant.data.sku ?? ""),
         barcode: String(variant.data.barcode ?? ""),
-        isDefault: Boolean(variant.data.isDefault ?? variant.data.is_default ?? false),
         isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
         optionValues,
         usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
@@ -576,9 +583,8 @@ export const getLocalItemDetailForDisplay = async (
             id: `temp-${item.entityId}`,
             itemId: item.entityId,
             name: "",
-            sku: String(item.data.sku ?? ""),
+            sku: "",
             barcode: "",
-            isDefault: true,
             isActive: true,
             optionValues: {},
             usageCount: 0,
@@ -630,8 +636,24 @@ export type ItemCollectionMembership = {
   itemId: string;
   variantName?: string;
   variantSku?: string;
-  variantIsDefault?: boolean;
   variantIsActive?: boolean;
+};
+
+export type ItemPricingRow = {
+  variantId: string;
+  itemId: string;
+  itemName: string;
+  itemCategory: string;
+  unit: string;
+  variantName: string;
+  sku: string;
+  isDefaultVariant: boolean;
+  isActive: boolean;
+  amount: number | null;
+  currency: string;
+  updatedAt: string | null;
+  serverVersion: number;
+  pending: boolean;
 };
 
 export const queueItemCategoryCreate = async (
@@ -785,6 +807,39 @@ export const queueItemCategoryUpdate = async (
     },
     clientTimestamp: new Date().toISOString(),
   });
+};
+
+export const queueItemPriceUpsert = async (
+  tenantId: string,
+  userId: string,
+  variantId: string,
+  amount: number | null,
+  currency?: string,
+  baseVersion?: number,
+) => {
+  const mutationId = crypto.randomUUID();
+  await queueMutation(tenantId, {
+    mutationId,
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_price",
+    entityId: variantId,
+    op: "update",
+    payload: {
+      variantId,
+      amount,
+      ...(currency ? { currency } : {}),
+    },
+    ...(typeof baseVersion === "number" ? { baseVersion } : {}),
+    clientTimestamp: new Date().toISOString(),
+  });
+  return mutationId;
+};
+
+export const getOutboxItemsByMutationIds = async (mutationIds: string[]) => {
+  if (mutationIds.length === 0) return [];
+  const entries = await syncDb.outbox.bulkGet(mutationIds);
+  return entries.filter((entry): entry is OutboxItem => Boolean(entry));
 };
 
 const addOptionValue = (
@@ -981,7 +1036,6 @@ export const getLocalItemCollectionMembershipsForStore = async (
     {
       name: string;
       sku: string;
-      isDefault: boolean;
       isActive: boolean;
     }
   >(
@@ -992,7 +1046,6 @@ export const getLocalItemCollectionMembershipsForStore = async (
         {
           name: String(entry.data.name ?? ""),
           sku: String(entry.data.sku ?? ""),
-          isDefault: Boolean(entry.data.isDefault ?? entry.data.is_default ?? false),
           isActive: Boolean(entry.data.isActive ?? entry.data.is_active ?? true),
         },
       ]),
@@ -1010,7 +1063,6 @@ export const getLocalItemCollectionMembershipsForStore = async (
         variantMetaByVariantId.set(variant.id, {
           name: variant.name,
           sku: variant.sku,
-          isDefault: variant.isDefault,
           isActive: variant.isActive,
         });
       }
@@ -1036,7 +1088,6 @@ export const getLocalItemCollectionMembershipsForStore = async (
         itemId,
         variantName: variantMeta?.name,
         variantSku: variantMeta?.sku,
-        variantIsDefault: variantMeta?.isDefault,
         variantIsActive: variantMeta?.isActive,
       } satisfies ItemCollectionMembership;
     })
@@ -1047,6 +1098,177 @@ export const getLocalItemCollectionMembershipsForStore = async (
         entry.variantId.length > 0 &&
         entry.itemId.length > 0,
     );
+};
+
+export const getLocalItemPricingRowsForDisplay = async (
+  tenantId: string,
+  query?: string,
+  includeInactive = false,
+): Promise<ItemPricingRow[]> => {
+  const [variantEntities, itemEntities, priceEntities, pendingPriceMutations] = await Promise.all([
+    listEntities(tenantId, "item_variant"),
+    listEntities(tenantId, "item"),
+    listEntities(tenantId, "item_price"),
+    syncDb.outbox
+      .where("[tenantId+status]")
+      .equals([tenantId, "pending"])
+      .filter((item) => item.entity === "item_price" && item.op === "update")
+      .toArray(),
+  ]);
+
+  const itemById = new Map(
+    itemEntities
+      .filter((item) => !item.deletedAt)
+      .map((item) => [item.entityId, item]),
+  );
+
+  const variantMetaById = new Map<
+    string,
+    {
+      itemId: string;
+      itemName: string;
+      itemCategory: string;
+      unit: string;
+      variantName: string;
+      sku: string;
+      isDefaultVariant: boolean;
+      isActive: boolean;
+    }
+  >();
+
+  for (const variant of variantEntities) {
+    if (variant.deletedAt) continue;
+    const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+    const item = itemById.get(itemId);
+    variantMetaById.set(variant.entityId, {
+      itemId,
+      itemName: String(item?.data.name ?? "Untitled Item"),
+      itemCategory: String(item?.data.category ?? ""),
+      unit: String(item?.data.unit ?? "PCS"),
+      variantName: String(variant.data.name ?? ""),
+      sku: String(variant.data.sku ?? ""),
+      isDefaultVariant: Boolean(variant.data.isDefault ?? variant.data.is_default ?? false),
+      isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
+    });
+  }
+
+  for (const itemEntity of itemEntities) {
+    if (itemEntity.deletedAt) continue;
+    const itemId = itemEntity.entityId;
+    const itemName = String(itemEntity.data.name ?? "Untitled Item");
+    const itemCategory = String(itemEntity.data.category ?? "");
+    const unit = String(itemEntity.data.unit ?? "PCS");
+    const variants = extractVariantsFromItemData(itemEntity.data, itemId);
+    for (const variant of variants) {
+      if (!variant.id || variantMetaById.has(variant.id)) continue;
+      variantMetaById.set(variant.id, {
+        itemId,
+        itemName,
+        itemCategory,
+        unit,
+        variantName: variant.name,
+        sku: variant.sku,
+        isDefaultVariant: false,
+        isActive: variant.isActive,
+      });
+    }
+  }
+
+  const persistedPriceByVariantId = new Map<
+    string,
+    { amount: number | null; currency: string; updatedAt: string | null; serverVersion: number }
+  >();
+  for (const price of priceEntities) {
+    if (price.deletedAt) continue;
+    const variantId = String(price.data.variantId ?? price.data.variant_id ?? price.entityId ?? "");
+    if (!variantId) continue;
+    const rawAmount = price.data.amount;
+    const amount =
+      rawAmount === null
+        ? null
+        : typeof rawAmount === "number" && Number.isFinite(rawAmount)
+          ? rawAmount
+          : typeof rawAmount === "string" && rawAmount.trim()
+            ? Number(rawAmount)
+            : null;
+    const currency = String(price.data.currency ?? "INR").trim().toUpperCase() || "INR";
+    persistedPriceByVariantId.set(variantId, {
+      amount,
+      currency,
+      updatedAt: price.updatedAt,
+      serverVersion: price.serverVersion ?? 0,
+    });
+  }
+
+  const pendingPriceByVariantId = new Map<
+    string,
+    { amount: number | null; currency?: string }
+  >();
+  for (const mutation of pendingPriceMutations) {
+    const variantId =
+      typeof mutation.payload.variantId === "string"
+        ? mutation.payload.variantId
+        : mutation.entityId;
+    if (!variantId) continue;
+    const rawAmount = mutation.payload.amount;
+    const amount =
+      rawAmount === null
+        ? null
+        : typeof rawAmount === "number" && Number.isFinite(rawAmount)
+          ? rawAmount
+          : typeof rawAmount === "string" && rawAmount.trim()
+            ? Number(rawAmount)
+            : null;
+    const currency =
+      typeof mutation.payload.currency === "string"
+        ? mutation.payload.currency.trim().toUpperCase()
+        : undefined;
+    pendingPriceByVariantId.set(variantId, { amount, currency });
+  }
+
+  const normalizedQuery = query?.trim().toLowerCase() ?? "";
+
+  return Array.from(variantMetaById.entries())
+    .map(([variantId, variant]) => {
+      const pending = pendingPriceByVariantId.get(variantId);
+      const persisted = persistedPriceByVariantId.get(variantId);
+      const amount = pending ? pending.amount : (persisted?.amount ?? null);
+      const currency = pending?.currency || persisted?.currency || "INR";
+      const pendingState = Boolean(pending);
+      return {
+        variantId,
+        itemId: variant.itemId,
+        itemName: variant.itemName,
+        itemCategory: variant.itemCategory,
+        unit: variant.unit,
+        variantName: variant.variantName,
+        sku: variant.sku,
+        isDefaultVariant: variant.isDefaultVariant,
+        isActive: variant.isActive,
+        amount,
+        currency,
+        updatedAt: persisted?.updatedAt ?? null,
+        serverVersion: persisted?.serverVersion ?? 0,
+        pending: pendingState,
+      } satisfies ItemPricingRow;
+    })
+    .filter((row) => includeInactive || row.isActive)
+    .filter((row) => {
+      if (!normalizedQuery) return true;
+      return (
+        row.itemName.toLowerCase().includes(normalizedQuery) ||
+        row.variantName.toLowerCase().includes(normalizedQuery) ||
+        row.sku.toLowerCase().includes(normalizedQuery) ||
+        row.itemCategory.toLowerCase().includes(normalizedQuery)
+      );
+    })
+    .sort((left, right) => {
+      const itemOrder = left.itemName.localeCompare(right.itemName);
+      if (itemOrder !== 0) return itemOrder;
+      if (left.isDefaultVariant && !right.isDefaultVariant) return -1;
+      if (!left.isDefaultVariant && right.isDefaultVariant) return 1;
+      return left.variantName.localeCompare(right.variantName);
+    });
 };
 
 export const getRemoteItemCategoriesForStore = async (

@@ -693,7 +693,7 @@ export function AppHomePage() {
 
           <div className="lg:flex-1 lg:min-h-0 lg:overflow-hidden">
             {routeDrivenAppId ? (
-              <section className="h-auto min-h-0 lg:h-full lg:overflow-hidden">
+              <section className="app-page-density app-page-typography h-auto min-h-0 lg:h-full lg:overflow-hidden">
                 <Outlet />
               </section>
             ) : (

@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 @theme {
+  --text-sm: 0.75rem;
+  --text-sm--line-height: 1rem;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -79,6 +81,11 @@
   }
 
   @media (min-width: 1024px) {
+    body {
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
     body.app-shell-locked {
       height: 100vh;
       overflow: hidden;
@@ -112,6 +119,56 @@
 
   .status {
     @apply m-0 text-sm font-medium text-muted-foreground;
+  }
+
+  .app-filter-panel {
+    @apply rounded-xl border border-[#c6d8ef] bg-[#f4f8ff] p-2;
+  }
+
+  .app-filter-legend {
+    @apply rounded-full border border-[#c6d8ef] bg-[#eef5ff] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#35597f];
+  }
+
+  .app-filter-help {
+    @apply mb-2 text-[11px] leading-tight text-[#4c6e93];
+  }
+
+  .app-filter-row {
+    @apply flex w-full flex-col gap-1.5 min-[642px]:flex-row min-[642px]:flex-wrap min-[642px]:items-center;
+  }
+
+  .app-page-typography {
+    @apply lg:[&_button]:text-xs lg:[&_input]:text-xs lg:[&_label]:text-[10px] lg:[&_p]:text-xs lg:[&_select]:text-xs lg:[&_span]:text-xs lg:[&_th]:text-[10px] lg:[&_thead]:text-[10px] lg:[&_td]:text-sm;
+  }
+
+  @media (min-width: 1024px) {
+    .app-page-density .gap-2 {
+      gap: 0.375rem;
+    }
+
+    .app-page-density .gap-1.5 {
+      gap: 0.25rem;
+    }
+
+    .app-page-density .p-2 {
+      padding: 0.375rem;
+    }
+
+    .app-page-density .p-1.5 {
+      padding: 0.3125rem;
+    }
+
+    .app-page-density .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+      --tw-space-y-reverse: 0;
+      margin-top: calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));
+      margin-bottom: calc(0.375rem * var(--tw-space-y-reverse));
+    }
+
+    .app-page-density .space-y-1.5 > :not([hidden]) ~ :not([hidden]) {
+      --tw-space-y-reverse: 0;
+      margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));
+      margin-bottom: calc(0.25rem * var(--tw-space-y-reverse));
+    }
   }
 
   .folder-launcher-layout {

@@ -1,8 +1,6 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Check,
-  CircleMinus,
-  CirclePlus,
   Pencil,
   Trash2,
   X,
@@ -17,9 +15,9 @@ import {
   CardHeader,
   CardTitle,
 } from "../design-system/molecules/Card";
+import { ItemVariantFlatTable } from "../design-system/organisms/ItemVariantFlatTable";
 import { useSessionStore } from "../features/auth/session-business";
 import {
-  getLocalItemDetailForDisplay,
   getLocalItemsForDisplay,
   getLocalItemCategoryEntriesForStore,
   queueItemCategoryCreate,
@@ -28,7 +26,6 @@ import {
   queueItemUpdate,
   syncOnce,
   type ItemCategoryEntry,
-  type ItemDetailDisplay,
   type ItemDisplay,
 } from "../features/sync/engine";
 
@@ -56,13 +53,6 @@ export function CatalogCategoriesPage() {
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedItemIds, setExpandedItemIds] = useState<string[]>([]);
-  const [itemDetailsById, setItemDetailsById] = useState<
-    Record<string, ItemDetailDisplay>
-  >({});
-  const [loadingDetailsById, setLoadingDetailsById] = useState<
-    Record<string, boolean>
-  >({});
 
   useEffect(() => {
     if (!activeStore) {
@@ -172,12 +162,6 @@ export function CatalogCategoriesPage() {
     setCategoryNameDraft(activeBucket.name);
   }, [activeBucket]);
 
-  useEffect(() => {
-    setExpandedItemIds([]);
-    setItemDetailsById({});
-    setLoadingDetailsById({});
-  }, [activeBucket?.name]);
-
   const refresh = async () => {
     if (!activeStore) return;
     const [nextItems, nextEntries] = await Promise.all([
@@ -186,29 +170,6 @@ export function CatalogCategoriesPage() {
     ]);
     setItems(nextItems);
     setEntries(nextEntries);
-  };
-
-  const toggleExpand = (itemId: string) => {
-    const isExpanded = expandedItemIds.includes(itemId);
-    if (isExpanded) {
-      setExpandedItemIds((current) => current.filter((id) => id !== itemId));
-      return;
-    }
-
-    setExpandedItemIds((current) => [...current, itemId]);
-    if (!activeStore || itemDetailsById[itemId] || loadingDetailsById[itemId]) {
-      return;
-    }
-
-    setLoadingDetailsById((current) => ({ ...current, [itemId]: true }));
-    void getLocalItemDetailForDisplay(activeStore, itemId)
-      .then((detail) => {
-        if (!detail) return;
-        setItemDetailsById((current) => ({ ...current, [itemId]: detail }));
-      })
-      .finally(() => {
-        setLoadingDetailsById((current) => ({ ...current, [itemId]: false }));
-      });
   };
 
   const onCreateCategory = async () => {
@@ -316,6 +277,9 @@ export function CatalogCategoriesPage() {
     }
   };
 
+  const getBucketVariantCount = (bucket: CategoryBucket) =>
+    bucket.items.reduce((total, item) => total + Math.max(item.variantCount, 1), 0);
+
   return (
     <section className="grid gap-2 lg:h-full lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch lg:overflow-hidden">
       <Card className="p-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
@@ -372,7 +336,7 @@ export function CatalogCategoriesPage() {
                 >
                   <span className="truncate font-medium">{bucket.name}</span>
                   <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">
-                    {bucket.items.length}
+                    {getBucketVariantCount(bucket)}
                   </span>
                 </button>
                 <button
@@ -465,193 +429,13 @@ export function CatalogCategoriesPage() {
               No items mapped to this category.
             </div>
           ) : (
-            <>
-              <ul className="grid gap-1.5 sm:grid-cols-2 lg:hidden">
-                {activeBucket.items.map((item) => (
-                  <li
-                    key={item.entityId}
-                    role="button"
-                    tabIndex={0}
-                    className="rounded-lg border border-white/75 bg-white/70 px-2 py-1.5 text-left transition hover:bg-white"
-                    onClick={() => navigate(`/app/items/${item.entityId}`)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        navigate(`/app/items/${item.entityId}`);
-                      }
-                    }}
-                  >
-                    <p className="text-xs font-semibold text-foreground">
-                      {item.name}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {item.variantCount > 1
-                        ? `Variants: ${item.variantCount}`
-                        : `SKU: ${item.sku || "Not set"}`}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="hidden overflow-hidden rounded-xl border border-white/65 bg-white/55 lg:block">
-                <table className="w-full table-fixed border-collapse text-left">
-                  <thead className="bg-white/70 text-[11px] uppercase tracking-[0.04em] text-muted-foreground">
-                    <tr>
-                      <th className="w-14 px-3 py-2">Open</th>
-                      <th className="px-3 py-2">Item</th>
-                      <th className="w-44 px-3 py-2">Default SKU</th>
-                      <th className="w-28 px-3 py-2">Variants</th>
-                      <th className="w-28 px-3 py-2 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeBucket.items.map((item) => {
-                      const isExpanded = expandedItemIds.includes(
-                        item.entityId,
-                      );
-                      const detail = itemDetailsById[item.entityId];
-                      const variants = detail?.variants ?? [];
-                      const isLoading = Boolean(
-                        loadingDetailsById[item.entityId],
-                      );
-
-                      return (
-                        <Fragment key={item.entityId}>
-                          <tr className="border-t border-white/60 text-sm">
-                            <td className="px-3 py-2 align-middle">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 rounded-full text-[#2f6fb7] hover:bg-[#e9f2ff]"
-                                onClick={() => toggleExpand(item.entityId)}
-                                aria-label={
-                                  isExpanded
-                                    ? "Collapse variants"
-                                    : "Expand variants"
-                                }
-                              >
-                                {isExpanded ? <CircleMinus /> : <CirclePlus />}
-                              </Button>
-                            </td>
-                            <td className="px-3 py-2 align-middle font-medium text-foreground">
-                              {item.name}
-                            </td>
-                            <td className="truncate px-3 py-2 align-middle text-muted-foreground">
-                              {item.sku || "Not set"}
-                            </td>
-                            <td className="px-3 py-2 align-middle text-muted-foreground">
-                              {item.variantCount}
-                            </td>
-                            <td className="px-3 py-2 text-right align-middle">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                  navigate(`/app/items/${item.entityId}`)
-                                }
-                              >
-                                Manage
-                              </Button>
-                            </td>
-                          </tr>
-                          {isExpanded ? (
-                            <tr className="border-t border-white/40 bg-white/40 text-sm">
-                              <td colSpan={5} className="px-3 py-3">
-                                {isLoading ? (
-                                  <p className="text-xs text-muted-foreground">
-                                    Loading variants...
-                                  </p>
-                                ) : variants.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground">
-                                    No variants found.
-                                  </p>
-                                ) : (
-                                  <div className="overflow-x-auto rounded-lg border border-white/65 bg-white/70">
-                                    <table className="w-full min-w-[760px] table-fixed border-collapse text-left">
-                                      <thead className="bg-white/75 text-[10px] uppercase tracking-[0.04em] text-muted-foreground">
-                                        <tr>
-                                          <th className="w-20 px-2 py-1.5">
-                                            Default
-                                          </th>
-                                          <th className="w-20 px-2 py-1.5">
-                                            Active
-                                          </th>
-                                          <th className="px-2 py-1.5">
-                                            Variant Name
-                                          </th>
-                                          <th className="px-2 py-1.5">SKU</th>
-                                          <th className="px-2 py-1.5">
-                                            Barcode
-                                          </th>
-                                          <th className="px-2 py-1.5">
-                                            Options
-                                          </th>
-                                          <th className="w-20 px-2 py-1.5">
-                                            Usage
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {variants.map((variant) => {
-                                          const optionPairs = Object.entries(
-                                            variant.optionValues,
-                                          );
-                                          return (
-                                            <tr
-                                              key={variant.id}
-                                              className="border-t border-white/60 text-xs"
-                                            >
-                                              <td className="px-2 py-1.5 text-muted-foreground">
-                                                {variant.isDefault
-                                                  ? "Yes"
-                                                  : "No"}
-                                              </td>
-                                              <td className="px-2 py-1.5 text-muted-foreground">
-                                                {variant.isActive
-                                                  ? "Yes"
-                                                  : "No"}
-                                              </td>
-                                              <td className="truncate px-2 py-1.5">
-                                                {variant.name || "-"}
-                                              </td>
-                                              <td className="truncate px-2 py-1.5">
-                                                {variant.sku || "-"}
-                                              </td>
-                                              <td className="truncate px-2 py-1.5">
-                                                {variant.barcode || "-"}
-                                              </td>
-                                              <td className="px-2 py-1.5 text-muted-foreground">
-                                                {optionPairs.length === 0
-                                                  ? "-"
-                                                  : optionPairs
-                                                      .map(
-                                                        ([key, value]) =>
-                                                          `${key}: ${value}`,
-                                                      )
-                                                      .join(", ")}
-                                              </td>
-                                              <td className="px-2 py-1.5 text-muted-foreground">
-                                                {variant.usageCount}
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
+            <ItemVariantFlatTable
+              items={activeBucket.items}
+              activeStore={activeStore}
+              actionLabel="View"
+              onOpenItem={(itemId) => navigate(`/app/items/${itemId}`)}
+              showCategory={false}
+            />
           )}
         </CardContent>
       </Card>

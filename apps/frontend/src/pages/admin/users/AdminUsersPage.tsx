@@ -1,4 +1,4 @@
-import { ChevronRight, RefreshCw, X } from "lucide-react";
+import { Eye, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../../design-system/atoms/Button";
@@ -177,14 +177,14 @@ export function AdminUsersPage() {
     <section className="h-auto lg:h-full lg:min-h-0">
       <Card className="h-auto lg:h-full lg:min-h-0">
         <CardContent className="space-y-2 lg:h-full lg:min-h-0 lg:overflow-y-auto">
-          <fieldset className="rounded-xl border border-[#c6d8ef] bg-[#f4f8ff] p-2">
-            <legend className="rounded-full border border-[#c6d8ef] bg-[#eef5ff] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#35597f]">
+          <fieldset className="app-filter-panel">
+            <legend className="app-filter-legend">
               Filters
             </legend>
-            <p className="mb-2 text-[11px] leading-tight text-[#4c6e93]">
+            <p className="app-filter-help">
               Refine users by name, phone, and email.
             </p>
-            <div className="flex w-full flex-col gap-1.5 min-[642px]:flex-row min-[642px]:flex-wrap min-[642px]:items-center">
+            <div className="app-filter-row">
               <Input
                 className="w-full min-[642px]:flex-1 min-[642px]:min-w-[12rem]"
                 value={filterName}
@@ -301,16 +301,6 @@ export function AdminUsersPage() {
                   <p className="mt-2 text-[11px] text-muted-foreground">
                     Businesses: {user.businessCount}
                   </p>
-                  <div className="mt-2 flex justify-end">
-                    <IconButton
-                      icon={ChevronRight}
-                      variant="outline"
-                      disabled={loading}
-                      className="h-8 w-8 rounded-full border border-[#c6d8ef] bg-[#f4f8ff] p-0 text-[#1f4167] shadow-sm hover:bg-[#eaf2ff]"
-                      aria-label={`Open details for ${displayName}`}
-                      title="Open details"
-                    />
-                  </div>
                 </div>
               );
             })}
@@ -334,16 +324,16 @@ export function AdminUsersPage() {
                   return (
                     <tr
                       key={user.id}
-                      className={`border-b border-white/60 align-top transition-colors last:border-b-0 ${
+                      className={`h-9 border-b border-white/60 align-middle transition-colors last:border-b-0 ${
                         isDeleted ? "bg-[#fff7f7]" : "hover:bg-white/70"
                       }`}
                     >
-                      <td className="px-3 py-2 font-semibold">
+                      <td className="px-3 py-0 align-middle font-semibold">
                         {user.name?.trim() || "Unnamed user"}
                       </td>
-                      <td className="px-3 py-2">{user.phone || "-"}</td>
-                      <td className="px-3 py-2">{user.email || "-"}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-0 align-middle">{user.phone || "-"}</td>
+                      <td className="px-3 py-0 align-middle">{user.email || "-"}</td>
+                      <td className="px-3 py-0 align-middle">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                             isDeleted
@@ -354,19 +344,18 @@ export function AdminUsersPage() {
                           {isDeleted ? "Deleted" : user.systemRole}
                         </span>
                       </td>
-                      <td className="px-3 py-2">{user.businessCount}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-0 align-middle">{user.businessCount}</td>
+                      <td className="px-3 py-0 align-middle">
                         <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            variant="outline"
+                          <IconButton
+                            icon={Eye}
+                            variant="ghost"
                             onClick={() => navigate(`/app/users/${user.id}`)}
                             disabled={loading}
-                            className="gap-1.5"
-                          >
-                            Open
-                            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                          </Button>
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                            aria-label={`View details for ${user.name?.trim() || "Unnamed user"}`}
+                            title="View details"
+                          />
                         </div>
                       </td>
                     </tr>

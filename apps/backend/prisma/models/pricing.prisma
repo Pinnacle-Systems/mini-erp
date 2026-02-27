@@ -13,6 +13,13 @@ enum DiscountValueType {
   @@schema("pricing")
 }
 
+enum PriceEventType {
+  SET
+  CLEARED
+
+  @@schema("pricing")
+}
+
 model PriceBook {
   id               String                   @id @default(uuid()) @db.Uuid
   business_id      String                   @db.Uuid
@@ -25,6 +32,7 @@ model PriceBook {
   ends_at          DateTime?
   priority         Int                      @default(0)
   prices           ItemPrice[]
+  price_events     ItemPriceEvent[]
   customer_groups  PriceBookCustomerGroup[]
   rule_price_books DiscountRulePriceBook[]
   created_at       DateTime                 @default(now())
@@ -71,6 +79,30 @@ model ItemPrice {
   @@index([business_id, price_book_id, customer_group_id])
   @@index([business_id, is_active, starts_at, ends_at])
   @@map("item_prices")
+  @@schema("pricing")
+}
+
+model ItemPriceEvent {
+  id                String         @id @default(uuid()) @db.Uuid
+  business_id       String         @db.Uuid
+  price_book_id     String         @db.Uuid
+  variant_id        String         @db.Uuid
+  customer_group_id String?        @db.Uuid
+  min_qty           Int            @default(1)
+  max_qty           Int?
+  amount            Decimal?       @db.Decimal(12, 2)
+  currency          String         @db.VarChar(3)
+  event_type        PriceEventType
+  effective_at      DateTime       @default(now())
+  ended_at          DateTime?
+  created_by        String?        @db.Uuid
+  created_at        DateTime       @default(now())
+  price_book        PriceBook      @relation(fields: [price_book_id], references: [id], onDelete: Cascade)
+
+  @@index([business_id, variant_id, effective_at])
+  @@index([business_id, variant_id, ended_at])
+  @@index([business_id, price_book_id, customer_group_id, min_qty, max_qty])
+  @@map("item_price_events")
   @@schema("pricing")
 }
 

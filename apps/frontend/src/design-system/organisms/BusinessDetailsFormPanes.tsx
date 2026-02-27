@@ -54,6 +54,10 @@ export function BusinessDetailsFormPanes({
   ownerPhonePlaceholder,
   rightColumnExtra,
 }: BusinessDetailsFormPanesProps) {
+  const fieldStackClass = "space-y-1";
+  const controlClassName =
+    "h-8 w-full rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground";
+
   return (
     <div className="space-y-2 overflow-visible pr-1 lg:h-full lg:min-h-0 lg:overflow-y-auto">
       <div className="grid gap-2 lg:grid-cols-2">
@@ -62,13 +66,14 @@ export function BusinessDetailsFormPanes({
             Basic Information
           </legend>
           <div className="grid gap-2 md:grid-cols-3">
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-business-name`}>
                 {nameLabel}
                 {nameRequired ? " *" : ""}
               </Label>
               <Input
                 id={`${idPrefix}-business-name`}
+                className={controlClassName}
                 value={values.name}
                 onChange={(event) => onFieldChange("name", event.target.value)}
                 placeholder={namePlaceholder}
@@ -77,7 +82,7 @@ export function BusinessDetailsFormPanes({
                 required={nameRequired}
               />
             </div>
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-owner-phone`}>
                 {ownerPhoneLabel}
                 {ownerPhoneRequired ? " *" : ""}
@@ -98,10 +103,11 @@ export function BusinessDetailsFormPanes({
                 ownerDisplay
               )}
             </div>
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-gstin`}>GSTIN</Label>
               <Input
                 id={`${idPrefix}-gstin`}
+                className={controlClassName}
                 value={values.gstin}
                 onChange={(event) => onFieldChange("gstin", event.target.value)}
                 readOnly={!editable}
@@ -116,11 +122,12 @@ export function BusinessDetailsFormPanes({
             Business Profile
           </legend>
           <div className="grid gap-2 md:grid-cols-2">
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-business-type`}>Business type</Label>
               {editable ? (
                 <Select
                   id={`${idPrefix}-business-type`}
+                  className={controlClassName}
                   value={values.businessType}
                   onChange={(event) => onFieldChange("businessType", event.target.value)}
                   disabled={disabled}
@@ -135,19 +142,21 @@ export function BusinessDetailsFormPanes({
               ) : (
                 <Input
                   id={`${idPrefix}-business-type`}
+                  className={controlClassName}
                   value={values.businessType}
                   readOnly
                   disabled={disabled}
                 />
               )}
             </div>
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-business-category`}>
                 Business category
               </Label>
               {editable ? (
                 <Select
                   id={`${idPrefix}-business-category`}
+                  className={controlClassName}
                   value={values.businessCategory}
                   onChange={(event) =>
                     onFieldChange("businessCategory", event.target.value)
@@ -164,6 +173,7 @@ export function BusinessDetailsFormPanes({
               ) : (
                 <Input
                   id={`${idPrefix}-business-category`}
+                  className={controlClassName}
                   value={values.businessCategory}
                   readOnly
                   disabled={disabled}
@@ -181,41 +191,45 @@ export function BusinessDetailsFormPanes({
             Contact
           </legend>
           <div className="grid gap-2 md:grid-cols-2">
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-phone-number`}>Business phone</Label>
               <Input
                 id={`${idPrefix}-phone-number`}
+                className={controlClassName}
                 value={values.phoneNumber}
                 onChange={(event) => onFieldChange("phoneNumber", event.target.value)}
                 readOnly={!editable}
                 disabled={disabled}
               />
             </div>
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-email`}>Business email</Label>
               <Input
                 id={`${idPrefix}-email`}
+                className={controlClassName}
                 value={values.email}
                 onChange={(event) => onFieldChange("email", event.target.value)}
                 readOnly={!editable}
                 disabled={disabled}
               />
             </div>
-            <div className="space-y-2 md:col-span-2">
+            <div className={`${fieldStackClass} md:col-span-2`}>
               <Label htmlFor={`${idPrefix}-address`}>Address</Label>
               <Input
                 id={`${idPrefix}-address`}
+                className={controlClassName}
                 value={values.address}
                 onChange={(event) => onFieldChange("address", event.target.value)}
                 readOnly={!editable}
                 disabled={disabled}
               />
             </div>
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-state`}>State</Label>
               {editable ? (
                 <Select
                   id={`${idPrefix}-state`}
+                  className={controlClassName}
                   value={values.state}
                   onChange={(event) => onFieldChange("state", event.target.value)}
                   disabled={disabled}
@@ -230,17 +244,18 @@ export function BusinessDetailsFormPanes({
               ) : (
                 <Input
                   id={`${idPrefix}-state`}
+                  className={controlClassName}
                   value={values.state}
                   readOnly
                   disabled={disabled}
                 />
               )}
             </div>
-            <div className="space-y-2">
+            <div className={fieldStackClass}>
               <Label htmlFor={`${idPrefix}-pincode`}>Pincode</Label>
               <Input
                 id={`${idPrefix}-pincode`}
-                className="max-w-[8rem]"
+                className={`${controlClassName} max-w-[8rem]`}
                 value={values.pincode}
                 onChange={(event) =>
                   onFieldChange(

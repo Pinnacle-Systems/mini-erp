@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Pencil, Search, Trash2, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "../design-system/atoms/Button";
 import { Input } from "../design-system/atoms/Input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
+import { ItemVariantFlatTable } from "../design-system/organisms/ItemVariantFlatTable";
+import type { ItemVariantFlatRow } from "../design-system/organisms/ItemVariantFlatTable";
 import { useSessionStore } from "../features/auth/session-business";
 import {
   getLocalItemCollectionEntriesForStore,
@@ -38,19 +39,7 @@ type CollectionBucket = {
   items: CollectionItemGroup[];
 };
 
-type CollectionVariantRow = {
-  membershipId: string;
-  itemId: string;
-  itemName: string;
-  variantId: string;
-  variantName: string;
-  sku: string;
-  isDefault: boolean;
-  isActive: boolean;
-};
-
 export function CatalogCollectionsPage() {
-  const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const activeStore = useSessionStore((state) => state.activeStore);
@@ -64,7 +53,6 @@ export function CatalogCollectionsPage() {
   const [itemSearchDraft, setItemSearchDraft] = useState("");
   const [itemDetailsById, setItemDetailsById] = useState<Record<string, ItemDetailDisplay>>({});
   const [loadingDetailsById, setLoadingDetailsById] = useState<Record<string, boolean>>({});
-  const [variantPickerItemId, setVariantPickerItemId] = useState<string | null>(null);
   const [variantSelectionsByItemId, setVariantSelectionsByItemId] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -198,25 +186,27 @@ export function CatalogCollectionsPage() {
   useEffect(() => {
     setItemDetailsById({});
     setLoadingDetailsById({});
-    setVariantPickerItemId(null);
     setVariantSelectionsByItemId({});
   }, [activeBucket?.id]);
 
-  const ensureItemDetailsLoaded = async (itemId: string) => {
-    if (!activeStore) return null;
-    if (itemDetailsById[itemId]) {
-      return itemDetailsById[itemId];
-    }
-    setLoadingDetailsById((current) => ({ ...current, [itemId]: true }));
-    try {
-      const detail = await getLocalItemDetailForDisplay(activeStore, itemId);
-      if (!detail) return null;
-      setItemDetailsById((current) => ({ ...current, [itemId]: detail }));
-      return detail;
-    } finally {
-      setLoadingDetailsById((current) => ({ ...current, [itemId]: false }));
-    }
-  };
+  const ensureItemDetailsLoaded = useCallback(
+    async (itemId: string) => {
+      if (!activeStore) return null;
+      if (itemDetailsById[itemId]) {
+        return itemDetailsById[itemId];
+      }
+      setLoadingDetailsById((current) => ({ ...current, [itemId]: true }));
+      try {
+        const detail = await getLocalItemDetailForDisplay(activeStore, itemId);
+        if (!detail) return null;
+        setItemDetailsById((current) => ({ ...current, [itemId]: detail }));
+        return detail;
+      } finally {
+        setLoadingDetailsById((current) => ({ ...current, [itemId]: false }));
+      }
+    },
+    [activeStore, itemDetailsById],
+  );
 
   const onCreateCollection = async () => {
     if (!activeStore || !identityId || !isBusinessSelected) return;
@@ -334,7 +324,6 @@ export function CatalogCollectionsPage() {
       await syncOnce(activeStore);
       await refresh();
       if (requestedVariantIds) {
-        setVariantPickerItemId(null);
         setVariantSelectionsByItemId((current) => ({ ...current, [itemId]: [] }));
       }
       setItemSearchDraft("");
@@ -362,43 +351,101 @@ export function CatalogCollectionsPage() {
     }
   };
 
-  const searchableItems = useMemo(() => {
-    const q = itemSearchDraft.trim().toLowerCase();
+  const addableItems = useMemo(() => {
     return items
       .filter((item) => {
         const activeCount = activeVariantIdsByItemId.get(item.entityId)?.size ?? 0;
         const totalCount = Math.max(item.variantCount, 1);
         return activeCount < totalCount;
       })
-      .filter((item) => {
-        if (!q) return true;
-        return item.name.toLowerCase().includes(q) || item.sku.toLowerCase().includes(q);
-      })
-      .slice(0, 8);
-  }, [activeVariantIdsByItemId, itemSearchDraft, items]);
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [activeVariantIdsByItemId, items]);
 
-  const activeVariantRows = useMemo<CollectionVariantRow[]>(() => {
-    const rows: CollectionVariantRow[] = [];
-    const membershipById = new Map(memberships.map((entry) => [entry.id, entry]));
+  useEffect(() => {
+    if (!activeStore) return;
+    if (itemSearchDraft.trim().length === 0) return;
+
+    const idsToHydrate = addableItems
+      .map((item) => item.entityId)
+      .filter((itemId) => !itemDetailsById[itemId] && !loadingDetailsById[itemId])
+      .slice(0, 20);
+    if (idsToHydrate.length === 0) return;
+
+    void Promise.all(idsToHydrate.map((itemId) => ensureItemDetailsLoaded(itemId).catch(() => null)));
+  }, [activeStore, addableItems, ensureItemDetailsLoaded, itemDetailsById, itemSearchDraft, loadingDetailsById]);
+
+  const searchableItems = useMemo(() => {
+    const q = itemSearchDraft.trim().toLowerCase();
+    if (!q) return [];
+
+    return addableItems
+      .map((item) => {
+        const detail = itemDetailsById[item.entityId];
+        const isLoading = Boolean(loadingDetailsById[item.entityId]);
+        const existingVariantIds = activeVariantIdsByItemId.get(item.entityId) ?? new Set<string>();
+        const itemMatches = item.name.toLowerCase().includes(q) || item.sku.toLowerCase().includes(q);
+
+        if (!detail) {
+          if (!itemMatches) return null;
+          return {
+            item,
+            variants: [] as ItemDetailDisplay["variants"],
+            addableVariantIds: [] as string[],
+            loading: isLoading,
+          };
+        }
+
+        const addableVariants = detail.variants.filter(
+          (variant) => !existingVariantIds.has(variant.id),
+        );
+        if (addableVariants.length === 0) return null;
+
+        const matchingVariants = addableVariants.filter((variant) => {
+          if (itemMatches) return true;
+          return (
+            variant.name.toLowerCase().includes(q) ||
+            variant.sku.toLowerCase().includes(q) ||
+            variant.barcode.toLowerCase().includes(q)
+          );
+        });
+        if (matchingVariants.length === 0) return null;
+
+        return {
+          item,
+          variants: matchingVariants,
+          addableVariantIds: addableVariants.map((variant) => variant.id),
+          loading: false,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .slice(0, 8);
+  }, [activeVariantIdsByItemId, addableItems, itemDetailsById, itemSearchDraft, loadingDetailsById]);
+
+  const activeCollectionVariantRows = useMemo<ItemVariantFlatRow[]>(() => {
+    const rows: ItemVariantFlatRow[] = [];
+    const membershipById = new Map(memberships.map((membership) => [membership.id, membership]));
+
     for (const group of activeBucket?.items ?? []) {
       const detailedVariants = itemDetailsById[group.item.entityId]?.variants ?? [];
+
       for (const link of group.links) {
         const membership = membershipById.get(link.membershipId);
-        const variant =
-          detailedVariants.find((entry) => entry.id === link.variantId);
+        const variant = detailedVariants.find((entry) => entry.id === link.variantId);
+
         rows.push({
-          membershipId: link.membershipId,
+          key: link.membershipId,
+          actionId: link.membershipId,
           itemId: group.item.entityId,
           itemName: group.item.name,
-          variantId: link.variantId,
-          variantName:
-            membership?.variantName?.trim() || variant?.name?.trim() || "Unnamed variant",
+          variantName: membership?.variantName?.trim() || variant?.name?.trim() || "-",
           sku: membership?.variantSku?.trim() || variant?.sku?.trim() || "",
-          isDefault: membership?.variantIsDefault ?? Boolean(variant?.isDefault),
+          category: group.item.category || "",
           isActive: membership?.variantIsActive ?? variant?.isActive ?? true,
+          pending: group.item.pending,
         });
       }
     }
+
     return rows.sort((left, right) => {
       const itemCompare = left.itemName.localeCompare(right.itemName);
       if (itemCompare !== 0) return itemCompare;
@@ -557,121 +604,109 @@ export function CatalogCollectionsPage() {
             />
           </div>
           {itemSearchDraft.trim().length > 0 ? (
-            <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-white/70 bg-white/70 p-1">
+            <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-white/70 bg-white/70 p-1">
               {searchableItems.length > 0 ? (
                 searchableItems.map((item) => {
-                  const activeCount = activeVariantIdsByItemId.get(item.entityId)?.size ?? 0;
-                  const totalCount = Math.max(item.variantCount, 1);
-                  const detail = itemDetailsById[item.entityId];
-                  const isPickerOpen = variantPickerItemId === item.entityId;
-                  const isDetailsLoading = Boolean(loadingDetailsById[item.entityId]);
-                  const selection = variantSelectionsByItemId[item.entityId] ?? [];
+                  const selection = variantSelectionsByItemId[item.item.entityId] ?? [];
+                  const selectableVariantIds = item.addableVariantIds;
+                  const hasSingleVariant = selectableVariantIds.length === 1;
+                  const singleVariantId = hasSingleVariant ? selectableVariantIds[0] : null;
+                  const selectedIds = selection.filter((id) => selectableVariantIds.includes(id));
+                  const selectedAll =
+                    selectableVariantIds.length > 0 && selectedIds.length === selectableVariantIds.length;
+
                   return (
-                    <div key={item.entityId} className="rounded-md px-1 py-1 hover:bg-white">
-                      <div className="flex items-center justify-between gap-1">
+                    <div key={item.item.entityId} className="rounded-md border border-white/80 bg-white/85 px-1.5 py-1">
+                      <div className="mb-1 flex items-center justify-between gap-1">
                         <div className="min-w-0">
-                          <p className="truncate text-[11px] font-medium text-foreground">{item.name}</p>
-                          <p className="truncate text-[10px] text-muted-foreground">
-                            {item.sku || "No SKU"} | {activeCount}/{totalCount} variants in collection
-                          </p>
+                          <p className="truncate text-[11px] font-medium text-foreground">{item.item.name}</p>
+                          {hasSingleVariant ? (
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              {item.item.sku || "No SKU"}
+                            </p>
+                          ) : null}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={() => {
-                              void onAddVariantsToCollection(item.entityId);
-                            }}
-                            disabled={loading || activeCount >= totalCount}
-                          >
-                            Add All
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={() => {
-                              if (isPickerOpen) {
-                                setVariantPickerItemId(null);
-                                return;
-                              }
-                              void ensureItemDetailsLoaded(item.entityId);
-                              setVariantPickerItemId(item.entityId);
-                              setVariantSelectionsByItemId((current) => ({
-                                ...current,
-                                [item.entityId]: [],
-                              }));
-                            }}
-                            disabled={loading}
-                          >
-                            {isPickerOpen ? "Close" : "Choose"}
-                          </Button>
-                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-6 px-2 text-[10px]"
+                          onClick={() => {
+                            void onAddVariantsToCollection(
+                              item.item.entityId,
+                              hasSingleVariant && singleVariantId ? [singleVariantId] : selectedIds,
+                            );
+                          }}
+                          disabled={loading || (hasSingleVariant ? !singleVariantId : selectedIds.length === 0)}
+                        >
+                          {hasSingleVariant ? "Add item" : `Add selected (${selectedIds.length})`}
+                        </Button>
                       </div>
 
-                      {isPickerOpen ? (
-                        <div className="mt-1 rounded-md border border-white/80 bg-white/70 p-1">
-                          {isDetailsLoading ? (
-                            <p className="text-[10px] text-muted-foreground">Loading variants...</p>
-                          ) : !detail || detail.variants.length === 0 ? (
-                            <p className="text-[10px] text-muted-foreground">No variants found.</p>
-                          ) : (
-                            <>
-                              <div className="max-h-28 space-y-0.5 overflow-y-auto">
-                                {detail.variants.map((variant) => {
-                                  const existing = activeVariantIdsByItemId
-                                    .get(item.entityId)
-                                    ?.has(variant.id);
-                                  const checked = selection.includes(variant.id);
-                                  return (
-                                    <label
-                                      key={variant.id}
-                                      className="flex items-center justify-between gap-1 rounded px-1 py-0.5 text-[10px] hover:bg-white"
-                                    >
-                                      <span className="truncate">
-                                        {variant.name || "Unnamed variant"}
-                                        {variant.sku ? ` | ${variant.sku}` : ""}
-                                      </span>
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        disabled={Boolean(existing)}
-                                        onChange={(event) => {
-                                          setVariantSelectionsByItemId((current) => {
-                                            const currentSelection = current[item.entityId] ?? [];
-                                            const nextSelection = event.target.checked
-                                              ? [...currentSelection, variant.id]
-                                              : currentSelection.filter((id) => id !== variant.id);
-                                            return {
-                                              ...current,
-                                              [item.entityId]: nextSelection,
-                                            };
-                                          });
-                                        }}
-                                      />
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <div className="mt-1 flex justify-end">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="h-6 px-2 text-[10px]"
-                                  disabled={loading || selection.length === 0}
-                                  onClick={() => {
-                                    void onAddVariantsToCollection(item.entityId, selection);
+                      {item.loading ? (
+                        <p className="text-[10px] text-muted-foreground">Loading variants...</p>
+                      ) : item.variants.length === 0 ? (
+                        <p className="text-[10px] text-muted-foreground">No matching variants.</p>
+                      ) : hasSingleVariant ? null : (
+                        <div className="max-h-32 space-y-0.5 overflow-y-auto rounded-md border border-white/80 bg-white/75 p-1">
+                          <label className="flex items-center justify-between gap-1 rounded border border-[#d7e7fb] bg-[#f2f8ff] px-1 py-0.5 text-[10px] text-[#174774]">
+                            <span className="truncate">
+                              All variants for {item.item.name} ({selectableVariantIds.length})
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={selectedAll}
+                              onChange={(event) => {
+                                setVariantSelectionsByItemId((current) => {
+                                  const currentSelection = new Set(current[item.item.entityId] ?? []);
+                                  if (event.target.checked) {
+                                    for (const variantId of selectableVariantIds) {
+                                      currentSelection.add(variantId);
+                                    }
+                                  } else {
+                                    for (const variantId of selectableVariantIds) {
+                                      currentSelection.delete(variantId);
+                                    }
+                                  }
+                                  return {
+                                    ...current,
+                                    [item.item.entityId]: Array.from(currentSelection),
+                                  };
+                                });
+                              }}
+                            />
+                          </label>
+                          {item.variants.map((variant) => {
+                            const checked = selection.includes(variant.id);
+                            return (
+                              <label
+                                key={variant.id}
+                                className="flex items-center justify-between gap-1 rounded px-1 py-0.5 text-[10px] hover:bg-white"
+                              >
+                                <span className="truncate">
+                                  {variant.name || "-"}
+                                  {variant.sku ? ` | ${variant.sku}` : ""}
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) => {
+                                    setVariantSelectionsByItemId((current) => {
+                                      const currentSelection = current[item.item.entityId] ?? [];
+                                      const nextSelection = event.target.checked
+                                        ? [...currentSelection, variant.id]
+                                        : currentSelection.filter((id) => id !== variant.id);
+                                      return {
+                                        ...current,
+                                        [item.item.entityId]: nextSelection,
+                                      };
+                                    });
                                   }}
-                                >
-                                  Add Selected
-                                </Button>
-                              </div>
-                            </>
-                          )}
+                                />
+                              </label>
+                            );
+                          })}
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   );
                 })
@@ -684,84 +719,22 @@ export function CatalogCollectionsPage() {
 
         <CardContent className="space-y-2 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
           <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-            {!activeBucket || activeVariantRows.length === 0 ? (
+            {!activeBucket || activeCollectionVariantRows.length === 0 ? (
               <div className="rounded-lg border border-white/70 bg-white/65 px-2 py-2 text-xs text-muted-foreground">
                 No variants mapped to this collection.
               </div>
             ) : (
-              <>
-                <ul className="grid gap-1.5 sm:grid-cols-2 lg:hidden">
-                  {activeVariantRows.map((row) => (
-                    <li key={row.membershipId} className="rounded-lg border border-white/75 bg-white/70 px-2 py-1 text-left">
-                      <p className="text-xs font-semibold text-foreground">{row.itemName}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {row.variantName}
-                        {row.sku ? ` | ${row.sku}` : ""}
-                      </p>
-                      <div className="mt-1 flex justify-end">
-                        <button
-                          type="button"
-                          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[#8a2d2d] transition hover:bg-[#ffecec]"
-                          onClick={() => {
-                            void onRemoveVariantFromCollection(row.membershipId);
-                          }}
-                          aria-label={`Remove ${row.variantName} from collection`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="hidden overflow-hidden rounded-xl border border-white/65 bg-white/55 lg:block">
-                  <table className="w-full table-fixed border-collapse text-left">
-                    <thead className="sticky top-0 z-10 bg-white/80 text-[11px] uppercase tracking-[0.04em] text-muted-foreground backdrop-blur">
-                      <tr>
-                        <th className="px-3 py-2">Item</th>
-                        <th className="px-3 py-2">Variant</th>
-                        <th className="w-44 px-3 py-2">SKU</th>
-                        <th className="w-20 px-3 py-2">Default</th>
-                        <th className="w-20 px-3 py-2">Active</th>
-                        <th className="w-32 px-3 py-2 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeVariantRows.map((row) => (
-                        <tr key={row.membershipId} className="border-t border-white/60 text-sm">
-                          <td className="truncate px-3 py-1.5 align-middle font-medium text-foreground">{row.itemName}</td>
-                          <td className="truncate px-3 py-1.5 align-middle text-foreground/90">{row.variantName}</td>
-                          <td className="truncate px-3 py-1.5 align-middle text-muted-foreground">{row.sku || "Not set"}</td>
-                          <td className="px-3 py-1.5 align-middle text-muted-foreground">{row.isDefault ? "Yes" : "No"}</td>
-                          <td className="px-3 py-1.5 align-middle text-muted-foreground">{row.isActive ? "Yes" : "No"}</td>
-                          <td className="px-3 py-1.5 text-right align-middle">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => navigate(`/app/items/${row.itemId}`)}
-                              >
-                                Manage
-                              </Button>
-                              <button
-                                type="button"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#8a2d2d] transition hover:bg-[#ffecec]"
-                                onClick={() => {
-                                  void onRemoveVariantFromCollection(row.membershipId);
-                                }}
-                                aria-label={`Remove ${row.variantName} from collection`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+              <ItemVariantFlatTable
+                rows={activeCollectionVariantRows}
+                activeStore={activeStore}
+                actionLabel="Remove"
+                actionIcon={Trash2}
+                actionClassName="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2d2d] hover:bg-[#ffecec]"
+                onAction={(row) => {
+                  if (!row.actionId) return;
+                  void onRemoveVariantFromCollection(row.actionId);
+                }}
+              />
             )}
           </div>
         </CardContent>
