@@ -8,7 +8,12 @@ import {
 } from "react";
 import { useSessionStore } from "../auth/session-business";
 import { useUserAppStore } from "./user-app-business";
-import { getLocalItemLabels, queueItemCreate, syncOnce } from "./engine";
+import {
+  getLocalItemLabels,
+  getSyncRejectionFromError,
+  queueItemCreate,
+  syncOnce,
+} from "./engine";
 
 type SyncContextValue = {
   loading: boolean;
@@ -22,11 +27,15 @@ const SyncContext = createContext<SyncContextValue | null>(null);
 
 const toUserSyncErrorMessage = (error: unknown) => {
   const fallback = "Sync failed. Please try again.";
-  if (!(error instanceof Error)) return fallback;
-  const message = error.message || "";
-  if (message.includes("Version conflict for item_price")) {
+  const rejection = getSyncRejectionFromError(error);
+  if (
+    rejection?.reasonCode === "VERSION_CONFLICT" &&
+    rejection.entity === "item_price"
+  ) {
     return "You made an offline pricing update that was rejected because the server had a newer change.";
   }
+  if (!(error instanceof Error)) return fallback;
+  const message = error.message || "";
   return message || fallback;
 };
 

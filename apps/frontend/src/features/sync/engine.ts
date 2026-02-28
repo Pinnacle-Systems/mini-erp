@@ -9,12 +9,52 @@ import {
   type EntityRecord,
   type OutboxItem,
 } from "./db";
-import type { PullResponse, PushResponse, SyncMutation } from "./types";
+import type {
+  PullResponse,
+  PushResponse,
+  SyncMutation,
+  SyncRejection,
+} from "./types";
 
 const CURSOR_KEY = "cursor";
 const DEVICE_ID_KEY = "mini_erp_device_id_v1";
 const isNetworkOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine;
+
+const isSyncRejection = (value: unknown): value is SyncRejection =>
+  typeof value === "object" &&
+  value !== null &&
+  "status" in value &&
+  value.status === "rejected" &&
+  "reasonCode" in value &&
+  typeof value.reasonCode === "string" &&
+  "message" in value &&
+  typeof value.message === "string";
+
+const isRejectedAck = (ack: PushResponse["acknowledgements"][number]): ack is SyncRejection =>
+  ack.status === "rejected";
+
+export class SyncRejectedError extends Error {
+  rejection: SyncRejection;
+
+  constructor(rejection: SyncRejection) {
+    super(rejection.message);
+    this.name = "SyncRejectedError";
+    this.rejection = rejection;
+  }
+}
+
+export const getSyncRejectionFromError = (
+  error: unknown,
+): SyncRejection | null => {
+  if (error instanceof SyncRejectedError) {
+    return error.rejection;
+  }
+  if (isSyncRejection(error)) {
+    return error;
+  }
+  return null;
+};
 
 const ensureOnlineLicenseValidation = async (tenantId: string) => {
   if (!isNetworkOnline()) return;
@@ -209,17 +249,16 @@ const push = async (tenantId: string) => {
       await syncDb.outbox.put({
         ...current,
         status: ack.status,
-        error: ack.reason,
+        error: isRejectedAck(ack) ? ack.message : undefined,
+        rejection: isRejectedAck(ack) ? ack : undefined,
         updatedAt: now
       });
     }
   });
 
-  const rejectedReasons = payload.acknowledgements
-    .filter((ack) => ack.status === "rejected")
-    .map((ack) => ack.reason || "One or more mutations were rejected.");
+  const rejectedAcks = payload.acknowledgements.filter(isRejectedAck);
 
-  return rejectedReasons;
+  return rejectedAcks;
 };
 
 const pull = async (tenantId: string) => {
@@ -245,10 +284,10 @@ export const syncOnce = async (tenantId: string) => {
   if (!isNetworkOnline()) return;
   await ensureOnlineLicenseValidation(tenantId);
 
-  const rejectedReasons = (await push(tenantId)) ?? [];
+  const rejectedAcks = (await push(tenantId)) ?? [];
   await pull(tenantId);
-  if (rejectedReasons.length > 0) {
-    throw new Error(rejectedReasons[0]);
+  if (rejectedAcks.length > 0) {
+    throw new SyncRejectedError(rejectedAcks[0]);
   }
 };
 

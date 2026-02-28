@@ -1,10 +1,11 @@
 import Dexie, { type Table } from "dexie";
-import type { SyncDelta, SyncMutation } from "./types";
+import type { SyncDelta, SyncMutation, SyncRejection } from "./types";
 
 export type OutboxItem = SyncMutation & {
   tenantId: string;
   status: "pending" | "applied" | "rejected";
   error?: string;
+  rejection?: SyncRejection;
   createdAt: string;
   updatedAt: string;
 };

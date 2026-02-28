@@ -6,19 +6,30 @@ Current decision: build business modules first, and defer the full server-driven
 
 This keeps the current sync model moving while preserving a clean upgrade path later.
 
-## What To Do Now
+## Current Status
 
-1. Keep all sync conflict detection on the backend.
-2. Replace string-matched sync failures with structured rejection codes.
-3. Make `/api/sync/push` return machine-readable rejection metadata for every rejected mutation.
-4. Keep the frontend responsible for local queueing, sync attempts, and rendering current sync status only.
-5. Avoid adding Web Push, SSE, WebSockets, or a broad event bus until inventory, sales, and similar flows are implemented.
+- [x] Keep all sync conflict detection on the backend.
+- [x] Replace string-matched sync failures with structured rejection codes.
+- [x] Make `/api/sync/push` return machine-readable rejection metadata for every rejected mutation.
+- [x] Keep the frontend responsible for local queueing, sync attempts, and rendering current sync status only.
+- [ ] Avoid adding Web Push, SSE, WebSockets, or a broad event bus until inventory, sales, and similar flows are implemented.
 
 ## API Contract Rule
 
 Rejected mutations must return structured data, not only a human-readable message string.
 
-Recommended shape:
+Current `acknowledgements` shape:
+
+```ts
+type MutationAcknowledgement =
+  | {
+      mutationId: string;
+      status: "applied";
+    }
+  | SyncRejection;
+```
+
+Current `SyncRejection` shape:
 
 ```ts
 type SyncRejection = {
@@ -44,6 +55,30 @@ For version conflicts, `details` should include:
   baseVersion: number;
 }
 ```
+
+Example rejected acknowledgement:
+
+```json
+{
+  "mutationId": "m1",
+  "status": "rejected",
+  "reasonCode": "VERSION_CONFLICT",
+  "message": "Version conflict for item_price:abc. Current version is 4, but mutation was based on 3.",
+  "entity": "item_price",
+  "entityId": "abc",
+  "details": {
+    "currentVersion": 4,
+    "baseVersion": 3
+  }
+}
+```
+
+Implemented in:
+
+- `apps/backend/src/modules/sync/sync.service.ts`
+- `apps/frontend/src/features/sync/engine.ts`
+- `apps/frontend/src/features/sync/SyncProvider.tsx`
+- `apps/frontend/src/pages/CatalogPricingPage.tsx`
 
 ## Backend Rule
 

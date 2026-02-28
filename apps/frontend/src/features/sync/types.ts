@@ -1,5 +1,11 @@
 export type SyncOperation = "create" | "update" | "delete";
 
+export type SyncRejectionReasonCode =
+  | "VERSION_CONFLICT"
+  | "VALIDATION_FAILED"
+  | "PERMISSION_DENIED"
+  | "DEPENDENCY_MISSING";
+
 export type SyncMutation = {
   mutationId: string;
   deviceId: string;
@@ -12,11 +18,22 @@ export type SyncMutation = {
   clientTimestamp: string;
 };
 
-export type MutationAck = {
+export type SyncRejection = {
   mutationId: string;
-  status: "applied" | "rejected";
-  reason?: string;
+  status: "rejected";
+  reasonCode: SyncRejectionReasonCode;
+  message: string;
+  entity: string;
+  entityId: string;
+  details?: Record<string, unknown>;
 };
+
+export type MutationAck =
+  | {
+      mutationId: string;
+      status: "applied";
+    }
+  | SyncRejection;
 
 export type SyncDelta = {
   cursor: string;

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../de
 import { ResettableInput } from "../design-system/organisms/ResettableInput";
 import { useSessionStore } from "../features/auth/session-business";
 import {
+  getSyncRejectionFromError,
   getOutboxItemsByMutationIds,
   getLocalItemPricingRowsForDisplay,
   queueItemPriceUpsert,
@@ -30,11 +31,15 @@ const normalizePriceDraft = (raw: string) => {
 
 const toUserPricingErrorMessage = (error: unknown) => {
   const fallback = "Unable to sync pricing right now.";
-  if (!(error instanceof Error)) return fallback;
-  const message = error.message || "";
-  if (message.includes("Version conflict for item_price")) {
+  const rejection = getSyncRejectionFromError(error);
+  if (
+    rejection?.reasonCode === "VERSION_CONFLICT" &&
+    rejection.entity === "item_price"
+  ) {
     return "You made an offline pricing update that was rejected because the server had a newer change.";
   }
+  if (!(error instanceof Error)) return fallback;
+  const message = error.message || "";
   return message || fallback;
 };
 
@@ -247,8 +252,15 @@ export function CatalogPricingPage() {
       const queuedMutations = await getOutboxItemsByMutationIds(mutationIds);
       const rejected = queuedMutations.filter((entry) => entry.status === "rejected");
       if (rejected.length > 0) {
-        const reason = rejected[0]?.error || "One or more price updates were rejected due to a conflict.";
-        setError(toUserPricingErrorMessage(new Error(reason)));
+        setError(
+          toUserPricingErrorMessage(
+            rejected[0]?.rejection ??
+              new Error(
+                rejected[0]?.error ??
+                  "One or more price updates were rejected due to a conflict.",
+              ),
+          ),
+        );
       }
       await refresh(false);
     } catch (nextError) {

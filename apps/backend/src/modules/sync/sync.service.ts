@@ -2,6 +2,58 @@ import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../shared/utils/errors.js";
 import { getBusinessModulesFromLicense } from "../license/license.service.js";
 
+type SyncRejectionReasonCode =
+  | "VERSION_CONFLICT"
+  | "VALIDATION_FAILED"
+  | "PERMISSION_DENIED"
+  | "DEPENDENCY_MISSING";
+
+type SyncRejection = {
+  mutationId: string;
+  status: "rejected";
+  reasonCode: SyncRejectionReasonCode;
+  message: string;
+  entity: string;
+  entityId: string;
+  details?: Record<string, unknown>;
+};
+
+type MutationAcknowledgement =
+  | {
+      mutationId: string;
+      status: "applied";
+    }
+  | SyncRejection;
+
+class SyncRejectionError extends AppError {
+  reasonCode: SyncRejectionReasonCode;
+  entity: string;
+  entityId: string;
+  details?: Record<string, unknown>;
+
+  constructor({
+    message,
+    statusCode,
+    reasonCode,
+    entity,
+    entityId,
+    details,
+  }: {
+    message: string;
+    statusCode: number;
+    reasonCode: SyncRejectionReasonCode;
+    entity: string;
+    entityId: string;
+    details?: Record<string, unknown>;
+  }) {
+    super(message, statusCode);
+    this.reasonCode = reasonCode;
+    this.entity = entity;
+    this.entityId = entityId;
+    this.details = details;
+  }
+}
+
 const SUPPORTED_ENTITIES = new Set([
   "item",
   "item_variant",
@@ -45,6 +97,95 @@ const DEFAULT_PRICE_BOOK_CODE = "STANDARD";
 const DEFAULT_PRICE_BOOK_NAME = "Standard";
 const DEFAULT_PRICE_CURRENCY = "INR";
 const prismaAny = prisma as any;
+
+const toReasonCodeFromStatus = (statusCode?: number): SyncRejectionReasonCode => {
+  if (statusCode === 403) return "PERMISSION_DENIED";
+  if (statusCode === 404) return "DEPENDENCY_MISSING";
+  if (statusCode === 409) return "VERSION_CONFLICT";
+  return "VALIDATION_FAILED";
+};
+
+const toSyncRejection = (
+  mutation,
+  error: unknown,
+): SyncRejection => {
+  if (error instanceof SyncRejectionError) {
+    return {
+      mutationId: mutation.mutationId,
+      status: "rejected",
+      reasonCode: error.reasonCode,
+      message: error.message,
+      entity: error.entity,
+      entityId: error.entityId,
+      ...(error.details ? { details: error.details } : {}),
+    };
+  }
+
+  if (error instanceof AppError) {
+    return {
+      mutationId: mutation.mutationId,
+      status: "rejected",
+      reasonCode: toReasonCodeFromStatus(error.statusCode),
+      message: error.message,
+      entity: mutation.entity,
+      entityId: mutation.entityId,
+    };
+  }
+
+  return {
+    mutationId: mutation.mutationId,
+    status: "rejected",
+    reasonCode: "VALIDATION_FAILED",
+    message: error instanceof Error ? error.message : "Mutation failed",
+    entity: mutation.entity,
+    entityId: mutation.entityId,
+  };
+};
+
+const validationError = (
+  message: string,
+  entity: string,
+  entityId: string,
+  details?: Record<string, unknown>,
+) =>
+  new SyncRejectionError({
+    message,
+    statusCode: 400,
+    reasonCode: "VALIDATION_FAILED",
+    entity,
+    entityId,
+    details,
+  });
+
+const dependencyMissingError = (
+  message: string,
+  entity: string,
+  entityId: string,
+  details?: Record<string, unknown>,
+) =>
+  new SyncRejectionError({
+    message,
+    statusCode: 404,
+    reasonCode: "DEPENDENCY_MISSING",
+    entity,
+    entityId,
+    details,
+  });
+
+const permissionDeniedError = (
+  message: string,
+  entity: string,
+  entityId: string,
+  details?: Record<string, unknown>,
+) =>
+  new SyncRejectionError({
+    message,
+    statusCode: 403,
+    reasonCode: "PERMISSION_DENIED",
+    entity,
+    entityId,
+    details,
+  });
 
 const toPrismaSyncOperation = (op) => {
   if (op === "create") return "CREATE";
@@ -319,10 +460,17 @@ const assertEntityBaseVersion = async (
     entityId,
   );
   if (baseVersion !== currentVersion) {
-    throw new AppError(
-      `Version conflict for ${entity}:${entityId}. Current version is ${currentVersion}, but mutation was based on ${baseVersion}.`,
-      409,
-    );
+    throw new SyncRejectionError({
+      message: `Version conflict for ${entity}:${entityId}. Current version is ${currentVersion}, but mutation was based on ${baseVersion}.`,
+      statusCode: 409,
+      reasonCode: "VERSION_CONFLICT",
+      entity,
+      entityId,
+      details: {
+        currentVersion,
+        baseVersion,
+      },
+    });
   }
 };
 
@@ -541,7 +689,7 @@ const getItemSnapshot = async (tx, tenantId, itemId) => {
     where: { id: itemId },
   });
   if (!item || item.business_id !== tenantId) {
-    throw new AppError("Entity not found in business", 404);
+    throw dependencyMissingError("Entity not found in business", "item", itemId);
   }
 
   const variants = await tx.itemVariant.findMany({
@@ -656,7 +804,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   });
 
   if (!current || current.business_id !== tenantId) {
-    throw new AppError("Entity not found in business", 404);
+    throw dependencyMissingError("Entity not found in business", "item", mutation.entityId);
   }
 
   if (mutation.op === "delete") {
@@ -690,9 +838,10 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
       if (nextSku !== currentSku) {
         const usageCount = await getVariantUsageCount(tx, tenantId, defaultVariant.id);
         if (usageCount > 0) {
-          throw new AppError(
+          throw validationError(
             "Default variant SKU is locked after usage. Create a new variant for SKU changes.",
-            400,
+            mutation.entity,
+            mutation.entityId,
           );
         }
       }
@@ -734,14 +883,14 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
 
   if (mutation.op === "create") {
     if (!payload.itemId) {
-      throw new AppError("itemId is required for variant create", 400);
+      throw validationError("itemId is required for variant create", mutation.entity, mutation.entityId);
     }
 
     const parentItem = await tx.item.findUnique({
       where: { id: payload.itemId },
     });
     if (!parentItem || parentItem.business_id !== tenantId) {
-      throw new AppError("Item not found in business", 404);
+      throw dependencyMissingError("Item not found in business", "item", payload.itemId);
     }
 
     const variant = await tx.itemVariant.create({
@@ -779,13 +928,14 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
       return null;
     }
     if (current.business_id !== tenantId) {
-      throw new AppError("Variant not found in business", 404);
+      throw dependencyMissingError("Variant not found in business", "item_variant", mutation.entityId);
     }
     const usageCount = await getVariantUsageCount(tx, tenantId, mutation.entityId);
     if (usageCount > 0) {
-      throw new AppError(
+      throw validationError(
         "Variant cannot be deleted because it has been used in transactions. Archive it instead.",
-        400,
+        mutation.entity,
+        mutation.entityId,
       );
     }
     await tx.itemVariant.delete({
@@ -796,7 +946,7 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
   }
 
   if (!current || current.business_id !== tenantId) {
-    throw new AppError("Variant not found in business", 404);
+    throw dependencyMissingError("Variant not found in business", mutation.entity, mutation.entityId);
   }
 
   const patch: Record<string, unknown> = {};
@@ -811,9 +961,10 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     getVariantUsageCount(tx, tenantId, mutation.entityId),
   ]);
   if (usageCount > 0 && variantImmutableFieldsChanged(current, currentOptionValues, payload)) {
-    throw new AppError(
+    throw validationError(
       "Variant identity fields are locked after usage. Create a new variant for these changes.",
-      400,
+      mutation.entity,
+      mutation.entityId,
     );
   }
 
@@ -854,7 +1005,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
 
   if (mutation.op === "create") {
     if (!payloadName) {
-      throw new AppError("Category name is required", 400);
+      throw validationError("Category name is required", mutation.entity, mutation.entityId);
     }
 
     const existing = await tx.itemCategory.findFirst({
@@ -864,7 +1015,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
       },
     });
     if (existing) {
-      throw new AppError("Category already exists", 400);
+      throw validationError("Category already exists", mutation.entity, mutation.entityId);
     }
 
     const created = await tx.itemCategory.create({
@@ -891,7 +1042,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
         additionalChanges: [],
       };
     }
-    throw new AppError("Category not found in business", 404);
+    throw dependencyMissingError("Category not found in business", mutation.entity, mutation.entityId);
   }
 
   if (mutation.op === "delete") {
@@ -934,7 +1085,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
 
   if (mutation.op === "update") {
     if (!payloadName) {
-      throw new AppError("Category name is required", 400);
+      throw validationError("Category name is required", mutation.entity, mutation.entityId);
     }
 
     const existing = await tx.itemCategory.findFirst({
@@ -947,7 +1098,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
       },
     });
     if (existing) {
-      throw new AppError("Category already exists", 400);
+      throw validationError("Category already exists", mutation.entity, mutation.entityId);
     }
 
     const needsRename = payloadName !== current.name;
@@ -997,7 +1148,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
     };
   }
 
-  throw new AppError("Unsupported operation for item category", 400);
+  throw validationError("Unsupported operation for item category", mutation.entity, mutation.entityId);
 };
 
 const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
@@ -1007,7 +1158,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
 
   if (mutation.op === "create") {
     if (!payloadName) {
-      throw new AppError("Collection name is required", 400);
+      throw validationError("Collection name is required", mutation.entity, mutation.entityId);
     }
 
     const existing = await txAny.itemCollection.findFirst({
@@ -1017,7 +1168,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
       },
     });
     if (existing) {
-      throw new AppError("Collection already exists", 400);
+      throw validationError("Collection already exists", mutation.entity, mutation.entityId);
     }
 
     const created = await txAny.itemCollection.create({
@@ -1044,7 +1195,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
         additionalChanges: [],
       };
     }
-    throw new AppError("Collection not found in business", 404);
+    throw dependencyMissingError("Collection not found in business", mutation.entity, mutation.entityId);
   }
 
   if (mutation.op === "delete") {
@@ -1082,7 +1233,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
 
   if (mutation.op === "update") {
     if (!payloadName) {
-      throw new AppError("Collection name is required", 400);
+      throw validationError("Collection name is required", mutation.entity, mutation.entityId);
     }
 
     const existing = await txAny.itemCollection.findFirst({
@@ -1093,7 +1244,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
       },
     });
     if (existing) {
-      throw new AppError("Collection already exists", 400);
+      throw validationError("Collection already exists", mutation.entity, mutation.entityId);
     }
 
     const updated = await txAny.itemCollection.update({
@@ -1109,7 +1260,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
     };
   }
 
-  throw new AppError("Unsupported operation for item collection", 400);
+  throw validationError("Unsupported operation for item collection", mutation.entity, mutation.entityId);
 };
 
 const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
@@ -1130,7 +1281,7 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
 
   if (mutation.op === "create") {
     if (!collectionId || !variantId) {
-      throw new AppError("collectionId and variantId are required", 400);
+      throw validationError("collectionId and variantId are required", mutation.entity, mutation.entityId);
     }
 
     const [collection, variant] = await Promise.all([
@@ -1138,10 +1289,10 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
       tx.itemVariant.findUnique({ where: { id: variantId } }),
     ]);
     if (!collection || collection.business_id !== tenantId) {
-      throw new AppError("Collection not found in business", 404);
+      throw dependencyMissingError("Collection not found in business", "item_collection", collectionId);
     }
     if (!variant || variant.business_id !== tenantId) {
-      throw new AppError("Variant not found in business", 404);
+      throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
     }
 
     const existing = await txAny.itemCollectionItem.findFirst({
@@ -1152,7 +1303,7 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
       },
     });
     if (existing) {
-      throw new AppError("Variant is already in this collection", 400);
+      throw validationError("Variant is already in this collection", mutation.entity, mutation.entityId);
     }
 
     const created = await txAny.itemCollectionItem.create({
@@ -1172,7 +1323,11 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
     });
     if (!current) return null;
     if (current.business_id !== tenantId) {
-      throw new AppError("Collection item link not found in business", 404);
+      throw dependencyMissingError(
+        "Collection item link not found in business",
+        mutation.entity,
+        mutation.entityId,
+      );
     }
     await txAny.itemCollectionItem.delete({
       where: { id: mutation.entityId },
@@ -1180,13 +1335,17 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
     return null;
   }
 
-  throw new AppError("Unsupported operation for item collection item", 400);
+  throw validationError("Unsupported operation for item collection item", mutation.entity, mutation.entityId);
 };
 
 const applyItemPriceMutation = async (tx, tenantId, mutation) => {
   const modules = await getBusinessModulesFromLicense(tenantId, tx);
   if (!modules.pricing) {
-    throw new AppError("Pricing module is not enabled for this store license", 403);
+    throw permissionDeniedError(
+      "Pricing module is not enabled for this store license",
+      mutation.entity,
+      mutation.entityId,
+    );
   }
 
   const payload = mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
@@ -1206,7 +1365,7 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
   const currency = typeof payload.currency === "string" ? payload.currency : undefined;
 
   if (!variantId) {
-    throw new AppError("variantId is required for item price mutation", 400);
+    throw validationError("variantId is required for item price mutation", mutation.entity, mutation.entityId);
   }
 
   if (mutation.op === "delete") {
@@ -1221,7 +1380,11 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
     amount === undefined ||
     (amount !== null && (!Number.isFinite(amount) || amount < 0))
   ) {
-    throw new AppError("Price amount must be a non-negative number or null", 400);
+    throw validationError(
+      "Price amount must be a non-negative number or null",
+      mutation.entity,
+      mutation.entityId,
+    );
   }
 
   return upsertItemPriceInTx(tx, tenantId, variantId, {
@@ -1231,7 +1394,10 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
   });
 };
 
-const applyMutation = async (tenantId, mutation) => {
+const applyMutation = async (
+  tenantId,
+  mutation,
+): Promise<{ status: "applied" }> => {
   return prisma.$transaction(async (tx) => {
     const txAny = tx as any;
     const existing = await txAny.syncMutationLog.findUnique({
@@ -1275,7 +1441,7 @@ const applyMutation = async (tenantId, mutation) => {
     } else if (mutation.entity === "item_price") {
       snapshot = await applyItemPriceMutation(tx, tenantId, mutation);
     } else {
-      throw new AppError(`Unsupported entity '${mutation.entity}'`, 400);
+      throw validationError(`Unsupported entity '${mutation.entity}'`, mutation.entity, mutation.entityId);
     }
 
     const operation = toPrismaSyncOperation(mutation.op);
@@ -1315,29 +1481,43 @@ const applyMutation = async (tenantId, mutation) => {
       );
     }
 
-    return { status: "applied" };
+    return { status: "applied" as const };
   });
 };
 
 const processMutations = async (tenantId, userId, mutations) => {
-  const acknowledgements = [];
+  const acknowledgements: MutationAcknowledgement[] = [];
 
   for (const mutation of mutations) {
     if (!SUPPORTED_ENTITIES.has(mutation.entity)) {
-      acknowledgements.push({
-        mutationId: mutation.mutationId,
-        status: "rejected",
-        reason: `Unsupported entity '${mutation.entity}'`,
-      });
+      acknowledgements.push(
+        toSyncRejection(
+          mutation,
+          new SyncRejectionError({
+            message: `Unsupported entity '${mutation.entity}'`,
+            statusCode: 400,
+            reasonCode: "VALIDATION_FAILED",
+            entity: mutation.entity,
+            entityId: mutation.entityId,
+          }),
+        ),
+      );
       continue;
     }
 
     if (mutation.userId !== userId) {
-      acknowledgements.push({
-        mutationId: mutation.mutationId,
-        status: "rejected",
-        reason: "Mutation user does not match authenticated user",
-      });
+      acknowledgements.push(
+        toSyncRejection(
+          mutation,
+          new SyncRejectionError({
+            message: "Mutation user does not match authenticated user",
+            statusCode: 403,
+            reasonCode: "PERMISSION_DENIED",
+            entity: mutation.entity,
+            entityId: mutation.entityId,
+          }),
+        ),
+      );
       continue;
     }
 
@@ -1348,11 +1528,7 @@ const processMutations = async (tenantId, userId, mutations) => {
         status: result.status,
       });
     } catch (error) {
-      acknowledgements.push({
-        mutationId: mutation.mutationId,
-        status: "rejected",
-        reason: error instanceof Error ? error.message : "Mutation failed",
-      });
+      acknowledgements.push(toSyncRejection(mutation, error));
     }
   }
 
@@ -1550,7 +1726,7 @@ const upsertItemPriceInTx = async (
     },
   });
   if (!variant || variant.business_id !== tenantId) {
-    throw new AppError("Variant not found in business", 404);
+    throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
   }
 
   const defaultPriceBook = await ensureDefaultPriceBook(txAny, tenantId, input.currency);
