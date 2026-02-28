@@ -53,19 +53,31 @@ export function ItemVariantCardsEditor({
   disabled = false,
 }: ItemVariantCardsEditorProps) {
   return (
-    <div className="grid gap-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-white">
-      <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-1.5 lg:py-1">
+    <div className="grid gap-1.5 lg:self-start lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
+      <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
         <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
+        <div className="hidden lg:block">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 px-2"
+            onClick={onAddVariant}
+            disabled={disabled}
+          >
+            {addVariantLabel}
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-1 lg:min-h-0 lg:overflow-y-auto lg:p-0">
-        <div className="hidden lg:grid lg:grid-cols-11 lg:items-center lg:gap-1 lg:px-1 lg:pb-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-          <span className="lg:col-span-2">Name</span>
-          <span className="lg:col-span-2">SKU</span>
-          <span className="lg:col-span-2">Barcode</span>
-          <span className="lg:col-span-3">Options</span>
-          <span className="lg:col-span-1">{showActiveToggle ? "Active" : ""}</span>
-          <span className="lg:col-span-1 text-right">Actions</span>
+      <div className="grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0">
+        <div className="hidden bg-slate-50/95 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_4.25rem_3.5rem] lg:items-center lg:gap-1 lg:border-b lg:border-border/70 lg:px-2 lg:py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+          <span>Name</span>
+          <span>SKU</span>
+          <span>Barcode</span>
+          <span>Options</span>
+          <span className="text-center">{showActiveToggle ? "Active" : ""}</span>
+          <span className="text-center">Actions</span>
         </div>
         {variants.map((variant) => {
           const isLocked = Boolean(variant.isLocked);
@@ -73,7 +85,7 @@ export function ItemVariantCardsEditor({
           return (
             <div
               key={variant.id}
-              className="rounded-xl border border-border/70 bg-white/90 p-1.5 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:py-0"
+              className="rounded-xl border border-border/70 bg-white/90 p-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-border/70 lg:bg-transparent lg:px-2 lg:py-1.5 last:lg:border-b-0"
             >
               {isLocked ? (
                 <p className="mb-1 text-[10px] font-medium text-muted-foreground">
@@ -82,8 +94,8 @@ export function ItemVariantCardsEditor({
                   and delete are locked.
                 </p>
               ) : null}
-              <div className="grid gap-1.5 lg:grid-cols-11 lg:items-center lg:gap-1">
-                <div className="grid gap-1 lg:col-span-2">
+              <div className="grid gap-1.5 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_4.25rem_3.5rem] lg:items-center lg:gap-1">
+                <div className="grid gap-1">
                   <Label className="lg:hidden">Name</Label>
                   <Input
                     className={denseInputClassName}
@@ -100,7 +112,7 @@ export function ItemVariantCardsEditor({
                     placeholder="Variant name"
                   />
                 </div>
-                <div className="grid gap-1 lg:col-span-2">
+                <div className="grid gap-1">
                   <Label className="lg:hidden">SKU</Label>
                   <Input
                     className={denseInputClassName}
@@ -117,7 +129,7 @@ export function ItemVariantCardsEditor({
                     placeholder="Variant SKU"
                   />
                 </div>
-                <div className="grid gap-1 lg:col-span-2">
+                <div className="grid gap-1">
                   <Label className="lg:hidden">Barcode</Label>
                   <Input
                     className={denseInputClassName}
@@ -134,9 +146,9 @@ export function ItemVariantCardsEditor({
                     placeholder="Optional barcode"
                   />
                 </div>
-                <div className="grid gap-1 lg:col-span-3 lg:content-center">
+                <div className="grid gap-1 lg:content-center">
                   <Label className="lg:hidden">Options</Label>
-                  <div className="flex min-h-7 flex-wrap content-center items-center gap-1 rounded-lg border border-white/75 bg-white/75 px-1.5 py-1 lg:px-0 lg:py-0">
+                  <div className="flex min-h-8 flex-wrap content-center items-center gap-1 rounded-md border border-border/70 bg-background/60 px-1.5 py-1 lg:min-h-7">
                     <VariantOptionPills
                       options={variant.optionRows}
                       emptyLabel="No options"
@@ -156,7 +168,7 @@ export function ItemVariantCardsEditor({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-6 px-2"
+                      className="h-7 px-2"
                       disabled={isReadOnly}
                       onClick={() => onOpenOptionModal(variant.id)}
                     >
@@ -164,9 +176,9 @@ export function ItemVariantCardsEditor({
                     </Button>
                   </div>
                 </div>
-                {showActiveToggle ? (
-                  <div className="grid gap-1 lg:col-span-1">
-                    <Label className="lg:hidden">Active</Label>
+                <div className="grid gap-1 lg:justify-items-center">
+                  <Label className="lg:hidden">Active</Label>
+                  {showActiveToggle ? (
                     <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground lg:text-[10px]">
                       <input
                         type="checkbox"
@@ -183,9 +195,11 @@ export function ItemVariantCardsEditor({
                       />
                       <span className="lg:hidden">Active</span>
                     </label>
-                  </div>
-                ) : null}
-                <div className="grid gap-1 lg:col-span-1">
+                  ) : (
+                    <span className="hidden lg:block" aria-hidden="true" />
+                  )}
+                </div>
+                <div className="grid gap-1 lg:justify-items-center">
                   <IconButton
                     type="button"
                     icon={Trash2}
@@ -194,7 +208,7 @@ export function ItemVariantCardsEditor({
                     onClick={() =>
                       onVariantsChange(variants.filter((entry) => entry.id !== variant.id))
                     }
-                    className="h-7 w-7 justify-self-end rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                    className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
                     aria-label={removeVariantLabel}
                     title={removeVariantLabel}
                   />
@@ -215,18 +229,6 @@ export function ItemVariantCardsEditor({
             {addVariantLabel}
           </Button>
         </div>
-      </div>
-      <div className="hidden lg:flex lg:shrink-0 lg:justify-end lg:border-t lg:border-white/80 lg:px-1.5 lg:py-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 px-2"
-          onClick={onAddVariant}
-          disabled={disabled}
-        >
-          {addVariantLabel}
-        </Button>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ import {
 type SyncContextValue = {
   loading: boolean;
   lastSyncError: string | null;
+  lastSyncCompletedAt: number | null;
   clearSyncError: () => void;
   onQueueItemCreate: () => Promise<void>;
   onSyncNow: () => Promise<void>;
@@ -54,6 +55,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const clearDraft = useUserAppStore((state) => state.clearDraft);
   const [loading, setLoading] = useState(false);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
+  const [lastSyncCompletedAt, setLastSyncCompletedAt] = useState<number | null>(null);
 
   const loadItems = useCallback(
     async (tenantId: string) => {
@@ -95,6 +97,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
     try {
       await syncOnce(activeStore);
       setLastSyncError(null);
+      setLastSyncCompletedAt(Date.now());
       await loadItems(activeStore);
     } catch (error) {
       console.error(error);
@@ -113,6 +116,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       .then(() => {
         if (cancelled) return;
         setLastSyncError(null);
+        setLastSyncCompletedAt(Date.now());
         return loadItems(activeStore);
       })
       .catch((error: unknown) => {
@@ -134,6 +138,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       void syncOnce(activeStore)
         .then(() => {
           setLastSyncError(null);
+          setLastSyncCompletedAt(Date.now());
           return loadItems(activeStore);
         })
         .catch((error: unknown) => {
@@ -150,6 +155,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
       value={{
         loading,
         lastSyncError,
+        lastSyncCompletedAt,
         clearSyncError: () => setLastSyncError(null),
         onQueueItemCreate,
         onSyncNow,

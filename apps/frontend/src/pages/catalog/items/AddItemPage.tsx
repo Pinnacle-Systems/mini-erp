@@ -2,6 +2,7 @@ import { Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../../design-system/atoms/Button";
+import { IconButton } from "../../../design-system/atoms/IconButton";
 import { Input } from "../../../design-system/atoms/Input";
 import { Label } from "../../../design-system/atoms/Label";
 import { Select } from "../../../design-system/atoms/Select";
@@ -617,22 +618,21 @@ export function AddItemPage() {
                           optionClassName="text-[10px]"
                         />
                         <div className="flex justify-end">
-                          <Button
+                          <IconButton
                             type="button"
-                            variant="outline"
-                            size="sm"
+                            icon={Trash2}
+                            variant="ghost"
                             aria-label="Delete item row"
                             title="Delete row"
-                            className="h-8 w-8 p-0"
+                            className="h-8 w-8 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
                             disabled={quickRows.length <= 1}
                             onClick={() =>
                               setQuickRows((current) =>
                                 current.filter((entry) => entry.id !== row.id),
                               )
                             }
-                          >
-                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                          </Button>
+                            iconSize={14}
+                          />
                         </div>
                       </div>
                     ))}
@@ -741,6 +741,7 @@ export function AddItemPage() {
                     setFormError(null);
                     setOptionModalVariantId(variantId);
                   }}
+                  addVariantLabel="Add Row"
                   denseInputClassName={DENSE_INPUT_CLASS}
                 />
               </div>

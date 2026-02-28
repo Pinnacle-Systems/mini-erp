@@ -483,7 +483,7 @@ export function ItemDetailsPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-1.5 pb-20 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pb-0">
+        <CardContent className="grid gap-1.5 pb-20 sm:pb-24 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pb-0">
           <div className="grid gap-1.5 rounded-lg border border-border/80 bg-white p-1.5 lg:shrink-0 lg:grid-cols-12 lg:items-end">
             <div className="grid gap-1 lg:col-span-4">
               <Label>Name</Label>
@@ -494,7 +494,7 @@ export function ItemDetailsPage() {
                 onChange={(event) => setItem({ ...item, name: event.target.value })}
               />
             </div>
-            <div className="grid gap-1 lg:col-span-3">
+            <div className="grid gap-1 lg:col-span-4">
               <Label>Category</Label>
               <LookupDropdownInput
                 value={item.category}
@@ -513,7 +513,7 @@ export function ItemDetailsPage() {
                 optionClassName="text-[10px]"
               />
             </div>
-            <div className="grid gap-1 lg:col-span-1">
+            <div className="grid gap-1 lg:col-span-2">
               <Label>Unit</Label>
               <Select
                 className={`${DENSE_SELECT_CLASS} w-full`}
@@ -552,46 +552,44 @@ export function ItemDetailsPage() {
             </div>
           </div>
 
-          <div className="mt-1 grid gap-1.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
-            <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
-              <ItemVariantCardsEditor
-                variants={item.variants}
-                onVariantsChange={(next) =>
-                  setItem({
-                    ...item,
-                    variants: next as DraftVariant[],
-                  })
-                }
-                onAddVariant={() => {
-                  if (!isEditing || loading) return;
-                  setItem({
-                    ...item,
-                    variants: [
-                      ...item.variants,
-                      {
-                        id: `temp-${crypto.randomUUID()}`,
-                        name: "",
-                        sku: "",
-                        barcode: "",
-                        isActive: itemActiveState,
-                        optionRows: [],
-                        usageCount: 0,
-                        isLocked: false,
-                      },
-                    ],
-                  });
-                }}
-                onOpenOptionModal={(variantId) => {
-                  if (!isEditing || loading) return;
-                  setSaveError(null);
-                  setOptionModalVariantId(variantId);
-                }}
-                addVariantLabel="Add Variant"
-                denseInputClassName={DENSE_INPUT_CLASS}
-                showActiveToggle
-                disabled={!isEditing || loading}
-              />
-            </div>
+          <div className="mt-1 grid gap-1.5">
+            <ItemVariantCardsEditor
+              variants={item.variants}
+              onVariantsChange={(next) =>
+                setItem({
+                  ...item,
+                  variants: next as DraftVariant[],
+                })
+              }
+              onAddVariant={() => {
+                if (!isEditing || loading) return;
+                setItem({
+                  ...item,
+                  variants: [
+                    ...item.variants,
+                    {
+                      id: `temp-${crypto.randomUUID()}`,
+                      name: "",
+                      sku: "",
+                      barcode: "",
+                      isActive: itemActiveState,
+                      optionRows: [],
+                      usageCount: 0,
+                      isLocked: false,
+                    },
+                  ],
+                });
+              }}
+              onOpenOptionModal={(variantId) => {
+                if (!isEditing || loading) return;
+                setSaveError(null);
+                setOptionModalVariantId(variantId);
+              }}
+              addVariantLabel="Add Row"
+              denseInputClassName={DENSE_INPUT_CLASS}
+              showActiveToggle
+              disabled={!isEditing || loading}
+            />
           </div>
 
           {saveError ? (

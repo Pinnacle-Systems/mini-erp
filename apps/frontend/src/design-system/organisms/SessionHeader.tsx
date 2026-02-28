@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, ChevronDown, LogOut } from "lucide-react";
+import { ArrowLeft, Building2, ChevronDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
@@ -8,7 +8,6 @@ import { selectStore } from "../../features/auth/client";
 import { canSwitchStoreOffline } from "../../features/auth/license-policy";
 
 type SessionHeaderProps = {
-  onLogout: () => void;
   showSwitchStore?: boolean;
   showBack?: boolean;
   contextTitle?: string;
@@ -16,7 +15,6 @@ type SessionHeaderProps = {
 };
 
 export function SessionHeader({
-  onLogout,
   showSwitchStore = true,
   showBack = false,
   contextTitle,
@@ -95,15 +93,15 @@ export function SessionHeader({
   };
 
   return (
-    <section className="flex flex-wrap items-center justify-between gap-2">
-      <div className="min-h-8">
+    <section className="flex min-w-0 items-center justify-between gap-2">
+      <div className="min-h-8 min-w-0 flex-1">
         {contextTitle ? (
-          <div className="space-y-0.5">
-            <p className="text-sm font-semibold leading-tight tracking-[-0.01em] text-foreground">
+          <div className="min-w-0 space-y-0.5">
+            <p className="truncate text-sm font-semibold leading-tight tracking-[-0.01em] text-foreground">
               {contextTitle}
             </p>
             {contextSubtitle ? (
-              <p className="text-[11px] leading-tight text-muted-foreground">
+              <p className="hidden truncate text-[11px] leading-tight text-muted-foreground sm:block">
                 {contextSubtitle}
               </p>
             ) : null}
@@ -112,23 +110,25 @@ export function SessionHeader({
           <button
             type="button"
             onClick={() => navigate("/app")}
-            className="cursor-pointer rounded-md px-1 py-0.5 text-left text-lg font-semibold tracking-[-0.01em] transition hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="max-w-full cursor-pointer truncate rounded-md px-1 py-0.5 text-left text-base font-semibold tracking-[-0.01em] transition hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:text-lg"
             title="Back to home"
           >
             {activeBusinessName}
           </button>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {showBack ? (
           <Button
             type="button"
             variant="outline"
             onClick={handleBack}
-            className="h-8 gap-1.5 px-3 text-xs"
+            className="h-8 shrink-0 gap-1.5 px-2.5 text-xs md:px-3"
+            aria-label="Go back"
+            title="Back"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Back
+            <span className="hidden md:inline">Back</span>
           </Button>
         ) : null}
         {canSwitchStore ? (
@@ -140,22 +140,15 @@ export function SessionHeader({
               setSwitchQuery("");
               setIsSwitcherOpen(true);
             }}
-            className="h-8 max-w-[13rem] gap-1.5 px-2.5 text-xs"
+            className="h-8 max-w-[3rem] shrink-0 gap-1.5 px-2 text-xs md:max-w-[13rem] md:px-2.5"
+            aria-label="Switch business"
+            title={activeBusinessName}
           >
             <Building2 className="h-4 w-4" aria-hidden="true" />
-            <span className="truncate">{activeBusinessName}</span>
+            <span className="hidden md:block truncate">{activeBusinessName}</span>
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </Button>
         ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onLogout}
-          className="h-8 gap-1.5 px-3 text-xs"
-        >
-          <LogOut className="h-4 w-4" aria-hidden="true" />
-          Logout
-        </Button>
       </div>
       {isSwitcherOpen ? (
         <BusinessSelectionDialog

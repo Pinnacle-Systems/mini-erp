@@ -30,14 +30,14 @@ export function VariantOptionPills({
       {options.map((option, index) => (
         <span
           key={option.id ?? `${option.key}:${option.value}:${index}`}
-          className="inline-flex items-center gap-1 rounded-full border border-[#d6e4f5] bg-[#f4f8ff] px-2 py-0.5 text-[10px] text-[#1f4167]"
+          className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-card px-2 py-0.5 text-[10px] text-foreground/85"
         >
           <span className="font-medium">{option.key}</span>
-          <span className="text-[#2f5f92]">{option.value}</span>
+          <span className="text-muted-foreground">{option.value}</span>
           {onRemoveOption ? (
             <button
               type="button"
-              className="rounded-full text-[10px] leading-none text-[#2f5f92] hover:text-[#17395b] disabled:opacity-60"
+              className="rounded-full text-[10px] leading-none text-muted-foreground hover:text-foreground disabled:opacity-60"
               aria-label={`Remove option ${option.key} ${option.value}`}
               disabled={removeDisabled}
               onClick={() => onRemoveOption(option)}

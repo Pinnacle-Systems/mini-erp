@@ -105,7 +105,7 @@
   }
 
   .card {
-    @apply rounded-[24px] border border-white/60 bg-white/70 p-6 text-card-foreground shadow-[0_22px_52px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl;
+    @apply rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm;
   }
 
   .grid {

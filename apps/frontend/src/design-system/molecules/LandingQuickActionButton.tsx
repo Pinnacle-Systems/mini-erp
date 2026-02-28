@@ -21,7 +21,7 @@ export function LandingQuickActionButton({
   return (
     <button
       className={cn(
-        "flex items-center gap-2 rounded-xl border border-white/75 bg-white/70 px-3 py-2 text-left transition hover:bg-white",
+        "flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left shadow-sm transition hover:bg-white",
         className,
       )}
       {...props}

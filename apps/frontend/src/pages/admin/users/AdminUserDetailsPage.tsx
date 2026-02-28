@@ -88,7 +88,7 @@ export function AdminUserDetailsPage() {
             <p className="text-sm text-muted-foreground">User not found.</p>
           ) : user ? (
             <>
-              <div className="pb-20 lg:pb-0">
+              <div className="pb-20 sm:pb-24 lg:pb-0">
                 {!isEditing ? (
                   <PageActionBar
                     className="flex justify-end"

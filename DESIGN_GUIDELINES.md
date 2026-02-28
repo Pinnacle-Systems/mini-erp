@@ -131,8 +131,8 @@ The current frontend does not fully conform to this document. Until those gaps a
 
 Current known non-conformance, ordered by impact:
 
-- Shared design-system primitives remain partially non-conformant. The repo still contains decorative treatments that exceed the intended dense operational baseline, especially in shared primitives beyond the core card/button/input set and in local screen-level wrappers.
-  Affected frontend areas: the remaining shared design system and any local wrappers that still use large radii, translucent white panels, stronger shadows, or blur-heavy chrome. This still affects catalog, admin, auth, and shell surfaces outside the primitives already updated.
+- Shared design-system primitives are now much closer to the intended baseline, but a smaller set of legacy primitives, utility styles, and decorative secondary components still remain out of line.
+  Affected frontend areas: remaining primitive and utility holdouts such as `apps/frontend/src/design-system/atoms/Select.tsx`, the legacy `.card` utility in `apps/frontend/src/styles.css`, and older secondary components or local wrappers that still use translucent fills, heavy blur, oversized radii, or stronger shadows than the dense operational baseline.
 - Some user-facing status copy is still placeholder or dummy content. Screens must not present fake operational state as if it were real system state.
   Affected frontend areas: the app shell landing experience, especially `apps/frontend/src/pages/shell/AppHomePage.tsx`, including the Search + Sync placeholder block and any dashboard placeholder cards that imply live operational state.
 - Some async screens still do not distinguish loading, empty, and error states clearly enough. Do not treat a pre-load empty array as a true empty state.

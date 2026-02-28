@@ -72,7 +72,12 @@ export function ItemsPage() {
                 Browse, filter, and expand variants for catalog items.
               </CardDescription>
             </div>
-            <Button type="button" size="sm" onClick={() => navigate("/app/items/new")}>
+            <Button
+              type="button"
+              size="sm"
+              className="hidden lg:inline-flex"
+              onClick={() => navigate("/app/items/new")}
+            >
               Add Item
             </Button>
           </div>
@@ -141,6 +146,11 @@ export function ItemsPage() {
           </div>
         </CardContent>
       </Card>
+      <div className="fixed bottom-[5.25rem] right-3 z-30 lg:hidden">
+        <Button type="button" size="sm" className="h-10 px-4 shadow-sm" onClick={() => navigate("/app/items/new")}>
+          Add Item
+        </Button>
+      </div>
     </section>
   );
 }

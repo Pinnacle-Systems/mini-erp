@@ -14,6 +14,7 @@ import {
 } from "../design-system/molecules/DenseTable";
 import { ResettableInput } from "../design-system/organisms/ResettableInput";
 import { useSessionStore } from "../features/auth/session-business";
+import { useSyncActions } from "../features/sync/SyncProvider";
 import {
   getSyncRejectionFromError,
   getOutboxItemsByMutationIds,
@@ -64,6 +65,7 @@ export function CatalogPricingPage() {
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const syncedStoreRef = useRef<string | null>(null);
+  const { lastSyncCompletedAt } = useSyncActions();
 
   const refresh = useCallback(async (preserveDrafts = true) => {
     if (!activeStore) {
@@ -160,6 +162,15 @@ export function CatalogPricingPage() {
       cancelled = true;
     };
   }, [activeStore, refresh]);
+
+  useEffect(() => {
+    if (!activeStore || lastSyncCompletedAt === null) return;
+
+    void refresh(true).catch((nextError) => {
+      console.error(nextError);
+      setError("Unable to load pricing right now.");
+    });
+  }, [activeStore, lastSyncCompletedAt, refresh]);
 
   useEffect(() => {
     if (!activeStore) return;
@@ -312,27 +323,6 @@ export function CatalogPricingPage() {
                 Maintain base selling prices per variant.
               </CardDescription>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                if (!activeStore) return;
-                setLoading(true);
-                setError(null);
-                try {
-                  await syncOnce(activeStore);
-                  await refresh(false);
-                } catch (nextError) {
-                  console.error(nextError);
-                  setError(toUserPricingErrorMessage(nextError));
-                } finally {
-                  setLoading(false);
-                }
-              }}
-            >
-              Refresh
-            </Button>
           </div>
         </CardHeader>
 

@@ -78,7 +78,7 @@ export function LookupDropdownInput<T>({
       {isFocused && filteredOptions.length > 0 ? (
         <div
           className={cn(
-            "absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1 shadow-sm",
+            "absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-border bg-card p-1 shadow-sm",
             dropdownClassName,
           )}
         >
@@ -96,7 +96,7 @@ export function LookupDropdownInput<T>({
                   setIsFocused(false);
                 }}
                 className={cn(
-                  "rounded-md border border-[#e5edf7] px-2 py-1 text-left text-[11px] text-foreground hover:bg-[#f6faff]",
+                  "rounded-md border border-transparent px-2 py-1 text-left text-[11px] text-foreground hover:border-border hover:bg-muted/70",
                   optionClassName,
                 )}
               >

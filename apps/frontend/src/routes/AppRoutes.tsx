@@ -109,7 +109,6 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
               showSwitchStore
               contextTitle={headerContext?.title}
               contextSubtitle={headerContext?.subtitle}
-              onLogout={onLogout}
             />
           </div>
           {lastSyncError ? (

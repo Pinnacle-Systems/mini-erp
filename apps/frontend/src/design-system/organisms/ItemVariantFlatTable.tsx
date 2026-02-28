@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, type LucideIcon } from "lucide-react";
-import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
 import {
   DenseTable,
@@ -145,44 +144,65 @@ export function ItemVariantFlatTable({
           <div className="card text-sm text-muted-foreground">Loading variants...</div>
         ) : (
           visibleRows.map((row) => (
-            <div key={row.key} className="space-y-2 rounded-xl border border-border/70 bg-white p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{row.itemName}</p>
-                  <p className="text-xs text-muted-foreground">{row.variantName}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    SKU: <span className="font-mono">{row.sku || "-"}</span>
-                  </p>
-                  {showCategory ? (
-                    <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
-                  ) : null}
-                </div>
-                <span
-                  className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                    row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-                  }`}
-                >
-                  {row.isActive ? "Active" : "Inactive"}
-                </span>
-              </div>
-
-              {row.pending ? (
-                <p className="text-[10px] font-semibold text-amber-700">Pending sync</p>
-              ) : null}
-
-              {hasAction ? (
-                <div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => handleAction(row)}
+            hasAction ? (
+              <button
+                key={row.key}
+                type="button"
+                className="block w-full space-y-2 rounded-xl border border-border/70 bg-white p-3 text-left transition hover:bg-white/90"
+                onClick={() => handleAction(row)}
+                aria-label={`${actionLabel} ${row.itemName}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{row.itemName}</p>
+                    <p className="text-xs text-muted-foreground">{row.variantName}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      SKU: <span className="font-mono">{row.sku || "-"}</span>
+                    </p>
+                    {showCategory ? (
+                      <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
+                    ) : null}
+                  </div>
+                  <span
+                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                      row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                    }`}
                   >
-                    {actionLabel}
-                  </Button>
+                    {row.isActive ? "Active" : "Inactive"}
+                  </span>
                 </div>
-              ) : null}
-            </div>
+
+                {row.pending ? (
+                  <p className="text-[10px] font-semibold text-amber-700">Pending sync</p>
+                ) : null}
+              </button>
+            ) : (
+              <div key={row.key} className="space-y-2 rounded-xl border border-border/70 bg-white p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{row.itemName}</p>
+                    <p className="text-xs text-muted-foreground">{row.variantName}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      SKU: <span className="font-mono">{row.sku || "-"}</span>
+                    </p>
+                    {showCategory ? (
+                      <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
+                    ) : null}
+                  </div>
+                  <span
+                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                      row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {row.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+
+                {row.pending ? (
+                  <p className="text-[10px] font-semibold text-amber-700">Pending sync</p>
+                ) : null}
+              </div>
+            )
           ))
         )}
       </div>

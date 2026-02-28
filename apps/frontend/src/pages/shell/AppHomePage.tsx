@@ -6,10 +6,12 @@ import {
   FileText,
   FolderKanban,
   HandCoins,
+  MoreHorizontal,
   Package,
   PackageSearch,
   Percent,
   ReceiptText,
+  RefreshCcw,
   ScanBarcode,
   ShieldCheck,
   ShoppingBag,
@@ -18,11 +20,14 @@ import {
   Undo2,
   Users,
   UserRoundCog,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useSessionStore, type BusinessModules } from "../../features/auth/session-business";
+import { useLogoutFlow } from "../../features/auth/useLogoutFlow";
+import { useSyncActions } from "../../features/sync/SyncProvider";
 import { getPendingOutboxCount } from "../../features/sync/engine";
 import { Button } from "../../design-system/atoms/Button";
 import {
@@ -330,9 +335,16 @@ const landingBusinessPulse = [
   { label: "Avg bill value", value: "INR 493" },
 ];
 
+const MOBILE_NAV_BUTTON_WIDTH_PX = 76;
+const MOBILE_NAV_BUTTON_GAP_PX = 4;
+const MOBILE_NAV_HORIZONTAL_PADDING_PX = 16;
+const MOBILE_NAV_MORE_BUTTON_WIDTH_PX = 76;
+
 export function AppHomePage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { submit: onLogout } = useLogoutFlow();
+  const { loading: isSyncing, onSyncNow } = useSyncActions();
   const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
   const activeBusinessModules = useSessionStore((state) => state.activeBusinessModules);
@@ -345,6 +357,8 @@ export function AppHomePage() {
   const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(null);
   const [pendingFolderId, setPendingFolderId] = useState<UserFolderId | null>(null);
   const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
+  const [showSessionMenu, setShowSessionMenu] = useState(false);
+  const [mobileVisibleFolderCount, setMobileVisibleFolderCount] = useState(1);
   const appTabsScrollRef = useRef<HTMLDivElement | null>(null);
   const [showAppTabsLeftFade, setShowAppTabsLeftFade] = useState(false);
   const [showAppTabsRightFade, setShowAppTabsRightFade] = useState(false);
@@ -357,7 +371,6 @@ export function AppHomePage() {
       },
     [activeBusinessModules],
   );
-
   const visibleFolders = useMemo(
     () =>
       folders.filter(
@@ -370,6 +383,37 @@ export function AppHomePage() {
   const activeFolder = useMemo(
     () => visibleFolders.find((folder) => folder.id === activeFolderId) ?? null,
     [activeFolderId, visibleFolders],
+  );
+  const mobileVisibleFolders = useMemo(
+    () => {
+      if (visibleFolders.length <= mobileVisibleFolderCount) {
+        return visibleFolders;
+      }
+
+      const baseVisible = visibleFolders.slice(0, mobileVisibleFolderCount);
+      if (!activeFolderId) {
+        return baseVisible;
+      }
+
+      if (baseVisible.some((folder) => folder.id === activeFolderId)) {
+        return baseVisible;
+      }
+
+      const activeFolderEntry = visibleFolders.find((folder) => folder.id === activeFolderId);
+      if (!activeFolderEntry) {
+        return baseVisible;
+      }
+
+      return [...baseVisible.slice(0, Math.max(0, mobileVisibleFolderCount - 1)), activeFolderEntry];
+    },
+    [activeFolderId, mobileVisibleFolderCount, visibleFolders],
+  );
+  const mobileOverflowFolders = useMemo(
+    () => {
+      const visibleIds = new Set(mobileVisibleFolders.map((folder) => folder.id));
+      return visibleFolders.filter((folder) => !visibleIds.has(folder.id));
+    },
+    [mobileVisibleFolders, visibleFolders],
   );
 
   const isItemsRoute = location.pathname.startsWith("/app/items");
@@ -475,6 +519,33 @@ export function AppHomePage() {
   }, [routeDrivenAppId, updateAppTabsOverflow]);
 
   useEffect(() => {
+    setShowSessionMenu(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const updateMobileVisibleFolderCount = () => {
+      const viewportWidth = window.innerWidth;
+      const availableWidth =
+        viewportWidth -
+        MOBILE_NAV_HORIZONTAL_PADDING_PX -
+        MOBILE_NAV_MORE_BUTTON_WIDTH_PX -
+        MOBILE_NAV_BUTTON_GAP_PX;
+      const slotWidth = MOBILE_NAV_BUTTON_WIDTH_PX + MOBILE_NAV_BUTTON_GAP_PX;
+      const nextCount = Math.max(
+        1,
+        Math.min(visibleFolders.length, Math.floor((availableWidth + MOBILE_NAV_BUTTON_GAP_PX) / slotWidth)),
+      );
+      setMobileVisibleFolderCount(nextCount);
+    };
+
+    updateMobileVisibleFolderCount();
+    window.addEventListener("resize", updateMobileVisibleFolderCount);
+    return () => {
+      window.removeEventListener("resize", updateMobileVisibleFolderCount);
+    };
+  }, [visibleFolders.length]);
+
+  useEffect(() => {
     if (!activeStore) {
       queueMicrotask(() => {
         setPendingOutboxCount(0);
@@ -507,6 +578,7 @@ export function AppHomePage() {
   };
 
   const handleFolderSelect = (folderId: UserFolderId) => {
+    setShowSessionMenu(false);
     if (isItemsRoute || routeDrivenAppId) {
       setPendingFolderId(folderId);
       navigate("/app");
@@ -655,23 +727,58 @@ export function AppHomePage() {
             </div>
           </div>
 
-          <div className="min-h-0 overflow-y-auto overflow-x-hidden pl-0.5">
+          <div className="flex min-h-0 flex-col pl-0.5">
             <p className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
               {activeFolder?.label ?? "App"} Apps
             </p>
-            <div className="space-y-1.5">
-              {activeFolder?.apps.map((app) => (
-                <AppTabButton
-                  key={app.id}
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+              <div className="space-y-1.5">
+                {activeFolder?.apps.map((app) => (
+                  <AppTabButton
+                    key={app.id}
+                    type="button"
+                    onClick={() => handleAppSelect(app.id)}
+                    Icon={app.Icon}
+                    label={app.label}
+                    active={routeDrivenAppId === app.id}
+                    stacked
+                    className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="mt-2 border-t border-border/70 pt-2">
+              <p className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                Session
+              </p>
+              <div className="grid gap-1.5">
+                <Button
                   type="button"
-                  onClick={() => handleAppSelect(app.id)}
-                  Icon={app.Icon}
-                  label={app.label}
-                  active={routeDrivenAppId === app.id}
-                  stacked
-                  className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
-                />
-              ))}
+                  variant="outline"
+                  size="sm"
+                  className="h-8 justify-start gap-2 px-2 text-[11px]"
+                  onClick={() => {
+                    void onSyncNow();
+                  }}
+                  disabled={isSyncing}
+                  >
+                    <RefreshCcw
+                      className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
+                      aria-hidden="true"
+                    />
+                    {isSyncing ? "Syncing..." : "Sync"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 justify-start gap-2 px-2 text-[11px]"
+                  onClick={() => void onLogout()}
+                >
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Logout
+                </Button>
+              </div>
             </div>
           </div>
         </aside>
@@ -727,20 +834,84 @@ export function AppHomePage() {
         </section>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-white p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
-        <div className="flex gap-1 overflow-x-auto pb-1">
-          {visibleFolders.map((folder) => (
-            <AppNavButton
-              key={folder.id}
-              type="button"
-              onClick={() => handleFolderSelect(folder.id)}
-              Icon={folder.Icon}
-              label={folder.label}
-              active={activeFolder?.id === folder.id}
-              compact
-              aria-current={activeFolder?.id === folder.id ? "page" : undefined}
-            />
-          ))}
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border/80 bg-white p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
+        {showSessionMenu ? (
+          <div className="absolute inset-x-2 bottom-full z-50 mb-2 rounded-lg border border-border/80 bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
+            <div className="grid gap-1">
+              {mobileOverflowFolders.map((folder) => (
+                <Button
+                  key={folder.id}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 w-full justify-start gap-2 px-3 text-[12px]"
+                  onClick={() => handleFolderSelect(folder.id)}
+                >
+                  <folder.Icon className="h-4 w-4" aria-hidden="true" />
+                  {folder.label}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 w-full justify-start gap-2 px-3 text-[12px]"
+                onClick={() => {
+                  setShowSessionMenu(false);
+                  void onSyncNow();
+                }}
+                disabled={isSyncing}
+              >
+                <RefreshCcw
+                  className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
+                  aria-hidden="true"
+                />
+                {isSyncing ? "Syncing..." : "Sync"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 w-full justify-start gap-2 px-3 text-[12px] text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                onClick={() => {
+                  setShowSessionMenu(false);
+                  void onLogout();
+                }}
+              >
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+                Logout
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex gap-1 overflow-hidden pb-1">
+              {mobileVisibleFolders.map((folder) => (
+                <AppNavButton
+                  key={folder.id}
+                  type="button"
+                  onClick={() => handleFolderSelect(folder.id)}
+                  Icon={folder.Icon}
+                  label={folder.label}
+                  active={activeFolder?.id === folder.id}
+                  compact
+                  aria-current={activeFolder?.id === folder.id ? "page" : undefined}
+                />
+              ))}
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            className="flex min-h-14 min-w-[4.8rem] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight text-foreground/75 hover:bg-white/80"
+            onClick={() => setShowSessionMenu((current) => !current)}
+            aria-expanded={showSessionMenu}
+            aria-label="Open more options"
+          >
+            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            <span className="text-center">More</span>
+          </Button>
         </div>
       </nav>
     </main>
