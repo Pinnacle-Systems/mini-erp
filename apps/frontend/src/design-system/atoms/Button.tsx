@@ -12,11 +12,11 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variantStyles: Record<ButtonVariant, string> = {
   default:
-    "border border-[#0a6bff] bg-gradient-to-b from-[#2890ff] to-[#0a74ff] text-white shadow-[0_10px_24px_-14px_rgba(10,116,255,0.9)] hover:from-[#3a9cff] hover:to-[#0d7eff] active:from-[#0a74ff] active:to-[#0667e3]",
+    "border border-[#0a63dd] bg-[#0a74ff] text-white shadow-[0_1px_2px_rgba(10,116,255,0.22),0_8px_16px_-14px_rgba(10,116,255,0.45)] hover:bg-[#0d7eff] active:bg-[#0667e3]",
   ghost:
-    "border border-transparent bg-transparent text-foreground hover:bg-white/55 active:bg-white/65",
+    "border border-transparent bg-transparent text-foreground hover:bg-muted active:bg-muted/80",
   outline:
-    "border border-[#9cb5d2] bg-gradient-to-b from-[#f8fbff] to-[#e7f1ff] text-[#15314e] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_24px_-18px_rgba(21,49,78,0.5)] backdrop-blur-xl hover:from-[#ffffff] hover:to-[#edf5ff] active:from-[#ecf4ff] active:to-[#ddeaff]"
+    "border border-[#8fa9c7] bg-[#f6f8fb] text-[#15314e] shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-[#fbfcfd] active:bg-[#edf2f7]"
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -30,7 +30,7 @@ export function Button({ className, variant = "default", size = "md", children, 
   return (
     <button
       className={cn(
-        "inline-flex cursor-pointer items-center justify-center rounded-full font-semibold tracking-[0.01em] transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
+        "inline-flex cursor-pointer items-center justify-center rounded-md font-semibold tracking-[0.01em] transition-[background-color,border-color,box-shadow,color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1 focus-visible:ring-offset-background active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
         variantStyles[variant],
         sizeStyles[size],
         className

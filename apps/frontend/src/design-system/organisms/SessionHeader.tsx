@@ -1,7 +1,8 @@
-import { ArrowLeft, Building2, ChevronDown, LogOut, Search, X } from "lucide-react";
+import { ArrowLeft, Building2, ChevronDown, LogOut } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
+import { BusinessSelectionDialog } from "./BusinessSelectionDialog";
 import { useSessionStore } from "../../features/auth/session-business";
 import { selectStore } from "../../features/auth/client";
 import { canSwitchStoreOffline } from "../../features/auth/license-policy";
@@ -43,11 +44,6 @@ export function SessionHeader({
     [activeStore, businesses],
   );
   const showSelectedStore = role === "USER" && isBusinessSelected && showSwitchStore;
-  const filteredBusinesses = useMemo(() => {
-    const query = switchQuery.trim().toLowerCase();
-    if (!query) return businesses;
-    return businesses.filter((business) => business.name.toLowerCase().includes(query));
-  }, [businesses, switchQuery]);
 
   const onSelectBusiness = async (businessId: string) => {
     if (businessId === activeStore) {
@@ -162,59 +158,21 @@ export function SessionHeader({
         </Button>
       </div>
       {isSwitcherOpen ? (
-        <div className="fixed inset-0 z-[80] bg-slate-950/40 p-3 sm:p-4">
-          <div className="mx-auto mt-8 w-full max-w-md rounded-2xl border border-white/70 bg-white p-3 shadow-[0_24px_48px_-28px_rgba(15,23,42,0.45)] sm:mt-16">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-foreground">Switch Business</p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsSwitcherOpen(false)}
-                className="h-7 w-7 p-0"
-                disabled={switching}
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              <input
-                value={switchQuery}
-                onChange={(event) => setSwitchQuery(event.target.value)}
-                placeholder="Search business"
-                autoComplete="off"
-                className="h-9 w-full rounded-md border border-[#c6d5e6] pl-8 pr-2 text-xs"
-              />
-            </div>
-            {switchError ? <p className="mt-2 text-xs text-red-600">{switchError}</p> : null}
-            <div className="mt-2 max-h-72 space-y-1 overflow-y-auto">
-              {filteredBusinesses.map((business) => {
-                const isActive = business.id === activeStore;
-                return (
-                  <button
-                    key={business.id}
-                    type="button"
-                    disabled={switching}
-                    onClick={() => void onSelectBusiness(business.id)}
-                    className={`w-full rounded-lg border px-2 py-2 text-left transition ${
-                      isActive
-                        ? "border-[#2f6fb7] bg-[#eaf3ff]"
-                        : "border-[#e1ebf6] bg-white hover:bg-[#f8fbff]"
-                    }`}
-                  >
-                    <p className="truncate text-xs font-medium text-foreground">{business.name}</p>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      {isActive ? "Current business" : "Tap to switch"}
-                    </p>
-                  </button>
-                );
-              })}
-              {filteredBusinesses.length === 0 ? (
-                <p className="px-1 py-2 text-xs text-muted-foreground">No businesses found.</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        <BusinessSelectionDialog
+          title="Switch Business"
+          businesses={businesses}
+          query={switchQuery}
+          onQueryChange={setSwitchQuery}
+          onClose={() => setIsSwitcherOpen(false)}
+          onSelectBusiness={(businessId) => {
+            void onSelectBusiness(businessId);
+          }}
+          disabled={switching}
+          error={switchError}
+          activeBusinessId={activeStore}
+          inactiveLabel="Tap to switch"
+          panelOffsetClassName="mt-8 sm:mt-16"
+        />
       ) : null}
     </section>
   );

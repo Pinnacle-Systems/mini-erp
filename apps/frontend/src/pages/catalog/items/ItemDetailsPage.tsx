@@ -484,7 +484,7 @@ export function ItemDetailsPage() {
           </div>
         </CardHeader>
         <CardContent className="grid gap-1.5 pb-20 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pb-0">
-          <div className="grid gap-1.5 rounded-xl border border-white/70 bg-white/65 p-1.5 lg:shrink-0 lg:grid-cols-12 lg:items-end">
+          <div className="grid gap-1.5 rounded-lg border border-border/80 bg-white p-1.5 lg:shrink-0 lg:grid-cols-12 lg:items-end">
             <div className="grid gap-1 lg:col-span-4">
               <Label>Name</Label>
               <Input

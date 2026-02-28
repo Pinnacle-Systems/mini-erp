@@ -34,6 +34,8 @@ import {
 const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
 const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
 const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
+const QUICK_ENTRY_INPUT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
+const QUICK_ENTRY_SELECT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
 const OPTION_DISCOVERY_STORAGE_KEY = "mini-erp-option-discovery";
 const ITEM_CATEGORIES_STORAGE_KEY = "mini-erp-item-categories";
 const getOptionDiscoveryStorageKey = (storeId: string) =>
@@ -477,7 +479,7 @@ export function AddItemPage() {
             onSubmit={onSubmit}
             className="space-y-1.5 pb-20 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1 lg:pb-0"
           >
-            <div className="rounded-xl border border-white/70 bg-white/60 p-1.5">
+            <div className="rounded-lg border border-border/80 bg-white p-1.5">
               <label
                 htmlFor="variant-mode"
                 className="inline-flex items-center gap-1.5 text-[11px] font-medium text-foreground lg:text-[10px]"
@@ -498,24 +500,24 @@ export function AddItemPage() {
             <div className="space-y-1.5 lg:flex-1 lg:min-h-0 lg:space-y-1">
               {!hasVariants ? (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
-                <div className="overflow-visible rounded-xl border border-white/75 bg-white/70 lg:flex lg:min-h-0 lg:flex-col">
-                  <div className="hidden grid-cols-[minmax(0,2.4fr)_minmax(0,1.6fr)_84px_84px_minmax(0,1.8fr)_50px] gap-1 border-b border-white/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0">
+                <div className="overflow-visible rounded-lg border border-border/80 bg-white lg:flex lg:min-h-0 lg:flex-col">
+                  <div className="hidden grid-cols-[minmax(0,2.35fr)_minmax(0,1.55fr)_92px_92px_minmax(0,1.85fr)_56px] gap-1.5 border-b border-border/70 bg-slate-50/95 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0">
                     <span>Name</span>
                     <span>SKU</span>
                     <span>Unit</span>
                     <span>Type</span>
                     <span>Category</span>
-                    <span className="text-right">Del</span>
+                    <span className="text-right">Actions</span>
                   </div>
 
-                  <div className="grid gap-1 p-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                  <div className="grid gap-1.5 p-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                     {quickRows.map((row, index) => (
                       <div
                         key={row.id}
-                        className="grid gap-1 rounded-lg border border-white/70 bg-white/80 p-1 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1.6fr)_84px_84px_minmax(0,1.8fr)_50px] lg:items-center lg:border-0 lg:bg-transparent lg:p-0"
+                        className="grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:grid-cols-[minmax(0,2.35fr)_minmax(0,1.55fr)_92px_92px_minmax(0,1.85fr)_56px] lg:items-center lg:border-0 lg:bg-transparent lg:p-0"
                       >
                         <Input
-                          className={DENSE_INPUT_CLASS}
+                          className={QUICK_ENTRY_INPUT_CLASS}
                           value={row.name}
                           onChange={(event) =>
                             setQuickRows((current) =>
@@ -529,7 +531,7 @@ export function AddItemPage() {
                           placeholder={`Item ${index + 1} name`}
                         />
                         <Input
-                          className={DENSE_INPUT_CLASS}
+                          className={QUICK_ENTRY_INPUT_CLASS}
                           value={row.sku}
                           onChange={(event) =>
                             setQuickRows((current) =>
@@ -543,7 +545,7 @@ export function AddItemPage() {
                           placeholder="SKU (optional)"
                         />
                         <Select
-                          className={`${DENSE_SELECT_CLASS} w-full`}
+                          className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
                           value={row.unit}
                           onChange={(event) =>
                             setQuickRows((current) =>
@@ -565,7 +567,7 @@ export function AddItemPage() {
                           ))}
                         </Select>
                         <Select
-                          className={`${DENSE_SELECT_CLASS} w-full`}
+                          className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
                           value={row.itemType}
                           onChange={(event) =>
                             setQuickRows((current) =>
@@ -611,7 +613,7 @@ export function AddItemPage() {
                             <div className="truncate font-medium">{categoryValue}</div>
                           )}
                           maxVisibleOptions={10}
-                          inputClassName={DENSE_INPUT_CLASS}
+                          inputClassName={QUICK_ENTRY_INPUT_CLASS}
                           optionClassName="text-[10px]"
                         />
                         <div className="flex justify-end">
@@ -621,7 +623,7 @@ export function AddItemPage() {
                             size="sm"
                             aria-label="Delete item row"
                             title="Delete row"
-                            className="h-7 w-7 p-0"
+                            className="h-8 w-8 p-0"
                             disabled={quickRows.length <= 1}
                             onClick={() =>
                               setQuickRows((current) =>
@@ -669,7 +671,7 @@ export function AddItemPage() {
               </div>
             ) : (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
-                <div className="grid gap-1.5 rounded-xl border border-white/70 bg-white/65 p-1.5 lg:grid-cols-12 lg:items-end">
+                <div className="grid gap-1.5 rounded-lg border border-border/80 bg-white p-1.5 lg:grid-cols-12 lg:items-end">
                   <div className="grid gap-1 lg:col-span-4">
                     <Label htmlFor="name">Name</Label>
                     <Input

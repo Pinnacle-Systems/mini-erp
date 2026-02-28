@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "../../../design-system/atoms/Button";
 import { Input } from "../../../design-system/atoms/Input";
 import { Label } from "../../../design-system/atoms/Label";
-import { Select } from "../../../design-system/atoms/Select";
+import { Switch } from "../../../design-system/atoms/Switch";
 import {
   Card,
   CardContent,
@@ -19,16 +19,12 @@ import {
 } from "../../../features/sync/engine";
 
 const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
-const DENSE_SELECT_CLASS = "h-8 rounded-lg px-3 text-xs";
 
 export function ItemsPage() {
   const navigate = useNavigate();
   const activeStore = useSessionStore((state) => state.activeStore);
   const [items, setItems] = useState<ItemDisplay[]>([]);
   const [query, setQuery] = useState("");
-  const [variantFilter, setVariantFilter] = useState<
-    "all" | "single-variant" | "multi-variant"
-  >("all");
   const [includeInactive, setIncludeInactive] = useState(false);
 
   useEffect(() => {
@@ -59,15 +55,11 @@ export function ItemsPage() {
         item.category.toLowerCase().includes(normalizedQuery) ||
         item.variantSkus.some((sku) => sku.toLowerCase().includes(normalizedQuery));
 
-      const matchesVariants =
-        variantFilter === "all" ||
-        (variantFilter === "single-variant" && item.variantCount <= 1) ||
-        (variantFilter === "multi-variant" && item.variantCount > 1);
       const matchesStatus = includeInactive || item.isActive;
 
-      return matchesQuery && matchesVariants && matchesStatus;
+      return matchesQuery && matchesStatus;
     });
-  }, [activeStore, includeInactive, items, query, variantFilter]);
+  }, [activeStore, includeInactive, items, query]);
 
   return (
     <section className="h-auto w-full lg:h-full lg:min-h-0">
@@ -92,7 +84,7 @@ export function ItemsPage() {
               Filters
             </legend>
             <p className="app-filter-help">
-              Refine items by search text, variant count, and active status.
+              Refine items by search text and active status.
             </p>
             <div className="app-filter-row">
               <Input
@@ -102,41 +94,17 @@ export function ItemsPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Name, SKU, or category"
               />
-              <Select
-                id="items-variant-filter"
-                className={`w-full min-[642px]:w-auto min-[642px]:min-w-[12rem] ${DENSE_SELECT_CLASS}`}
-                value={variantFilter}
-                onChange={(event) =>
-                  setVariantFilter(
-                    event.target.value as "all" | "single-variant" | "multi-variant",
-                  )
-                }
-              >
-                <option value="all">All variants</option>
-                <option value="single-variant">Single variant</option>
-                <option value="multi-variant">Multiple variants</option>
-              </Select>
-              <div className="inline-flex items-center gap-2">
-                <button
+              <div className="inline-flex min-h-8 items-center gap-2.5">
+                <Switch
                   id="include-inactive-items"
-                  type="button"
-                  role="switch"
-                  aria-checked={includeInactive}
                   aria-label="Include inactive items"
-                  onClick={() => setIncludeInactive((current) => !current)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 ${
-                    includeInactive
-                      ? "border-[#2f6fb7] bg-[#4a8dd9]"
-                      : "border-[#b8cbe0] bg-[#e7eff8]"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                      includeInactive ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
-                <Label htmlFor="include-inactive-items" className="shrink-0">
+                  checked={includeInactive}
+                  onCheckedChange={setIncludeInactive}
+                  className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
+                  checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                  uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+                />
+                <Label htmlFor="include-inactive-items" className="shrink-0 leading-none">
                   Include inactive
                 </Label>
               </div>
@@ -147,7 +115,6 @@ export function ItemsPage() {
                 className="w-full min-[642px]:w-auto"
                 onClick={() => {
                   setQuery("");
-                  setVariantFilter("all");
                   setIncludeInactive(false);
                 }}
               >
@@ -156,7 +123,7 @@ export function ItemsPage() {
             </div>
           </fieldset>
 
-          <div className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+          <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1">
             {items.length === 0 ? (
               <div className="card text-sm text-muted-foreground">No items available.</div>
             ) : filteredItems.length === 0 ? (

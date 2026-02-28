@@ -2,7 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../design-system/atoms/Button";
 import { Input } from "../design-system/atoms/Input";
 import { Label } from "../design-system/atoms/Label";
+import { Switch } from "../design-system/atoms/Switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
+import {
+  DenseTable,
+  DenseTableBody,
+  DenseTableCell,
+  DenseTableHead,
+  DenseTableHeaderCell,
+  DenseTableRow,
+} from "../design-system/molecules/DenseTable";
 import { ResettableInput } from "../design-system/organisms/ResettableInput";
 import { useSessionStore } from "../features/auth/session-business";
 import {
@@ -339,27 +348,17 @@ export function CatalogPricingPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search item, variant, SKU, category"
               />
-              <div className="inline-flex items-center gap-2">
-                <button
+              <div className="inline-flex min-h-8 items-center gap-2.5">
+                <Switch
                   id="include-inactive-priced-variants"
-                  type="button"
-                  role="switch"
-                  aria-checked={includeInactive}
                   aria-label="Include inactive variants"
-                  onClick={() => setIncludeInactive((current) => !current)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 ${
-                    includeInactive
-                      ? "border-[#2f6fb7] bg-[#4a8dd9]"
-                      : "border-[#b8cbe0] bg-[#e7eff8]"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                      includeInactive ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
-                <Label htmlFor="include-inactive-priced-variants" className="shrink-0">
+                  checked={includeInactive}
+                  onCheckedChange={setIncludeInactive}
+                  className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
+                  checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                  uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+                />
+                <Label htmlFor="include-inactive-priced-variants" className="shrink-0 leading-none">
                   Include inactive
                 </Label>
               </div>
@@ -388,7 +387,7 @@ export function CatalogPricingPage() {
             ) : (
               rows.map((row) => {
                 return (
-                  <div key={row.variantId} className="rounded-2xl border border-border/70 bg-white/90 p-3 space-y-2">
+                  <div key={row.variantId} className="rounded-xl border border-border/70 bg-white p-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-semibold text-foreground">{row.itemName}</p>
@@ -435,89 +434,87 @@ export function CatalogPricingPage() {
             )}
           </div>
 
-          <div className="hidden rounded-2xl border border-border/70 bg-white/80 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-            <table className="w-full table-fixed text-left text-[11px]">
-              <thead className="sticky top-0 z-10 bg-slate-50/95 text-[11px] uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="w-32 px-2 py-2 font-semibold">Item</th>
-                  <th className="w-24 px-2 py-2 font-semibold">Variant</th>
-                  <th className="w-20 px-2 py-2 font-semibold">SKU</th>
-                  <th className="w-20 px-2 py-2 font-semibold">Category</th>
-                  <th className="w-20 px-2 py-2 font-semibold">Status</th>
-                  <th className="w-32 px-2 py-2 font-semibold">Price</th>
-                  <th className="w-16 px-2 py-2 font-semibold">Unit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td className="px-2 py-3 text-muted-foreground" colSpan={7}>
-                      Loading prices...
-                    </td>
-                  </tr>
-                ) : rows.length === 0 ? (
-                  <tr>
-                    <td className="px-2 py-3 text-muted-foreground" colSpan={7}>
-                      No variants found for current filters.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((row) => {
-                    return (
-                      <tr key={row.variantId} className="border-t border-border/60 align-middle">
-                        <td className="truncate px-2 py-2 align-middle font-medium text-foreground" title={row.itemName}>
-                          {row.itemName}
-                        </td>
-                        <td className="truncate px-2 py-2 align-middle text-muted-foreground" title={row.variantName}>
-                          {row.variantName || "-"}
-                        </td>
-                        <td className="truncate px-2 py-2 align-middle font-mono text-[11px]" title={row.sku || "-"}>
-                          {row.sku || "-"}
-                        </td>
-                        <td className="truncate px-2 py-2 align-middle" title={row.itemCategory || "-"}>
-                          {row.itemCategory || "-"}
-                        </td>
-                        <td className="px-2 py-2 align-middle">
-                          <div className="inline-flex items-center gap-2">
-                            <span
-                              className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                                row.isActive
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-slate-100 text-slate-500"
-                              }`}
-                            >
-                              {row.isActive ? "Active" : "Inactive"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 align-middle">
-                          <div className="flex items-center gap-1">
-                            <ResettableInput
-                              value={draftsByVariantId[row.variantId] ?? ""}
-                              defaultValue={formatAmount(row.amount)}
-                              onValueChange={(next) => onPriceDraftChange(row.variantId, next)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  void onSaveAll();
-                                }
-                              }}
-                              onBlur={() => onPriceDraftBlur(row.variantId)}
-                              className={`${DENSE_INPUT_CLASS} w-12`}
-                              placeholder="0.00"
-                              disabled={isSavingAll}
-                              resetAriaLabel={`Reset price for ${row.itemName}`}
-                            />
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 align-middle text-[11px] text-muted-foreground">{row.unit || "-"}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DenseTable className="rounded-xl border-border/80">
+            <DenseTableHead className="bg-slate-50/95">
+              <tr>
+                <DenseTableHeaderCell className="w-32">Item</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-24">Variant</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-20">SKU</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-20">Category</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-20">Status</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-32">Price</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-16">Unit</DenseTableHeaderCell>
+              </tr>
+            </DenseTableHead>
+            <DenseTableBody>
+              {loading ? (
+                <DenseTableRow>
+                  <DenseTableCell className="py-3 text-muted-foreground" colSpan={7}>
+                    Loading prices...
+                  </DenseTableCell>
+                </DenseTableRow>
+              ) : rows.length === 0 ? (
+                <DenseTableRow>
+                  <DenseTableCell className="py-3 text-muted-foreground" colSpan={7}>
+                    No variants found for current filters.
+                  </DenseTableCell>
+                </DenseTableRow>
+              ) : (
+                rows.map((row) => {
+                  return (
+                    <DenseTableRow key={row.variantId}>
+                      <DenseTableCell className="truncate font-medium text-foreground" title={row.itemName}>
+                        {row.itemName}
+                      </DenseTableCell>
+                      <DenseTableCell className="truncate text-muted-foreground" title={row.variantName}>
+                        {row.variantName || "-"}
+                      </DenseTableCell>
+                      <DenseTableCell className="truncate font-mono text-[11px]" title={row.sku || "-"}>
+                        {row.sku || "-"}
+                      </DenseTableCell>
+                      <DenseTableCell className="truncate" title={row.itemCategory || "-"}>
+                        {row.itemCategory || "-"}
+                      </DenseTableCell>
+                      <DenseTableCell>
+                        <div className="inline-flex items-center gap-2">
+                          <span
+                            className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                              row.isActive
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {row.isActive ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                      </DenseTableCell>
+                      <DenseTableCell>
+                        <div className="flex items-center gap-1">
+                          <ResettableInput
+                            value={draftsByVariantId[row.variantId] ?? ""}
+                            defaultValue={formatAmount(row.amount)}
+                            onValueChange={(next) => onPriceDraftChange(row.variantId, next)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void onSaveAll();
+                              }
+                            }}
+                            onBlur={() => onPriceDraftBlur(row.variantId)}
+                            className={`${DENSE_INPUT_CLASS} w-12`}
+                            placeholder="0.00"
+                            disabled={isSavingAll}
+                            resetAriaLabel={`Reset price for ${row.itemName}`}
+                          />
+                        </div>
+                      </DenseTableCell>
+                      <DenseTableCell className="text-[11px] text-muted-foreground">{row.unit || "-"}</DenseTableCell>
+                    </DenseTableRow>
+                  );
+                })
+              )}
+            </DenseTableBody>
+          </DenseTable>
 
           <p className="text-[11px] text-muted-foreground">
             Showing {rows.length} variants.

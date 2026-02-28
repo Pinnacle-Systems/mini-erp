@@ -38,7 +38,7 @@ export function VariantOptionModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-3">
-      <div className="w-full max-w-sm rounded-xl border border-white/70 bg-white p-2.5 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.45)]">
+      <div className="w-full max-w-sm rounded-lg border border-border/80 bg-white p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_24px_-20px_rgba(15,23,42,0.2)]">
         <p className="text-[11px] font-semibold text-foreground lg:text-[10px]">{title}</p>
         <div className="mt-2 grid gap-1.5">
           <div className="grid gap-1">

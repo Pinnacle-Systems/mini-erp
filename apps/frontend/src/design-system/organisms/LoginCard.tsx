@@ -36,22 +36,21 @@ export function LoginCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
     >
-      <Card className="relative overflow-hidden border-white/70 p-0">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary/[0.08] to-transparent" />
-        <CardContent className="relative z-10 space-y-6 p-8 md:p-10">
+      <Card className="relative max-w-md overflow-hidden p-0">
+        <CardContent className="space-y-5 p-6 md:p-7">
           <div>
             <p className="text-sm font-medium tracking-[0.01em] text-muted-foreground">
               Mini ERP
             </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.01em] text-foreground">
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.01em] text-foreground">
               Welcome back
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-1.5 text-sm text-muted-foreground">
               Sign in to continue to your workspace.
             </p>
           </div>
 
-          <form onSubmit={onSubmit} className="space-y-6">
+          <form onSubmit={onSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="username">Phone number</Label>
               <Input
@@ -62,7 +61,6 @@ export function LoginCard({
                 value={username}
                 onChange={(event) => handleUsernameChange(event.target.value)}
                 placeholder="5551234567"
-                className="bg-white/60"
               />
               <p className="text-xs text-muted-foreground">
                 Phone login uses 10 digits without country code.
@@ -77,7 +75,6 @@ export function LoginCard({
                 value={password}
                 onChange={(event) => onPasswordChange(event.target.value)}
                 placeholder="••••••••"
-                className="bg-white/60"
               />
             </div>
 

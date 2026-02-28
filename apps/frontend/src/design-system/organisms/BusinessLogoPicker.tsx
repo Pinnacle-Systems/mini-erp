@@ -143,7 +143,7 @@ export function BusinessLogoPicker({
     <>
       {isCropOpen && cropSourceUrl ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+          <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.08),0_16px_28px_-24px_rgba(15,23,42,0.24)]">
             <p className="text-sm font-semibold text-slate-800">Adjust logo crop</p>
             <p className="mt-1 text-xs text-muted-foreground">
               Position and zoom to fit the avatar circle.

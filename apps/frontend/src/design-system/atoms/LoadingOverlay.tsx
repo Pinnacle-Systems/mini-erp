@@ -18,7 +18,7 @@ export function LoadingOverlay({
   return (
     <div
       className={cn(
-        "absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/65 backdrop-blur-[1px]",
+        "absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/90",
         className,
       )}
       aria-live="polite"

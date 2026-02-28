@@ -634,28 +634,50 @@ export function AppHomePage() {
 
   return (
     <main className="h-auto w-full pb-20 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
-      <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="hidden rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl lg:block lg:h-full lg:overflow-y-auto">
-          <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Navigation
-          </p>
-          <div className="space-y-1.5">
-            {visibleFolders.map((folder) => (
-              <AppNavButton
-                key={folder.id}
-                type="button"
-                onClick={() => handleFolderSelect(folder.id)}
-                Icon={folder.Icon}
-                label={folder.label}
-                active={activeFolder?.id === folder.id}
-                aria-current={activeFolder?.id === folder.id ? "page" : undefined}
-              />
-            ))}
+      <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className="hidden rounded-xl border border-border/75 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[132px_minmax(0,1fr)] lg:gap-2 lg:overflow-hidden">
+          <div className="min-h-0 border-r border-border/70 pr-2">
+            <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Navigation
+            </p>
+            <div className="space-y-1.5">
+              {visibleFolders.map((folder) => (
+                <AppNavButton
+                  key={folder.id}
+                  type="button"
+                  onClick={() => handleFolderSelect(folder.id)}
+                  Icon={folder.Icon}
+                  label={folder.label}
+                  active={activeFolder?.id === folder.id}
+                  aria-current={activeFolder?.id === folder.id ? "page" : undefined}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="min-h-0 overflow-y-auto overflow-x-hidden pl-0.5">
+            <p className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+              {activeFolder?.label ?? "App"} Apps
+            </p>
+            <div className="space-y-1.5">
+              {activeFolder?.apps.map((app) => (
+                <AppTabButton
+                  key={app.id}
+                  type="button"
+                  onClick={() => handleAppSelect(app.id)}
+                  Icon={app.Icon}
+                  label={app.label}
+                  active={routeDrivenAppId === app.id}
+                  stacked
+                  className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
+                />
+              ))}
+            </div>
           </div>
         </aside>
 
         <section className="min-w-0 space-y-2 lg:flex lg:min-h-0 lg:flex-col">
-          <div className="min-w-0 rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_20px_45px_-30px_rgba(15,23,42,0.4)] backdrop-blur-xl">
+          <div className="min-w-0 rounded-xl border border-border/80 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_24px_-20px_rgba(15,23,42,0.18)] lg:hidden">
             <div className="mb-3">
               <p className="text-xs font-semibold tracking-[0.01em] text-foreground/90">
                 {activeFolder?.label ?? "Apps"}
@@ -705,7 +727,7 @@ export function AppHomePage() {
         </section>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/70 bg-white/90 p-2 backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-white p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
         <div className="flex gap-1 overflow-x-auto pb-1">
           {visibleFolders.map((folder) => (
             <AppNavButton

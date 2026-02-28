@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 export function SessionSplashPage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center p-6 md:p-10">
-      <section className="w-full max-w-md rounded-[28px] border border-white/70 bg-white/65 p-8 shadow-[0_22px_52px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+      <section className="w-full max-w-md rounded-xl border border-border/80 bg-white p-8 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_16px_28px_-24px_rgba(15,23,42,0.2)]">
         <div className="flex items-center gap-4">
           <div className="relative h-10 w-10">
             <motion.span

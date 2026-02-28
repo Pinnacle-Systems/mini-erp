@@ -695,6 +695,36 @@ export type ItemPricingRow = {
   pending: boolean;
 };
 
+export type StockVariantOption = {
+  variantId: string;
+  itemId: string;
+  label: string;
+  sku: string;
+};
+
+export type StockAdjustmentReason =
+  | "OPENING_BALANCE"
+  | "ADJUSTMENT_INCREASE"
+  | "ADJUSTMENT_DECREASE";
+
+export type StockLocationOption = {
+  locationId: string;
+  name: string;
+};
+
+export type StockLevelRow = {
+  entityId: string;
+  locationId: string;
+  locationName: string;
+  variantId: string;
+  itemId: string;
+  itemName: string;
+  variantName: string;
+  sku: string;
+  unit: string;
+  quantityOnHand: number;
+};
+
 export const queueItemCategoryCreate = async (
   tenantId: string,
   userId: string,
@@ -875,10 +905,159 @@ export const queueItemPriceUpsert = async (
   return mutationId;
 };
 
+export const queueStockAdjustmentCreate = async (
+  tenantId: string,
+  userId: string,
+  input: {
+    variantId: string;
+    quantity: number;
+    reason: StockAdjustmentReason;
+    locationId?: string;
+  },
+) => {
+  const mutationId = crypto.randomUUID();
+  await queueMutation(tenantId, {
+    mutationId,
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "stock_adjustment",
+    entityId: crypto.randomUUID(),
+    op: "create",
+    payload: {
+      variantId: input.variantId,
+      quantity: input.quantity,
+      reason: input.reason,
+      ...(input.locationId ? { locationId: input.locationId } : {}),
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+  return mutationId;
+};
+
+export const queueLocationCreate = async (
+  tenantId: string,
+  userId: string,
+  name: string,
+) => {
+  const locationId = crypto.randomUUID();
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "location",
+    entityId: locationId,
+    op: "create",
+    payload: {
+      name,
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+  return locationId;
+};
+
+export const queueLocationUpdate = async (
+  tenantId: string,
+  userId: string,
+  locationId: string,
+  name: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "location",
+    entityId: locationId,
+    op: "update",
+    payload: {
+      name,
+    },
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
 export const getOutboxItemsByMutationIds = async (mutationIds: string[]) => {
   if (mutationIds.length === 0) return [];
   const entries = await syncDb.outbox.bulkGet(mutationIds);
   return entries.filter((entry): entry is OutboxItem => Boolean(entry));
+};
+
+export const getLocalStockVariantOptions = async (
+  tenantId: string,
+): Promise<StockVariantOption[]> => {
+  const itemRecords = await getLocalItems(tenantId);
+  const options = itemRecords
+    .filter((record) => !record.deletedAt)
+    .flatMap((record) => {
+      const itemName = String(record.data.name ?? "").trim();
+      return extractVariantsFromItemData(record.data, record.entityId)
+        .filter((variant) => variant.isActive)
+        .map((variant) => {
+          const suffix = variant.sku
+            ? ` (${variant.sku})`
+            : variant.name
+              ? ` (${variant.name})`
+              : "";
+          return {
+            variantId: variant.id,
+            itemId: variant.itemId,
+            label: `${itemName || "Untitled Item"}${suffix}`,
+            sku: variant.sku,
+          } satisfies StockVariantOption;
+        });
+    })
+    .sort((left, right) => left.label.localeCompare(right.label));
+
+  return options;
+};
+
+export const getLocalStockLocations = async (
+  tenantId: string,
+): Promise<StockLocationOption[]> => {
+  const records = await listEntities(tenantId, "location");
+  const byId = new Map<string, StockLocationOption>();
+
+  for (const record of records) {
+    if (record.deletedAt) continue;
+    const name = String(record.data.name ?? "").trim();
+    if (!record.entityId || !name) continue;
+    byId.set(record.entityId, {
+      locationId: record.entityId,
+      name,
+    });
+  }
+
+  return Array.from(byId.values()).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+};
+
+export const getLocalStockLevels = async (
+  tenantId: string,
+): Promise<StockLevelRow[]> => {
+  const records = await listEntities(tenantId, "stock_level");
+  return records
+    .filter((record) => !record.deletedAt)
+    .map((record) => {
+      const data = record.data;
+      return {
+        entityId: record.entityId,
+        locationId: String(data.locationId ?? data.location_id ?? ""),
+        locationName: String(data.locationName ?? data.location_name ?? "Main Store"),
+        variantId: String(data.variantId ?? data.variant_id ?? ""),
+        itemId: String(data.itemId ?? data.item_id ?? ""),
+        itemName: String(data.itemName ?? data.item_name ?? "Untitled Item"),
+        variantName: String(data.variantName ?? data.variant_name ?? ""),
+        sku: String(data.sku ?? ""),
+        unit: String(data.unit ?? "PCS"),
+        quantityOnHand: Number(data.quantityOnHand ?? data.quantity_on_hand ?? 0),
+      } satisfies StockLevelRow;
+    })
+    .filter((row) => row.locationId && row.variantId)
+    .sort((left, right) => {
+      const locationOrder = left.locationName.localeCompare(right.locationName);
+      if (locationOrder !== 0) return locationOrder;
+      return left.itemName.localeCompare(right.itemName);
+    });
 };
 
 const addOptionValue = (

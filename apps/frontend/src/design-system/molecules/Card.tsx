@@ -9,7 +9,7 @@ export function Card({ className, children, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        "rounded-[20px] border border-white/65 bg-white/72 p-2 text-card-foreground shadow-[0_24px_55px_-30px_rgba(15,23,42,0.38)] backdrop-blur-xl",
+        "rounded-xl border border-border/90 bg-card p-2 text-card-foreground shadow-[0_1px_2px_rgba(15,23,42,0.06),0_10px_20px_-18px_rgba(15,23,42,0.18)]",
         className
       )}
       {...props}
@@ -22,7 +22,7 @@ export function Card({ className, children, ...props }: CardProps) {
 export function CardHeader({ className, children, ...props }: CardProps) {
   const hasExplicitMarginBottom = className?.split(/\s+/).some((token) => /(^|:)mb-/.test(token));
   return (
-    <div className={cn(hasExplicitMarginBottom ? undefined : "mb-4 lg:mb-2", className)} {...props}>
+    <div className={cn(hasExplicitMarginBottom ? undefined : "mb-3 lg:mb-2", className)} {...props}>
       {children}
     </div>
   );
@@ -30,7 +30,7 @@ export function CardHeader({ className, children, ...props }: CardProps) {
 
 export function CardTitle({ className, children, ...props }: CardProps) {
   return (
-    <h2 className={cn("text-xl font-semibold tracking-[-0.01em] text-foreground lg:text-base", className)} {...props}>
+    <h2 className={cn("text-lg font-semibold tracking-[-0.01em] text-foreground lg:text-base", className)} {...props}>
       {children}
     </h2>
   );
@@ -46,7 +46,7 @@ export function CardDescription({ className, children, ...props }: CardProps) {
 
 export function CardContent({ className, children, ...props }: CardProps) {
   return (
-    <div className={cn("space-y-3 lg:space-y-2", className)} {...props}>
+    <div className={cn("space-y-2.5 lg:space-y-2", className)} {...props}>
       {children}
     </div>
   );

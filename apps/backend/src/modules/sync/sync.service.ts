@@ -61,6 +61,8 @@ const SUPPORTED_ENTITIES = new Set([
   "item_collection",
   "item_collection_item",
   "item_price",
+  "location",
+  "stock_adjustment",
 ]);
 const SUPPORTED_ITEM_FIELDS = new Set([
   "sku",
@@ -96,6 +98,12 @@ const DEFAULT_ITEM_VALUES = {
 const DEFAULT_PRICE_BOOK_CODE = "STANDARD";
 const DEFAULT_PRICE_BOOK_NAME = "Standard";
 const DEFAULT_PRICE_CURRENCY = "INR";
+const DEFAULT_LOCATION_NAME = "Main Store";
+const STOCK_ADJUSTMENT_REASONS = new Set([
+  "OPENING_BALANCE",
+  "ADJUSTMENT_INCREASE",
+  "ADJUSTMENT_DECREASE",
+]);
 const prismaAny = prisma as any;
 
 const toReasonCodeFromStatus = (statusCode?: number): SyncRejectionReasonCode => {
@@ -419,6 +427,35 @@ const toItemCollectionItemSnapshot = (membership) => {
   };
 };
 
+const toLocationSnapshot = (location) => {
+  return {
+    id: location.id,
+    business_id: location.business_id,
+    businessId: location.business_id,
+    name: location.name,
+  };
+};
+
+const toStockAdjustmentSnapshot = (entry, stockLevelEntityId: string, quantityOnHand: number) => {
+  return {
+    id: entry.id,
+    variant_id: entry.variant_id,
+    variantId: entry.variant_id,
+    location_id: entry.location_id,
+    locationId: entry.location_id,
+    quantity: Number(entry.quantity),
+    reason: entry.reason,
+    reference_id: entry.reference_id ?? null,
+    referenceId: entry.reference_id ?? null,
+    stock_level_entity_id: stockLevelEntityId,
+    stockLevelEntityId: stockLevelEntityId,
+    quantity_on_hand: quantityOnHand,
+    quantityOnHand,
+    created_at: entry.created_at.toISOString(),
+    createdAt: entry.created_at.toISOString(),
+  };
+};
+
 const getNextServerVersion = async (txAny, tenantId, entity, entityId) => {
   const latestEntityChange = await txAny.syncChangeLog.findFirst({
     where: {
@@ -727,6 +764,105 @@ const getTenantCursor = async (tenantId) => {
   });
 
   return latestChange?.cursor?.toString() ?? "0";
+};
+
+const ensureDefaultLocation = async (tx, tenantId: string) => {
+  const existing = await tx.location.findFirst({
+    where: {
+      business_id: tenantId,
+      name: DEFAULT_LOCATION_NAME,
+    },
+    orderBy: {
+      id: "asc",
+    },
+  });
+  if (existing) {
+    return {
+      location: existing,
+      operation: "UPDATE" as const,
+    };
+  }
+
+  const created = await tx.location.create({
+    data: {
+      business_id: tenantId,
+      name: DEFAULT_LOCATION_NAME,
+    },
+  });
+  return {
+    location: created,
+    operation: "CREATE" as const,
+  };
+};
+
+const getStockLevelEntityId = (locationId: string, variantId: string) =>
+  `${locationId}:${variantId}`;
+
+const getStockLevelSnapshot = async (
+  tx,
+  tenantId: string,
+  locationId: string,
+  variantId: string,
+) => {
+  const [location, variant, ledgerEntries] = await Promise.all([
+    tx.location.findUnique({
+      where: { id: locationId },
+    }),
+    tx.itemVariant.findUnique({
+      where: { id: variantId },
+      include: {
+        item: {
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+          },
+        },
+      },
+    }),
+    tx.stockLedger.findMany({
+      where: {
+        location_id: locationId,
+        variant_id: variantId,
+      },
+      select: {
+        quantity: true,
+      },
+    }),
+  ]);
+
+  if (!location || location.business_id !== tenantId) {
+    throw dependencyMissingError("Location not found in business", "location", locationId);
+  }
+
+  if (!variant || variant.business_id !== tenantId) {
+    throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
+  }
+
+  const quantityOnHand = ledgerEntries.reduce(
+    (total, entry) => total + Number(entry.quantity),
+    0,
+  );
+
+  return {
+    id: getStockLevelEntityId(location.id, variant.id),
+    location_id: location.id,
+    locationId: location.id,
+    location_name: location.name,
+    locationName: location.name,
+    variant_id: variant.id,
+    variantId: variant.id,
+    item_id: variant.item_id,
+    itemId: variant.item_id,
+    item_name: variant.item?.name ?? "",
+    itemName: variant.item?.name ?? "",
+    variant_name: variant.name ?? null,
+    variantName: variant.name ?? null,
+    sku: variant.sku ?? null,
+    unit: variant.item?.unit ?? "PCS",
+    quantity_on_hand: quantityOnHand,
+    quantityOnHand,
+  };
 };
 
 const applyItemMutation = async (tx, tenantId, mutation) => {
@@ -1394,6 +1530,212 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
   });
 };
 
+const applyLocationMutation = async (tx, tenantId, mutation) => {
+  const payload =
+    mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+
+  if (!name) {
+    throw validationError("Location name is required", mutation.entity, mutation.entityId);
+  }
+
+  if (mutation.op === "create") {
+    const existing = await tx.location.findFirst({
+      where: {
+        business_id: tenantId,
+        name,
+      },
+    });
+    if (existing) {
+      throw validationError("Location already exists", mutation.entity, mutation.entityId);
+    }
+
+    const created = await tx.location.create({
+      data: {
+        id: mutation.entityId,
+        business_id: tenantId,
+        name,
+      },
+    });
+    return toLocationSnapshot(created);
+  }
+
+  const current = await tx.location.findUnique({
+    where: { id: mutation.entityId },
+  });
+
+  if (!current || current.business_id !== tenantId) {
+    throw dependencyMissingError("Location not found in business", mutation.entity, mutation.entityId);
+  }
+
+  if (mutation.op === "update") {
+    const existing = await tx.location.findFirst({
+      where: {
+        business_id: tenantId,
+        name,
+        id: {
+          not: current.id,
+        },
+      },
+    });
+    if (existing) {
+      throw validationError("Location already exists", mutation.entity, mutation.entityId);
+    }
+
+    const updated = await tx.location.update({
+      where: { id: mutation.entityId },
+      data: {
+        name,
+      },
+    });
+
+    return toLocationSnapshot(updated);
+  }
+
+  throw validationError("Unsupported operation for location", mutation.entity, mutation.entityId);
+};
+
+const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
+  if (mutation.op !== "create") {
+    throw validationError(
+      "Unsupported operation for stock adjustment",
+      mutation.entity,
+      mutation.entityId,
+    );
+  }
+
+  const payload =
+    mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
+  const variantId =
+    typeof payload.variantId === "string" && payload.variantId.trim()
+      ? payload.variantId
+      : typeof payload.variant_id === "string" && payload.variant_id.trim()
+        ? payload.variant_id
+        : "";
+  const requestedLocationId =
+    typeof payload.locationId === "string" && payload.locationId.trim()
+      ? payload.locationId
+      : typeof payload.location_id === "string" && payload.location_id.trim()
+        ? payload.location_id
+        : "";
+  const rawQuantity = (payload as Record<string, unknown>).quantity;
+  const quantity =
+    typeof rawQuantity === "number" && Number.isFinite(rawQuantity)
+      ? rawQuantity
+      : typeof rawQuantity === "string" && rawQuantity.trim()
+        ? Number(rawQuantity)
+        : undefined;
+  const requestedReason =
+    typeof payload.reason === "string" && payload.reason.trim()
+      ? payload.reason.trim().toUpperCase()
+      : "OPENING_BALANCE";
+
+  if (!variantId) {
+    throw validationError("variantId is required for stock adjustment", mutation.entity, mutation.entityId);
+  }
+
+  if (quantity === undefined || !Number.isFinite(quantity) || quantity <= 0) {
+    throw validationError(
+      "Stock quantity must be a positive number",
+      mutation.entity,
+      mutation.entityId,
+    );
+  }
+
+  if (!STOCK_ADJUSTMENT_REASONS.has(requestedReason)) {
+    throw validationError(
+      "Stock adjustment reason is invalid",
+      mutation.entity,
+      mutation.entityId,
+    );
+  }
+
+  const variant = await tx.itemVariant.findUnique({
+    where: { id: variantId },
+    select: {
+      id: true,
+      business_id: true,
+    },
+  });
+
+  if (!variant || variant.business_id !== tenantId) {
+    throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
+  }
+
+  let location;
+  let locationOperation: "CREATE" | "UPDATE";
+
+  if (requestedLocationId) {
+    location = await tx.location.findUnique({
+      where: { id: requestedLocationId },
+    });
+    locationOperation = "UPDATE";
+  } else {
+    const ensuredLocation = await ensureDefaultLocation(tx, tenantId);
+    location = ensuredLocation.location;
+    locationOperation = ensuredLocation.operation;
+  }
+
+  if (!location || location.business_id !== tenantId) {
+    throw dependencyMissingError(
+      "Location not found in business",
+      "location",
+      requestedLocationId || "",
+    );
+  }
+
+  const existingStockLevel = await getStockLevelSnapshot(tx, tenantId, location.id, variantId);
+  const ledgerQuantity =
+    requestedReason === "ADJUSTMENT_DECREASE" ? -quantity : quantity;
+
+  if (requestedReason === "ADJUSTMENT_DECREASE" && existingStockLevel.quantityOnHand < quantity) {
+    throw validationError(
+      "Stock adjustment would make on-hand quantity negative",
+      mutation.entity,
+      mutation.entityId,
+      {
+        currentQuantityOnHand: existingStockLevel.quantityOnHand,
+        requestedDecrease: quantity,
+      },
+    );
+  }
+
+  const createdEntry = await tx.stockLedger.create({
+    data: {
+      id: mutation.entityId,
+      variant_id: variantId,
+      location_id: location.id,
+      quantity: ledgerQuantity,
+      reason: requestedReason,
+      reference_id: mutation.mutationId,
+    },
+  });
+
+  const stockLevel = await getStockLevelSnapshot(tx, tenantId, location.id, variantId);
+
+  return {
+    snapshot: toStockAdjustmentSnapshot(
+      createdEntry,
+      String(stockLevel.id),
+      Number(stockLevel.quantityOnHand),
+    ),
+    additionalChanges: [
+      {
+        entity: "location",
+        entityId: location.id,
+        operation: locationOperation,
+        data: toLocationSnapshot(location),
+      },
+      {
+        entity: "stock_level",
+        entityId: String(stockLevel.id),
+        operation: "UPDATE" as const,
+        data: stockLevel,
+      },
+    ],
+  };
+};
+
 const applyMutation = async (
   tenantId,
   mutation,
@@ -1440,6 +1782,12 @@ const applyMutation = async (
       snapshot = await applyItemCollectionItemMutation(tx, tenantId, mutation);
     } else if (mutation.entity === "item_price") {
       snapshot = await applyItemPriceMutation(tx, tenantId, mutation);
+    } else if (mutation.entity === "location") {
+      snapshot = await applyLocationMutation(tx, tenantId, mutation);
+    } else if (mutation.entity === "stock_adjustment") {
+      const stockAdjustmentResult = await applyStockAdjustmentMutation(tx, tenantId, mutation);
+      snapshot = stockAdjustmentResult.snapshot;
+      additionalChanges = stockAdjustmentResult.additionalChanges;
     } else {
       throw validationError(`Unsupported entity '${mutation.entity}'`, mutation.entity, mutation.entityId);
     }

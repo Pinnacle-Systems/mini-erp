@@ -334,7 +334,7 @@ export function AdminBusinessDetailsPage() {
             <p className="text-sm text-muted-foreground">Business not found.</p>
           ) : business ? (
             <div className="space-y-2 pb-20 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:pb-0">
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/70 bg-white/65 p-2 lg:shrink-0">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-white p-2 lg:shrink-0">
                 <BusinessLogoPicker
                   logoUrl={displayLogoUrl}
                   disabled={saving || isFormLocked}

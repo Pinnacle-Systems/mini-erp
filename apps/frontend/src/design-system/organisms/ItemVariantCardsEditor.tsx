@@ -53,8 +53,8 @@ export function ItemVariantCardsEditor({
   disabled = false,
 }: ItemVariantCardsEditorProps) {
   return (
-    <div className="grid gap-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-hidden lg:rounded-xl lg:border lg:border-white/75 lg:bg-white/60">
-      <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-white/80 lg:px-1.5 lg:py-1">
+    <div className="grid gap-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-white">
+      <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-1.5 lg:py-1">
         <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
       </div>
 

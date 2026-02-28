@@ -13,6 +13,8 @@ import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items"
 import { CatalogCategoriesPage } from "../pages/CatalogCategoriesPage";
 import { CatalogCollectionsPage } from "../pages/CatalogCollectionsPage";
 import { CatalogPricingPage } from "../pages/CatalogPricingPage";
+import { StockAdjustmentsPage } from "../pages/StockAdjustmentsPage";
+import { StockLevelsPage } from "../pages/StockLevelsPage";
 import { AppFeaturePlaceholderPage, DataSyncAppPage, StockSyncAppPage } from "../pages/shell/UserAppPages";
 import { OfflinePage } from "../pages/system";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
@@ -100,7 +102,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen w-full lg:h-screen lg:overflow-hidden">
       {isAuthenticated ? (
-        <div className="fixed inset-x-0 top-0 z-40 border-b border-white/60 bg-white/80 backdrop-blur-xl">
+        <div className="fixed inset-x-0 top-0 z-40 border-b border-border/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
           <div className="px-2 py-2 sm:px-3 md:px-4">
             <SessionHeader
               showBack={shouldShowUserBack}
@@ -190,8 +192,8 @@ export function AppRoutes() {
                 <Route path="item-categories" element={<CatalogCategoriesPage />} />
                 <Route path="item-collections" element={<CatalogCollectionsPage />} />
                 <Route path="item-sync" element={<StockSyncAppPage />} />
-                <Route path="stock-levels" element={<AppFeaturePlaceholderPage sectionTitle="Stock" appLabel="Levels" />} />
-                <Route path="stock-adjustments" element={<AppFeaturePlaceholderPage sectionTitle="Stock" appLabel="Adjustments" />} />
+                <Route path="stock-levels" element={<StockLevelsPage />} />
+                <Route path="stock-adjustments" element={<StockAdjustmentsPage />} />
                 <Route path="customers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Customers" />} />
                 <Route path="customer-groups" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />} />
                 <Route path="suppliers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Suppliers" />} />

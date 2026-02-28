@@ -22,20 +22,20 @@
 
 @layer base {
   :root {
-    --background: 220 23% 97%;
+    --background: 220 16% 91%;
     --foreground: 220 20% 12%;
-    --card: 0 0% 100%;
+    --card: 220 20% 96.5%;
     --card-foreground: 220 20% 12%;
     --primary: 210 100% 45%;
     --primary-foreground: 210 100% 99%;
-    --secondary: 220 17% 92%;
+    --secondary: 220 14% 87%;
     --secondary-foreground: 220 20% 20%;
-    --muted: 220 14% 94%;
+    --muted: 220 13% 88%;
     --muted-foreground: 220 10% 44%;
-    --accent: 210 70% 95%;
+    --accent: 210 34% 89%;
     --accent-foreground: 220 20% 20%;
-    --border: 220 14% 85%;
-    --input: 220 14% 85%;
+    --border: 220 12% 74%;
+    --input: 220 12% 74%;
     --ring: 210 100% 45%;
 
     font-family:
@@ -67,8 +67,8 @@
     width: 100%;
     min-height: 100vh;
     background:
-      radial-gradient(1200px 500px at -10% -20%, hsl(210 100% 97%), transparent 70%),
-      radial-gradient(900px 400px at 100% -10%, hsl(220 40% 95%), transparent 70%),
+      radial-gradient(1200px 500px at -10% -20%, hsl(210 35% 90%), transparent 70%),
+      radial-gradient(900px 400px at 100% -10%, hsl(220 20% 88%), transparent 70%),
       hsl(var(--background));
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;

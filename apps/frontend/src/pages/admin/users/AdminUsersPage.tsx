@@ -273,10 +273,10 @@ export function AdminUsersPage() {
                       navigate(`/app/users/${user.id}`);
                     }
                   }}
-                  className={`rounded-2xl border p-3 shadow-[0_18px_36px_-26px_rgba(15,23,42,0.45)] backdrop-blur-xl transition-transform duration-150 hover:-translate-y-0.5 ${
+                  className={`rounded-xl border p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_10px_20px_-18px_rgba(15,23,42,0.18)] transition-transform duration-150 hover:-translate-y-0.5 ${
                     isDeleted
                       ? "border-[#f3c3c0] bg-[#fff5f5]"
-                      : "border-white/80 bg-white/75"
+                      : "border-border/80 bg-white"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -306,10 +306,10 @@ export function AdminUsersPage() {
             })}
           </div>
 
-          <div className="hidden overflow-x-auto rounded-2xl border border-white/70 bg-white/60 min-[860px]:block">
+          <div className="hidden overflow-x-auto rounded-xl border border-border/80 bg-white min-[860px]:block">
             <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-white/70 bg-white/70 text-left text-xs uppercase tracking-[0.05em] text-muted-foreground">
+                <tr className="border-b border-border/70 bg-muted/40 text-left text-xs uppercase tracking-[0.05em] text-muted-foreground">
                   <th className="px-3 py-2 font-semibold">User</th>
                   <th className="px-3 py-2 font-semibold">Phone</th>
                   <th className="px-3 py-2 font-semibold">Email</th>
@@ -366,12 +366,12 @@ export function AdminUsersPage() {
           </div>
 
           {users.length === 0 ? (
-            <div className="rounded-2xl border border-white/70 bg-white/55 p-3">
+            <div className="rounded-xl border border-border/80 bg-white p-3">
               <p className="px-0 text-sm text-muted-foreground">No users found.</p>
             </div>
           ) : null}
 
-          <div className="flex items-center justify-between rounded-2xl border border-white/70 bg-white/55 p-3">
+          <div className="flex items-center justify-between rounded-xl border border-border/80 bg-white p-3">
             <p className="text-xs text-muted-foreground">
               Page {page} of {Math.max(pagination.totalPages, 1)} | Total users:{" "}
               {pagination.total}
