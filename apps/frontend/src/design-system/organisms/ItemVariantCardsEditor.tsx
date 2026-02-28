@@ -56,18 +56,16 @@ export function ItemVariantCardsEditor({
     <div className="grid gap-1.5 lg:self-start lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
       <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
         <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
-        <div className="hidden lg:block">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 px-2"
-            onClick={onAddVariant}
-            disabled={disabled}
-          >
-            {addVariantLabel}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="hidden h-7 px-2 lg:inline-flex"
+          onClick={onAddVariant}
+          disabled={disabled}
+        >
+          {addVariantLabel}
+        </Button>
       </div>
 
       <div className="grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0">

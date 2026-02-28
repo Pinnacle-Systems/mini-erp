@@ -121,13 +121,10 @@ export function CatalogPricingPage() {
       }
     };
 
-    const timer = window.setTimeout(() => {
-      void loadLocal();
-    }, 120);
+    void loadLocal();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
   }, [activeStore, refresh]);
 
@@ -330,6 +327,12 @@ export function CatalogPricingPage() {
           <fieldset className="app-filter-panel lg:shrink-0">
             <legend className="app-filter-legend">Filters</legend>
             <p className="app-filter-help">Search by item, variant, SKU, or category.</p>
+            <Label
+              htmlFor="item-pricing-search"
+              className="text-[11px] font-medium lg:text-[10px]"
+            >
+              Search pricing rows
+            </Label>
             <div className="app-filter-row">
               <Input
                 id="item-pricing-search"

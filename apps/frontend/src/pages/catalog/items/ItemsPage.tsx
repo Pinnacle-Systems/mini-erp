@@ -26,17 +26,35 @@ export function ItemsPage() {
   const [items, setItems] = useState<ItemDisplay[]>([]);
   const [query, setQuery] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeStore) {
+      setItems([]);
+      setLoading(false);
+      setLoadError(null);
       return;
     }
 
     let cancelled = false;
-    void getLocalItemsForDisplay(activeStore).then((nextItems) => {
-      if (cancelled) return;
-      setItems(nextItems);
-    });
+    setLoading(true);
+    setLoadError(null);
+    void getLocalItemsForDisplay(activeStore)
+      .then((nextItems) => {
+        if (cancelled) return;
+        setItems(nextItems);
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+        if (cancelled) return;
+        setItems([]);
+        setLoadError("Unable to load items right now.");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
 
     return () => {
       cancelled = true;
@@ -91,6 +109,9 @@ export function ItemsPage() {
             <p className="app-filter-help">
               Refine items by search text and active status.
             </p>
+            <Label htmlFor="items-search" className="text-[11px] font-medium lg:text-[10px]">
+              Search items
+            </Label>
             <div className="app-filter-row">
               <Input
                 id="items-search"
@@ -129,7 +150,11 @@ export function ItemsPage() {
           </fieldset>
 
           <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1">
-            {items.length === 0 ? (
+            {loading ? (
+              <div className="card text-sm text-muted-foreground">Loading items...</div>
+            ) : loadError ? (
+              <div className="card text-sm text-red-600">{loadError}</div>
+            ) : items.length === 0 ? (
               <div className="card text-sm text-muted-foreground">No items available.</div>
             ) : filteredItems.length === 0 ? (
               <div className="card text-sm text-muted-foreground">

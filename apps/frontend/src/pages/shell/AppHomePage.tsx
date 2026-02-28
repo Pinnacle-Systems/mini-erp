@@ -628,12 +628,12 @@ export function AppHomePage() {
 
         <div className="grid gap-2 lg:col-span-8 lg:min-h-0 lg:grid-cols-2">
           <Card className="p-2">
-            <CardHeader className="mb-1 p-0">
-              <CardTitle className="text-sm">Needs Attention</CardTitle>
-              <CardDescription className="text-xs">
-                Dummy operational alerts.
-              </CardDescription>
-            </CardHeader>
+          <CardHeader className="mb-1 p-0">
+            <CardTitle className="text-sm">Needs Attention</CardTitle>
+            <CardDescription className="text-xs">
+              Placeholder alert layout for future operational exceptions.
+            </CardDescription>
+          </CardHeader>
             <CardContent className="grid gap-2 p-0">
               {landingAttentionCards.map((card) => (
                 <LandingAttentionCard
@@ -647,12 +647,12 @@ export function AppHomePage() {
           </Card>
 
           <Card className="p-2">
-            <CardHeader className="mb-1 p-0">
-              <CardTitle className="text-sm">Recent Work</CardTitle>
-              <CardDescription className="text-xs">
-                Dummy recent activity feed.
-              </CardDescription>
-            </CardHeader>
+          <CardHeader className="mb-1 p-0">
+            <CardTitle className="text-sm">Recent Work</CardTitle>
+            <CardDescription className="text-xs">
+              Placeholder activity layout until real history is wired in.
+            </CardDescription>
+          </CardHeader>
             <CardContent className="p-0">
               <ul className="space-y-1.5">
                 {landingRecentActivity.slice(0, 4).map((entry) => (
@@ -667,25 +667,24 @@ export function AppHomePage() {
           <CardHeader className="mb-1 p-0">
             <CardTitle className="text-sm">Search + Sync</CardTitle>
             <CardDescription className="text-xs">
-              Placeholder for global lookup and sync controls.
+              Reserved area for future global lookup and sync controls.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 p-0">
             <div className="rounded-lg border border-dashed border-[#c6d8ef] bg-[#f7fbff] px-3 py-2 text-[11px] text-muted-foreground">
-              Search box placeholder: try name, SKU, barcode, or phone.
+              Search controls will appear here when global lookup is implemented.
             </div>
             <div className="rounded-lg border border-[#dce8f6] bg-[#fbfdff] px-3 py-2 text-[11px] text-muted-foreground">
               <p>
-                Pending outbox items:{" "}
-                <span className="font-semibold text-foreground">{pendingOutboxCount}</span>
+                Sync summary placeholder for the current business.
               </p>
               <p>
-                Current state:{" "}
-                <span className="font-semibold text-foreground">
-                  Ready
-                </span>
+                Current queued item count can be shown here once the shell status card is finalized.
               </p>
-              <p>Last successful sync: 09:42 AM (dummy)</p>
+              <p>
+                Current local outbox count:{" "}
+                <span className="font-semibold text-foreground">{pendingOutboxCount}</span>
+              </p>
             </div>
             <div className="flex justify-end">
               <Button

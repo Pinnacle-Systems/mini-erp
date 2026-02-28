@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Pencil, Search, Trash2, X } from "lucide-react";
+import { Check, Pencil, Trash2, X } from "lucide-react";
 import { Button } from "../design-system/atoms/Button";
+import { Checkbox } from "../design-system/atoms/Checkbox";
+import { IconButton } from "../design-system/atoms/IconButton";
 import { Input } from "../design-system/atoms/Input";
+import { Label } from "../design-system/atoms/Label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
 import { ItemVariantFlatTable } from "../design-system/organisms/ItemVariantFlatTable";
 import type { ItemVariantFlatRow } from "../design-system/organisms/ItemVariantFlatTable";
@@ -54,6 +57,8 @@ export function CatalogCollectionsPage() {
   const [itemDetailsById, setItemDetailsById] = useState<Record<string, ItemDetailDisplay>>({});
   const [loadingDetailsById, setLoadingDetailsById] = useState<Record<string, boolean>>({});
   const [variantSelectionsByItemId, setVariantSelectionsByItemId] = useState<Record<string, string[]>>({});
+  const [initialLoading, setInitialLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,10 +80,14 @@ export function CatalogCollectionsPage() {
       setCollections([]);
       setMemberships([]);
       setSelectedCollectionId(null);
+      setInitialLoading(false);
+      setLoadError(null);
       return;
     }
 
     let cancelled = false;
+    setInitialLoading(true);
+    setLoadError(null);
     void Promise.all([
       getLocalItemsForDisplay(activeStore),
       getLocalItemCollectionEntriesForStore(activeStore),
@@ -89,12 +98,16 @@ export function CatalogCollectionsPage() {
         setItems(nextItems);
         setCollections(nextCollections);
         setMemberships(nextMemberships);
+        setInitialLoading(false);
+        setLoadError(null);
       })
       .catch(() => {
         if (cancelled) return;
         setItems([]);
         setCollections([]);
         setMemberships([]);
+        setInitialLoading(false);
+        setLoadError("Unable to load collections right now.");
       });
 
     void syncOnce(activeStore)
@@ -464,8 +477,12 @@ export function CatalogCollectionsPage() {
         </CardHeader>
         <CardContent className="space-y-1 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
           <div className="space-y-1 lg:shrink-0">
+            <Label htmlFor="new-collection-name" className="text-[11px] font-medium lg:text-[10px]">
+              Collection name
+            </Label>
             <div className="flex gap-1">
               <Input
+                id="new-collection-name"
                 value={draftCollectionName}
                 onChange={(event) => setDraftCollectionName(event.target.value)}
                 placeholder="Add collection"
@@ -489,42 +506,51 @@ export function CatalogCollectionsPage() {
                 Add
               </Button>
             </div>
+            {loadError ? <p className="text-[11px] text-red-600">{loadError}</p> : null}
             {error ? <p className="text-[11px] text-red-600">{error}</p> : null}
           </div>
 
           <div className="space-y-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-            {buckets.map((bucket) => (
-              <div
-                key={bucket.id}
-                className={`flex min-h-8 items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-xs transition ${
-                  activeBucket?.id === bucket.id
-                    ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
-                    : "border-border/70 bg-white/70 text-foreground/80 hover:bg-white"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => setSelectedCollectionId(bucket.id)}
-                  className="flex h-6 min-w-0 flex-1 items-center justify-between"
-                >
-                  <span className="truncate font-medium">{bucket.name}</span>
-                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">
-                    {bucket.items.reduce((count, itemGroup) => count + itemGroup.links.length, 0)}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[#8a2d2d] transition hover:bg-[#ffecec] disabled:opacity-50"
-                  onClick={() => {
-                    void onDeleteCollection(bucket);
-                  }}
-                  disabled={loading}
-                  aria-label={`Delete collection ${bucket.name}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+            {initialLoading ? (
+              <div className="rounded-lg border border-border/70 bg-card px-2 py-2 text-xs text-muted-foreground">
+                Loading collections...
               </div>
-            ))}
+            ) : (
+              buckets.map((bucket) => (
+                <div
+                  key={bucket.id}
+                  className={`flex min-h-8 items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-xs transition ${
+                    activeBucket?.id === bucket.id
+                      ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
+                      : "border-border/70 bg-card text-foreground/80 hover:bg-white"
+                  }`}
+                >
+                  <Button
+                    type="button"
+                    onClick={() => setSelectedCollectionId(bucket.id)}
+                    variant="ghost"
+                    className="flex h-6 min-w-0 flex-1 items-center justify-between rounded-md px-0 text-left text-xs font-medium hover:bg-transparent active:bg-transparent active:scale-100"
+                  >
+                    <span className="truncate font-medium">{bucket.name}</span>
+                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white/80 px-1 text-[10px] leading-none">
+                      {bucket.items.reduce((count, itemGroup) => count + itemGroup.links.length, 0)}
+                    </span>
+                  </Button>
+                  <IconButton
+                    type="button"
+                    variant="ghost"
+                    icon={Trash2}
+                    iconSize={14}
+                    className="h-6 w-6 rounded-full text-[#8a2d2d] hover:bg-[#ffecec]"
+                    onClick={() => {
+                      void onDeleteCollection(bucket);
+                    }}
+                    disabled={loading}
+                    aria-label={`Delete collection ${bucket.name}`}
+                  />
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
@@ -551,36 +577,39 @@ export function CatalogCollectionsPage() {
                 disabled={loading}
                 autoFocus
               />
-              <button
+              <IconButton
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#166534] transition hover:bg-[#ecfdf3] disabled:opacity-50"
+                variant="ghost"
+                icon={Check}
                 onClick={() => {
                   void onRenameCollection();
                 }}
                 disabled={loading}
                 aria-label="Save collection name"
-              >
-                <Check className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <button
+                className="rounded-full text-[#166534] hover:bg-[#ecfdf3]"
+              />
+              <IconButton
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground/70 transition hover:bg-white/80 disabled:opacity-50"
+                variant="ghost"
+                icon={X}
                 onClick={() => {
                   setIsEditingCollectionName(false);
                   setCollectionNameDraft(activeBucket?.name ?? "");
                 }}
                 disabled={loading}
                 aria-label="Cancel collection rename"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
+                className="rounded-full text-foreground/70 hover:bg-white/80"
+              />
             </div>
           ) : (
             <div className="flex items-center gap-1">
               <CardTitle className="text-sm">{activeBucket?.name ?? "Collection"}</CardTitle>
-              <button
+              <IconButton
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#2f6fb7] transition hover:bg-[#e9f2ff] disabled:opacity-50"
+                variant="ghost"
+                icon={Pencil}
+                iconSize={14}
+                className="h-7 w-7 rounded-full text-[#2f6fb7] hover:bg-[#e9f2ff]"
                 onClick={() => {
                   setIsEditingCollectionName(true);
                   setCollectionNameDraft(activeBucket?.name ?? "");
@@ -588,23 +617,24 @@ export function CatalogCollectionsPage() {
                 }}
                 disabled={loading || !activeBucket}
                 aria-label="Edit collection name"
-              >
-                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
+              />
             </div>
           )}
 
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          <div className="grid gap-1">
+            <Label htmlFor="collection-item-search" className="text-[11px] font-medium lg:text-[10px]">
+              Search items to add
+            </Label>
             <Input
+              id="collection-item-search"
               value={itemSearchDraft}
               onChange={(event) => setItemSearchDraft(event.target.value)}
               placeholder="Search items to add"
-              className="h-8 rounded-lg pl-7 text-xs"
+              className="h-8 rounded-lg text-xs"
             />
           </div>
           {itemSearchDraft.trim().length > 0 ? (
-            <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-white/70 bg-white/70 p-1">
+            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-[#f8fbff] px-1.5 py-2">
               {searchableItems.length > 0 ? (
                 searchableItems.map((item) => {
                   const selection = variantSelectionsByItemId[item.item.entityId] ?? [];
@@ -616,30 +646,40 @@ export function CatalogCollectionsPage() {
                     selectableVariantIds.length > 0 && selectedIds.length === selectableVariantIds.length;
 
                   return (
-                    <div key={item.item.entityId} className="rounded-md border border-white/80 bg-white/85 px-1.5 py-1">
-                      <div className="mb-1 flex items-center justify-between gap-1">
+                    <div
+                      key={item.item.entityId}
+                      className="space-y-1 rounded-md border border-border/70 bg-white px-2 py-1.5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="truncate text-[11px] font-medium text-foreground">{item.item.name}</p>
                           {hasSingleVariant ? (
                             <p className="truncate text-[10px] text-muted-foreground">
                               {item.item.sku || "No SKU"}
                             </p>
-                          ) : null}
+                          ) : (
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              Select one or more variants to add.
+                            </p>
+                          )}
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="h-6 px-2 text-[10px]"
-                          onClick={() => {
-                            void onAddVariantsToCollection(
-                              item.item.entityId,
-                              hasSingleVariant && singleVariantId ? [singleVariantId] : selectedIds,
-                            );
-                          }}
-                          disabled={loading || (hasSingleVariant ? !singleVariantId : selectedIds.length === 0)}
-                        >
-                          {hasSingleVariant ? "Add item" : `Add selected (${selectedIds.length})`}
-                        </Button>
+                        {hasSingleVariant ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 shrink-0 px-2 text-[10px]"
+                            onClick={() => {
+                              void onAddVariantsToCollection(
+                                item.item.entityId,
+                                hasSingleVariant && singleVariantId ? [singleVariantId] : selectedIds,
+                              );
+                            }}
+                            disabled={loading || !singleVariantId}
+                          >
+                            Add item
+                          </Button>
+                        ) : null}
                       </div>
 
                       {item.loading ? (
@@ -647,64 +687,83 @@ export function CatalogCollectionsPage() {
                       ) : item.variants.length === 0 ? (
                         <p className="text-[10px] text-muted-foreground">No matching variants.</p>
                       ) : hasSingleVariant ? null : (
-                        <div className="max-h-32 space-y-0.5 overflow-y-auto rounded-md border border-white/80 bg-white/75 p-1">
-                          <label className="flex items-center justify-between gap-1 rounded border border-[#d7e7fb] bg-[#f2f8ff] px-1 py-0.5 text-[10px] text-[#174774]">
-                            <span className="truncate">
-                              All variants for {item.item.name} ({selectableVariantIds.length})
-                            </span>
-                            <input
-                              type="checkbox"
-                              checked={selectedAll}
-                              onChange={(event) => {
-                                setVariantSelectionsByItemId((current) => {
-                                  const currentSelection = new Set(current[item.item.entityId] ?? []);
-                                  if (event.target.checked) {
-                                    for (const variantId of selectableVariantIds) {
-                                      currentSelection.add(variantId);
+                        <div className="space-y-1">
+                          <div className="max-h-32 space-y-0.5 overflow-y-auto rounded-md border border-border/70 bg-background/60 p-1">
+                            <label className="flex items-center gap-2 rounded border border-[#d7e7fb] bg-[#f2f8ff] px-1.5 py-1 text-[10px] text-[#174774]">
+                              <Checkbox
+                                checked={selectedAll}
+                                onChange={(event) => {
+                                  setVariantSelectionsByItemId((current) => {
+                                    const currentSelection = new Set(current[item.item.entityId] ?? []);
+                                    if (event.target.checked) {
+                                      for (const variantId of selectableVariantIds) {
+                                        currentSelection.add(variantId);
+                                      }
+                                    } else {
+                                      for (const variantId of selectableVariantIds) {
+                                        currentSelection.delete(variantId);
+                                      }
                                     }
-                                  } else {
-                                    for (const variantId of selectableVariantIds) {
-                                      currentSelection.delete(variantId);
-                                    }
-                                  }
-                                  return {
-                                    ...current,
-                                    [item.item.entityId]: Array.from(currentSelection),
-                                  };
-                                });
+                                    return {
+                                      ...current,
+                                      [item.item.entityId]: Array.from(currentSelection),
+                                    };
+                                  });
+                                }}
+                              />
+                              <span className="truncate">
+                                Select all variants for {item.item.name} ({selectableVariantIds.length})
+                              </span>
+                            </label>
+                            {item.variants.map((variant) => {
+                              const checked = selection.includes(variant.id);
+                              return (
+                                <label
+                                  key={variant.id}
+                                  className="flex items-center gap-2 rounded px-1.5 py-1 text-[10px] hover:bg-white"
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onChange={(event) => {
+                                      setVariantSelectionsByItemId((current) => {
+                                        const currentSelection = current[item.item.entityId] ?? [];
+                                        const nextSelection = event.target.checked
+                                          ? [...currentSelection, variant.id]
+                                          : currentSelection.filter((id) => id !== variant.id);
+                                        return {
+                                          ...current,
+                                          [item.item.entityId]: nextSelection,
+                                        };
+                                      });
+                                    }}
+                                  />
+                                  <span className="truncate">
+                                    {variant.name || "-"}
+                                    {variant.sku ? ` | ${variant.sku}` : ""}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[10px] text-muted-foreground">
+                              {selectedIds.length === 0
+                                ? "No variants selected."
+                                : `${selectedIds.length} variant${selectedIds.length === 1 ? "" : "s"} selected.`}
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-6 shrink-0 px-2 text-[10px] disabled:border-[#c3d1e0] disabled:bg-[#eef3f8] disabled:text-[#6f8298]"
+                              onClick={() => {
+                                void onAddVariantsToCollection(item.item.entityId, selectedIds);
                               }}
-                            />
-                          </label>
-                          {item.variants.map((variant) => {
-                            const checked = selection.includes(variant.id);
-                            return (
-                              <label
-                                key={variant.id}
-                                className="flex items-center justify-between gap-1 rounded px-1 py-0.5 text-[10px] hover:bg-white"
-                              >
-                                <span className="truncate">
-                                  {variant.name || "-"}
-                                  {variant.sku ? ` | ${variant.sku}` : ""}
-                                </span>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(event) => {
-                                    setVariantSelectionsByItemId((current) => {
-                                      const currentSelection = current[item.item.entityId] ?? [];
-                                      const nextSelection = event.target.checked
-                                        ? [...currentSelection, variant.id]
-                                        : currentSelection.filter((id) => id !== variant.id);
-                                      return {
-                                        ...current,
-                                        [item.item.entityId]: nextSelection,
-                                      };
-                                    });
-                                  }}
-                                />
-                              </label>
-                            );
-                          })}
+                              disabled={loading || selectedIds.length === 0}
+                            >
+                              Add selected ({selectedIds.length})
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -718,9 +777,21 @@ export function CatalogCollectionsPage() {
         </CardHeader>
 
         <CardContent className="space-y-2 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
-          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-            {!activeBucket || activeCollectionVariantRows.length === 0 ? (
-              <div className="rounded-lg border border-white/70 bg-white/65 px-2 py-2 text-xs text-muted-foreground">
+          <div
+            className={`lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 ${
+              itemSearchDraft.trim().length > 0 ? "opacity-75 transition-opacity" : ""
+            }`}
+          >
+            {initialLoading ? (
+              <div className="rounded-lg border border-border/70 bg-card px-2 py-2 text-xs text-muted-foreground">
+                Loading collection items...
+              </div>
+            ) : !activeBucket || activeCollectionVariantRows.length === 0 ? (
+              <div
+                className={`rounded-lg border border-border/70 px-2 py-2 text-xs text-muted-foreground ${
+                  itemSearchDraft.trim().length > 0 ? "bg-background/70" : "bg-card"
+                }`}
+              >
                 No variants mapped to this collection.
               </div>
             ) : (

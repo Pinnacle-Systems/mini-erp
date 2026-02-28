@@ -129,7 +129,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
         </div>
       ) : null}
       <div
-        className={`overflow-visible overflow-x-hidden lg:h-full lg:overflow-y-auto ${isAuthenticated ? (lastSyncError ? "pt-24 sm:pt-[6.5rem]" : "pt-14 sm:pt-16") : ""}`}
+        className={`overflow-visible overflow-x-hidden lg:h-full lg:min-h-0 lg:overflow-hidden ${isAuthenticated ? (lastSyncError ? "pt-24 sm:pt-[6.5rem]" : "pt-14 sm:pt-16") : ""}`}
       >
         <Outlet />
       </div>

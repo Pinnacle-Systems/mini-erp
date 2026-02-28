@@ -114,6 +114,7 @@ Design should support long-term workflows in a small-business operations tool.
 - Reuse existing design-system atoms and patterns before introducing new ones.
 - Use the atomic design system as the default UI implementation path.
 - Prefer design-system primitives and composed design-system components over direct low-level UI imports or ad hoc markup.
+- Use labeled plain inputs for page-level search and filter fields. Reserve leading-icon search inputs for lookup dialogs or dedicated search widgets, and apply that pattern consistently when used.
 - Remove unused design-system primitives and stale alternate patterns once they are no longer referenced.
 - New screens should feel like they belong to the current product.
 - If a flow intentionally diverges from an established pattern, document why in the change.
@@ -132,17 +133,15 @@ The current frontend does not fully conform to this document. Until those gaps a
 Current known non-conformance, ordered by impact:
 
 - Shared design-system primitives are now much closer to the intended baseline, but a smaller set of legacy primitives, utility styles, and decorative secondary components still remain out of line.
-  Affected frontend areas: remaining primitive and utility holdouts such as `apps/frontend/src/design-system/atoms/Select.tsx`, the legacy `.card` utility in `apps/frontend/src/styles.css`, and older secondary components or local wrappers that still use translucent fills, heavy blur, oversized radii, or stronger shadows than the dense operational baseline.
-- Some user-facing status copy is still placeholder or dummy content. Screens must not present fake operational state as if it were real system state.
-  Affected frontend areas: the app shell landing experience, especially `apps/frontend/src/pages/shell/AppHomePage.tsx`, including the Search + Sync placeholder block and any dashboard placeholder cards that imply live operational state.
+  Affected frontend areas: remaining legacy utility styles and decorative secondary components, especially older local wrappers and secondary surfaces that still use translucent fills, heavy blur, oversized radii, or stronger shadows than the dense operational baseline. The core `Card`, `Button`, `Input`, and `Select` primitives are no longer the main source of this gap.
+- Some shell-level sections still use placeholder content and reserved layout blocks. Placeholder structure is acceptable temporarily, but it must remain clearly non-authoritative and must not imply live system state.
+  Affected frontend areas: the app shell landing experience, especially `apps/frontend/src/pages/shell/AppHomePage.tsx`, including the Search + Sync placeholder block and dashboard sections that are still scaffolds for future real data.
 - Some async screens still do not distinguish loading, empty, and error states clearly enough. Do not treat a pre-load empty array as a true empty state.
-  Affected frontend areas: catalog and data-backed management screens, starting with `apps/frontend/src/pages/catalog/items/ItemsPage.tsx`. Similar review is required for list and management pages that fetch data after mount.
+  Affected frontend areas: data-backed list and management screens beyond `apps/frontend/src/pages/catalog/items/ItemsPage.tsx` and `apps/frontend/src/pages/CatalogCollectionsPage.tsx`, which now have explicit loading and error handling. Similar review is still required for other pages that fetch data after mount.
 - Some screens bypass existing design-system primitives with ad hoc controls or markup. Reuse the existing atomic design system before introducing custom variants.
-  Affected frontend areas: catalog, admin, and other session UI where raw buttons, inputs, switches, or selects are still used directly instead of shared atoms. Immediate remaining examples include `apps/frontend/src/pages/catalog/items/ItemsPage.tsx` and similar ad hoc controls in other feature screens.
+  Affected frontend areas: catalog, admin, and other session UI where raw buttons, inputs, switches, or selects are still used directly instead of shared atoms. The collections page has been normalized, but similar ad hoc controls still remain in other feature screens and supporting panes.
 - Some inputs still rely on placeholders without explicit labels. This remains non-conformant even when the screen is compact.
-  Affected frontend areas: compact filters and dense forms, especially `apps/frontend/src/pages/catalog/items/ItemsPage.tsx`. Additional review is still required for catalog and admin forms that currently depend on placeholder-only input meaning.
-- Desktop shell behavior is close to the intended fixed-pane model, but some routes still allow broader content-region scrolling than the ideal pane-confined desktop behavior.
-  Affected frontend areas: the routed app shell and desktop container layout, especially `apps/frontend/src/routes/AppRoutes.tsx`, plus any top-level page container that depends on the outer routed region to scroll instead of confining overflow to its own pane.
+  Affected frontend areas: dense forms and compact controls outside the main catalog list pages, especially catalog and admin forms that still depend on placeholder-only input meaning.
 - Some shared and non-operational screens still use roomier spacing and larger type than the default operational density described above. Treat those as exceptions to reduce over time unless intentionally documented.
   Affected frontend areas: auth and landing surfaces, especially `apps/frontend/src/design-system/organisms/LoginCard.tsx`, `apps/frontend/src/pages/auth/LoginPage.tsx`, the generic `.page` utility in `apps/frontend/src/styles.css`, and parts of the shell landing layout in `apps/frontend/src/pages/shell/AppHomePage.tsx`.
 - Some mobile fixed action bars can separate actions from the content they affect. Keep using them only when they improve usability more than they reduce locality.

@@ -26,11 +26,19 @@ const sizeStyles: Record<ButtonSize, string> = {
   icon: "h-8 w-8 p-0 text-xs lg:h-7 lg:w-7 lg:text-[11px]"
 };
 
+const hasExplicitDisplayClass = (className?: string) => {
+  if (!className) return false;
+  return className
+    .split(/\s+/)
+    .some((token) => /(?:^|:)(?:hidden|block|inline|inline-block|flex|inline-flex|grid|inline-grid)$/.test(token));
+};
+
 export function Button({ className, variant = "default", size = "md", children, ...props }: ButtonProps) {
   return (
     <button
       className={cn(
-        "inline-flex cursor-pointer items-center justify-center rounded-md font-semibold tracking-[0.01em] transition-[background-color,border-color,box-shadow,color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1 focus-visible:ring-offset-background active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
+        !hasExplicitDisplayClass(className) ? "inline-flex" : undefined,
+        "cursor-pointer items-center justify-center rounded-md font-semibold tracking-[0.01em] transition-[background-color,border-color,box-shadow,color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-1 focus-visible:ring-offset-background active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
         variantStyles[variant],
         sizeStyles[size],
         className
