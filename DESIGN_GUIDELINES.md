@@ -164,6 +164,13 @@ When a feature needs design-specific rules, add a subsection here under a dedica
 
 Keep those sections focused on stable rules that should apply to future work in that area.
 
+## Inventory
+
+- Treat stock as business-level on-hand quantity for now. Do not introduce per-location workflows, internal transfer concepts, or location-specific UI.
+- Stock adjustments should capture only product movement direction and quantity, using direct wording for stock coming in or going out.
+- Stock review screens should summarize the business-wide quantity users are currently filtering, not split the same product into internal location rows.
+- Keep inventory filters compact and labeled, with dense desktop tables as the primary review pattern.
+
 ## How To Use This
 
 When requesting design changes, reference this file and specify:

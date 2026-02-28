@@ -127,3 +127,17 @@ At that point, define:
 Design for a future event system now only by making sync outcomes structured and server-authored.
 
 Do not build the event system itself yet.
+
+## Inventory
+
+Current inventory rule:
+
+1. Treat stock as business-level quantity from the frontend point of view.
+2. Treat `stock_level` as a derived, backend-authored snapshot for display, not a client-authored record.
+3. Do not add a separate inventory CRUD API path or client-side stock math for these screens while the sync domain is still expanding.
+
+Implication for current screens:
+
+1. Stock Levels should aggregate synced `stock_level` entities into business-wide totals before rendering them.
+2. Stock Adjustments should remain the only place that creates inventory quantity changes from the frontend.
+3. Internal transfers and location management are intentionally out of scope for the current product flow, and the inventory persistence model is now business-scoped as well.

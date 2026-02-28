@@ -707,15 +707,8 @@ export type StockAdjustmentReason =
   | "ADJUSTMENT_INCREASE"
   | "ADJUSTMENT_DECREASE";
 
-export type StockLocationOption = {
-  locationId: string;
-  name: string;
-};
-
 export type StockLevelRow = {
   entityId: string;
-  locationId: string;
-  locationName: string;
   variantId: string;
   itemId: string;
   itemName: string;
@@ -912,7 +905,6 @@ export const queueStockAdjustmentCreate = async (
     variantId: string;
     quantity: number;
     reason: StockAdjustmentReason;
-    locationId?: string;
   },
 ) => {
   const mutationId = crypto.randomUUID();
@@ -927,52 +919,10 @@ export const queueStockAdjustmentCreate = async (
       variantId: input.variantId,
       quantity: input.quantity,
       reason: input.reason,
-      ...(input.locationId ? { locationId: input.locationId } : {}),
     },
     clientTimestamp: new Date().toISOString(),
   });
   return mutationId;
-};
-
-export const queueLocationCreate = async (
-  tenantId: string,
-  userId: string,
-  name: string,
-) => {
-  const locationId = crypto.randomUUID();
-  await queueMutation(tenantId, {
-    mutationId: crypto.randomUUID(),
-    deviceId: getOrCreateDeviceId(),
-    userId,
-    entity: "location",
-    entityId: locationId,
-    op: "create",
-    payload: {
-      name,
-    },
-    clientTimestamp: new Date().toISOString(),
-  });
-  return locationId;
-};
-
-export const queueLocationUpdate = async (
-  tenantId: string,
-  userId: string,
-  locationId: string,
-  name: string,
-) => {
-  await queueMutation(tenantId, {
-    mutationId: crypto.randomUUID(),
-    deviceId: getOrCreateDeviceId(),
-    userId,
-    entity: "location",
-    entityId: locationId,
-    op: "update",
-    payload: {
-      name,
-    },
-    clientTimestamp: new Date().toISOString(),
-  });
 };
 
 export const getOutboxItemsByMutationIds = async (mutationIds: string[]) => {
@@ -1010,27 +960,6 @@ export const getLocalStockVariantOptions = async (
   return options;
 };
 
-export const getLocalStockLocations = async (
-  tenantId: string,
-): Promise<StockLocationOption[]> => {
-  const records = await listEntities(tenantId, "location");
-  const byId = new Map<string, StockLocationOption>();
-
-  for (const record of records) {
-    if (record.deletedAt) continue;
-    const name = String(record.data.name ?? "").trim();
-    if (!record.entityId || !name) continue;
-    byId.set(record.entityId, {
-      locationId: record.entityId,
-      name,
-    });
-  }
-
-  return Array.from(byId.values()).sort((left, right) =>
-    left.name.localeCompare(right.name),
-  );
-};
-
 export const getLocalStockLevels = async (
   tenantId: string,
 ): Promise<StockLevelRow[]> => {
@@ -1041,8 +970,6 @@ export const getLocalStockLevels = async (
       const data = record.data;
       return {
         entityId: record.entityId,
-        locationId: String(data.locationId ?? data.location_id ?? ""),
-        locationName: String(data.locationName ?? data.location_name ?? "Main Store"),
         variantId: String(data.variantId ?? data.variant_id ?? ""),
         itemId: String(data.itemId ?? data.item_id ?? ""),
         itemName: String(data.itemName ?? data.item_name ?? "Untitled Item"),
@@ -1052,12 +979,8 @@ export const getLocalStockLevels = async (
         quantityOnHand: Number(data.quantityOnHand ?? data.quantity_on_hand ?? 0),
       } satisfies StockLevelRow;
     })
-    .filter((row) => row.locationId && row.variantId)
-    .sort((left, right) => {
-      const locationOrder = left.locationName.localeCompare(right.locationName);
-      if (locationOrder !== 0) return locationOrder;
-      return left.itemName.localeCompare(right.itemName);
-    });
+    .filter((row) => row.variantId)
+    .sort((left, right) => left.itemName.localeCompare(right.itemName));
 };
 
 const addOptionValue = (

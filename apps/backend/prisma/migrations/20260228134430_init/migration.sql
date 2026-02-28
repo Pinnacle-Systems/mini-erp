@@ -269,19 +269,10 @@ CREATE TABLE "documents"."line_items" (
 );
 
 -- CreateTable
-CREATE TABLE "inventory"."locations" (
-    "id" UUID NOT NULL,
-    "business_id" UUID NOT NULL,
-    "name" TEXT NOT NULL,
-
-    CONSTRAINT "locations_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "inventory"."stock_ledger" (
     "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
     "variant_id" UUID NOT NULL,
-    "location_id" UUID NOT NULL,
     "quantity" DECIMAL(12,3) NOT NULL,
     "reason" TEXT NOT NULL,
     "reference_id" TEXT,
@@ -611,7 +602,7 @@ CREATE UNIQUE INDEX "item_variant_option_values_variant_id_option_value_id_key" 
 CREATE UNIQUE INDEX "documents_business_id_type_doc_number_key" ON "documents"."documents"("business_id", "type", "doc_number");
 
 -- CreateIndex
-CREATE INDEX "stock_ledger_variant_id_idx" ON "inventory"."stock_ledger"("variant_id");
+CREATE INDEX "stock_ledger_business_id_variant_id_idx" ON "inventory"."stock_ledger"("business_id", "variant_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "customer_groups_business_id_code_key" ON "parties"."customer_groups"("business_id", "code");
@@ -759,9 +750,6 @@ ALTER TABLE "documents"."documents" ADD CONSTRAINT "documents_parent_id_fkey" FO
 
 -- AddForeignKey
 ALTER TABLE "documents"."line_items" ADD CONSTRAINT "line_items_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents"."documents"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "inventory"."stock_ledger" ADD CONSTRAINT "stock_ledger_location_id_fkey" FOREIGN KEY ("location_id") REFERENCES "inventory"."locations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "parties"."customer_group_members" ADD CONSTRAINT "customer_group_members_customer_group_id_fkey" FOREIGN KEY ("customer_group_id") REFERENCES "parties"."customer_groups"("id") ON DELETE CASCADE ON UPDATE CASCADE;

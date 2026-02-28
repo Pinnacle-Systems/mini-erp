@@ -61,7 +61,6 @@ const SUPPORTED_ENTITIES = new Set([
   "item_collection",
   "item_collection_item",
   "item_price",
-  "location",
   "stock_adjustment",
 ]);
 const SUPPORTED_ITEM_FIELDS = new Set([
@@ -98,7 +97,6 @@ const DEFAULT_ITEM_VALUES = {
 const DEFAULT_PRICE_BOOK_CODE = "STANDARD";
 const DEFAULT_PRICE_BOOK_NAME = "Standard";
 const DEFAULT_PRICE_CURRENCY = "INR";
-const DEFAULT_LOCATION_NAME = "Main Store";
 const STOCK_ADJUSTMENT_REASONS = new Set([
   "OPENING_BALANCE",
   "ADJUSTMENT_INCREASE",
@@ -427,22 +425,13 @@ const toItemCollectionItemSnapshot = (membership) => {
   };
 };
 
-const toLocationSnapshot = (location) => {
-  return {
-    id: location.id,
-    business_id: location.business_id,
-    businessId: location.business_id,
-    name: location.name,
-  };
-};
-
 const toStockAdjustmentSnapshot = (entry, stockLevelEntityId: string, quantityOnHand: number) => {
   return {
     id: entry.id,
+    business_id: entry.business_id,
+    businessId: entry.business_id,
     variant_id: entry.variant_id,
     variantId: entry.variant_id,
-    location_id: entry.location_id,
-    locationId: entry.location_id,
     quantity: Number(entry.quantity),
     reason: entry.reason,
     reference_id: entry.reference_id ?? null,
@@ -569,10 +558,8 @@ const getVariantUsageCount = async (tx, tenantId, variantId) => {
   const txAny = tx as any;
   const stockLedgerCountPromise = tx.stockLedger.count({
     where: {
+      business_id: tenantId,
       variant_id: variantId,
-      location: {
-        business_id: tenantId,
-      },
     },
   });
 
@@ -766,48 +753,14 @@ const getTenantCursor = async (tenantId) => {
   return latestChange?.cursor?.toString() ?? "0";
 };
 
-const ensureDefaultLocation = async (tx, tenantId: string) => {
-  const existing = await tx.location.findFirst({
-    where: {
-      business_id: tenantId,
-      name: DEFAULT_LOCATION_NAME,
-    },
-    orderBy: {
-      id: "asc",
-    },
-  });
-  if (existing) {
-    return {
-      location: existing,
-      operation: "UPDATE" as const,
-    };
-  }
-
-  const created = await tx.location.create({
-    data: {
-      business_id: tenantId,
-      name: DEFAULT_LOCATION_NAME,
-    },
-  });
-  return {
-    location: created,
-    operation: "CREATE" as const,
-  };
-};
-
-const getStockLevelEntityId = (locationId: string, variantId: string) =>
-  `${locationId}:${variantId}`;
+const getStockLevelEntityId = (variantId: string) => variantId;
 
 const getStockLevelSnapshot = async (
   tx,
   tenantId: string,
-  locationId: string,
   variantId: string,
 ) => {
-  const [location, variant, ledgerEntries] = await Promise.all([
-    tx.location.findUnique({
-      where: { id: locationId },
-    }),
+  const [variant, ledgerEntries] = await Promise.all([
     tx.itemVariant.findUnique({
       where: { id: variantId },
       include: {
@@ -822,7 +775,7 @@ const getStockLevelSnapshot = async (
     }),
     tx.stockLedger.findMany({
       where: {
-        location_id: locationId,
+        business_id: tenantId,
         variant_id: variantId,
       },
       select: {
@@ -830,10 +783,6 @@ const getStockLevelSnapshot = async (
       },
     }),
   ]);
-
-  if (!location || location.business_id !== tenantId) {
-    throw dependencyMissingError("Location not found in business", "location", locationId);
-  }
 
   if (!variant || variant.business_id !== tenantId) {
     throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
@@ -845,11 +794,7 @@ const getStockLevelSnapshot = async (
   );
 
   return {
-    id: getStockLevelEntityId(location.id, variant.id),
-    location_id: location.id,
-    locationId: location.id,
-    location_name: location.name,
-    locationName: location.name,
+    id: getStockLevelEntityId(variant.id),
     variant_id: variant.id,
     variantId: variant.id,
     item_id: variant.item_id,
@@ -1530,71 +1475,6 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
   });
 };
 
-const applyLocationMutation = async (tx, tenantId, mutation) => {
-  const payload =
-    mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
-  const name = typeof payload.name === "string" ? payload.name.trim() : "";
-
-  if (!name) {
-    throw validationError("Location name is required", mutation.entity, mutation.entityId);
-  }
-
-  if (mutation.op === "create") {
-    const existing = await tx.location.findFirst({
-      where: {
-        business_id: tenantId,
-        name,
-      },
-    });
-    if (existing) {
-      throw validationError("Location already exists", mutation.entity, mutation.entityId);
-    }
-
-    const created = await tx.location.create({
-      data: {
-        id: mutation.entityId,
-        business_id: tenantId,
-        name,
-      },
-    });
-    return toLocationSnapshot(created);
-  }
-
-  const current = await tx.location.findUnique({
-    where: { id: mutation.entityId },
-  });
-
-  if (!current || current.business_id !== tenantId) {
-    throw dependencyMissingError("Location not found in business", mutation.entity, mutation.entityId);
-  }
-
-  if (mutation.op === "update") {
-    const existing = await tx.location.findFirst({
-      where: {
-        business_id: tenantId,
-        name,
-        id: {
-          not: current.id,
-        },
-      },
-    });
-    if (existing) {
-      throw validationError("Location already exists", mutation.entity, mutation.entityId);
-    }
-
-    const updated = await tx.location.update({
-      where: { id: mutation.entityId },
-      data: {
-        name,
-      },
-    });
-
-    return toLocationSnapshot(updated);
-  }
-
-  throw validationError("Unsupported operation for location", mutation.entity, mutation.entityId);
-};
-
 const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
   if (mutation.op !== "create") {
     throw validationError(
@@ -1611,12 +1491,6 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
       ? payload.variantId
       : typeof payload.variant_id === "string" && payload.variant_id.trim()
         ? payload.variant_id
-        : "";
-  const requestedLocationId =
-    typeof payload.locationId === "string" && payload.locationId.trim()
-      ? payload.locationId
-      : typeof payload.location_id === "string" && payload.location_id.trim()
-        ? payload.location_id
         : "";
   const rawQuantity = (payload as Record<string, unknown>).quantity;
   const quantity =
@@ -1662,29 +1536,7 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
   }
 
-  let location;
-  let locationOperation: "CREATE" | "UPDATE";
-
-  if (requestedLocationId) {
-    location = await tx.location.findUnique({
-      where: { id: requestedLocationId },
-    });
-    locationOperation = "UPDATE";
-  } else {
-    const ensuredLocation = await ensureDefaultLocation(tx, tenantId);
-    location = ensuredLocation.location;
-    locationOperation = ensuredLocation.operation;
-  }
-
-  if (!location || location.business_id !== tenantId) {
-    throw dependencyMissingError(
-      "Location not found in business",
-      "location",
-      requestedLocationId || "",
-    );
-  }
-
-  const existingStockLevel = await getStockLevelSnapshot(tx, tenantId, location.id, variantId);
+  const existingStockLevel = await getStockLevelSnapshot(tx, tenantId, variantId);
   const ledgerQuantity =
     requestedReason === "ADJUSTMENT_DECREASE" ? -quantity : quantity;
 
@@ -1703,15 +1555,15 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
   const createdEntry = await tx.stockLedger.create({
     data: {
       id: mutation.entityId,
+      business_id: tenantId,
       variant_id: variantId,
-      location_id: location.id,
       quantity: ledgerQuantity,
       reason: requestedReason,
       reference_id: mutation.mutationId,
     },
   });
 
-  const stockLevel = await getStockLevelSnapshot(tx, tenantId, location.id, variantId);
+  const stockLevel = await getStockLevelSnapshot(tx, tenantId, variantId);
 
   return {
     snapshot: toStockAdjustmentSnapshot(
@@ -1720,12 +1572,6 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
       Number(stockLevel.quantityOnHand),
     ),
     additionalChanges: [
-      {
-        entity: "location",
-        entityId: location.id,
-        operation: locationOperation,
-        data: toLocationSnapshot(location),
-      },
       {
         entity: "stock_level",
         entityId: String(stockLevel.id),
@@ -1782,8 +1628,6 @@ const applyMutation = async (
       snapshot = await applyItemCollectionItemMutation(tx, tenantId, mutation);
     } else if (mutation.entity === "item_price") {
       snapshot = await applyItemPriceMutation(tx, tenantId, mutation);
-    } else if (mutation.entity === "location") {
-      snapshot = await applyLocationMutation(tx, tenantId, mutation);
     } else if (mutation.entity === "stock_adjustment") {
       const stockAdjustmentResult = await applyStockAdjustmentMutation(tx, tenantId, mutation);
       snapshot = stockAdjustmentResult.snapshot;

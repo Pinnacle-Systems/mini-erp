@@ -6,15 +6,11 @@ import { Select } from "../design-system/atoms/Select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
 import { useSessionStore } from "../features/auth/session-business";
 import {
-  getLocalStockLocations,
   getLocalStockVariantOptions,
   getSyncRejectionFromError,
-  queueLocationCreate,
-  queueLocationUpdate,
   queueStockAdjustmentCreate,
   syncOnce,
   type StockAdjustmentReason,
-  type StockLocationOption,
   type StockVariantOption,
 } from "../features/sync/engine";
 
@@ -23,8 +19,8 @@ const STOCK_REASON_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "OPENING_BALANCE", label: "Opening Balance" },
-  { value: "ADJUSTMENT_INCREASE", label: "Adjustment Increase" },
-  { value: "ADJUSTMENT_DECREASE", label: "Adjustment Decrease" },
+  { value: "ADJUSTMENT_INCREASE", label: "Stock In" },
+  { value: "ADJUSTMENT_DECREASE", label: "Stock Out" },
 ];
 
 const toUserStockErrorMessage = (error: unknown) => {
@@ -54,11 +50,8 @@ export function StockAdjustmentsPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [options, setOptions] = useState<StockVariantOption[]>([]);
-  const [locations, setLocations] = useState<StockLocationOption[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState("");
-  const [selectedLocationId, setSelectedLocationId] = useState("");
   const [reason, setReason] = useState<StockAdjustmentReason>("OPENING_BALANCE");
-  const [locationName, setLocationName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -77,20 +70,13 @@ export function StockAdjustmentsPage() {
       setLoading(true);
       try {
         await syncOnce(activeStore);
-        const [nextOptions, nextLocations] = await Promise.all([
-          getLocalStockVariantOptions(activeStore),
-          getLocalStockLocations(activeStore),
-        ]);
+        const nextOptions = await getLocalStockVariantOptions(activeStore);
         if (cancelled) return;
         setOptions(nextOptions);
-        setLocations(nextLocations);
         setSelectedVariantId((current) =>
           nextOptions.some((option) => option.variantId === current)
             ? current
             : (nextOptions[0]?.variantId ?? ""),
-        );
-        setSelectedLocationId((current) =>
-          nextLocations.some((option) => option.locationId === current) ? current : "",
         );
         setError(null);
       } catch (nextError) {
@@ -112,91 +98,6 @@ export function StockAdjustmentsPage() {
     };
   }, [activeStore, isBusinessSelected]);
 
-  useEffect(() => {
-    const selectedLocation = locations.find(
-      (location) => location.locationId === selectedLocationId,
-    );
-    setLocationName(selectedLocation?.name ?? "");
-  }, [locations, selectedLocationId]);
-
-  const refreshLocations = async (tenantId: string) => {
-    const nextLocations = await getLocalStockLocations(tenantId);
-    setLocations(nextLocations);
-    setSelectedLocationId((current) => {
-      if (!current) return "";
-      return nextLocations.some((location) => location.locationId === current)
-        ? current
-        : "";
-    });
-    return nextLocations;
-  };
-
-  const onCreateLocation = async () => {
-    if (!activeStore || !identityId || !isBusinessSelected || loading) return;
-    const trimmedName = locationName.trim();
-    if (!trimmedName) {
-      setError("Enter a location name to create.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const newLocationId = await queueLocationCreate(activeStore, identityId, trimmedName);
-      await syncOnce(activeStore);
-      const nextLocations = await refreshLocations(activeStore);
-      setSelectedLocationId(
-        nextLocations.find((location) => location.locationId === newLocationId)?.locationId ??
-          newLocationId,
-      );
-      setMessage(
-        navigator.onLine
-          ? "Location created."
-          : "Location queued offline and will sync automatically.",
-      );
-    } catch (nextError) {
-      console.error(nextError);
-      setError(toUserStockErrorMessage(nextError));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onRenameLocation = async () => {
-    if (!activeStore || !identityId || !isBusinessSelected || loading) return;
-    if (!selectedLocationId) {
-      setError("Select a location to rename.");
-      return;
-    }
-    const trimmedName = locationName.trim();
-    if (!trimmedName) {
-      setError("Enter a location name to rename.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      await queueLocationUpdate(activeStore, identityId, selectedLocationId, trimmedName);
-      await syncOnce(activeStore);
-      await refreshLocations(activeStore);
-      setMessage(
-        navigator.onLine
-          ? "Location renamed."
-          : "Location rename queued offline and will sync automatically.",
-      );
-    } catch (nextError) {
-      console.error(nextError);
-      setError(toUserStockErrorMessage(nextError));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const onSubmit = async () => {
     if (!activeStore || !identityId || !isBusinessSelected || loading) return;
     if (!selectedVariantId) {
@@ -206,7 +107,7 @@ export function StockAdjustmentsPage() {
 
     const parsedQuantity = Number(quantity.trim());
     if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
-      setError("Opening stock must be a positive number.");
+      setError("Quantity must be a positive number.");
       return;
     }
 
@@ -219,11 +120,8 @@ export function StockAdjustmentsPage() {
         variantId: selectedVariantId,
         quantity: parsedQuantity,
         reason,
-        ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
       });
       await syncOnce(activeStore);
-      const nextLocations = await getLocalStockLocations(activeStore);
-      setLocations(nextLocations);
       setQuantity("");
       setMessage(
         navigator.onLine
@@ -243,67 +141,11 @@ export function StockAdjustmentsPage() {
       <CardHeader>
         <CardTitle>Stock Adjustments</CardTitle>
         <CardDescription>
-          Record opening balances and manual stock adjustments. If no location is selected,
-          the backend uses the default main store.
+          Record product movements for the business. Use increase and decrease entries to
+          track stock coming in or going out.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          <Label htmlFor="stock-location">Location</Label>
-          <Select
-            id="stock-location"
-            value={selectedLocationId}
-            onChange={(event) => setSelectedLocationId(event.target.value)}
-            disabled={loading}
-          >
-            <option value="">Default: Main Store</option>
-            {locations.map((location) => (
-              <option key={location.locationId} value={location.locationId}>
-                {location.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="stock-location-name">Location Name</Label>
-          <Input
-            id="stock-location-name"
-            placeholder="Create or rename a location"
-            value={locationName}
-            onChange={(event) => setLocationName(event.target.value)}
-            disabled={loading}
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void onCreateLocation();
-              }}
-              disabled={!identityId || !activeStore || !isBusinessSelected || loading}
-            >
-              Create Location
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void onRenameLocation();
-              }}
-              disabled={
-                !identityId ||
-                !activeStore ||
-                !isBusinessSelected ||
-                !selectedLocationId ||
-                loading
-              }
-            >
-              Rename Selected
-            </Button>
-          </div>
-        </div>
-
         <div className="space-y-2">
           <Label htmlFor="stock-variant">Item Variant</Label>
           <Select
@@ -324,7 +166,7 @@ export function StockAdjustmentsPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="stock-reason">Adjustment Type</Label>
+          <Label htmlFor="stock-reason">Movement Type</Label>
           <Select
             id="stock-reason"
             value={reason}
