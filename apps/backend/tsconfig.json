@@ -15,6 +15,6 @@
     "noImplicitAny": false,
     "rewriteRelativeImportExtensions": true
   },
-  "include": ["server.ts", "src/**/*.ts"],
+  "include": ["server.ts", "src/**/*.ts", "prisma.config.ts"],
   "exclude": ["dist", "node_modules", "prisma/**"]
 }

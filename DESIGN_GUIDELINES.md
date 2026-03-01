@@ -75,6 +75,7 @@ Design should support long-term workflows in a small-business operations tool.
 - Validation messages should explain what is wrong and what the user should do next.
 - Related fields should appear together in the order users think about them.
 - Avoid unnecessary required fields in first-pass business workflows.
+- For multi-entity create flows, default quick-entry forms to 1 entity on mobile and 5 entities on desktop.
 - For desktop-heavy operational forms, prefer compact multi-column or grid editing over tall single-column forms.
 - For mobile forms, collapse dense desktop layouts into clear stacked sections.
 

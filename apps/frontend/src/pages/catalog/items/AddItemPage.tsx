@@ -39,6 +39,8 @@ const QUICK_ENTRY_INPUT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
 const QUICK_ENTRY_SELECT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
 const OPTION_DISCOVERY_STORAGE_KEY = "mini-erp-option-discovery";
 const ITEM_CATEGORIES_STORAGE_KEY = "mini-erp-item-categories";
+const MOBILE_QUICK_ROW_COUNT = 1;
+const DESKTOP_QUICK_ROW_COUNT = 5;
 const getOptionDiscoveryStorageKey = (storeId: string) =>
   `${OPTION_DISCOVERY_STORAGE_KEY}:${storeId}`;
 const getItemCategoriesStorageKey = (storeId: string) =>
@@ -139,7 +141,14 @@ const EMPTY_QUICK_ROW = (): QuickItemDraft => ({
   itemType: "PRODUCT",
 });
 
-const buildInitialRows = (count = 5) =>
+const getDefaultQuickRowCount = () => {
+  if (typeof window === "undefined") return DESKTOP_QUICK_ROW_COUNT;
+  return window.matchMedia("(min-width: 1024px)").matches
+    ? DESKTOP_QUICK_ROW_COUNT
+    : MOBILE_QUICK_ROW_COUNT;
+};
+
+const buildInitialRows = (count = getDefaultQuickRowCount()) =>
   Array.from({ length: count }, () => EMPTY_QUICK_ROW());
 
 export function AddItemPage() {
@@ -154,7 +163,7 @@ export function AddItemPage() {
   const [category, setCategory] = useState("");
   const [unit, setUnit] = useState<(typeof UNIT_OPTIONS)[number]>("PCS");
   const [variants, setVariants] = useState<ItemVariantDraft[]>([EMPTY_VARIANT()]);
-  const [quickRows, setQuickRows] = useState<QuickItemDraft[]>(buildInitialRows());
+  const [quickRows, setQuickRows] = useState<QuickItemDraft[]>(() => buildInitialRows());
   const [optionModalVariantId, setOptionModalVariantId] = useState<string | null>(null);
   const [optionKeyDraft, setOptionKeyDraft] = useState("");
   const [optionValueDraft, setOptionValueDraft] = useState("");
