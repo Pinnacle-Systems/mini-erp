@@ -225,6 +225,38 @@ export function AddItemPage() {
   };
 
   useEffect(() => {
+    const desktopMedia = window.matchMedia("(min-width: 1024px)");
+
+    const syncQuickRowDefaults = () => {
+      setQuickRows((current) => {
+        const isPristine = current.every(
+          (row) =>
+            row.name.trim().length === 0 &&
+            row.sku.trim().length === 0 &&
+            row.category.trim().length === 0 &&
+            row.unit === "PCS" &&
+            row.itemType === "PRODUCT",
+        );
+        if (!isPristine) return current;
+
+        const nextCount = desktopMedia.matches
+          ? DESKTOP_QUICK_ROW_COUNT
+          : MOBILE_QUICK_ROW_COUNT;
+        if (current.length === nextCount) return current;
+
+        return buildInitialRows(nextCount);
+      });
+    };
+
+    desktopMedia.addEventListener("change", syncQuickRowDefaults);
+    syncQuickRowDefaults();
+
+    return () => {
+      desktopMedia.removeEventListener("change", syncQuickRowDefaults);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!activeStore) return;
     persistOptionDiscovery(activeStore, savedOptionKeys, savedOptionValuesByKey);
   }, [activeStore, savedOptionKeys, savedOptionValuesByKey]);

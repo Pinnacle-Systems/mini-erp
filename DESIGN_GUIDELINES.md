@@ -65,6 +65,7 @@ Design should support long-term workflows in a small-business operations tool.
 - Primary actions should be obvious and singular.
 - Secondary actions should remain available but visually quieter.
 - Destructive actions should require deliberate intent.
+- In mobile card or list views, destructive actions must use an explicit action button. Do not trigger delete or remove actions from tapping the full card surface.
 - Loading, empty, and error states must always be explicit.
 - User-facing status should be tied to real system state, not optimistic wording that may be wrong.
 
@@ -78,6 +79,7 @@ Design should support long-term workflows in a small-business operations tool.
 - For multi-entity create flows, default quick-entry forms to 1 entity on mobile and 5 entities on desktop.
 - For desktop-heavy operational forms, prefer compact multi-column or grid editing over tall single-column forms.
 - For mobile forms, collapse dense desktop layouts into clear stacked sections.
+- For destructive mobile actions, prefer labeled buttons over icon-only buttons unless space is severely constrained and the action remains unmistakable.
 
 ## Data Display
 
@@ -100,6 +102,7 @@ Design should support long-term workflows in a small-business operations tool.
 - Desktop is the primary operational surface.
 - Mobile should preserve core workflows, even if density is reduced.
 - Controls must remain usable on small screens without horizontal scrolling for standard forms.
+- Shell headers, nav bars, and global action rows must not introduce horizontal page scrolling on mobile. For fixed headers, preserve a stable height; prefer compact icon treatments or an overflow menu for secondary actions instead of wrapping controls into a second row.
 - High-value data should reflow predictably when space is constrained.
 
 ## Accessibility

@@ -801,6 +801,8 @@ export function CatalogCollectionsPage() {
                 actionLabel="Remove"
                 actionIcon={Trash2}
                 actionClassName="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2d2d] hover:bg-[#ffecec]"
+                mobileActionTrigger="button"
+                mobileActionButtonClassName="h-8 gap-1.5 px-3 text-[11px] text-[#7a1f1f] hover:bg-[#fff5f5]"
                 onAction={(row) => {
                   if (!row.actionId) return;
                   void onRemoveVariantFromCollection(row.actionId);

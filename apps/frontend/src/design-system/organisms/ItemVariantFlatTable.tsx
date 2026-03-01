@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, type LucideIcon } from "lucide-react";
+import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
 import {
   DenseTable,
@@ -25,6 +26,9 @@ type ItemVariantFlatTableProps = {
   actionLabel?: string;
   actionIcon?: LucideIcon;
   actionClassName?: string;
+  // Use "button" for destructive mobile actions so the card surface itself stays non-destructive.
+  mobileActionTrigger?: "card" | "button";
+  mobileActionButtonClassName?: string;
   onAction?: (row: ItemVariantFlatRow) => void;
   onOpenItem?: (itemId: string) => void;
 };
@@ -57,6 +61,8 @@ export function ItemVariantFlatTable({
   actionLabel = "View",
   actionIcon = Eye,
   actionClassName,
+  mobileActionTrigger = "card",
+  mobileActionButtonClassName,
   onAction,
   onOpenItem,
 }: ItemVariantFlatTableProps) {
@@ -144,7 +150,7 @@ export function ItemVariantFlatTable({
           <div className="card text-sm text-muted-foreground">Loading variants...</div>
         ) : (
           visibleRows.map((row) => (
-            hasAction ? (
+            hasAction && mobileActionTrigger === "card" ? (
               <button
                 key={row.key}
                 type="button"
@@ -200,6 +206,24 @@ export function ItemVariantFlatTable({
 
                 {row.pending ? (
                   <p className="text-[10px] font-semibold text-amber-700">Pending sync</p>
+                ) : null}
+
+                {hasAction && mobileActionTrigger === "button" ? (
+                  <div className="pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className={
+                        mobileActionButtonClassName ??
+                        "h-8 gap-1.5 px-3 text-[11px] text-[#7a1f1f] hover:bg-[#fff5f5]"
+                      }
+                      onClick={() => handleAction(row)}
+                    >
+                      {actionIcon ? <actionIcon aria-hidden="true" /> : null}
+                      <span>{actionLabel}</span>
+                    </Button>
+                  </div>
                 ) : null}
               </div>
             )

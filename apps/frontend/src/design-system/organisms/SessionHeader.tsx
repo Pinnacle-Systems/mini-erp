@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, ChevronDown } from "lucide-react";
+import { ArrowLeft, Building2, ChevronDown, LogOut } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
@@ -12,6 +12,7 @@ type SessionHeaderProps = {
   showBack?: boolean;
   contextTitle?: string;
   contextSubtitle?: string;
+  onLogout?: (() => void) | undefined;
 };
 
 export function SessionHeader({
@@ -19,6 +20,7 @@ export function SessionHeader({
   showBack = false,
   contextTitle,
   contextSubtitle,
+  onLogout,
 }: SessionHeaderProps) {
   const navigate = useNavigate();
   const role = useSessionStore((state) => state.role);
@@ -147,6 +149,19 @@ export function SessionHeader({
             <Building2 className="h-4 w-4" aria-hidden="true" />
             <span className="hidden md:block truncate">{activeBusinessName}</span>
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        ) : null}
+        {onLogout ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onLogout}
+            className="h-8 w-8 shrink-0 p-0 text-xs md:w-auto md:gap-1.5 md:px-3"
+            aria-label="Log out"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden md:inline">Logout</span>
           </Button>
         ) : null}
       </div>
