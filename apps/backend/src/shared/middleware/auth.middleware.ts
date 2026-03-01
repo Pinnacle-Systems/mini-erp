@@ -1,4 +1,4 @@
-import authService from "../../modules/auth/auth.service.js";
+import { getIdentity } from "../../modules/auth/auth.public.js";
 import { catchAsync } from "../utils/catchAsync.js";
 import { UnauthorizedError } from "../utils/errors.js";
 import { verifyAccessToken } from "../utils/token.utils.js";
@@ -18,7 +18,7 @@ export const protect = catchAsync(async (req, res, next) => {
 
   const decoded = await verifyAccessToken(token);
 
-  const currentUser = await authService.getIdentity(decoded.sub);
+  const currentUser = await getIdentity(decoded.sub);
 
   if (!currentUser) {
     return next(new UnauthorizedError("User does not exist"));

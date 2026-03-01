@@ -4,6 +4,7 @@ import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
+import { Switch } from "../atoms/Switch";
 import type {
   AdminStore,
   AdminBusinessesPagination,
@@ -85,26 +86,16 @@ export function BusinessManagementListView({
             <div className="flex w-full items-center justify-start gap-2 min-[642px]:inline-flex min-[642px]:w-auto min-[1192px]:ml-1 max-[1191px]:basis-full">
               <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                 <div className="flex items-center gap-2">
-                  <button
+                  <Switch
                     id="include-inactive-businesses"
-                    type="button"
-                    role="switch"
-                    aria-checked={filterIncludeDeleted}
                     aria-label="Include inactive businesses"
-                    onClick={() => onFilterIncludeDeletedChange(!filterIncludeDeleted)}
+                    checked={filterIncludeDeleted}
+                    onCheckedChange={onFilterIncludeDeletedChange}
                     disabled={loading}
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
-                      filterIncludeDeleted
-                        ? "border-[#2f6fb7] bg-[#4a8dd9]"
-                        : "border-[#b8cbe0] bg-[#e7eff8]"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                        filterIncludeDeleted ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
+                    className="h-6 w-11 border"
+                    checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                    uncheckedTrackClassName="border-[#b8cbe0] bg-[#e7eff8]"
+                  />
                   <Label htmlFor="include-inactive-businesses" className="shrink-0">
                     Include inactive
                   </Label>
@@ -145,23 +136,17 @@ export function BusinessManagementListView({
             ? `${business.license.beginsOn} to ${business.license.endsOn}`
             : "Not configured";
           return (
-            <div
+            <button
               key={business.id}
-              role="button"
-              tabIndex={0}
+              type="button"
               onClick={() => onOpenStore(business)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onOpenStore(business);
-                }
-              }}
-              className={`rounded-xl border p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_10px_20px_-18px_rgba(15,23,42,0.18)] transition-transform duration-150 hover:-translate-y-0.5 ${
+              className={`w-full rounded-xl border p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.06),0_10px_20px_-18px_rgba(15,23,42,0.18)] transition-transform duration-150 hover:-translate-y-0.5 ${
                 isDeleted
                   ? "border-[#f3c3c0] bg-[#fff5f5]"
                   : "border-border/80 bg-white"
               }`}
               title={isDeleted ? "Inactive business" : "Open business details"}
+              aria-label={`Open business ${business.name}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -194,7 +179,7 @@ export function BusinessManagementListView({
                 <p>License: {licenseDates}</p>
               </div>
 
-            </div>
+            </button>
           );
         })}
       </div>

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Input } from "../../../design-system/atoms/Input";
+import { Label } from "../../../design-system/atoms/Label";
 import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
 import {
   Card,
@@ -124,9 +126,12 @@ export function AdminUserDetailsPage() {
                 </legend>
                 <div className="grid gap-2 md:grid-cols-2">
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Name</p>
+                    <Label htmlFor="admin-user-name" className="text-[10px] text-muted-foreground">
+                      Name
+                    </Label>
                     {isEditing ? (
-                      <input
+                      <Input
+                        id="admin-user-name"
                         value={draft.name}
                         onChange={(event) =>
                           setDraft((current) => ({
@@ -142,9 +147,12 @@ export function AdminUserDetailsPage() {
                     )}
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Phone</p>
+                    <Label htmlFor="admin-user-phone" className="text-[10px] text-muted-foreground">
+                      Phone
+                    </Label>
                     {isEditing ? (
-                      <input
+                      <Input
+                        id="admin-user-phone"
                         value={draft.phone}
                         onChange={(event) =>
                           setDraft((current) => ({
@@ -160,9 +168,12 @@ export function AdminUserDetailsPage() {
                     )}
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Email</p>
+                    <Label htmlFor="admin-user-email" className="text-[10px] text-muted-foreground">
+                      Email
+                    </Label>
                     {isEditing ? (
-                      <input
+                      <Input
+                        id="admin-user-email"
                         value={draft.email}
                         onChange={(event) =>
                           setDraft((current) => ({

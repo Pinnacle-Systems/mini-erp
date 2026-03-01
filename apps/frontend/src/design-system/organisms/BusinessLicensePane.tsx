@@ -1,5 +1,8 @@
 import { Save } from "lucide-react";
 import { Button } from "../atoms/Button";
+import { Input } from "../atoms/Input";
+import { Label } from "../atoms/Label";
+import { Select } from "../atoms/Select";
 import { LicenseCapabilityPicklist } from "../molecules/LicenseCapabilityPicklist";
 import {
   BUNDLE_CAPABILITY_MAP,
@@ -58,47 +61,62 @@ export function BusinessLicensePane({
       <div className="grid gap-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <div className="grid content-start gap-2">
           <div className="grid gap-2 lg:grid-cols-2">
-            <label className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-              Begin date
-              <input
+            <div className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+              <Label htmlFor="license-begins-on" className="text-[11px] text-muted-foreground lg:text-[10px]">
+                Begin date
+              </Label>
+              <Input
+                id="license-begins-on"
                 type="date"
                 value={beginsOn}
                 onChange={(event) => onBeginsOnChange(event.target.value)}
                 disabled={disabled}
+                aria-label="Begin date"
                 className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
               />
-            </label>
-            <label className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-              End date
-              <input
+            </div>
+            <div className="grid gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+              <Label htmlFor="license-ends-on" className="text-[11px] text-muted-foreground lg:text-[10px]">
+                End date
+              </Label>
+              <Input
+                id="license-ends-on"
                 type="date"
                 value={endsOn}
                 onChange={(event) => onEndsOnChange(event.target.value)}
                 disabled={disabled}
+                aria-label="End date"
                 className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
               />
-            </label>
+            </div>
           </div>
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_4.75rem] lg:gap-4">
-            <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-              User limit mode
-              <select
+            <div className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+              <Label htmlFor="license-user-limit-type" className="text-[11px] text-muted-foreground lg:text-[10px]">
+                User limit mode
+              </Label>
+              <Select
+                id="license-user-limit-type"
                 value={userLimitType}
                 onChange={(event) =>
                   onUserLimitTypeChange(event.target.value as UserLimitType)
                 }
                 disabled={disabled}
+                aria-label="User limit mode"
                 className="h-8 w-full min-w-0 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
               >
                 <option value="UNLIMITED">Unlimited users</option>
                 <option value="MAX_USERS">Max users per business</option>
                 <option value="MAX_CONCURRENT_USERS">Max concurrent users</option>
-              </select>
-            </label>
+              </Select>
+            </div>
             {userLimitType !== "UNLIMITED" ? (
-              <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
-                User limit
-                <input
+              <div className="grid min-w-0 gap-1 text-[11px] text-muted-foreground lg:text-[10px]">
+                <Label htmlFor="license-user-limit-value" className="text-[11px] text-muted-foreground lg:text-[10px]">
+                  User limit
+                </Label>
+                <Input
+                  id="license-user-limit-value"
                   type="text"
                   inputMode="numeric"
                   maxLength={3}
@@ -109,19 +127,24 @@ export function BusinessLicensePane({
                     )
                   }
                   disabled={disabled}
+                  aria-label="User limit"
                   className="h-8 w-full min-w-0 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
                 />
-              </label>
+              </div>
             ) : (
               <div />
             )}
           </div>
-          <label className="hidden gap-1 text-[11px] text-muted-foreground lg:grid lg:text-[10px]">
-            Bundle
-            <select
+          <div className="hidden gap-1 text-[11px] text-muted-foreground lg:grid lg:text-[10px]">
+            <Label htmlFor="license-bundle-desktop" className="text-[11px] text-muted-foreground lg:text-[10px]">
+              Bundle
+            </Label>
+            <Select
+              id="license-bundle-desktop"
               value={bundleKey}
               onChange={(event) => onBundleKeyChange(event.target.value as BundleKey)}
               disabled={disabled}
+              aria-label="Bundle"
               className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
             >
               {BUNDLE_KEYS.map((currentBundleKey) => (
@@ -129,17 +152,21 @@ export function BusinessLicensePane({
                   {currentBundleKey}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </div>
         </div>
 
         <div className="grid content-start gap-2">
-          <label className="grid gap-1 text-[11px] text-muted-foreground lg:hidden">
-            Bundle
-            <select
+          <div className="grid gap-1 text-[11px] text-muted-foreground lg:hidden">
+            <Label htmlFor="license-bundle-mobile" className="text-[11px] text-muted-foreground lg:text-[10px]">
+              Bundle
+            </Label>
+            <Select
+              id="license-bundle-mobile"
               value={bundleKey}
               onChange={(event) => onBundleKeyChange(event.target.value as BundleKey)}
               disabled={disabled}
+              aria-label="Bundle"
               className="h-8 rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
             >
               {BUNDLE_KEYS.map((currentBundleKey) => (
@@ -147,8 +174,8 @@ export function BusinessLicensePane({
                   {currentBundleKey}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </div>
 
           <LicenseCapabilityPicklist
             capabilities={CAPABILITY_KEYS}

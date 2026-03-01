@@ -173,6 +173,7 @@ export function BusinessLogoPicker({
                 step={0.01}
                 value={zoom}
                 onChange={(event) => setZoom(Number(event.target.value))}
+                aria-label="Logo zoom"
                 className="mt-1 w-full accent-[#2f6fb7]"
               />
             </div>
@@ -229,6 +230,7 @@ export function BusinessLogoPicker({
           ref={fileInputRef}
           type="file"
           accept="image/png,image/jpeg,image/webp"
+          aria-label="Select logo file"
           className="hidden"
           onChange={handleFileInputChange}
         />

@@ -182,6 +182,7 @@ export function ItemVariantCardsEditor({
                         type="checkbox"
                         checked={variant.isActive ?? true}
                         disabled={isReadOnly}
+                        aria-label={`Active state for ${variant.name || "variant"}`}
                         onChange={(event) =>
                           onVariantsChange(
                             updateVariant(variants, variant.id, (entry) => ({

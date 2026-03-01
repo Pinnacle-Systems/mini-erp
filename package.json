@@ -7,8 +7,11 @@
     "dev": "turbo dev",
     "backend:dev": "turbo dev --filter=backend",
     "frontend:dev": "turbo dev --filter=frontend",
+    "lint:apps": "turbo run lint",
+    "lint": "pnpm lint:apps && pnpm lint:deps",
     "pwa:dev": "turbo dev --filter=backend --filter=frontend",
-    "pwa:preview": "pnpm --filter frontend build && concurrently -k -n backend,frontend \"pnpm --filter backend dev\" \"pnpm --filter frontend preview\""
+    "pwa:preview": "pnpm --filter frontend build && concurrently -k -n backend,frontend \"pnpm --filter backend dev\" \"pnpm --filter frontend preview\"",
+    "lint:deps": "depcruise --config .dependency-cruiser.cjs apps/frontend/src apps/backend/src"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +19,7 @@
   "packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
   "devDependencies": {
     "concurrently": "^9.2.1",
+    "dependency-cruiser": "^17.3.8",
     "turbo": "^2.8.10"
   }
 }

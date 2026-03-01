@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Label } from "../../../design-system/atoms/Label";
 import { LoadingOverlay } from "../../../design-system/atoms/LoadingOverlay";
+import { Switch } from "../../../design-system/atoms/Switch";
 import {
   Card,
   CardContent,
@@ -379,31 +381,21 @@ export function AdminBusinessDetailsPage() {
                     />
                   )}
                   <div className="ml-auto flex items-center gap-1.5 lg:ml-1">
-                    <span className="text-[11px] font-medium text-muted-foreground">
+                    <Label htmlFor="business-active-status" className="text-[11px] font-medium text-muted-foreground">
                       {business.deletedAt ? "Inactive" : "Active"}
-                    </span>
-                    <button
+                    </Label>
+                    <Switch
                       id="business-active-status"
-                      type="button"
-                      role="switch"
-                      aria-checked={!business.deletedAt}
                       aria-label="Toggle business active state"
-                      onClick={() => {
+                      checked={!business.deletedAt}
+                      onCheckedChange={() => {
                         void onToggleBusinessStatus(Boolean(business.deletedAt));
                       }}
                       disabled={saving}
-                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        !business.deletedAt
-                          ? "border-[#2f6fb7] bg-[#4a8dd9]"
-                          : "border-[#b8cbe0] bg-[#e7eff8]"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                          !business.deletedAt ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
+                      className="h-6 w-11 border"
+                      checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                      uncheckedTrackClassName="border-[#b8cbe0] bg-[#e7eff8]"
+                    />
                   </div>
                 </div>
               </div>

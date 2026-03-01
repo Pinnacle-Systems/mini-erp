@@ -45,6 +45,33 @@ export default tseslint.config(
         {
           prefer: "type-imports"
         }
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "socket.io",
+              message:
+                "Broad realtime infrastructure is intentionally deferred. Revisit ARCHITECTURE.md before introducing socket.io.",
+            },
+            {
+              name: "socket.io-client",
+              message:
+                "Broad realtime infrastructure is intentionally deferred. Revisit ARCHITECTURE.md before introducing socket.io-client.",
+            },
+            {
+              name: "web-push",
+              message:
+                "Web Push is intentionally deferred. Revisit ARCHITECTURE.md before introducing web-push.",
+            },
+            {
+              name: "ws",
+              message:
+                "Broad realtime infrastructure is intentionally deferred. Revisit ARCHITECTURE.md before introducing ws.",
+            }
+          ]
+        }
       ]
     }
   }

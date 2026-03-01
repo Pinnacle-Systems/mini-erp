@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { X } from "lucide-react";
+import { IconButton } from "../design-system/atoms/IconButton";
 import { useSessionStore } from "../features/auth/session-business";
 import { useLogoutFlow } from "../features/auth/useLogoutFlow";
 import { useSyncActions } from "../features/sync/SyncProvider";
@@ -116,14 +117,15 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
             <div className="border-t border-red-200 bg-red-50/95 px-2 py-1.5 sm:px-3 md:px-4">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[11px] text-red-700">{lastSyncError}</p>
-                <button
+                <IconButton
                   type="button"
+                  icon={X}
                   onClick={clearSyncError}
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-red-700 transition hover:bg-red-100"
+                  className="h-5 w-5 shrink-0 rounded-full border-none bg-transparent p-0 text-red-700 shadow-none hover:bg-red-100"
                   aria-label="Dismiss sync error"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+                  title="Dismiss sync error"
+                  iconSize={14}
+                />
               </div>
             </div>
           ) : null}

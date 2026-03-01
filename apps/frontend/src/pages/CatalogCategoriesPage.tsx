@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../design-system/atoms/Button";
+import { IconButton } from "../design-system/atoms/IconButton";
 import { Input } from "../design-system/atoms/Input";
 import {
   Card,
@@ -329,27 +330,31 @@ export function CatalogCategoriesPage() {
                     : "border-border/70 bg-white/70 text-foreground/80 hover:bg-white"
                 }`}
               >
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setSelectedCategory(bucket.name)}
-                  className="flex h-6 min-w-0 flex-1 items-center justify-between"
+                  className="flex h-6 min-w-0 flex-1 items-center justify-between border-none bg-transparent px-0 text-left text-xs font-medium shadow-none hover:bg-transparent"
                 >
                   <span className="truncate font-medium">{bucket.name}</span>
                   <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">
                     {getBucketVariantCount(bucket)}
                   </span>
-                </button>
-                <button
+                </Button>
+                <IconButton
                   type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[#8a2d2d] transition hover:bg-[#ffecec] disabled:opacity-50"
+                  icon={Trash2}
+                  variant="ghost"
+                  className="h-6 w-6 rounded-full border-none bg-transparent p-0 text-[#8a2d2d] shadow-none hover:bg-[#ffecec] disabled:opacity-50"
                   onClick={() => {
                     void onDeleteCategory(bucket);
                   }}
                   disabled={loading}
                   aria-label={`Delete category ${bucket.name}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
+                  title={`Delete category ${bucket.name}`}
+                  iconSize={14}
+                />
               </div>
             ))}
           </div>
@@ -378,38 +383,42 @@ export function CatalogCategoriesPage() {
                 disabled={loading}
                 autoFocus
               />
-              <button
+              <IconButton
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#166534] transition hover:bg-[#ecfdf3] disabled:opacity-50"
+                icon={Check}
+                variant="ghost"
+                className="h-8 w-8 rounded-full border-none bg-transparent p-0 text-[#166534] shadow-none transition hover:bg-[#ecfdf3] disabled:opacity-50"
                 onClick={() => {
                   void onRenameCategory();
                 }}
                 disabled={loading}
                 aria-label="Save category name"
-              >
-                <Check className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <button
+                title="Save category name"
+              />
+              <IconButton
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground/70 transition hover:bg-white/80 disabled:opacity-50"
+                icon={X}
+                variant="ghost"
+                className="h-8 w-8 rounded-full border-none bg-transparent p-0 text-foreground/70 shadow-none transition hover:bg-white/80 disabled:opacity-50"
                 onClick={() => {
                   setIsEditingCategoryName(false);
                   setCategoryNameDraft(activeBucket?.name ?? "");
                 }}
                 disabled={loading}
                 aria-label="Cancel category rename"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
+                title="Cancel category rename"
+              />
             </div>
           ) : (
             <div className="flex items-center gap-1">
               <CardTitle className="text-sm">
                 {activeBucket?.name ?? "Category"}
               </CardTitle>
-              <button
+              <IconButton
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#2f6fb7] transition hover:bg-[#e9f2ff] disabled:opacity-50"
+                icon={Pencil}
+                variant="ghost"
+                className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#2f6fb7] shadow-none transition hover:bg-[#e9f2ff] disabled:opacity-50"
                 onClick={() => {
                   setIsEditingCategoryName(true);
                   setCategoryNameDraft(activeBucket?.name ?? "");
@@ -417,9 +426,9 @@ export function CatalogCategoriesPage() {
                 }}
                 disabled={loading || !activeBucket}
                 aria-label="Edit category name"
-              >
-                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
+                title="Edit category name"
+                iconSize={14}
+              />
             </div>
           )}
         </CardHeader>

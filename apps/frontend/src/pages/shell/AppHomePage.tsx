@@ -519,7 +519,9 @@ export function AppHomePage() {
   }, [routeDrivenAppId, updateAppTabsOverflow]);
 
   useEffect(() => {
-    setShowSessionMenu(false);
+    queueMicrotask(() => {
+      setShowSessionMenu(false);
+    });
   }, [location.pathname]);
 
   useEffect(() => {

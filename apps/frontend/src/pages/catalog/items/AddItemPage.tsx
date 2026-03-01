@@ -6,6 +6,7 @@ import { IconButton } from "../../../design-system/atoms/IconButton";
 import { Input } from "../../../design-system/atoms/Input";
 import { Label } from "../../../design-system/atoms/Label";
 import { Select } from "../../../design-system/atoms/Select";
+import { Switch } from "../../../design-system/atoms/Switch";
 import {
   Card,
   CardContent,
@@ -522,21 +523,21 @@ export function AddItemPage() {
             className="space-y-1.5 pb-20 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1 lg:pb-0"
           >
             <div className="rounded-lg border border-border/80 bg-white p-1.5">
-              <label
-                htmlFor="variant-mode"
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-foreground lg:text-[10px]"
-              >
-                <input
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-foreground lg:text-[10px]">
+                <Switch
                   id="variant-mode"
-                  type="checkbox"
                   checked={hasVariants}
-                  onChange={(event) => {
-                    setHasVariants(event.target.checked);
+                  aria-label="Variant mode"
+                  onCheckedChange={(checked) => {
+                    setHasVariants(checked);
                     setFormError(null);
                   }}
+                  className="h-6 w-11 border"
+                  checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                  uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
                 />
-                Variant mode (single item)
-              </label>
+                <Label htmlFor="variant-mode">Variant mode (single item)</Label>
+              </div>
             </div>
 
             <div className="space-y-1.5 lg:flex-1 lg:min-h-0 lg:space-y-1">

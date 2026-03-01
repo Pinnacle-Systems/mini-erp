@@ -5,6 +5,7 @@ import { Button } from "../../../design-system/atoms/Button";
 import { IconButton } from "../../../design-system/atoms/IconButton";
 import { Input } from "../../../design-system/atoms/Input";
 import { Label } from "../../../design-system/atoms/Label";
+import { Switch } from "../../../design-system/atoms/Switch";
 import {
   Card,
   CardContent,
@@ -205,26 +206,16 @@ export function AdminUsersPage() {
               />
               <div className="flex w-full flex-col gap-1.5 min-[642px]:w-auto min-[642px]:flex-row min-[642px]:items-center min-[642px]:gap-2">
                 <div className="inline-flex items-center gap-2">
-                  <button
+                  <Switch
                     id="include-deleted-users"
-                    type="button"
-                    role="switch"
-                    aria-checked={filterIncludeDeleted}
                     aria-label="Include deleted users"
-                    onClick={() => setFilterIncludeDeleted((current) => !current)}
+                    checked={filterIncludeDeleted}
+                    onCheckedChange={setFilterIncludeDeleted}
                     disabled={loading}
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
-                      filterIncludeDeleted
-                        ? "border-[#2f6fb7] bg-[#4a8dd9]"
-                        : "border-[#b8cbe0] bg-[#e7eff8]"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                        filterIncludeDeleted ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
+                    className="h-6 w-11 border"
+                    checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                    uncheckedTrackClassName="border-[#b8cbe0] bg-[#e7eff8]"
+                  />
                   <Label htmlFor="include-deleted-users" className="shrink-0">
                     Include deleted
                   </Label>

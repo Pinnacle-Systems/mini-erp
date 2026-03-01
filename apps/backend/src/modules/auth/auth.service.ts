@@ -88,7 +88,7 @@ const verifySession = async (refreshToken) => {
   return { session: refreshedSession, refreshToken: newRefreshToken };
 };
 
-const getIdentity = async (id) => {
+export const getIdentity = async (id) => {
   return prisma.identity.findUnique({
     where: {
       id,

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Input } from "../../../design-system/atoms/Input";
 import { Label } from "../../../design-system/atoms/Label";
 import { Select } from "../../../design-system/atoms/Select";
+import { Switch } from "../../../design-system/atoms/Switch";
 import {
   Card,
   CardContent,
@@ -414,16 +415,14 @@ export function ItemDetailsPage() {
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <div className="flex items-center gap-1.5 rounded-full bg-white/75 px-2 py-1">
-                <span className="text-[11px] font-medium text-muted-foreground">
+                <Label htmlFor="item-active-status" className="text-[11px] font-medium text-muted-foreground">
                   {itemActiveState ? "Active" : "Inactive"}
-                </span>
-                <button
+                </Label>
+                <Switch
                   id="item-active-status"
-                  type="button"
-                  role="switch"
-                  aria-checked={itemActiveState}
                   aria-label="Toggle item active state"
-                  onClick={() => {
+                  checked={itemActiveState}
+                  onCheckedChange={() => {
                     if (!isEditing || loading) return;
                     setItem((current) =>
                       current
@@ -438,18 +437,10 @@ export function ItemDetailsPage() {
                     );
                   }}
                   disabled={loading || !isEditing}
-                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/35 disabled:cursor-not-allowed disabled:opacity-60 ${
-                    itemActiveState
-                      ? "bg-[#4a8dd9]"
-                      : "bg-[#e7eff8]"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-150 ${
-                      itemActiveState ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                  className="h-6 w-11"
+                  checkedTrackClassName="bg-[#4a8dd9]"
+                  uncheckedTrackClassName="bg-[#e7eff8]"
+                />
               </div>
               {isEditing ? (
                 <PageActionBar

@@ -31,15 +31,17 @@ export function ItemsPage() {
 
   useEffect(() => {
     if (!activeStore) {
-      setItems([]);
-      setLoading(false);
-      setLoadError(null);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+      setLoading(true);
+      setLoadError(null);
+    });
     void getLocalItemsForDisplay(activeStore)
       .then((nextItems) => {
         if (cancelled) return;
@@ -78,6 +80,9 @@ export function ItemsPage() {
       return matchesQuery && matchesStatus;
     });
   }, [activeStore, includeInactive, items, query]);
+
+  const isLoading = activeStore ? loading : false;
+  const visibleLoadError = activeStore ? loadError : null;
 
   return (
     <section className="h-auto w-full lg:h-full lg:min-h-0">
@@ -150,10 +155,10 @@ export function ItemsPage() {
           </fieldset>
 
           <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1">
-            {loading ? (
+            {isLoading ? (
               <div className="card text-sm text-muted-foreground">Loading items...</div>
-            ) : loadError ? (
-              <div className="card text-sm text-red-600">{loadError}</div>
+            ) : visibleLoadError ? (
+              <div className="card text-sm text-red-600">{visibleLoadError}</div>
             ) : items.length === 0 ? (
               <div className="card text-sm text-muted-foreground">No items available.</div>
             ) : filteredItems.length === 0 ? (
