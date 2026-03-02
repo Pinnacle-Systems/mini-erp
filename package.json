@@ -20,6 +20,6 @@
   "devDependencies": {
     "concurrently": "^9.2.1",
     "dependency-cruiser": "^17.3.8",
-    "turbo": "^2.8.10"
+    "turbo": "^2.8.12"
   }
 }
