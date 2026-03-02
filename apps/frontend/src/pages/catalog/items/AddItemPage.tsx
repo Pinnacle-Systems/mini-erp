@@ -505,7 +505,9 @@ export function AddItemPage() {
             <PageActionBar
               primaryType="submit"
               primaryForm="add-items-form"
-              primaryLabel={hasVariants ? "Add Variant Item" : "Add Items"}
+              primaryLabel={
+                hasVariants ? "Add Variant Item" : `Add Items (${quickRowsWithName})`
+              }
               primaryLoading={loading}
               primaryLoadingLabel="Saving..."
               primaryDisabled={loading}

@@ -6,6 +6,7 @@ import {
   DenseTable,
   DenseTableBody,
   DenseTableCell,
+  DENSE_TABLE_COLUMN_WIDTHS,
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
@@ -221,10 +222,10 @@ export function LevelsPage() {
         <DenseTable className="lg:flex-1">
           <DenseTableHead>
             <DenseTableRow>
-              <DenseTableHeaderCell className="w-[42%]">Item</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[28%]">Variant</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[15%]">SKU</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[15%] text-right">Qty</DenseTableHeaderCell>
+              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.item}>Item</DenseTableHeaderCell>
+              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.variant}>Variant</DenseTableHeaderCell>
+              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.sku}>SKU</DenseTableHeaderCell>
+              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.quantity} text-right`}>Qty</DenseTableHeaderCell>
             </DenseTableRow>
           </DenseTableHead>
           <DenseTableBody>

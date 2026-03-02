@@ -8,6 +8,7 @@ import {
   DenseTable,
   DenseTableBody,
   DenseTableCell,
+  DENSE_TABLE_COLUMN_WIDTHS,
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
@@ -430,13 +431,13 @@ export function PricingPage() {
           <DenseTable className="rounded-xl border-border/80">
             <DenseTableHead className="bg-slate-50/95">
               <tr>
-                <DenseTableHeaderCell className="w-32">Item</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-24">Variant</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-20">SKU</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-20">Category</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-20">Status</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-32">Price</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-16">Unit</DenseTableHeaderCell>
+                <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.item}>Item</DenseTableHeaderCell>
+                <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.variant}>Variant</DenseTableHeaderCell>
+                <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.sku}>SKU</DenseTableHeaderCell>
+                <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.category}>Category</DenseTableHeaderCell>
+                <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.status}>Status</DenseTableHeaderCell>
+                <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.price}>Price</DenseTableHeaderCell>
+                <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.unit}>Unit</DenseTableHeaderCell>
               </tr>
             </DenseTableHead>
             <DenseTableBody>

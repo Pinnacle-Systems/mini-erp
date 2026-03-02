@@ -152,3 +152,4 @@ Implication for current screens:
 1. Stock Levels should aggregate synced `stock_level` entities into business-wide totals before rendering them.
 2. Stock Adjustments should remain the only place that creates inventory quantity changes from the frontend.
 3. Internal transfers and location management are intentionally out of scope for the current product flow, and the inventory persistence model is now business-scoped as well.
+4. Stock adjustment history should remain bounded in the default sync dataset. For now, sync only the most recent 10 `stock_adjustment` records per variant to devices, while the full audit ledger remains on the server.

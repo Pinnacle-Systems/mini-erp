@@ -6,6 +6,7 @@ import {
   DenseTable,
   DenseTableBody,
   DenseTableCell,
+  DENSE_TABLE_COLUMN_WIDTHS,
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
@@ -234,12 +235,16 @@ export function ItemVariantFlatTable({
       <DenseTable tableClassName="text-xs">
         <DenseTableHead className="bg-slate-50/95">
           <tr>
-            <DenseTableHeaderCell className="w-32 px-2">Item</DenseTableHeaderCell>
-            <DenseTableHeaderCell className="w-40 px-2">Variant</DenseTableHeaderCell>
-            <DenseTableHeaderCell className="w-28 px-2">SKU</DenseTableHeaderCell>
-            {showCategory ? <DenseTableHeaderCell className="w-24 px-2">Category</DenseTableHeaderCell> : null}
-            <DenseTableHeaderCell className="w-20 px-2">Status</DenseTableHeaderCell>
-            {hasAction ? <DenseTableHeaderCell className="w-16 text-right">Actions</DenseTableHeaderCell> : null}
+            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.item} px-2`}>Item</DenseTableHeaderCell>
+            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.variant} px-2`}>Variant</DenseTableHeaderCell>
+            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.sku} px-2`}>SKU</DenseTableHeaderCell>
+            {showCategory ? (
+              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.category} px-2`}>Category</DenseTableHeaderCell>
+            ) : null}
+            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.status} px-2`}>Status</DenseTableHeaderCell>
+            {hasAction ? (
+              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.action} text-right`}>Actions</DenseTableHeaderCell>
+            ) : null}
           </tr>
         </DenseTableHead>
         <DenseTableBody>

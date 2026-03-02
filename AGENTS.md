@@ -20,6 +20,7 @@ For every non-trivial request:
 1. Check the requested change against `ARCHITECTURE.md` for architectural and domain constraints.
 2. Check the requested change against `DESIGN_GUIDELINES.md` for UI, UX, layout, copy, and design-system constraints.
 3. Prefer solutions that satisfy both documents without introducing new exceptions.
+4. After each meaningful code edit batch, run the relevant validation commands again (for example typecheck, lint, or targeted tests for the affected app) before considering the change complete. Do not rely only on an earlier validation run if additional edits were made afterward.
 
 If a request is small but still touches an area governed by one of these documents, perform the same validation for the affected area.
 

@@ -52,9 +52,12 @@ Design should support long-term workflows in a small-business operations tool.
 - If content in a specific desktop pane exceeds the available height, only that pane should scroll internally (for example with `overflow-y: auto`) while the rest of the shell remains fixed.
 - In desktop mode, design for high data density.
 - On desktop, prefer tables or grid-based layouts for operational entry and review screens.
+- On desktop, treat batch entry as the default for operational create and edit flows. New screens should assume a dense multi-row or tabular entry surface unless this document explicitly defines a different pattern.
+- On desktop, a split-pane master-detail layout is also valid when the left pane is a dense list or table for selection and the right pane is a selection-driven detail context for the active record. In that pattern, the right pane may use a single-record detail form because it is supporting record inspection or focused per-record editing, not acting as the primary batch-entry surface.
 - On desktop, prefer multi-line editing patterns inside dense layouts over long stacks of single-line field rows.
 - In mobile mode, use a flowing layout that grows naturally with content.
 - On mobile, use stacked layouts when space is constrained.
+- On mobile, treat single-entry stacked forms as the default create and edit pattern unless this document explicitly defines a different batch interaction.
 - Important actions should stay near the content they affect.
 - Forms should be grouped into logical sections, not long undifferentiated stacks.
 - Dense screens should still preserve enough spacing to remain scannable.
@@ -63,6 +66,7 @@ Design should support long-term workflows in a small-business operations tool.
 ## Interaction Rules
 
 - Primary actions should be obvious and singular.
+- On bulk entry and bulk edit screens, primary actions should include the current affected-record count when it is known and materially helps users confirm scope before committing (for example `Save All (3)` or `Add selected (12)`).
 - Secondary actions should remain available but visually quieter.
 - Destructive actions should require deliberate intent.
 - In mobile card or list views, destructive actions must use an explicit action button. Do not trigger delete or remove actions from tapping the full card surface.
@@ -77,7 +81,10 @@ Design should support long-term workflows in a small-business operations tool.
 - Related fields should appear together in the order users think about them.
 - Avoid unnecessary required fields in first-pass business workflows.
 - For multi-entity create flows, default quick-entry forms to 1 entity on mobile and 5 entities on desktop.
+- Unless a feature-specific rule says otherwise, desktop operational forms should default to batch entry with multiple editable rows, and mobile forms should default to a single active entry at a time.
 - For desktop-heavy operational forms, prefer compact multi-column or grid editing over tall single-column forms.
+- Use single-entry full-page forms when the record requires enough fields, sections, or explanatory context that a dense tabular row would be cramped, unclear, or unstable. Treat screens like business setup and similar large-record entry flows as the model for this exception.
+- If a new screen intentionally uses a single-entry desktop form for a workflow that could fit a dense row layout, document that exception in this file instead of relying on the implementation alone.
 - For mobile forms, collapse dense desktop layouts into clear stacked sections.
 - For destructive mobile actions, prefer labeled buttons over icon-only buttons unless space is severely constrained and the action remains unmistakable.
 
@@ -136,6 +143,9 @@ The current frontend does not fully conform to this document. Until those gaps a
 
 Current known non-conformance, ordered by impact:
 
+- Some small-record operational screens still use single-entry desktop forms even though desktop batch entry is now the default. These flows should move toward dense multi-row editing unless they are explicitly documented as exceptions.
+  Affected frontend areas: `apps/frontend/src/pages/stock/AdjustmentsPage.tsx`, which is still a single stock-adjustment form instead of a batch quick-entry grid. This item does not apply to intentionally large, high-field business setup and business detail flows such as `apps/frontend/src/pages/admin/businesses/AdminBusinessesPage.tsx`, `apps/frontend/src/pages/admin/businesses/AdminBusinessDetailsPage.tsx`, and related business management organisms, and it also does not apply to valid split-pane master-detail workflows such as `apps/frontend/src/pages/catalog/CategoriesPage.tsx` and `apps/frontend/src/pages/catalog/CollectionsPage.tsx`.
+- `apps/frontend/src/pages/admin/users/AdminUserDetailsPage.tsx` currently remains a temporary single-entry desktop exception while the user-management workflow is still undefined. Do not treat its current layout as a reusable pattern for other small-record screens. Revisit this exception once the page requirements are stable.
 - Shared design-system primitives are now much closer to the intended baseline, but a smaller set of legacy primitives, utility styles, and decorative secondary components still remain out of line.
   Affected frontend areas: remaining legacy utility styles and decorative secondary components, especially older local wrappers and secondary surfaces that still use translucent fills, heavy blur, oversized radii, or stronger shadows than the dense operational baseline. The core `Card`, `Button`, `Input`, and `Select` primitives are no longer the main source of this gap.
 - Some shell-level sections still use placeholder content and reserved layout blocks. Placeholder structure is acceptable temporarily, but it must remain clearly non-authoritative and must not imply live system state.

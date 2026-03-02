@@ -63,6 +63,8 @@ const SUPPORTED_ENTITIES = new Set([
   "item_price",
   "stock_adjustment",
 ]);
+
+const RECENT_STOCK_ADJUSTMENT_LIMIT_PER_VARIANT = 10;
 const SUPPORTED_ITEM_FIELDS = new Set([
   "sku",
   "name",
@@ -1563,6 +1565,31 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     },
   });
 
+  const prunedEntries = await tx.stockLedger.findMany({
+    where: {
+      business_id: tenantId,
+      variant_id: variantId,
+    },
+    select: {
+      id: true,
+    },
+    orderBy: [
+      { created_at: "desc" },
+      { id: "desc" },
+    ],
+    skip: RECENT_STOCK_ADJUSTMENT_LIMIT_PER_VARIANT,
+  });
+
+  if (prunedEntries.length > 0) {
+    await tx.stockLedger.deleteMany({
+      where: {
+        id: {
+          in: prunedEntries.map((entry) => entry.id),
+        },
+      },
+    });
+  }
+
   const stockLevel = await getStockLevelSnapshot(tx, tenantId, variantId);
 
   return {
@@ -1572,6 +1599,12 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
       Number(stockLevel.quantityOnHand),
     ),
     additionalChanges: [
+      ...prunedEntries.map((entry) => ({
+        entity: "stock_adjustment",
+        entityId: entry.id,
+        operation: "DELETE" as const,
+        data: {},
+      })),
       {
         entity: "stock_level",
         entityId: String(stockLevel.id),

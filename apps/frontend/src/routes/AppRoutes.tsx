@@ -12,8 +12,8 @@ import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/bu
 import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
 import { CategoriesPage, CollectionsPage, PricingPage } from "../pages/catalog";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
-import { AppFeaturePlaceholderPage, DataSyncAppPage, StockSyncAppPage } from "../pages/shell/UserAppPages";
-import { AdjustmentsPage, LevelsPage } from "../pages/stock";
+import { AppFeaturePlaceholderPage, DataSyncAppPage, ItemSyncAppPage } from "../pages/shell/UserAppPages";
+import { AdjustmentsPage, HistoryPage, LevelsPage } from "../pages/stock";
 import { OfflinePage } from "../pages/system";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import { RequireAuth, RequireHydrated, RequireModule, RequireRole } from "./guards";
@@ -190,9 +190,10 @@ export function AppRoutes() {
                 </Route>
                 <Route path="item-categories" element={<CategoriesPage />} />
                 <Route path="item-collections" element={<CollectionsPage />} />
-                <Route path="item-sync" element={<StockSyncAppPage />} />
+                <Route path="item-sync" element={<Navigate to="/app/admin-item-sync" replace />} />
                 <Route path="stock-levels" element={<LevelsPage />} />
                 <Route path="stock-adjustments" element={<AdjustmentsPage />} />
+                <Route path="stock-history" element={<HistoryPage />} />
                 <Route path="customers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Customers" />} />
                 <Route path="customer-groups" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />} />
                 <Route path="suppliers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Suppliers" />} />
@@ -203,6 +204,7 @@ export function AppRoutes() {
                 <Route path="top-items-report" element={<AppFeaturePlaceholderPage sectionTitle="Reports" appLabel="Top Items" />} />
                 <Route path="stock-value-report" element={<AppFeaturePlaceholderPage sectionTitle="Reports" appLabel="Stock Value" />} />
                 <Route path="settings" element={<AppFeaturePlaceholderPage sectionTitle="Admin" appLabel="Business Settings" />} />
+                <Route path="admin-item-sync" element={<ItemSyncAppPage />} />
                 <Route path="data-sync" element={<DataSyncAppPage />} />
                 <Route path="items" element={<ItemsPage />} />
                 <Route path="items/new" element={<AddItemPage />} />

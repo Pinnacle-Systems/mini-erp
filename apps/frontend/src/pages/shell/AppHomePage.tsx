@@ -6,6 +6,7 @@ import {
   FileText,
   FolderKanban,
   HandCoins,
+  History,
   MoreHorizontal,
   Package,
   PackageSearch,
@@ -59,9 +60,9 @@ type UserAppId =
   | "catalog-pricing"
   | "catalog-categories"
   | "catalog-collections"
-  | "stock-sync"
   | "stock-levels"
   | "stock-adjustments"
+  | "stock-history"
   | "people-customers"
   | "people-groups"
   | "people-suppliers"
@@ -72,6 +73,7 @@ type UserAppId =
   | "report-items"
   | "report-stock"
   | "admin-settings"
+  | "admin-item-sync"
   | "admin-sync";
 type RoutableAppId = Exclude<UserAppId, "catalog-items">;
 
@@ -88,9 +90,9 @@ const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
   "catalog-pricing": "item-pricing",
   "catalog-categories": "item-categories",
   "catalog-collections": "item-collections",
-  "stock-sync": "item-sync",
   "stock-levels": "stock-levels",
   "stock-adjustments": "stock-adjustments",
+  "stock-history": "stock-history",
   "people-customers": "customers",
   "people-groups": "customer-groups",
   "people-suppliers": "suppliers",
@@ -101,6 +103,7 @@ const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
   "report-items": "top-items-report",
   "report-stock": "stock-value-report",
   "admin-settings": "settings",
+  "admin-item-sync": "admin-item-sync",
   "admin-sync": "data-sync",
 };
 
@@ -172,11 +175,6 @@ const folders: Array<{
     requiredModule: "inventory",
     apps: [
       {
-        id: "stock-sync",
-        label: "Item Sync",
-        Icon: Boxes,
-      },
-      {
         id: "stock-levels",
         label: "Levels",
         Icon: ScanBarcode,
@@ -185,6 +183,11 @@ const folders: Array<{
         id: "stock-adjustments",
         label: "Adjustments",
         Icon: ClipboardList,
+      },
+      {
+        id: "stock-history",
+        label: "History",
+        Icon: History,
       },
     ],
   },
@@ -264,6 +267,11 @@ const folders: Array<{
         id: "admin-settings",
         label: "Business Settings",
         Icon: ShieldCheck,
+      },
+      {
+        id: "admin-item-sync",
+        label: "Item Sync",
+        Icon: Boxes,
       },
       {
         id: "admin-sync",

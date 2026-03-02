@@ -37,7 +37,7 @@ export function AppFeaturePlaceholderPage({ sectionTitle, appLabel }: AppFeature
   );
 }
 
-export function StockSyncAppPage() {
+export function ItemSyncAppPage() {
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);

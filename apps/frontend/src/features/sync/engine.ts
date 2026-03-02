@@ -700,6 +700,7 @@ export type StockVariantOption = {
   itemId: string;
   label: string;
   sku: string;
+  unit: string;
 };
 
 export type StockAdjustmentReason =
@@ -716,6 +717,20 @@ export type StockLevelRow = {
   sku: string;
   unit: string;
   quantityOnHand: number;
+};
+
+export type StockAdjustmentHistoryRow = {
+  entityId: string;
+  variantId: string;
+  itemId: string;
+  itemName: string;
+  variantName: string;
+  sku: string;
+  unit: string;
+  quantity: number;
+  reason: StockAdjustmentReason;
+  quantityOnHand: number;
+  createdAt: string;
 };
 
 export const queueItemCategoryCreate = async (
@@ -934,12 +949,65 @@ export const getOutboxItemsByMutationIds = async (mutationIds: string[]) => {
 export const getLocalStockVariantOptions = async (
   tenantId: string,
 ): Promise<StockVariantOption[]> => {
-  const itemRecords = await getLocalItems(tenantId);
+  const [itemRecords, variantEntities] = await Promise.all([
+    getLocalItems(tenantId),
+    listEntities(tenantId, "item_variant"),
+  ]);
+  const activeVariants = variantEntities.filter((variant) => !variant.deletedAt);
+  const deletedVariantIdsByItemId = variantEntities
+    .filter((variant) => Boolean(variant.deletedAt))
+    .reduce<Record<string, Set<string>>>((acc, variant) => {
+      const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+      if (!itemId) return acc;
+      const ids = acc[itemId] ?? new Set<string>();
+      ids.add(variant.entityId);
+      acc[itemId] = ids;
+      return acc;
+    }, {});
+  const variantsByItemId = activeVariants.reduce<Record<string, EntityRecord[]>>(
+    (acc, variant) => {
+      const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+      if (!itemId) return acc;
+      acc[itemId] = [...(acc[itemId] ?? []), variant];
+      return acc;
+    },
+    {},
+  );
   const options = itemRecords
     .filter((record) => !record.deletedAt)
     .flatMap((record) => {
+      const deletedVariantIds = deletedVariantIdsByItemId[record.entityId] ?? new Set<string>();
       const itemName = String(record.data.name ?? "").trim();
-      return extractVariantsFromItemData(record.data, record.entityId)
+      const baseVariants = extractVariantsFromItemData(record.data, record.entityId).filter(
+        (variant) => !deletedVariantIds.has(variant.id),
+      );
+      const overlayVariants = (variantsByItemId[record.entityId] ?? []).map((variant) => {
+        const optionValuesRaw =
+          variant.data.optionValues && typeof variant.data.optionValues === "object"
+            ? (variant.data.optionValues as Record<string, unknown>)
+            : variant.data.option_values && typeof variant.data.option_values === "object"
+              ? (variant.data.option_values as Record<string, unknown>)
+              : {};
+        const optionValues = Object.fromEntries(
+          Object.entries(optionValuesRaw)
+            .filter((entry) => typeof entry[1] === "string")
+            .map(([key, value]) => [key, String(value)]),
+        );
+
+        return {
+          id: variant.entityId,
+          itemId: String(variant.data.itemId ?? variant.data.item_id ?? record.entityId),
+          name: String(variant.data.name ?? ""),
+          sku: String(variant.data.sku ?? ""),
+          barcode: String(variant.data.barcode ?? ""),
+          isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
+          optionValues,
+          usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
+          isLocked: Boolean(variant.data.isLocked ?? variant.data.is_locked ?? false),
+          pending: false,
+        } satisfies ItemVariantDisplay;
+      });
+      return mergeVariants(baseVariants, overlayVariants)
         .filter((variant) => variant.isActive)
         .map((variant) => {
           const suffix = variant.sku
@@ -952,6 +1020,7 @@ export const getLocalStockVariantOptions = async (
             itemId: variant.itemId,
             label: `${itemName || "Untitled Item"}${suffix}`,
             sku: variant.sku,
+            unit: String(record.data.unit ?? "PCS"),
           } satisfies StockVariantOption;
         });
     })
@@ -981,6 +1050,52 @@ export const getLocalStockLevels = async (
     })
     .filter((row) => row.variantId)
     .sort((left, right) => left.itemName.localeCompare(right.itemName));
+};
+
+export const getLocalStockAdjustmentHistory = async (
+  tenantId: string,
+): Promise<StockAdjustmentHistoryRow[]> => {
+  const [records, variantOptions, stockLevels] = await Promise.all([
+    listEntities(tenantId, "stock_adjustment"),
+    getLocalStockVariantOptions(tenantId),
+    getLocalStockLevels(tenantId),
+  ]);
+
+  const optionByVariantId = new Map(
+    variantOptions.map((option) => [option.variantId, option] as const),
+  );
+  const stockLevelByVariantId = new Map(
+    stockLevels.map((row) => [row.variantId, row] as const),
+  );
+
+  return records
+    .filter((record) => !record.deletedAt)
+    .map((record) => {
+      const data = record.data;
+      const variantId = String(data.variantId ?? data.variant_id ?? "");
+      const option = optionByVariantId.get(variantId);
+      const stockLevel = stockLevelByVariantId.get(variantId);
+      const quantity = Number(data.quantity ?? 0);
+      const rawCreatedAt = String(data.createdAt ?? data.created_at ?? record.updatedAt);
+      const label = option?.label ?? stockLevel?.itemName ?? "Unknown item";
+      const fallbackItemName = label.replace(/\s+\([^)]*\)\s*$/, "").trim();
+
+      return {
+        entityId: record.entityId,
+        variantId,
+        itemId: String(data.itemId ?? data.item_id ?? option?.itemId ?? stockLevel?.itemId ?? ""),
+        itemName: (stockLevel?.itemName ?? fallbackItemName) || label,
+        variantName: stockLevel?.variantName ?? "",
+        sku: option?.sku ?? stockLevel?.sku ?? "",
+        unit: option?.unit ?? stockLevel?.unit ?? "PCS",
+        quantity,
+        reason: String(data.reason ?? "OPENING_BALANCE") as StockAdjustmentReason,
+        quantityOnHand: Number(data.quantityOnHand ?? data.quantity_on_hand ?? 0),
+        createdAt: rawCreatedAt,
+      } satisfies StockAdjustmentHistoryRow;
+    })
+    .filter((row) => row.variantId.length > 0)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 };
 
 const addOptionValue = (
