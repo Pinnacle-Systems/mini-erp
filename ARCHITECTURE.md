@@ -78,7 +78,18 @@ Implemented in:
 - `apps/backend/src/modules/sync/sync.service.ts`
 - `apps/frontend/src/features/sync/engine.ts`
 - `apps/frontend/src/features/sync/SyncProvider.tsx`
-- `apps/frontend/src/pages/CatalogPricingPage.tsx`
+- `apps/frontend/src/pages/catalog/PricingPage.tsx`
+
+## Frontend Page Organization
+
+Frontend pages should follow module ownership in the filesystem.
+
+Rules:
+
+1. Business feature pages must live under `apps/frontend/src/pages/<module>/...`.
+2. Extend the existing module folder for new screens instead of adding new root-level files under `apps/frontend/src/pages`.
+3. Name page files for the local screen, not by repeating the parent module name. For example, prefer `catalog/PricingPage.tsx` over `catalog/CatalogPricingPage.tsx`.
+4. Reserve non-module page folders for cross-cutting surfaces only, such as `auth`, `shell`, `system`, and platform-admin areas under `admin`.
 
 ## Backend Rule
 

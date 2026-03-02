@@ -10,13 +10,10 @@ import { AppHomePage } from "../pages/shell";
 import { AdminLayout } from "../pages/admin/layout";
 import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/businesses";
 import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
+import { CategoriesPage, CollectionsPage, PricingPage } from "../pages/catalog";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
-import { CatalogCategoriesPage } from "../pages/CatalogCategoriesPage";
-import { CatalogCollectionsPage } from "../pages/CatalogCollectionsPage";
-import { CatalogPricingPage } from "../pages/CatalogPricingPage";
-import { StockAdjustmentsPage } from "../pages/StockAdjustmentsPage";
-import { StockLevelsPage } from "../pages/StockLevelsPage";
 import { AppFeaturePlaceholderPage, DataSyncAppPage, StockSyncAppPage } from "../pages/shell/UserAppPages";
+import { AdjustmentsPage, LevelsPage } from "../pages/stock";
 import { OfflinePage } from "../pages/system";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import { RequireAuth, RequireHydrated, RequireModule, RequireRole } from "./guards";
@@ -189,13 +186,13 @@ export function AppRoutes() {
                 <Route path="sales-orders" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Orders" />} />
                 <Route path="sales-returns" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Returns" />} />
                 <Route element={<RequireModule moduleKey="pricing" />}>
-                  <Route path="item-pricing" element={<CatalogPricingPage />} />
+                  <Route path="item-pricing" element={<PricingPage />} />
                 </Route>
-                <Route path="item-categories" element={<CatalogCategoriesPage />} />
-                <Route path="item-collections" element={<CatalogCollectionsPage />} />
+                <Route path="item-categories" element={<CategoriesPage />} />
+                <Route path="item-collections" element={<CollectionsPage />} />
                 <Route path="item-sync" element={<StockSyncAppPage />} />
-                <Route path="stock-levels" element={<StockLevelsPage />} />
-                <Route path="stock-adjustments" element={<StockAdjustmentsPage />} />
+                <Route path="stock-levels" element={<LevelsPage />} />
+                <Route path="stock-adjustments" element={<AdjustmentsPage />} />
                 <Route path="customers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Customers" />} />
                 <Route path="customer-groups" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />} />
                 <Route path="suppliers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Suppliers" />} />

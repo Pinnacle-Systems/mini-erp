@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "../design-system/atoms/Button";
-import { Input } from "../design-system/atoms/Input";
-import { Label } from "../design-system/atoms/Label";
-import { Switch } from "../design-system/atoms/Switch";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
+import { Button } from "../../design-system/atoms/Button";
+import { Input } from "../../design-system/atoms/Input";
+import { Label } from "../../design-system/atoms/Label";
+import { Switch } from "../../design-system/atoms/Switch";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../design-system/molecules/Card";
 import {
   DenseTable,
   DenseTableBody,
@@ -11,10 +11,10 @@ import {
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
-} from "../design-system/molecules/DenseTable";
-import { ResettableInput } from "../design-system/organisms/ResettableInput";
-import { useSessionStore } from "../features/auth/session-business";
-import { useSyncActions } from "../features/sync/SyncProvider";
+} from "../../design-system/molecules/DenseTable";
+import { ResettableInput } from "../../design-system/organisms/ResettableInput";
+import { useSessionStore } from "../../features/auth/session-business";
+import { useSyncActions } from "../../features/sync/SyncProvider";
 import {
   getSyncRejectionFromError,
   getOutboxItemsByMutationIds,
@@ -22,7 +22,7 @@ import {
   queueItemPriceUpsert,
   syncOnce,
   type ItemPricingRow,
-} from "../features/sync/engine";
+} from "../../features/sync/engine";
 
 const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
 
@@ -53,7 +53,7 @@ const toUserPricingErrorMessage = (error: unknown) => {
   return message || fallback;
 };
 
-export function CatalogPricingPage() {
+export function PricingPage() {
   const identityId = useSessionStore((state) => state.identityId);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const activeStore = useSessionStore((state) => state.activeStore);

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Pencil, Trash2, X } from "lucide-react";
-import { Button } from "../design-system/atoms/Button";
-import { Checkbox } from "../design-system/atoms/Checkbox";
-import { IconButton } from "../design-system/atoms/IconButton";
-import { Input } from "../design-system/atoms/Input";
-import { Label } from "../design-system/atoms/Label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
-import { ItemVariantFlatTable } from "../design-system/organisms/ItemVariantFlatTable";
-import type { ItemVariantFlatRow } from "../design-system/organisms/ItemVariantFlatTable";
-import { useSessionStore } from "../features/auth/session-business";
+import { Button } from "../../design-system/atoms/Button";
+import { Checkbox } from "../../design-system/atoms/Checkbox";
+import { IconButton } from "../../design-system/atoms/IconButton";
+import { Input } from "../../design-system/atoms/Input";
+import { Label } from "../../design-system/atoms/Label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../design-system/molecules/Card";
+import { ItemVariantFlatTable } from "../../design-system/organisms/ItemVariantFlatTable";
+import type { ItemVariantFlatRow } from "../../design-system/organisms/ItemVariantFlatTable";
+import { useSessionStore } from "../../features/auth/session-business";
 import {
   getLocalItemCollectionEntriesForStore,
   getLocalItemCollectionMembershipsForStore,
@@ -24,7 +24,7 @@ import {
   type ItemCollectionMembership,
   type ItemDetailDisplay,
   type ItemDisplay,
-} from "../features/sync/engine";
+} from "../../features/sync/engine";
 
 type CollectionVariantLink = {
   membershipId: string;
@@ -42,7 +42,7 @@ type CollectionBucket = {
   items: CollectionItemGroup[];
 };
 
-export function CatalogCollectionsPage() {
+export function CollectionsPage() {
   const identityId = useSessionStore((state) => state.identityId);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const activeStore = useSessionStore((state) => state.activeStore);

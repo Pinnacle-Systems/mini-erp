@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Button } from "../design-system/atoms/Button";
-import { Input } from "../design-system/atoms/Input";
-import { Label } from "../design-system/atoms/Label";
-import { Select } from "../design-system/atoms/Select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../design-system/molecules/Card";
-import { useSessionStore } from "../features/auth/session-business";
+import { Button } from "../../design-system/atoms/Button";
+import { Input } from "../../design-system/atoms/Input";
+import { Label } from "../../design-system/atoms/Label";
+import { Select } from "../../design-system/atoms/Select";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../design-system/molecules/Card";
+import { useSessionStore } from "../../features/auth/session-business";
 import {
   getLocalStockVariantOptions,
   getSyncRejectionFromError,
@@ -12,7 +12,7 @@ import {
   syncOnce,
   type StockAdjustmentReason,
   type StockVariantOption,
-} from "../features/sync/engine";
+} from "../../features/sync/engine";
 
 const STOCK_REASON_OPTIONS: Array<{
   value: StockAdjustmentReason;
@@ -45,7 +45,7 @@ const toUserStockErrorMessage = (error: unknown) => {
   return error.message || "Unable to record stock adjustment right now.";
 };
 
-export function StockAdjustmentsPage() {
+export function AdjustmentsPage() {
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);

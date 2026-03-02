@@ -127,6 +127,19 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/pages/*.{tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Program",
+          message:
+            "Place page components under src/pages/<module>/... (or another scoped subfolder like auth, shell, system, or admin) instead of directly under src/pages.",
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.d.ts"],
     rules: {
       "@typescript-eslint/consistent-type-imports": "off",

@@ -6,18 +6,18 @@ import {
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "../design-system/atoms/Button";
-import { IconButton } from "../design-system/atoms/IconButton";
-import { Input } from "../design-system/atoms/Input";
+import { Button } from "../../design-system/atoms/Button";
+import { IconButton } from "../../design-system/atoms/IconButton";
+import { Input } from "../../design-system/atoms/Input";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../design-system/molecules/Card";
-import { ItemVariantFlatTable } from "../design-system/organisms/ItemVariantFlatTable";
-import { useSessionStore } from "../features/auth/session-business";
+} from "../../design-system/molecules/Card";
+import { ItemVariantFlatTable } from "../../design-system/organisms/ItemVariantFlatTable";
+import { useSessionStore } from "../../features/auth/session-business";
 import {
   getLocalItemsForDisplay,
   getLocalItemCategoryEntriesForStore,
@@ -28,7 +28,7 @@ import {
   syncOnce,
   type ItemCategoryEntry,
   type ItemDisplay,
-} from "../features/sync/engine";
+} from "../../features/sync/engine";
 
 type CategoryBucket = {
   id: string | null;
@@ -36,7 +36,7 @@ type CategoryBucket = {
   items: ItemDisplay[];
 };
 
-export function CatalogCategoriesPage() {
+export function CategoriesPage() {
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const isBusinessSelected = useSessionStore(

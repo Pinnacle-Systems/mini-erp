@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "../design-system/atoms/Button";
-import { Input } from "../design-system/atoms/Input";
-import { Label } from "../design-system/atoms/Label";
+import { Button } from "../../design-system/atoms/Button";
+import { Input } from "../../design-system/atoms/Input";
+import { Label } from "../../design-system/atoms/Label";
 import {
   DenseTable,
   DenseTableBody,
@@ -9,21 +9,21 @@ import {
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
-} from "../design-system/molecules/DenseTable";
+} from "../../design-system/molecules/DenseTable";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../design-system/molecules/Card";
-import { useSessionStore } from "../features/auth/session-business";
+} from "../../design-system/molecules/Card";
+import { useSessionStore } from "../../features/auth/session-business";
 import {
   getLocalStockLevels,
   getSyncRejectionFromError,
   syncOnce,
   type StockLevelRow,
-} from "../features/sync/engine";
+} from "../../features/sync/engine";
 
 type BusinessStockRow = {
   key: string;
@@ -80,7 +80,7 @@ const aggregateBusinessStock = (rows: StockLevelRow[]): BusinessStockRow[] => {
   });
 };
 
-export function StockLevelsPage() {
+export function LevelsPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [rows, setRows] = useState<StockLevelRow[]>([]);
