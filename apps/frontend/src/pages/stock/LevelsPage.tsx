@@ -6,11 +6,11 @@ import {
   DenseTable,
   DenseTableBody,
   DenseTableCell,
-  DENSE_TABLE_COLUMN_WIDTHS,
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
 } from "../../design-system/molecules/DenseTable";
+import { DENSE_TABLE_COLUMN_WIDTHS } from "../../design-system/molecules/denseTableColumns";
 import {
   Card,
   CardContent,

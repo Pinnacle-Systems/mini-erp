@@ -6,11 +6,11 @@ import {
   DenseTable,
   DenseTableBody,
   DenseTableCell,
-  DENSE_TABLE_COLUMN_WIDTHS,
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
 } from "../molecules/DenseTable";
+import { DENSE_TABLE_COLUMN_WIDTHS } from "../molecules/denseTableColumns";
 import {
   getLocalItemDetailForDisplay,
   type ItemDetailDisplay,

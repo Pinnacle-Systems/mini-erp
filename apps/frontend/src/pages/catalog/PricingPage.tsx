@@ -8,11 +8,11 @@ import {
   DenseTable,
   DenseTableBody,
   DenseTableCell,
-  DENSE_TABLE_COLUMN_WIDTHS,
   DenseTableHead,
   DenseTableHeaderCell,
   DenseTableRow,
 } from "../../design-system/molecules/DenseTable";
+import { DENSE_TABLE_COLUMN_WIDTHS } from "../../design-system/molecules/denseTableColumns";
 import { ResettableInput } from "../../design-system/organisms/ResettableInput";
 import { useSessionStore } from "../../features/auth/session-business";
 import { useSyncActions } from "../../features/sync/SyncProvider";
