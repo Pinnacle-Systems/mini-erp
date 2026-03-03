@@ -55,6 +55,7 @@ class SyncRejectionError extends AppError {
 }
 
 const SUPPORTED_ENTITIES = new Set([
+  "customer",
   "item",
   "item_variant",
   "item_category",
@@ -90,6 +91,13 @@ type VariantPayload = {
   isDefault?: boolean;
   isActive?: boolean;
   optionValues?: Record<string, string>;
+};
+type CustomerPayload = {
+  name?: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  gstNo?: string | null;
 };
 const DEFAULT_ITEM_VALUES = {
   name: "Untitled Item",
@@ -205,6 +213,43 @@ const toSyncOperation = (op) => {
   if (op === "CREATE") return "create";
   if (op === "UPDATE") return "update";
   return "delete";
+};
+
+const normalizeSyncEntityState = (
+  entity,
+  op,
+  data,
+  serverTimestamp,
+) => {
+  const base =
+    data && typeof data === "object" && !Array.isArray(data)
+      ? { ...(data as Record<string, unknown>) }
+      : {};
+
+  const derivedIsActive = (() => {
+    if (op === "delete") return false;
+    if (typeof base.isActive === "boolean") return base.isActive;
+    if (entity === "item" && Array.isArray(base.variants)) {
+      const variantRows = base.variants.filter(
+        (value) => typeof value === "object" && value !== null,
+      ) as Array<Record<string, unknown>>;
+      if (variantRows.length === 0) return true;
+      return variantRows.some((variant) => variant.isActive !== false);
+    }
+    return true;
+  })();
+
+  return {
+    ...base,
+    isActive: derivedIsActive,
+    deletedAt: op === "delete" ? serverTimestamp : null,
+  };
+};
+
+const toDeletedAtValue = (value: unknown) => {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") return value;
+  return null;
 };
 
 const sanitizeItemPayload = (payload) => {
@@ -362,14 +407,15 @@ const buildItemForUpdate = (payload) => {
 const toItemSnapshot = (item, defaultVariant) => {
   return {
     id: item.id,
-    business_id: item.business_id,
-    item_type: item.item_type,
+    businessId: item.business_id,
     itemType: item.item_type,
     name: item.name,
     category: item.category ?? null,
     unit: item.unit,
     sku: defaultVariant?.sku ?? null,
-    default_variant_id: defaultVariant?.id ?? null,
+    defaultVariantId: defaultVariant?.id ?? null,
+    isActive: item.is_active ?? true,
+    deletedAt: toDeletedAtValue(item.deleted_at),
   };
 };
 
@@ -381,21 +427,16 @@ const toVariantSnapshot = (
   const isLocked = usageCount > 0;
   return {
     id: variant.id,
-    item_id: variant.item_id,
     itemId: variant.item_id,
-    business_id: variant.business_id,
+    businessId: variant.business_id,
     sku: variant.sku ?? null,
     barcode: variant.barcode ?? null,
     name: variant.name ?? null,
-    is_default: variant.is_default,
     isDefault: variant.is_default,
-    is_active: variant.is_active,
     isActive: variant.is_active,
-    option_values: optionValues,
+    deletedAt: toDeletedAtValue(variant.deleted_at),
     optionValues,
-    usage_count: usageCount,
     usageCount,
-    is_locked: isLocked,
     isLocked,
   };
 };
@@ -403,47 +444,47 @@ const toVariantSnapshot = (
 const toItemCategorySnapshot = (category) => {
   return {
     id: category.id,
-    business_id: category.business_id,
+    businessId: category.business_id,
     name: category.name,
+    isActive: category.is_active ?? true,
+    deletedAt: toDeletedAtValue(category.deleted_at),
   };
 };
 
 const toItemCollectionSnapshot = (collection) => {
   return {
     id: collection.id,
-    business_id: collection.business_id,
+    businessId: collection.business_id,
     name: collection.name,
+    isActive: collection.is_active ?? true,
+    deletedAt: toDeletedAtValue(collection.deleted_at),
   };
 };
 
 const toItemCollectionItemSnapshot = (membership) => {
   return {
     id: membership.id,
-    business_id: membership.business_id,
-    collection_id: membership.collection_id,
+    businessId: membership.business_id,
     collectionId: membership.collection_id,
-    variant_id: membership.variant_id,
     variantId: membership.variant_id,
+    isActive: membership.is_active ?? true,
+    deletedAt: toDeletedAtValue(membership.deleted_at),
   };
 };
 
 const toStockAdjustmentSnapshot = (entry, stockLevelEntityId: string, quantityOnHand: number) => {
   return {
     id: entry.id,
-    business_id: entry.business_id,
     businessId: entry.business_id,
-    variant_id: entry.variant_id,
     variantId: entry.variant_id,
     quantity: Number(entry.quantity),
     reason: entry.reason,
-    reference_id: entry.reference_id ?? null,
     referenceId: entry.reference_id ?? null,
-    stock_level_entity_id: stockLevelEntityId,
     stockLevelEntityId: stockLevelEntityId,
-    quantity_on_hand: quantityOnHand,
     quantityOnHand,
-    created_at: entry.created_at.toISOString(),
     createdAt: entry.created_at.toISOString(),
+    isActive: entry.is_active ?? true,
+    deletedAt: toDeletedAtValue(entry.deleted_at),
   };
 };
 
@@ -524,11 +565,13 @@ const appendSyncChange = async (
 };
 
 const getDefaultVariant = async (tx, tenantId, itemId) => {
-  return tx.itemVariant.findFirst({
+  const txAny = tx as any;
+  return txAny.itemVariant.findFirst({
     where: {
       item_id: itemId,
       business_id: tenantId,
       is_default: true,
+      deleted_at: null,
     },
   });
 };
@@ -591,6 +634,37 @@ const toNullableTrimmedValue = (value: string | null | undefined) => {
   if (value === null) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const sanitizeCustomerPayload = (payload: unknown): CustomerPayload => {
+  const raw = payload && typeof payload === "object" ? (payload as CustomerPayload) : {};
+  return {
+    name: typeof raw.name === "string" ? raw.name : undefined,
+    phone:
+      raw.phone === null || typeof raw.phone === "string" ? raw.phone : undefined,
+    email:
+      raw.email === null || typeof raw.email === "string" ? raw.email : undefined,
+    address:
+      raw.address === null || typeof raw.address === "string" ? raw.address : undefined,
+    gstNo: raw.gstNo === null || typeof raw.gstNo === "string" ? raw.gstNo : undefined,
+  };
+};
+
+const toCustomerSnapshot = (customer) => {
+  return {
+    id: customer.id,
+    businessId: customer.business_id,
+    name: customer.name,
+    phone: customer.phone ?? null,
+    email: customer.email ?? null,
+    address: customer.address ?? null,
+    gstNo: customer.tax_id ?? null,
+    type: customer.type,
+    isActive: customer.is_active ?? true,
+    deletedAt: toDeletedAtValue(customer.deleted_at),
+    createdAt: customer.created_at.toISOString(),
+    updatedAt: customer.updated_at.toISOString(),
+  };
 };
 
 const normalizeOptionValuesForCompare = (value: Record<string, string>) => {
@@ -688,8 +762,9 @@ const attachOptionValuesToVariant = async (tx, itemId, variantId, optionValues?:
 };
 
 const ensureSingleDefaultVariant = async (tx, itemId, preferredVariantId?: string) => {
-  const variants = await tx.itemVariant.findMany({
-    where: { item_id: itemId },
+  const txAny = tx as any;
+  const variants = await txAny.itemVariant.findMany({
+    where: { item_id: itemId, deleted_at: null },
     orderBy: { id: "asc" },
     select: { id: true, is_default: true },
   });
@@ -700,26 +775,27 @@ const ensureSingleDefaultVariant = async (tx, itemId, preferredVariantId?: strin
     variants.find((variant) => variant.is_default)?.id ??
     variants[0].id;
 
-  await tx.itemVariant.updateMany({
-    where: { item_id: itemId, id: { not: desiredDefaultId } },
+  await txAny.itemVariant.updateMany({
+    where: { item_id: itemId, deleted_at: null, id: { not: desiredDefaultId } },
     data: { is_default: false },
   });
-  await tx.itemVariant.update({
+  await txAny.itemVariant.update({
     where: { id: desiredDefaultId },
     data: { is_default: true },
   });
 };
 
 const getItemSnapshot = async (tx, tenantId, itemId) => {
-  const item = await tx.item.findUnique({
+  const txAny = tx as any;
+  const item = await txAny.item.findUnique({
     where: { id: itemId },
   });
-  if (!item || item.business_id !== tenantId) {
+  if (!item || item.business_id !== tenantId || item.deleted_at) {
     throw dependencyMissingError("Entity not found in business", "item", itemId);
   }
 
-  const variants = await tx.itemVariant.findMany({
-    where: { item_id: itemId, business_id: tenantId },
+  const variants = await txAny.itemVariant.findMany({
+    where: { item_id: itemId, business_id: tenantId, deleted_at: null },
   });
 
   const snapshotVariants = await Promise.all(
@@ -740,7 +816,6 @@ const getItemSnapshot = async (tx, tenantId, itemId) => {
   return {
     ...toItemSnapshot(item, defaultVariant),
     variants: snapshotVariants,
-    variant_count: snapshotVariants.length,
     variantCount: snapshotVariants.length,
   };
 };
@@ -762,8 +837,9 @@ const getStockLevelSnapshot = async (
   tenantId: string,
   variantId: string,
 ) => {
+  const txAny = tx as any;
   const [variant, ledgerEntries] = await Promise.all([
-    tx.itemVariant.findUnique({
+    txAny.itemVariant.findUnique({
       where: { id: variantId },
       include: {
         item: {
@@ -771,14 +847,16 @@ const getStockLevelSnapshot = async (
             id: true,
             name: true,
             unit: true,
+            deleted_at: true,
           },
         },
       },
     }),
-    tx.stockLedger.findMany({
+    txAny.stockLedger.findMany({
       where: {
         business_id: tenantId,
         variant_id: variantId,
+        deleted_at: null,
       },
       select: {
         quantity: true,
@@ -786,7 +864,7 @@ const getStockLevelSnapshot = async (
     }),
   ]);
 
-  if (!variant || variant.business_id !== tenantId) {
+  if (!variant || variant.business_id !== tenantId || variant.deleted_at || variant.item?.deleted_at) {
     throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
   }
 
@@ -797,31 +875,116 @@ const getStockLevelSnapshot = async (
 
   return {
     id: getStockLevelEntityId(variant.id),
-    variant_id: variant.id,
     variantId: variant.id,
-    item_id: variant.item_id,
     itemId: variant.item_id,
-    item_name: variant.item?.name ?? "",
     itemName: variant.item?.name ?? "",
-    variant_name: variant.name ?? null,
     variantName: variant.name ?? null,
     sku: variant.sku ?? null,
     unit: variant.item?.unit ?? "PCS",
-    quantity_on_hand: quantityOnHand,
     quantityOnHand,
   };
 };
 
+const applyCustomerMutation = async (tx, tenantId, mutation) => {
+  const txAny = tx as any;
+  const payload = sanitizeCustomerPayload(mutation.payload);
+
+  if (mutation.op === "create") {
+    const name = typeof payload.name === "string" ? payload.name.trim() : "";
+    if (!name) {
+      throw validationError("Customer name is required", mutation.entity, mutation.entityId);
+    }
+
+    const created = await txAny.party.create({
+      data: {
+        id: mutation.entityId,
+        business_id: tenantId,
+        name,
+        phone: toNullableTrimmedValue(payload.phone),
+        email: toNullableTrimmedValue(payload.email),
+        address: toNullableTrimmedValue(payload.address),
+        tax_id: toNullableTrimmedValue(payload.gstNo),
+        type: "CUSTOMER",
+        is_active: true,
+        deleted_at: null,
+      },
+    });
+
+    return toCustomerSnapshot(created);
+  }
+
+  const current = await txAny.party.findUnique({
+    where: { id: mutation.entityId },
+  });
+
+  if (!current || current.business_id !== tenantId || current.type === "SUPPLIER") {
+    if (mutation.op === "delete") {
+      return null;
+    }
+    throw dependencyMissingError("Customer not found in business", mutation.entity, mutation.entityId);
+  }
+
+  if (mutation.op === "delete") {
+    await txAny.party.update({
+      where: { id: mutation.entityId },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
+      },
+    });
+    return null;
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (typeof payload.name === "string") {
+    const name = payload.name.trim();
+    if (!name) {
+      throw validationError("Customer name is required", mutation.entity, mutation.entityId);
+    }
+    patch.name = name;
+  }
+  if (payload.phone !== undefined) {
+    patch.phone = toNullableTrimmedValue(payload.phone);
+  }
+  if (payload.email !== undefined) {
+    patch.email = toNullableTrimmedValue(payload.email);
+  }
+  if (payload.address !== undefined) {
+    patch.address = toNullableTrimmedValue(payload.address);
+  }
+  if (payload.gstNo !== undefined) {
+    patch.tax_id = toNullableTrimmedValue(payload.gstNo);
+  }
+  if (current.type !== "BOTH") {
+    patch.type = "CUSTOMER";
+  }
+  patch.is_active = true;
+  patch.deleted_at = null;
+
+  const updated =
+    Object.keys(patch).length > 0
+      ? await txAny.party.update({
+          where: { id: mutation.entityId },
+          data: patch,
+        })
+      : current;
+
+  return toCustomerSnapshot(updated);
+};
+
 const applyItemMutation = async (tx, tenantId, mutation) => {
+  const txAny = tx as any;
   if (mutation.op === "create") {
     const createData = buildItemForCreate(mutation.payload);
     if (createData.item.category) {
       await ensureCategoryExists(tx, tenantId, createData.item.category);
     }
-    const item = await tx.item.create({
+    const item = await txAny.item.create({
       data: {
         id: mutation.entityId,
         business_id: tenantId,
+        is_active: true,
+        deleted_at: null,
         ...createData.item,
       },
     });
@@ -837,10 +1000,11 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     let preferredDefaultId: string | undefined;
 
     if (variantInputs.length === 0) {
-      const defaultVariant = await tx.itemVariant.create({
+      const defaultVariant = await txAny.itemVariant.create({
         data: {
           business_id: tenantId,
           item_id: item.id,
+          deleted_at: null,
           ...createData.defaultVariant,
         },
       });
@@ -848,7 +1012,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
       preferredDefaultId = defaultVariant.id;
     } else {
       for (const variant of variantInputs) {
-        const createdVariant = await tx.itemVariant.create({
+        const createdVariant = await txAny.itemVariant.create({
           data: {
             business_id: tenantId,
             item_id: item.id,
@@ -857,6 +1021,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
             barcode: variant.barcode?.trim() || null,
             is_default: Boolean(variant.isDefault),
             is_active: variant.isActive ?? true,
+            deleted_at: null,
           },
         });
         createdVariantIds.push(createdVariant.id);
@@ -882,7 +1047,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     return getItemSnapshot(tx, tenantId, item.id);
   }
 
-  const current = await tx.item.findUnique({
+  const current = await txAny.item.findUnique({
     where: { id: mutation.entityId },
   });
 
@@ -891,8 +1056,12 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   }
 
   if (mutation.op === "delete") {
-    await tx.item.delete({
+    await txAny.item.update({
       where: { id: mutation.entityId },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
+      },
     });
     return null;
   }
@@ -906,11 +1075,21 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   let nextItem = current;
 
   if (Object.keys(itemPatchWithCategory).length > 0) {
-    nextItem = await tx.item.update({
+    nextItem = await txAny.item.update({
       where: { id: mutation.entityId },
       data: itemPatchWithCategory,
     });
   }
+  nextItem =
+    nextItem.deleted_at || nextItem.is_active === false
+      ? await txAny.item.update({
+          where: { id: mutation.entityId },
+          data: {
+            is_active: true,
+            deleted_at: null,
+          },
+        })
+      : nextItem;
 
   let defaultVariant = await getDefaultVariant(tx, tenantId, mutation.entityId);
 
@@ -928,31 +1107,33 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
           );
         }
       }
-      defaultVariant = await tx.itemVariant.update({
+      defaultVariant = await txAny.itemVariant.update({
         where: { id: defaultVariant.id },
-        data: { sku },
+        data: { sku, is_active: true, deleted_at: null },
       });
     } else {
-      defaultVariant = await tx.itemVariant.create({
+      defaultVariant = await txAny.itemVariant.create({
         data: {
           business_id: tenantId,
           item_id: mutation.entityId,
           sku,
           is_default: true,
           is_active: true,
+          deleted_at: null,
         },
       });
     }
   }
 
   if (!defaultVariant) {
-    defaultVariant = await tx.itemVariant.create({
+    defaultVariant = await txAny.itemVariant.create({
       data: {
         business_id: tenantId,
         item_id: mutation.entityId,
         sku: null,
         is_default: true,
         is_active: true,
+        deleted_at: null,
       },
     });
   }
@@ -962,6 +1143,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
 };
 
 const applyItemVariantMutation = async (tx, tenantId, mutation) => {
+  const txAny = tx as any;
   const payload = sanitizeVariantPayload(mutation.payload);
 
   if (mutation.op === "create") {
@@ -969,14 +1151,14 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
       throw validationError("itemId is required for variant create", mutation.entity, mutation.entityId);
     }
 
-    const parentItem = await tx.item.findUnique({
+    const parentItem = await txAny.item.findUnique({
       where: { id: payload.itemId },
     });
-    if (!parentItem || parentItem.business_id !== tenantId) {
+    if (!parentItem || parentItem.business_id !== tenantId || parentItem.deleted_at) {
       throw dependencyMissingError("Item not found in business", "item", payload.itemId);
     }
 
-    const variant = await tx.itemVariant.create({
+    const variant = await txAny.itemVariant.create({
       data: {
         id: mutation.entityId,
         business_id: tenantId,
@@ -986,6 +1168,7 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
         name: payload.name?.trim() || null,
         is_default: Boolean(payload.isDefault),
         is_active: payload.isActive ?? true,
+        deleted_at: null,
       },
     });
 
@@ -1002,7 +1185,7 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     return toVariantSnapshot(variant, optionValues, usageCount);
   }
 
-  const current = await tx.itemVariant.findUnique({
+  const current = await txAny.itemVariant.findUnique({
     where: { id: mutation.entityId },
   });
 
@@ -1021,8 +1204,12 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
         mutation.entityId,
       );
     }
-    await tx.itemVariant.delete({
+    await txAny.itemVariant.update({
       where: { id: mutation.entityId },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
+      },
     });
     await ensureSingleDefaultVariant(tx, current.item_id);
     return null;
@@ -1051,13 +1238,23 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     );
   }
 
-  const variant =
+  let variant =
     Object.keys(patch).length > 0
-      ? await tx.itemVariant.update({
+      ? await txAny.itemVariant.update({
           where: { id: mutation.entityId },
           data: patch,
         })
       : current;
+
+  if (variant.deleted_at || variant.is_active === false) {
+    variant = await txAny.itemVariant.update({
+      where: { id: mutation.entityId },
+      data: {
+        is_active: payload.isActive ?? true,
+        deleted_at: null,
+      },
+    });
+  }
 
   if (payload.optionValues) {
     await tx.itemVariantOptionValue.deleteMany({
@@ -1095,6 +1292,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
       where: {
         business_id: tenantId,
         name: payloadName,
+        deleted_at: null,
       },
     });
     if (existing) {
@@ -1106,6 +1304,8 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
         id: mutation.entityId,
         business_id: tenantId,
         name: payloadName,
+        is_active: true,
+        deleted_at: null,
       },
     });
     return {
@@ -1133,6 +1333,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
       where: {
         business_id: tenantId,
         category: current.name,
+        deleted_at: null,
       },
       select: { id: true },
     });
@@ -1141,14 +1342,19 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
       where: {
         business_id: tenantId,
         category: current.name,
+        deleted_at: null,
       },
       data: {
         category: null,
       },
     });
 
-    await tx.itemCategory.delete({
+    await (tx as any).itemCategory.update({
       where: { id: mutation.entityId },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
+      },
     });
 
     const additionalChanges = await Promise.all(
@@ -1175,6 +1381,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
       where: {
         business_id: tenantId,
         name: payloadName,
+        deleted_at: null,
         id: {
           not: current.id,
         },
@@ -1190,6 +1397,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
           where: {
             business_id: tenantId,
             category: current.name,
+            deleted_at: null,
           },
           select: { id: true },
         })
@@ -1200,6 +1408,7 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
         where: {
           business_id: tenantId,
           category: current.name,
+          deleted_at: null,
         },
         data: {
           category: payloadName,
@@ -1211,6 +1420,8 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
       where: { id: mutation.entityId },
       data: {
         name: payloadName,
+        is_active: true,
+        deleted_at: null,
       },
     });
 
@@ -1248,6 +1459,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
       where: {
         business_id: tenantId,
         name: payloadName,
+        deleted_at: null,
       },
     });
     if (existing) {
@@ -1259,6 +1471,8 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
         id: mutation.entityId,
         business_id: tenantId,
         name: payloadName,
+        is_active: true,
+        deleted_at: null,
       },
     });
     return {
@@ -1286,19 +1500,29 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
       where: {
         business_id: tenantId,
         collection_id: current.id,
+        deleted_at: null,
       },
       select: { id: true },
     });
 
-    await txAny.itemCollectionItem.deleteMany({
+    await txAny.itemCollectionItem.updateMany({
       where: {
         business_id: tenantId,
         collection_id: current.id,
+        deleted_at: null,
+      },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
       },
     });
 
-    await txAny.itemCollection.delete({
+    await txAny.itemCollection.update({
       where: { id: mutation.entityId },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
+      },
     });
 
     const additionalChanges = memberships.map((membership) => ({
@@ -1323,6 +1547,7 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
       where: {
         business_id: tenantId,
         name: payloadName,
+        deleted_at: null,
         id: { not: current.id },
       },
     });
@@ -1334,6 +1559,8 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
       where: { id: mutation.entityId },
       data: {
         name: payloadName,
+        is_active: true,
+        deleted_at: null,
       },
     });
 
@@ -1350,17 +1577,9 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
   const txAny = tx as any;
   const payload = mutation.payload && typeof mutation.payload === "object" ? mutation.payload : {};
   const collectionId =
-    typeof payload.collectionId === "string"
-      ? payload.collectionId
-      : typeof payload.collection_id === "string"
-        ? payload.collection_id
-        : "";
+    typeof payload.collectionId === "string" ? payload.collectionId : "";
   const variantId =
-    typeof payload.variantId === "string"
-      ? payload.variantId
-      : typeof payload.variant_id === "string"
-        ? payload.variant_id
-        : "";
+    typeof payload.variantId === "string" ? payload.variantId : "";
 
   if (mutation.op === "create") {
     if (!collectionId || !variantId) {
@@ -1369,12 +1588,12 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
 
     const [collection, variant] = await Promise.all([
       txAny.itemCollection.findUnique({ where: { id: collectionId } }),
-      tx.itemVariant.findUnique({ where: { id: variantId } }),
+      txAny.itemVariant.findUnique({ where: { id: variantId } }),
     ]);
-    if (!collection || collection.business_id !== tenantId) {
+    if (!collection || collection.business_id !== tenantId || collection.deleted_at) {
       throw dependencyMissingError("Collection not found in business", "item_collection", collectionId);
     }
-    if (!variant || variant.business_id !== tenantId) {
+    if (!variant || variant.business_id !== tenantId || variant.deleted_at) {
       throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
     }
 
@@ -1383,6 +1602,7 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
         business_id: tenantId,
         collection_id: collectionId,
         variant_id: variantId,
+        deleted_at: null,
       },
     });
     if (existing) {
@@ -1395,6 +1615,8 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
         business_id: tenantId,
         collection_id: collectionId,
         variant_id: variantId,
+        is_active: true,
+        deleted_at: null,
       },
     });
     return toItemCollectionItemSnapshot(created);
@@ -1412,8 +1634,12 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
         mutation.entityId,
       );
     }
-    await txAny.itemCollectionItem.delete({
+    await txAny.itemCollectionItem.update({
       where: { id: mutation.entityId },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
+      },
     });
     return null;
   }
@@ -1478,6 +1704,7 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
 };
 
 const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
+  const txAny = tx as any;
   if (mutation.op !== "create") {
     throw validationError(
       "Unsupported operation for stock adjustment",
@@ -1491,9 +1718,7 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
   const variantId =
     typeof payload.variantId === "string" && payload.variantId.trim()
       ? payload.variantId
-      : typeof payload.variant_id === "string" && payload.variant_id.trim()
-        ? payload.variant_id
-        : "";
+      : "";
   const rawQuantity = (payload as Record<string, unknown>).quantity;
   const quantity =
     typeof rawQuantity === "number" && Number.isFinite(rawQuantity)
@@ -1526,15 +1751,26 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     );
   }
 
-  const variant = await tx.itemVariant.findUnique({
+  const variant = await txAny.itemVariant.findUnique({
     where: { id: variantId },
     select: {
       id: true,
       business_id: true,
+      deleted_at: true,
+      item: {
+        select: {
+          deleted_at: true,
+        },
+      },
     },
   });
 
-  if (!variant || variant.business_id !== tenantId) {
+  if (
+    !variant ||
+    variant.business_id !== tenantId ||
+    variant.deleted_at ||
+    variant.item?.deleted_at
+  ) {
     throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
   }
 
@@ -1554,7 +1790,7 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     );
   }
 
-  const createdEntry = await tx.stockLedger.create({
+  const createdEntry = await txAny.stockLedger.create({
     data: {
       id: mutation.entityId,
       business_id: tenantId,
@@ -1562,13 +1798,16 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
       quantity: ledgerQuantity,
       reason: requestedReason,
       reference_id: mutation.mutationId,
+      is_active: true,
+      deleted_at: null,
     },
   });
 
-  const prunedEntries = await tx.stockLedger.findMany({
+  const prunedEntries = await txAny.stockLedger.findMany({
     where: {
       business_id: tenantId,
       variant_id: variantId,
+      deleted_at: null,
     },
     select: {
       id: true,
@@ -1581,11 +1820,16 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
   });
 
   if (prunedEntries.length > 0) {
-    await tx.stockLedger.deleteMany({
+    const prunedAt = new Date();
+    await txAny.stockLedger.updateMany({
       where: {
         id: {
           in: prunedEntries.map((entry) => entry.id),
         },
+      },
+      data: {
+        is_active: false,
+        deleted_at: prunedAt,
       },
     });
   }
@@ -1645,7 +1889,9 @@ const applyMutation = async (
       operation: "CREATE" | "UPDATE" | "DELETE";
       data: Record<string, unknown>;
     }> = [];
-    if (mutation.entity === "item") {
+    if (mutation.entity === "customer") {
+      snapshot = await applyCustomerMutation(tx, tenantId, mutation);
+    } else if (mutation.entity === "item") {
       snapshot = await applyItemMutation(tx, tenantId, mutation);
     } else if (mutation.entity === "item_variant") {
       snapshot = await applyItemVariantMutation(tx, tenantId, mutation);
@@ -1780,10 +2026,12 @@ const getDeltasSinceCursor = async (tenantId, cursor, limit) => {
     entity: change.entity,
     entityId: change.entity_id,
     op: toSyncOperation(change.operation),
-    data:
-      change.data && typeof change.data === "object" && !Array.isArray(change.data)
-        ? change.data
-        : {},
+    data: normalizeSyncEntityState(
+      change.entity,
+      toSyncOperation(change.operation),
+      change.data,
+      change.server_timestamp.toISOString(),
+    ),
     serverVersion: change.server_version,
     serverTimestamp: change.server_timestamp.toISOString(),
   }));
@@ -1853,6 +2101,7 @@ const getItemCategories = async (tenantId: string, query?: string, limit = 30) =
   const rows = await prismaAny.itemCategory.findMany({
     where: {
       business_id: tenantId,
+      deleted_at: null,
       name: normalizedQuery
         ? {
             contains: normalizedQuery,
@@ -1939,18 +2188,19 @@ const upsertItemPriceInTx = async (
   },
 ) => {
   const txAny = tx as any;
-  const variant = await tx.itemVariant.findUnique({
+  const variant = await txAny.itemVariant.findUnique({
     where: { id: variantId },
     include: {
       item: {
         select: {
           name: true,
           category: true,
+          deleted_at: true,
         },
       },
     },
   });
-  if (!variant || variant.business_id !== tenantId) {
+  if (!variant || variant.business_id !== tenantId || (variant as any).deleted_at || (variant.item as any)?.deleted_at) {
     throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
   }
 
@@ -1993,7 +2243,7 @@ const upsertItemPriceInTx = async (
         created_by: input.actorUserId,
       },
     });
-    await txAny.itemPrice.deleteMany({
+    await txAny.itemPrice.updateMany({
       where: {
         business_id: tenantId,
         price_book_id: defaultPriceBook.id,
@@ -2001,6 +2251,11 @@ const upsertItemPriceInTx = async (
         customer_group_id: null,
         min_qty: 1,
         max_qty: null,
+        deleted_at: null,
+      },
+      data: {
+        is_active: false,
+        deleted_at: now,
       },
     });
     return {
@@ -2011,7 +2266,8 @@ const upsertItemPriceInTx = async (
       variantName: variant.name ?? "",
       sku: variant.sku ?? "",
       isDefaultVariant: Boolean(variant.is_default),
-      isActive: Boolean(variant.is_active),
+      isActive: false,
+      deletedAt: now.toISOString(),
       amount: null,
       currency: normalizedCurrency,
       updatedAt: null,
@@ -2026,6 +2282,7 @@ const upsertItemPriceInTx = async (
       customer_group_id: null,
       min_qty: 1,
       max_qty: null,
+      deleted_at: null,
     },
     orderBy: [{ priority: "desc" }, { updated_at: "desc" }],
   });
@@ -2053,6 +2310,7 @@ const upsertItemPriceInTx = async (
           amount: amountAsString,
           currency: normalizedCurrency,
           is_active: true,
+          deleted_at: null,
           starts_at: null,
           ends_at: null,
           priority: 0,
@@ -2069,6 +2327,7 @@ const upsertItemPriceInTx = async (
           amount: amountAsString,
           currency: normalizedCurrency,
           is_active: true,
+          deleted_at: null,
           starts_at: null,
           ends_at: null,
           priority: 0,
@@ -2084,6 +2343,7 @@ const upsertItemPriceInTx = async (
     sku: variant.sku ?? "",
     isDefaultVariant: Boolean(variant.is_default),
     isActive: Boolean(variant.is_active),
+    deletedAt: toDeletedAtValue((saved as any).deleted_at),
     amount: Number(saved.amount),
     currency: saved.currency,
     updatedAt: saved.updated_at.toISOString(),
@@ -2106,9 +2366,13 @@ const getItemPrices = async (
 
   const [defaultPriceBook, total, variants] = await Promise.all([
     ensureDefaultPriceBook(prismaAny, tenantId),
-    prisma.itemVariant.count({
+    prismaAny.itemVariant.count({
       where: {
         business_id: tenantId,
+        deleted_at: null,
+        item: {
+          deleted_at: null,
+        },
         ...(includeInactive ? {} : { is_active: true }),
         ...(query
           ? {
@@ -2122,9 +2386,13 @@ const getItemPrices = async (
           : {}),
       },
     }),
-    prisma.itemVariant.findMany({
+    prismaAny.itemVariant.findMany({
       where: {
         business_id: tenantId,
+        deleted_at: null,
+        item: {
+          deleted_at: null,
+        },
         ...(includeInactive ? {} : { is_active: true }),
         ...(query
           ? {
@@ -2164,6 +2432,7 @@ const getItemPrices = async (
           min_qty: 1,
           max_qty: null,
           is_active: true,
+          deleted_at: null,
         },
         orderBy: [{ priority: "desc" }, { updated_at: "desc" }],
       })

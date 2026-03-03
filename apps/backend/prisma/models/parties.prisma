@@ -12,8 +12,11 @@ model Party {
   name                       String
   email                      String?
   phone                      String?
+  address                    String?
   tax_id                     String?
   type                       PartyType             @default(CUSTOMER)
+  is_active                  Boolean               @default(true)
+  deleted_at                 DateTime?
   account_id                 String?               @db.Uuid
   customer_group_memberships CustomerGroupMember[]
 

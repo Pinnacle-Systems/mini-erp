@@ -115,6 +115,67 @@ export type ItemInput = {
   variants?: VariantInput[];
 };
 
+export type CustomerInput = {
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  gstNo?: string;
+};
+
+const toOptionalCustomerValue = (value: string | undefined) => {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const toCustomerPayload = (input: CustomerInput) => ({
+  name: input.name.trim(),
+  ...(input.phone !== undefined ? { phone: toOptionalCustomerValue(input.phone) } : {}),
+  ...(input.email !== undefined ? { email: toOptionalCustomerValue(input.email) } : {}),
+  ...(input.address !== undefined ? { address: toOptionalCustomerValue(input.address) } : {}),
+  ...(input.gstNo !== undefined ? { gstNo: toOptionalCustomerValue(input.gstNo) } : {}),
+});
+
+export const queueCustomerCreate = async (
+  tenantId: string,
+  userId: string,
+  payload: CustomerInput,
+) => {
+  const entityId = crypto.randomUUID();
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "customer",
+    entityId,
+    op: "create",
+    payload: toCustomerPayload(payload),
+    clientTimestamp: new Date().toISOString(),
+  });
+  return entityId;
+};
+
+export const queueCustomerUpdate = async (
+  tenantId: string,
+  userId: string,
+  customerId: string,
+  payload: CustomerInput,
+  baseVersion?: number,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "customer",
+    entityId: customerId,
+    op: "update",
+    payload: toCustomerPayload(payload),
+    ...(typeof baseVersion === "number" ? { baseVersion } : {}),
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
 export const queueItemCreate = async (
   tenantId: string,
   userId: string,
@@ -372,9 +433,7 @@ const extractVariantsFromItemData = (itemData: Record<string, unknown>, itemId: 
       const optionValuesRaw =
         variant.optionValues && typeof variant.optionValues === "object"
           ? (variant.optionValues as Record<string, unknown>)
-          : variant.option_values && typeof variant.option_values === "object"
-            ? (variant.option_values as Record<string, unknown>)
-            : {};
+          : {};
       const optionValues = Object.fromEntries(
         Object.entries(optionValuesRaw)
           .filter((entry) => typeof entry[1] === "string")
@@ -383,14 +442,14 @@ const extractVariantsFromItemData = (itemData: Record<string, unknown>, itemId: 
 
       return {
         id: String(variant.id ?? ""),
-        itemId: String(variant.itemId ?? variant.item_id ?? itemId),
+        itemId: String(variant.itemId ?? itemId),
         name: String(variant.name ?? ""),
         sku: String(variant.sku ?? ""),
         barcode: String(variant.barcode ?? ""),
-        isActive: Boolean(variant.isActive ?? variant.is_active ?? true),
+        isActive: Boolean(variant.isActive ?? true),
         optionValues,
-        usageCount: Number(variant.usageCount ?? variant.usage_count ?? 0),
-        isLocked: Boolean(variant.isLocked ?? variant.is_locked ?? false),
+        usageCount: Number(variant.usageCount ?? 0),
+        isLocked: Boolean(variant.isLocked ?? false),
         pending: false,
       } satisfies ItemVariantDisplay;
     })
@@ -429,7 +488,7 @@ export const getLocalItemsForDisplay = async (
   const deletedVariantIdsByItemId = variantEntities
     .filter((variant) => Boolean(variant.deletedAt))
     .reduce<Record<string, Set<string>>>((acc, variant) => {
-      const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+      const itemId = String(variant.data.itemId ?? "");
       if (!itemId) return acc;
       const ids = acc[itemId] ?? new Set<string>();
       ids.add(variant.entityId);
@@ -438,7 +497,7 @@ export const getLocalItemsForDisplay = async (
     }, {});
   const variantsByItemId = activeVariants.reduce<Record<string, EntityRecord[]>>(
     (acc, variant) => {
-      const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+      const itemId = String(variant.data.itemId ?? "");
       if (!itemId) return acc;
       acc[itemId] = [...(acc[itemId] ?? []), variant];
       return acc;
@@ -457,9 +516,7 @@ export const getLocalItemsForDisplay = async (
         const optionValuesRaw =
           variant.data.optionValues && typeof variant.data.optionValues === "object"
             ? (variant.data.optionValues as Record<string, unknown>)
-            : variant.data.option_values && typeof variant.data.option_values === "object"
-              ? (variant.data.option_values as Record<string, unknown>)
-              : {};
+            : {};
         const optionValues = Object.fromEntries(
           Object.entries(optionValuesRaw)
             .filter((entry) => typeof entry[1] === "string")
@@ -468,14 +525,14 @@ export const getLocalItemsForDisplay = async (
 
         return {
           id: variant.entityId,
-          itemId: String(variant.data.itemId ?? variant.data.item_id ?? item.entityId),
+          itemId: String(variant.data.itemId ?? item.entityId),
           name: String(variant.data.name ?? ""),
           sku: String(variant.data.sku ?? ""),
           barcode: String(variant.data.barcode ?? ""),
-          isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
+          isActive: Boolean(variant.data.isActive ?? true),
           optionValues,
-          usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
-          isLocked: Boolean(variant.data.isLocked ?? variant.data.is_locked ?? false),
+          usageCount: Number(variant.data.usageCount ?? 0),
+          isLocked: Boolean(variant.data.isLocked ?? false),
           pending: false,
         } satisfies ItemVariantDisplay;
       });
@@ -570,17 +627,12 @@ export const getLocalItemDetailForDisplay = async (
 
   const variantRows = variantEntities
     .filter((variant) => !variant.deletedAt)
-    .filter(
-      (variant) =>
-        String(variant.data.itemId ?? variant.data.item_id ?? "") === item.entityId,
-    )
+    .filter((variant) => String(variant.data.itemId ?? "") === item.entityId)
     .map((variant) => {
       const optionValuesRaw =
         variant.data.optionValues && typeof variant.data.optionValues === "object"
           ? (variant.data.optionValues as Record<string, unknown>)
-          : variant.data.option_values && typeof variant.data.option_values === "object"
-            ? (variant.data.option_values as Record<string, unknown>)
-            : {};
+          : {};
       const optionValues = Object.fromEntries(
         Object.entries(optionValuesRaw)
           .filter((entry) => typeof entry[1] === "string")
@@ -589,14 +641,14 @@ export const getLocalItemDetailForDisplay = async (
 
       return {
         id: variant.entityId,
-        itemId: String(variant.data.itemId ?? variant.data.item_id ?? item.entityId),
+        itemId: String(variant.data.itemId ?? item.entityId),
         name: String(variant.data.name ?? ""),
         sku: String(variant.data.sku ?? ""),
         barcode: String(variant.data.barcode ?? ""),
-        isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
+        isActive: Boolean(variant.data.isActive ?? true),
         optionValues,
-        usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
-        isLocked: Boolean(variant.data.isLocked ?? variant.data.is_locked ?? false),
+        usageCount: Number(variant.data.usageCount ?? 0),
+        isLocked: Boolean(variant.data.isLocked ?? false),
         pending: false,
       } satisfies ItemVariantDisplay;
     });
@@ -604,10 +656,7 @@ export const getLocalItemDetailForDisplay = async (
   const deletedVariantIds = new Set(
     variantEntities
       .filter((variant) => Boolean(variant.deletedAt))
-      .filter(
-        (variant) =>
-          String(variant.data.itemId ?? variant.data.item_id ?? "") === item.entityId,
-      )
+      .filter((variant) => String(variant.data.itemId ?? "") === item.entityId)
       .map((variant) => variant.entityId),
   );
   const fallbackFromItem = extractVariantsFromItemData(item.data, item.entityId).filter(
@@ -637,7 +686,7 @@ export const getLocalItemDetailForDisplay = async (
     name: String(item.data.name ?? "Untitled Item"),
     category: String(item.data.category ?? ""),
     unit: String(item.data.unit ?? "PCS") as "PCS" | "KG" | "M" | "BOX",
-    itemType: String(item.data.itemType ?? item.data.item_type ?? "PRODUCT") as
+    itemType: String(item.data.itemType ?? "PRODUCT") as
       | "PRODUCT"
       | "SERVICE",
     pending: false,
@@ -647,9 +696,165 @@ export const getLocalItemDetailForDisplay = async (
 
 export const getLocalItemLabels = async (tenantId: string) => {
   const items = await getLocalItemsForDisplay(tenantId);
-  return items.map((item) => {
-    const pendingSuffix = item.pending ? " (pending sync)" : "";
-    return `${item.sku}: ${item.name}${pendingSuffix}`;
+  return items.map((item) => `${item.sku}: ${item.name}`);
+};
+
+export type CustomerRow = {
+  entityId: string;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  gstNo: string;
+  isActive: boolean;
+  deletedAt: string | null;
+  serverVersion: number;
+  pending: boolean;
+};
+
+const readCustomerText = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+
+const readEntityIsActive = (record: EntityRecord) =>
+  typeof record.data.isActive === "boolean"
+    ? Boolean(record.data.isActive)
+    : !record.deletedAt;
+
+const readEntityDeletedAt = (record: EntityRecord) =>
+  typeof record.data.deletedAt === "string"
+    ? record.data.deletedAt
+    : record.deletedAt ?? null;
+
+const toCustomerRowFromEntity = (record: EntityRecord): CustomerRow => ({
+  entityId: record.entityId,
+  name: readCustomerText(record.data.name) || "Untitled Customer",
+  phone: readCustomerText(record.data.phone),
+  email: readCustomerText(record.data.email),
+  address: readCustomerText(record.data.address),
+  gstNo: readCustomerText(record.data.gstNo),
+  isActive: readEntityIsActive(record),
+  deletedAt: readEntityDeletedAt(record),
+  serverVersion: record.serverVersion ?? 0,
+  pending: false,
+});
+
+const applyCustomerPayloadToRow = (
+  current: CustomerRow,
+  payload: Record<string, unknown>,
+  pending: boolean,
+): CustomerRow => ({
+  ...current,
+  name:
+    typeof payload.name === "string" && payload.name.trim()
+      ? payload.name.trim()
+      : current.name,
+  phone:
+    payload.phone === null
+      ? ""
+      : typeof payload.phone === "string"
+        ? payload.phone.trim()
+        : current.phone,
+  email:
+    payload.email === null
+      ? ""
+      : typeof payload.email === "string"
+        ? payload.email.trim()
+        : current.email,
+  address:
+    payload.address === null
+      ? ""
+      : typeof payload.address === "string"
+        ? payload.address.trim()
+        : current.address,
+  gstNo:
+    payload.gstNo === null
+      ? ""
+      : typeof payload.gstNo === "string"
+        ? payload.gstNo.trim()
+        : current.gstNo,
+  isActive:
+    typeof payload.isActive === "boolean" ? Boolean(payload.isActive) : current.isActive,
+  deletedAt:
+    typeof payload.deletedAt === "string"
+      ? payload.deletedAt
+      : payload.deletedAt === null
+        ? null
+        : current.deletedAt,
+  pending,
+});
+
+const buildPendingCustomerRow = (
+  entityId: string,
+  payload: Record<string, unknown>,
+): CustomerRow =>
+  applyCustomerPayloadToRow(
+    {
+      entityId,
+      name: "Untitled Customer",
+      phone: "",
+      email: "",
+      address: "",
+      gstNo: "",
+      isActive: true,
+      deletedAt: null,
+      serverVersion: 0,
+      pending: true,
+    },
+    payload,
+    true,
+  );
+
+export const getLocalCustomers = async (tenantId: string): Promise<CustomerRow[]> => {
+  const [customerEntities, pendingMutations] = await Promise.all([
+    listEntities(tenantId, "customer"),
+    syncDb.outbox
+      .where("[tenantId+status]")
+      .equals([tenantId, "pending"])
+      .filter((item) => item.entity === "customer")
+      .toArray(),
+  ]);
+
+  const customersById = new Map<string, CustomerRow>();
+
+  for (const record of customerEntities) {
+    if (record.deletedAt) continue;
+    customersById.set(record.entityId, toCustomerRowFromEntity(record));
+  }
+
+  for (const mutation of pendingMutations) {
+    if (mutation.op === "delete") {
+      customersById.delete(mutation.entityId);
+      continue;
+    }
+
+    const payload =
+      mutation.payload && typeof mutation.payload === "object"
+        ? (mutation.payload as Record<string, unknown>)
+        : {};
+    const current = customersById.get(mutation.entityId);
+
+    if (mutation.op === "create") {
+      customersById.set(
+        mutation.entityId,
+        current
+          ? applyCustomerPayloadToRow(current, payload, true)
+          : buildPendingCustomerRow(mutation.entityId, payload),
+      );
+      continue;
+    }
+
+    customersById.set(
+      mutation.entityId,
+      current
+        ? applyCustomerPayloadToRow(current, payload, true)
+        : buildPendingCustomerRow(mutation.entityId, payload),
+    );
+  }
+
+  return Array.from(customersById.values()).sort((left, right) => {
+    const nameOrder = left.name.localeCompare(right.name);
+    if (nameOrder !== 0) return nameOrder;
+    return left.entityId.localeCompare(right.entityId);
   });
 };
 
@@ -957,7 +1162,7 @@ export const getLocalStockVariantOptions = async (
   const deletedVariantIdsByItemId = variantEntities
     .filter((variant) => Boolean(variant.deletedAt))
     .reduce<Record<string, Set<string>>>((acc, variant) => {
-      const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+      const itemId = String(variant.data.itemId ?? "");
       if (!itemId) return acc;
       const ids = acc[itemId] ?? new Set<string>();
       ids.add(variant.entityId);
@@ -966,7 +1171,7 @@ export const getLocalStockVariantOptions = async (
     }, {});
   const variantsByItemId = activeVariants.reduce<Record<string, EntityRecord[]>>(
     (acc, variant) => {
-      const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+      const itemId = String(variant.data.itemId ?? "");
       if (!itemId) return acc;
       acc[itemId] = [...(acc[itemId] ?? []), variant];
       return acc;
@@ -985,9 +1190,7 @@ export const getLocalStockVariantOptions = async (
         const optionValuesRaw =
           variant.data.optionValues && typeof variant.data.optionValues === "object"
             ? (variant.data.optionValues as Record<string, unknown>)
-            : variant.data.option_values && typeof variant.data.option_values === "object"
-              ? (variant.data.option_values as Record<string, unknown>)
-              : {};
+            : {};
         const optionValues = Object.fromEntries(
           Object.entries(optionValuesRaw)
             .filter((entry) => typeof entry[1] === "string")
@@ -996,14 +1199,14 @@ export const getLocalStockVariantOptions = async (
 
         return {
           id: variant.entityId,
-          itemId: String(variant.data.itemId ?? variant.data.item_id ?? record.entityId),
+          itemId: String(variant.data.itemId ?? record.entityId),
           name: String(variant.data.name ?? ""),
           sku: String(variant.data.sku ?? ""),
           barcode: String(variant.data.barcode ?? ""),
-          isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
+          isActive: Boolean(variant.data.isActive ?? true),
           optionValues,
-          usageCount: Number(variant.data.usageCount ?? variant.data.usage_count ?? 0),
-          isLocked: Boolean(variant.data.isLocked ?? variant.data.is_locked ?? false),
+          usageCount: Number(variant.data.usageCount ?? 0),
+          isLocked: Boolean(variant.data.isLocked ?? false),
           pending: false,
         } satisfies ItemVariantDisplay;
       });
@@ -1039,13 +1242,13 @@ export const getLocalStockLevels = async (
       const data = record.data;
       return {
         entityId: record.entityId,
-        variantId: String(data.variantId ?? data.variant_id ?? ""),
-        itemId: String(data.itemId ?? data.item_id ?? ""),
-        itemName: String(data.itemName ?? data.item_name ?? "Untitled Item"),
-        variantName: String(data.variantName ?? data.variant_name ?? ""),
+        variantId: String(data.variantId ?? ""),
+        itemId: String(data.itemId ?? ""),
+        itemName: String(data.itemName ?? "Untitled Item"),
+        variantName: String(data.variantName ?? ""),
         sku: String(data.sku ?? ""),
         unit: String(data.unit ?? "PCS"),
-        quantityOnHand: Number(data.quantityOnHand ?? data.quantity_on_hand ?? 0),
+        quantityOnHand: Number(data.quantityOnHand ?? 0),
       } satisfies StockLevelRow;
     })
     .filter((row) => row.variantId)
@@ -1072,25 +1275,25 @@ export const getLocalStockAdjustmentHistory = async (
     .filter((record) => !record.deletedAt)
     .map((record) => {
       const data = record.data;
-      const variantId = String(data.variantId ?? data.variant_id ?? "");
+      const variantId = String(data.variantId ?? "");
       const option = optionByVariantId.get(variantId);
       const stockLevel = stockLevelByVariantId.get(variantId);
       const quantity = Number(data.quantity ?? 0);
-      const rawCreatedAt = String(data.createdAt ?? data.created_at ?? record.updatedAt);
+      const rawCreatedAt = String(data.createdAt ?? record.updatedAt);
       const label = option?.label ?? stockLevel?.itemName ?? "Unknown item";
       const fallbackItemName = label.replace(/\s+\([^)]*\)\s*$/, "").trim();
 
       return {
         entityId: record.entityId,
         variantId,
-        itemId: String(data.itemId ?? data.item_id ?? option?.itemId ?? stockLevel?.itemId ?? ""),
+        itemId: String(data.itemId ?? option?.itemId ?? stockLevel?.itemId ?? ""),
         itemName: (stockLevel?.itemName ?? fallbackItemName) || label,
         variantName: stockLevel?.variantName ?? "",
         sku: option?.sku ?? stockLevel?.sku ?? "",
         unit: option?.unit ?? stockLevel?.unit ?? "PCS",
         quantity,
         reason: String(data.reason ?? "OPENING_BALANCE") as StockAdjustmentReason,
-        quantityOnHand: Number(data.quantityOnHand ?? data.quantity_on_hand ?? 0),
+        quantityOnHand: Number(data.quantityOnHand ?? 0),
         createdAt: rawCreatedAt,
       } satisfies StockAdjustmentHistoryRow;
     })
@@ -1149,9 +1352,7 @@ export const getLocalOptionDiscoveryForStore = async (
       const optionValues =
         variantRecord.optionValues && typeof variantRecord.optionValues === "object"
           ? variantRecord.optionValues
-          : variantRecord.option_values && typeof variantRecord.option_values === "object"
-            ? variantRecord.option_values
-            : undefined;
+          : undefined;
       if (!optionValues || typeof optionValues !== "object") continue;
 
       for (const [key, value] of Object.entries(optionValues as Record<string, unknown>)) {
@@ -1165,9 +1366,7 @@ export const getLocalOptionDiscoveryForStore = async (
     const optionValues =
       variant.data.optionValues && typeof variant.data.optionValues === "object"
         ? variant.data.optionValues
-        : variant.data.option_values && typeof variant.data.option_values === "object"
-          ? variant.data.option_values
-          : undefined;
+        : undefined;
     if (!optionValues || typeof optionValues !== "object") continue;
 
     for (const [key, value] of Object.entries(optionValues as Record<string, unknown>)) {
@@ -1284,7 +1483,7 @@ export const getLocalItemCollectionMembershipsForStore = async (
       .filter((entry) => !entry.deletedAt)
       .map((entry) => [
         entry.entityId,
-        String(entry.data.itemId ?? entry.data.item_id ?? ""),
+        String(entry.data.itemId ?? ""),
       ]),
   );
   const variantMetaByVariantId = new Map<
@@ -1302,7 +1501,7 @@ export const getLocalItemCollectionMembershipsForStore = async (
         {
           name: String(entry.data.name ?? ""),
           sku: String(entry.data.sku ?? ""),
-          isActive: Boolean(entry.data.isActive ?? entry.data.is_active ?? true),
+          isActive: Boolean(entry.data.isActive ?? true),
         },
       ]),
   );
@@ -1327,15 +1526,11 @@ export const getLocalItemCollectionMembershipsForStore = async (
   return membershipEntities
     .filter((entry) => !entry.deletedAt)
     .map((entry) => {
-      const collectionId = String(
-        entry.data.collectionId ?? entry.data.collection_id ?? "",
-      );
-      const variantId = String(
-        entry.data.variantId ?? entry.data.variant_id ?? "",
-      );
+      const collectionId = String(entry.data.collectionId ?? "");
+      const variantId = String(entry.data.variantId ?? "");
       const itemId =
         itemIdByVariantId.get(variantId) ??
-        String(entry.data.itemId ?? entry.data.item_id ?? "");
+        String(entry.data.itemId ?? "");
       const variantMeta = variantMetaByVariantId.get(variantId);
       return {
         id: entry.entityId,
@@ -1394,7 +1589,7 @@ export const getLocalItemPricingRowsForDisplay = async (
 
   for (const variant of variantEntities) {
     if (variant.deletedAt) continue;
-    const itemId = String(variant.data.itemId ?? variant.data.item_id ?? "");
+    const itemId = String(variant.data.itemId ?? "");
     const item = itemById.get(itemId);
     variantMetaById.set(variant.entityId, {
       itemId,
@@ -1403,8 +1598,8 @@ export const getLocalItemPricingRowsForDisplay = async (
       unit: String(item?.data.unit ?? "PCS"),
       variantName: String(variant.data.name ?? ""),
       sku: String(variant.data.sku ?? ""),
-      isDefaultVariant: Boolean(variant.data.isDefault ?? variant.data.is_default ?? false),
-      isActive: Boolean(variant.data.isActive ?? variant.data.is_active ?? true),
+      isDefaultVariant: Boolean(variant.data.isDefault ?? false),
+      isActive: Boolean(variant.data.isActive ?? true),
     });
   }
 
@@ -1436,7 +1631,7 @@ export const getLocalItemPricingRowsForDisplay = async (
   >();
   for (const price of priceEntities) {
     if (price.deletedAt) continue;
-    const variantId = String(price.data.variantId ?? price.data.variant_id ?? price.entityId ?? "");
+    const variantId = String(price.data.variantId ?? price.entityId ?? "");
     if (!variantId) continue;
     const rawAmount = price.data.amount;
     const amount =

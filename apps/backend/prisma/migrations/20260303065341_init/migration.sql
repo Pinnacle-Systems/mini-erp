@@ -154,6 +154,8 @@ CREATE TABLE "catalog"."items" (
     "name" TEXT NOT NULL,
     "category" TEXT,
     "unit" "catalog"."UnitType" NOT NULL DEFAULT 'PCS',
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "items_pkey" PRIMARY KEY ("id")
 );
@@ -163,6 +165,8 @@ CREATE TABLE "catalog"."item_categories" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
     "name" TEXT NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -174,6 +178,8 @@ CREATE TABLE "catalog"."item_collections" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
     "name" TEXT NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -186,6 +192,8 @@ CREATE TABLE "catalog"."item_collection_items" (
     "business_id" UUID NOT NULL,
     "collection_id" UUID NOT NULL,
     "variant_id" UUID NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "item_collection_items_pkey" PRIMARY KEY ("id")
 );
@@ -200,6 +208,7 @@ CREATE TABLE "catalog"."item_variants" (
     "name" TEXT,
     "is_default" BOOLEAN NOT NULL DEFAULT false,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "item_variants_pkey" PRIMARY KEY ("id")
 );
@@ -276,6 +285,8 @@ CREATE TABLE "inventory"."stock_ledger" (
     "quantity" DECIMAL(12,3) NOT NULL,
     "reason" TEXT NOT NULL,
     "reference_id" TEXT,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "stock_ledger_pkey" PRIMARY KEY ("id")
@@ -288,8 +299,11 @@ CREATE TABLE "parties"."parties" (
     "name" TEXT NOT NULL,
     "email" TEXT,
     "phone" TEXT,
+    "address" TEXT,
     "tax_id" TEXT,
     "type" "parties"."PartyType" NOT NULL DEFAULT 'CUSTOMER',
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
     "account_id" UUID,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -359,6 +373,7 @@ CREATE TABLE "pricing"."item_prices" (
     "amount" DECIMAL(12,2) NOT NULL,
     "currency" VARCHAR(3) NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
     "starts_at" TIMESTAMP(3),
     "ends_at" TIMESTAMP(3),
     "priority" INTEGER NOT NULL DEFAULT 0,
@@ -569,25 +584,13 @@ CREATE INDEX "sessions_selected_business_id_expires_at_idx" ON "auth"."sessions"
 CREATE INDEX "item_categories_business_id_name_idx" ON "catalog"."item_categories"("business_id", "name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "item_categories_business_id_name_key" ON "catalog"."item_categories"("business_id", "name");
-
--- CreateIndex
 CREATE INDEX "item_collections_business_id_name_idx" ON "catalog"."item_collections"("business_id", "name");
-
--- CreateIndex
-CREATE UNIQUE INDEX "item_collections_business_id_name_key" ON "catalog"."item_collections"("business_id", "name");
 
 -- CreateIndex
 CREATE INDEX "item_collection_items_business_id_collection_id_idx" ON "catalog"."item_collection_items"("business_id", "collection_id");
 
 -- CreateIndex
 CREATE INDEX "item_collection_items_business_id_variant_id_idx" ON "catalog"."item_collection_items"("business_id", "variant_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "item_collection_items_collection_id_variant_id_key" ON "catalog"."item_collection_items"("collection_id", "variant_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "item_variants_business_id_sku_key" ON "catalog"."item_variants"("business_id", "sku");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "item_options_item_id_name_key" ON "catalog"."item_options"("item_id", "name");

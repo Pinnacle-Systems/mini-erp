@@ -178,10 +178,6 @@ export function ItemVariantFlatTable({
                     {row.isActive ? "Active" : "Inactive"}
                   </span>
                 </div>
-
-                {row.pending ? (
-                  <p className="text-[10px] font-semibold text-amber-700">Pending sync</p>
-                ) : null}
               </button>
             ) : (
               <div key={row.key} className="space-y-2 rounded-xl border border-border/70 bg-white p-3">
@@ -204,11 +200,6 @@ export function ItemVariantFlatTable({
                     {row.isActive ? "Active" : "Inactive"}
                   </span>
                 </div>
-
-                {row.pending ? (
-                  <p className="text-[10px] font-semibold text-amber-700">Pending sync</p>
-                ) : null}
-
                 {hasAction && mobileActionTrigger === "button" ? (
                   <div className="pt-1">
                     <Button
@@ -273,9 +264,6 @@ export function ItemVariantFlatTable({
                     >
                       {row.isActive ? "Active" : "Inactive"}
                     </span>
-                    {row.pending ? (
-                      <span className="text-[10px] font-semibold text-amber-700">Pending sync</span>
-                    ) : null}
                   </div>
                 </DenseTableCell>
                 {hasAction ? (

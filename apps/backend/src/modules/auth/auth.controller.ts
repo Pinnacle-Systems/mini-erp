@@ -1,6 +1,7 @@
 import { catchAsync } from "../../shared/utils/catchAsync.js";
 import { UnauthorizedError } from "../../shared/utils/errors.js";
 import { getClientIp } from "../../shared/utils/getIp.js";
+import { successResponse } from "../../shared/http/response-mappers.js";
 import authService, { REFRESH_TOKEN_EXPIRY_MS } from "./auth.service.js";
 import { SystemRole } from "../../../generated/prisma/enums.js";
 import {
@@ -14,6 +15,46 @@ import {
   getBusinessModulesFromLicense,
   setSessionSelectedBusiness,
 } from "../license/license.service.js";
+
+const toAuthTokenView = (input: {
+  token: string;
+  role: "USER" | "PLATFORM_ADMIN";
+  availableStores?: unknown[];
+}) =>
+  successResponse({
+    token: input.token,
+    role: input.role,
+    ...(input.availableStores ? { availableStores: input.availableStores } : {}),
+  });
+
+const toSelectedStoreView = (input: {
+  token: string;
+  tenantId: string;
+  memberRole: string;
+  modules: Record<string, boolean>;
+}) =>
+  successResponse({
+    role: SystemRole.USER,
+    tenantId: input.tenantId,
+    memberRole: input.memberRole,
+    token: input.token,
+    modules: input.modules,
+  });
+
+const toSessionView = (input: {
+  role: "USER" | "PLATFORM_ADMIN" | null;
+  identityId: string | null;
+  tenantId: string | null;
+  businesses: unknown[];
+  modules: Record<string, boolean> | null;
+}) =>
+  successResponse({
+    role: input.role,
+    identityId: input.identityId,
+    tenantId: input.tenantId,
+    businesses: input.businesses,
+    modules: input.modules,
+  });
 
 export const login = catchAsync(async (req, res) => {
   const { phone = "", password = "" } = req.body;
@@ -40,23 +81,21 @@ export const login = catchAsync(async (req, res) => {
   if (identity.system_role === SystemRole.PLATFORM_ADMIN) {
     const accessToken = await signAccessToken(identity, session);
 
-    return res.json({
-      success: true,
+    return res.json(toAuthTokenView({
       token: accessToken,
       role: SystemRole.PLATFORM_ADMIN,
-    });
+    }));
   }
 
   const tempToken = await signTempToken(identity, session);
 
   const businesses = await tenantService.getBusinessesForIdentity(identity.id);
 
-  res.json({
-    success: true,
+  res.json(toAuthTokenView({
     token: tempToken,
     role: SystemRole.USER,
     availableStores: businesses,
-  });
+  }));
 });
 
 export const logout = catchAsync(async (req, res) => {
@@ -72,7 +111,7 @@ export const logout = catchAsync(async (req, res) => {
     path: "/api/auth/refresh",
     maxAge: 0,
   });
-  res.json({ success: true });
+  res.json(successResponse());
 });
 
 export const refresh = catchAsync(async (req, res) => {
@@ -96,11 +135,10 @@ export const refresh = catchAsync(async (req, res) => {
   if (session.identity.system_role === SystemRole.PLATFORM_ADMIN) {
     const accessToken = await signAccessToken(session.identity, session);
 
-    return res.json({
-      success: true,
+    return res.json(toAuthTokenView({
       token: accessToken,
       role: SystemRole.PLATFORM_ADMIN,
-    });
+    }));
   }
 
   const { currentBusinessId } = (req.body ?? {}) as { currentBusinessId?: string };
@@ -118,23 +156,21 @@ export const refresh = catchAsync(async (req, res) => {
       memberRole: member.role,
     });
 
-    return res.json({
-      success: true,
+    return res.json(toAuthTokenView({
       token,
       role: SystemRole.USER,
-    });
+    }));
   }
 
   const tempToken = await signTempToken(session.identity, session);
 
   const businesses = await tenantService.getBusinessesForIdentity(session.identity.id);
 
-  res.json({
-    success: true,
+  res.json(toAuthTokenView({
     token: tempToken,
     role: SystemRole.USER,
     availableStores: businesses,
-  });
+  }));
 });
 
 export const selectStore = catchAsync(async (req, res) => {
@@ -178,14 +214,14 @@ export const selectStore = catchAsync(async (req, res) => {
   );
   const modules = await getBusinessModulesFromLicense(businessId);
 
-  res.json({
-    success: true,
-    role: SystemRole.USER,
-    tenantId: businessId,
-    memberRole: member.role,
-    token: accessToken,
-    modules,
-  });
+  res.json(
+    toSelectedStoreView({
+      token: accessToken,
+      tenantId: businessId,
+      memberRole: member.role,
+      modules,
+    }),
+  );
 });
 
 export const getMe = catchAsync(async (req, res) => {
@@ -210,13 +246,19 @@ export const getMe = catchAsync(async (req, res) => {
     await setSessionSelectedBusiness(payload.sid, tenantId).catch(() => undefined);
   }
   const modules = tenantId ? await getBusinessModulesFromLicense(tenantId) : null;
+  const role =
+    payload.systemRole === SystemRole.USER || payload.systemRole === SystemRole.PLATFORM_ADMIN
+      ? payload.systemRole
+      : null;
+  const identityId = typeof payload.sub === "string" ? payload.sub : null;
 
-  res.json({
-    success: true,
-    role: payload.systemRole ?? null,
-    identityId: payload.sub ?? null,
-    tenantId,
-    businesses,
-    modules,
-  });
+  res.json(
+    toSessionView({
+      role,
+      identityId,
+      tenantId,
+      businesses,
+      modules,
+    }),
+  );
 });

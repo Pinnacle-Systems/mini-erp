@@ -43,6 +43,28 @@ class SyncDatabase extends Dexie {
 
 export const syncDb = new SyncDatabase();
 
+const normalizeEntityStateData = (
+  delta: SyncDelta,
+  existingData?: Record<string, unknown>,
+) => {
+  const base =
+    delta.data && typeof delta.data === "object" && !Array.isArray(delta.data)
+      ? { ...delta.data }
+      : {};
+  const merged = delta.op === "delete" ? { ...(existingData ?? {}), ...base } : base;
+
+  return {
+    ...merged,
+    isActive:
+      delta.op === "delete"
+        ? false
+        : typeof merged.isActive === "boolean"
+          ? merged.isActive
+          : true,
+    deletedAt: delta.op === "delete" ? delta.serverTimestamp : null,
+  };
+};
+
 export const queueMutation = async (tenantId: string, mutation: SyncMutation) => {
   const now = new Date().toISOString();
   await syncDb.outbox.put({
@@ -65,7 +87,7 @@ export const applyDeltas = async (tenantId: string, deltas: SyncDelta[]) => {
           tenantId,
           entity: delta.entity,
           entityId: delta.entityId,
-          data: existing?.data ?? {},
+          data: normalizeEntityStateData(delta, existing?.data),
           deletedAt: delta.serverTimestamp,
           serverVersion: delta.serverVersion,
           updatedAt: delta.serverTimestamp,
@@ -77,7 +99,7 @@ export const applyDeltas = async (tenantId: string, deltas: SyncDelta[]) => {
         tenantId,
         entity: delta.entity,
         entityId: delta.entityId,
-        data: delta.data,
+        data: normalizeEntityStateData(delta),
         serverVersion: delta.serverVersion,
         updatedAt: delta.serverTimestamp
       });

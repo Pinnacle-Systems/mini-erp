@@ -1,5 +1,5 @@
 import { Eye, RefreshCw, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
 import { Input } from "../atoms/Input";
@@ -219,8 +219,17 @@ export function BusinessManagementListView({
                       {business.name}
                     </p>
                   </td>
-                  <td className="px-2 py-0 align-middle text-xs text-foreground/90">
-                    {ownerDisplay}
+                  <td className="px-2 py-0 align-middle text-xs">
+                    {business.ownerId ? (
+                      <Link
+                        to={`/app/users/${business.ownerId}`}
+                        className="text-[#24507e] underline underline-offset-2 transition hover:text-[#1f4167]"
+                      >
+                        {ownerDisplay}
+                      </Link>
+                    ) : (
+                      <span className="text-foreground/90">{ownerDisplay}</span>
+                    )}
                   </td>
                   <td className="px-2 py-0 align-middle text-xs text-foreground/90">
                     {(business.businessType || "-") + " / " + (business.businessCategory || "-")}

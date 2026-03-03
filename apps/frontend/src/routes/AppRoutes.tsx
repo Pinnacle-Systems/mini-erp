@@ -12,6 +12,7 @@ import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/bu
 import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
 import { CategoriesPage, CollectionsPage, PricingPage } from "../pages/catalog";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
+import { AddCustomerPage, CustomerDetailsPage, CustomersPage } from "../pages/people";
 import { AppFeaturePlaceholderPage, DataSyncAppPage, ItemSyncAppPage } from "../pages/shell/UserAppPages";
 import { AdjustmentsPage, HistoryPage, LevelsPage } from "../pages/stock";
 import { OfflinePage } from "../pages/system";
@@ -36,7 +37,9 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
   const shouldShowUserBack =
     !isPlatformAdmin &&
     (/^\/app\/items\/new$/.test(location.pathname) ||
-      /^\/app\/items\/[^/]+$/.test(location.pathname));
+      /^\/app\/items\/[^/]+$/.test(location.pathname) ||
+      /^\/app\/customers\/new$/.test(location.pathname) ||
+      /^\/app\/customers\/[^/]+$/.test(location.pathname));
   const headerContext = (() => {
     if (!isPlatformAdmin) return null;
     const { pathname } = location;
@@ -194,7 +197,9 @@ export function AppRoutes() {
                 <Route path="stock-levels" element={<LevelsPage />} />
                 <Route path="stock-adjustments" element={<AdjustmentsPage />} />
                 <Route path="stock-history" element={<HistoryPage />} />
-                <Route path="customers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Customers" />} />
+                <Route path="customers" element={<CustomersPage />} />
+                <Route path="customers/new" element={<AddCustomerPage />} />
+                <Route path="customers/:customerId" element={<CustomerDetailsPage />} />
                 <Route path="customer-groups" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />} />
                 <Route path="suppliers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Suppliers" />} />
                 <Route path="promo-rules" element={<AppFeaturePlaceholderPage sectionTitle="Promotions" appLabel="Rules" />} />

@@ -6,6 +6,7 @@ import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prisma } from "../../lib/prisma.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
+import { successResponse } from "../../shared/http/response-mappers.js";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../shared/utils/errors.js";
 import {
   getBusinessModulesFromLicense,
@@ -120,6 +121,118 @@ const removeLocalLogoFile = async (logoPath: string | null | undefined) => {
   await fs.unlink(absolutePath).catch(() => undefined);
 };
 
+const toIdentitySummaryView = (identity: {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+} | null | undefined) => {
+  if (!identity) return null;
+
+  return {
+    id: identity.id,
+    name: identity.name,
+    email: identity.email,
+    phone: identity.phone,
+  };
+};
+
+const toAdminBusinessView = (
+  business: {
+    id: string;
+    name: string;
+    owner_id: string;
+    phone_number: string | null;
+    gstin: string | null;
+    email: string | null;
+    business_type: string | null;
+    business_category: string | null;
+    state: string | null;
+    pincode: string | null;
+    address: string | null;
+    logo: string | null;
+    deleted_at?: Date | null;
+  },
+  options: {
+    owner?: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+    } | null;
+    license?: ReturnType<typeof toLicenseView>;
+    modules?: Awaited<ReturnType<typeof getBusinessModulesFromLicense>>;
+  } = {},
+) => ({
+  id: business.id,
+  name: business.name,
+  ownerId: business.owner_id,
+  phoneNumber: business.phone_number,
+  gstin: business.gstin,
+  email: business.email,
+  businessType: business.business_type,
+  businessCategory: business.business_category,
+  state: business.state,
+  pincode: business.pincode,
+  address: business.address,
+  logo: business.logo,
+  ...(business.deleted_at !== undefined ? { deletedAt: business.deleted_at } : {}),
+  ...(options.owner !== undefined ? { owner: toIdentitySummaryView(options.owner) } : {}),
+  ...(options.license !== undefined ? { license: options.license } : {}),
+  ...(options.modules !== undefined ? { modules: options.modules } : {}),
+});
+
+const toAdminUserMembershipView = (membership: {
+  business_id: string;
+  role: string;
+  business?: {
+    name: string | null;
+    deleted_at: Date | null;
+  } | null;
+}) => ({
+  businessId: membership.business_id,
+  businessName: membership.business?.name ?? "Unknown business",
+  businessDeletedAt: membership.business?.deleted_at ?? null,
+  role: membership.role,
+});
+
+const toAdminUserView = (
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    system_role: string;
+    deleted_at: Date | null;
+    updated_at: Date;
+    created_at?: Date;
+  },
+  options: {
+    businessCount?: number;
+    memberships?: Array<{
+      business_id: string;
+      role: string;
+      business?: {
+        name: string | null;
+        deleted_at: Date | null;
+      } | null;
+    }>;
+  } = {},
+) => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  phone: user.phone,
+  systemRole: user.system_role,
+  deletedAt: user.deleted_at,
+  updatedAt: user.updated_at,
+  ...(user.created_at ? { createdAt: user.created_at } : {}),
+  ...(options.businessCount !== undefined ? { businessCount: options.businessCount } : {}),
+  ...(options.memberships !== undefined
+    ? { memberships: options.memberships.map(toAdminUserMembershipView) }
+    : {}),
+});
+
 export const listStores = catchAsync(async (req, res) => {
   assertPlatformAdmin(req);
 
@@ -161,11 +274,10 @@ export const listStores = catchAsync(async (req, res) => {
 
     ownerIdentityIds = owners.map((owner) => owner.id);
     if (ownerIdentityIds.length === 0) {
-      return res.json({
-        success: true,
+      return res.json(successResponse({
         businesses: [],
         pagination: { page, limit, total: 0, totalPages: 0 },
-      });
+      }));
     }
   }
 
@@ -200,32 +312,20 @@ export const listStores = catchAsync(async (req, res) => {
   });
   const ownerById = new Map(owners.map((owner) => [owner.id, owner]));
 
-  res.json({
-    success: true,
-    businesses: businesses.map((business) => ({
-      id: business.id,
-      name: business.name,
-      ownerId: business.owner_id,
-      phoneNumber: business.phone_number,
-      gstin: business.gstin,
-      email: business.email,
-      businessType: business.business_type,
-      businessCategory: business.business_category,
-      state: business.state,
-      pincode: business.pincode,
-      address: business.address,
-      logo: business.logo,
-      deletedAt: business.deleted_at,
-      license: toLicenseView(business.licenses[0] ?? null),
-      owner: ownerById.get(business.owner_id) ?? null,
-    })),
+  res.json(successResponse({
+    businesses: businesses.map((business) =>
+      toAdminBusinessView(business, {
+        license: toLicenseView(business.licenses[0] ?? null),
+        owner: ownerById.get(business.owner_id) ?? null,
+      }),
+    ),
     pagination: {
       page,
       limit,
       total,
       totalPages: Math.ceil(total / limit),
     },
-  });
+  }));
 });
 
 export const listUsers = catchAsync(async (req, res) => {
@@ -300,25 +400,19 @@ export const listUsers = catchAsync(async (req, res) => {
     );
   }
 
-  res.json({
-    success: true,
-    users: users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      systemRole: user.system_role,
-      deletedAt: user.deleted_at,
-      updatedAt: user.updated_at,
-      businessCount: businessCounts.get(user.id) ?? 0,
-    })),
+  res.json(successResponse({
+    users: users.map((user) =>
+      toAdminUserView(user, {
+        businessCount: businessCounts.get(user.id) ?? 0,
+      }),
+    ),
     pagination: {
       page,
       limit,
       total,
       totalPages: Math.ceil(total / limit),
     },
-  });
+  }));
 });
 
 export const createStore = catchAsync(async (req, res) => {
@@ -486,24 +580,11 @@ export const createStore = catchAsync(async (req, res) => {
     throw error;
   }
 
-  res.status(201).json({
-    success: true,
-    business: {
-      id: business.id,
-      name: business.name,
-      ownerId: business.owner_id,
-      phoneNumber: business.phone_number,
-      gstin: business.gstin,
-      email: business.email,
-      businessType: business.business_type,
-      businessCategory: business.business_category,
-      state: business.state,
-      pincode: business.pincode,
-      address: business.address,
-      logo: business.logo,
+  res.status(201).json(successResponse({
+    business: toAdminBusinessView(business, {
       license: toLicenseView(business.licenses[0] ?? null),
-    },
-  });
+    }),
+  }));
 });
 
 export const getUser = catchAsync(async (req, res) => {
@@ -544,25 +625,11 @@ export const getUser = catchAsync(async (req, res) => {
     orderBy: { business: { name: "asc" } },
   });
 
-  res.json({
-    success: true,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      systemRole: user.system_role,
-      deletedAt: user.deleted_at,
-      updatedAt: user.updated_at,
-      createdAt: user.created_at,
-      memberships: memberships.map((membership) => ({
-        businessId: membership.business_id,
-        businessName: membership.business?.name ?? "Unknown business",
-        businessDeletedAt: membership.business?.deleted_at ?? null,
-        role: membership.role,
-      })),
-    },
-  });
+  res.json(successResponse({
+    user: toAdminUserView(user, {
+      memberships,
+    }),
+  }));
 });
 
 export const updateUser = catchAsync(async (req, res) => {
@@ -625,25 +692,11 @@ export const updateUser = catchAsync(async (req, res) => {
     orderBy: { business: { name: "asc" } },
   });
 
-  res.json({
-    success: true,
-    user: {
-      id: updatedUser.id,
-      name: updatedUser.name,
-      email: updatedUser.email,
-      phone: updatedUser.phone,
-      systemRole: updatedUser.system_role,
-      deletedAt: updatedUser.deleted_at,
-      updatedAt: updatedUser.updated_at,
-      createdAt: updatedUser.created_at,
-      memberships: memberships.map((membership) => ({
-        businessId: membership.business_id,
-        businessName: membership.business?.name ?? "Unknown business",
-        businessDeletedAt: membership.business?.deleted_at ?? null,
-        role: membership.role,
-      })),
-    },
-  });
+  res.json(successResponse({
+    user: toAdminUserView(updatedUser, {
+      memberships,
+    }),
+  }));
 });
 
 export const lookupOwners = catchAsync(async (req, res) => {
@@ -674,10 +727,11 @@ export const lookupOwners = catchAsync(async (req, res) => {
     },
   });
 
-  res.json({
-    success: true,
-    owners,
-  });
+  res.json(successResponse({
+    owners: owners
+      .map((owner) => toIdentitySummaryView(owner))
+      .filter((owner) => Boolean(owner)),
+  }));
 });
 
 export const getStore = catchAsync(async (req, res) => {
@@ -718,27 +772,13 @@ export const getStore = catchAsync(async (req, res) => {
     select: { id: true, name: true, email: true, phone: true },
   });
 
-  res.json({
-    success: true,
-    business: {
-      id: business.id,
-      name: business.name,
-      ownerId: business.owner_id,
-      phoneNumber: business.phone_number,
-      gstin: business.gstin,
-      email: business.email,
-      businessType: business.business_type,
-      businessCategory: business.business_category,
-      state: business.state,
-      pincode: business.pincode,
-      address: business.address,
-      logo: business.logo,
-      deletedAt: business.deleted_at,
-      owner: owner ?? null,
+  res.json(successResponse({
+    business: toAdminBusinessView(business, {
+      owner,
       modules: await getBusinessModulesFromLicense(business.id),
       license: toLicenseView(business.licenses[0] ?? null),
-    },
-  });
+    }),
+  }));
 });
 
 export const updateStore = catchAsync(async (req, res) => {
@@ -951,26 +991,12 @@ export const updateStore = catchAsync(async (req, res) => {
     throw error;
   }
 
-  res.json({
-    success: true,
-    business: {
-      id: business.id,
-      name: business.name,
-      ownerId: business.owner_id,
-      phoneNumber: business.phone_number,
-      gstin: business.gstin,
-      email: business.email,
-      businessType: business.business_type,
-      businessCategory: business.business_category,
-      state: business.state,
-      pincode: business.pincode,
-      address: business.address,
-      logo: business.logo,
-      deletedAt: business.deleted_at,
+  res.json(successResponse({
+    business: toAdminBusinessView(business, {
       modules: await getBusinessModulesFromLicense(business.id),
       license: toLicenseView(business.license),
-    },
-  });
+    }),
+  }));
 });
 
 export const deleteStore = catchAsync(async (req, res) => {
@@ -1002,9 +1028,7 @@ export const deleteStore = catchAsync(async (req, res) => {
     throw error;
   }
 
-  res.json({
-    success: true,
-  });
+  res.json(successResponse());
 });
 
 export const uploadBusinessLogo = catchAsync(async (req, res) => {
@@ -1060,10 +1084,9 @@ export const uploadBusinessLogo = catchAsync(async (req, res) => {
     data: { logo: publicPath },
   });
 
-  res.status(201).json({
-    success: true,
+  res.status(201).json(successResponse({
     logo: publicPath,
-  });
+  }));
 });
 
 export const removeBusinessLogo = catchAsync(async (req, res) => {
@@ -1086,7 +1109,5 @@ export const removeBusinessLogo = catchAsync(async (req, res) => {
     data: { logo: null },
   });
 
-  res.json({
-    success: true,
-  });
+  res.json(successResponse());
 });

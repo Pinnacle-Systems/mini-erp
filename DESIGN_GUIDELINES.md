@@ -69,9 +69,13 @@ Design should support long-term workflows in a small-business operations tool.
 - On bulk entry and bulk edit screens, primary actions should include the current affected-record count when it is known and materially helps users confirm scope before committing (for example `Save All (3)` or `Add selected (12)`).
 - Secondary actions should remain available but visually quieter.
 - Destructive actions should require deliberate intent.
+- In mobile card or list views, non-destructive open or view actions should default to tapping the full card surface only when that is the sole action available for the card, unless a feature-specific rule defines a different pattern.
 - In mobile card or list views, destructive actions must use an explicit action button. Do not trigger delete or remove actions from tapping the full card surface.
+- On list-management screens that include a primary create action, prefer a compact inline header action on desktop and a fixed bottom action button on mobile.
 - Loading, empty, and error states must always be explicit.
 - User-facing status should be tied to real system state, not optimistic wording that may be wrong.
+- In normal operational entity lists and detail screens, `Status` should map to business lifecycle state (`is_active` / `deleted_at` semantics exposed as `isActive` / `deletedAt`), not sync queue or transport state.
+- Sync queue or connection state should appear only in admin, diagnostics, utility, or clearly offline-specific UI, not as the default entity status label.
 
 ## Form Design
 
@@ -95,6 +99,7 @@ Design should support long-term workflows in a small-business operations tool.
 - Repeated records should use consistent structure and alignment.
 - Derived system state should be readable without requiring users to infer logic.
 - Lists should make it easy to spot outliers, pending states, and exceptions.
+- If a screen shows an entity `Status` column or badge, use the same lifecycle meaning consistently across modules unless a feature-specific section documents a different business meaning.
 
 ## Copy Guidelines
 
@@ -125,6 +130,7 @@ Design should support long-term workflows in a small-business operations tool.
 - Reuse existing design-system atoms and patterns before introducing new ones.
 - Use the atomic design system as the default UI implementation path.
 - Prefer design-system primitives and composed design-system components over direct low-level UI imports or ad hoc markup.
+- Reuse the shared filter-panel pattern (`app-filter-panel`, `app-filter-legend`, `app-filter-row`) for page-level search and filter controls on operational list screens instead of bespoke control stacks.
 - Use labeled plain inputs for page-level search and filter fields. Reserve leading-icon search inputs for lookup dialogs or dedicated search widgets, and apply that pattern consistently when used.
 - Remove unused design-system primitives and stale alternate patterns once they are no longer referenced.
 - New screens should feel like they belong to the current product.
@@ -177,6 +183,11 @@ When a feature needs design-specific rules, add a subsection here under a dedica
 - `## Admin`
 
 Keep those sections focused on stable rules that should apply to future work in that area.
+
+## People
+
+- The main customer management screen should use a dense desktop table as the default browse-and-select surface, with mobile allowed to fall back to compact stacked cards.
+- Customer creation and customer editing are explicit exceptions to the default small-record desktop batch-entry rule: use dedicated single-record pages at `customers/new` and `customers/:customerId`, then return users to the main customer table for browsing and selection.
 
 ## Inventory
 

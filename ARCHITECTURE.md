@@ -80,6 +80,23 @@ Implemented in:
 - `apps/frontend/src/features/sync/SyncProvider.tsx`
 - `apps/frontend/src/pages/catalog/PricingPage.tsx`
 
+## Synced Entity Lifecycle
+
+Synced entities should expose normalized lifecycle semantics in the sync contract.
+
+Rules:
+
+1. Sync payloads should expose lifecycle state in camelCase as `isActive` and `deletedAt`.
+2. `isActive` and `deletedAt` are the canonical entity-level lifecycle fields for synced records, even when the underlying database tables differ in how lifecycle is stored.
+3. Soft-deleted synced records should be represented by `isActive: false` and a non-null `deletedAt` value.
+4. Normal operational screens should derive entity status from these lifecycle fields, not from sync queue transport state.
+5. Sync transport state such as queued, pending, or offline remains a separate concern and should stay out of the entity lifecycle contract.
+
+Current `Party` rule:
+
+1. Customer and supplier lifecycle state is currently shared at the whole `Party` row level.
+2. A `Party` with `type = BOTH` does not have role-specific lifecycle fields yet, so deactivation or deletion applies to the shared row, not only one role projection.
+
 ## Frontend Page Organization
 
 Frontend pages should follow module ownership in the filesystem.
@@ -100,6 +117,29 @@ In `apps/backend/src/modules/sync/sync.service.ts`:
 1. Continue performing version checks and conflict detection on the server.
 2. Return structured rejection data at the exact point where the mutation is rejected.
 3. Do not require the frontend to infer business meaning from freeform text.
+
+## Backend Response Mapping
+
+Public backend JSON responses should be shaped at the controller or service boundary through explicit response mappers.
+
+Rules:
+
+1. Keep database and Prisma field access in snake_case where that matches the persisted model.
+2. Expose API and sync contracts in camelCase only.
+3. Do not pass raw Prisma records directly to `res.json(...)` for stable product responses.
+4. Use shared response helpers for common wrappers such as success envelopes, and keep feature-specific payload mappers close to the module that owns the contract.
+5. When a response contains nested business, user, or session data, map those nested objects explicitly instead of relying on selected database field names remaining safe by convention.
+
+Current shared helper:
+
+- `apps/backend/src/shared/http/response-mappers.ts`
+
+Current module-level mapper usage includes:
+
+- `apps/backend/src/modules/admin/admin.controller.ts`
+- `apps/backend/src/modules/auth/auth.controller.ts`
+- `apps/backend/src/modules/sync/sync.controller.ts`
+- `apps/backend/src/modules/tenant/tenant.service.ts`
 
 ## Frontend Rule
 

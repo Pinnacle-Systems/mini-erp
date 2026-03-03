@@ -147,7 +147,7 @@ export function BusinessManagementPanel({
   return (
     <Card className="h-auto lg:h-full lg:min-h-0">
       <CardContent
-        className={`relative ${isListView ? "space-y-0 lg:overflow-y-auto" : "space-y-2 lg:overflow-hidden"} lg:h-full lg:min-h-0`}
+        className={`relative ${isListView ? "space-y-2 lg:overflow-y-auto" : "space-y-2 lg:overflow-hidden"} lg:h-full lg:min-h-0`}
       >
         {isListView ? (
           <BusinessManagementListView

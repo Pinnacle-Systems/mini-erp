@@ -67,6 +67,7 @@ model ItemPrice {
   amount            Decimal   @db.Decimal(12, 2)
   currency          String    @db.VarChar(3)
   is_active         Boolean   @default(true)
+  deleted_at        DateTime?
   starts_at         DateTime?
   ends_at           DateTime?
   priority          Int       @default(0)

@@ -3,6 +3,47 @@ import tenantService from "../tenant/tenant.service.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
 import { ForbiddenError } from "../../shared/utils/errors.js";
 import { getBusinessModulesFromLicense } from "../license/license.service.js";
+import { successResponse } from "../../shared/http/response-mappers.js";
+
+const toPushView = (result: {
+  cursor: string;
+  acknowledgements: unknown[];
+}) =>
+  successResponse({
+    cursor: result.cursor,
+    acknowledgements: result.acknowledgements,
+  });
+
+const toPullView = (result: {
+  nextCursor: string;
+  deltas: unknown[];
+}) =>
+  successResponse({
+    nextCursor: result.nextCursor,
+    deltas: result.deltas,
+  });
+
+const toOptionDiscoveryView = (optionDiscovery: {
+  optionKeys: string[];
+  optionValuesByKey: Record<string, string[]>;
+}) =>
+  successResponse({
+    optionKeys: optionDiscovery.optionKeys,
+    optionValuesByKey: optionDiscovery.optionValuesByKey,
+  });
+
+const toItemCategoryDiscoveryView = (categories: Array<{ name: string; id: string }>) =>
+  successResponse({
+    categories: categories.map((category) => category.name),
+    entries: categories,
+  });
+
+const toItemPricesView = (result: Record<string, unknown>) => successResponse(result);
+
+const toItemPriceUpdateView = (price: Record<string, unknown>) =>
+  successResponse({
+    price,
+  });
 
 export const push = catchAsync(async (req, res) => {
   const { tenantId, mutations } = req.body;
@@ -13,11 +54,7 @@ export const push = catchAsync(async (req, res) => {
 
   const result = await syncService.processMutations(tenantId, req.user.id, mutations);
 
-  res.json({
-    success: true,
-    cursor: result.cursor,
-    acknowledgements: result.acknowledgements,
-  });
+  res.json(toPushView(result));
 });
 
 export const pull = catchAsync(async (req, res) => {
@@ -33,11 +70,7 @@ export const pull = catchAsync(async (req, res) => {
     Number(limit),
   );
 
-  res.json({
-    success: true,
-    nextCursor: result.nextCursor,
-    deltas: result.deltas,
-  });
+  res.json(toPullView(result));
 });
 
 export const optionKeys = catchAsync(async (req, res) => {
@@ -49,11 +82,7 @@ export const optionKeys = catchAsync(async (req, res) => {
 
   const optionDiscovery = await syncService.getOptionKeys(String(tenantId));
 
-  res.json({
-    success: true,
-    optionKeys: optionDiscovery.optionKeys,
-    optionValuesByKey: optionDiscovery.optionValuesByKey,
-  });
+  res.json(toOptionDiscoveryView(optionDiscovery));
 });
 
 export const itemCategories = catchAsync(async (req, res) => {
@@ -69,11 +98,7 @@ export const itemCategories = catchAsync(async (req, res) => {
     Number(limit),
   );
 
-  res.json({
-    success: true,
-    categories: categories.map((category) => category.name),
-    entries: categories,
-  });
+  res.json(toItemCategoryDiscoveryView(categories));
 });
 
 export const itemPrices = catchAsync(async (req, res) => {
@@ -100,10 +125,7 @@ export const itemPrices = catchAsync(async (req, res) => {
     limit: Number(limit),
   });
 
-  res.json({
-    success: true,
-    ...result,
-  });
+  res.json(toItemPricesView(result));
 });
 
 export const upsertItemPrice = catchAsync(async (req, res) => {
@@ -125,8 +147,5 @@ export const upsertItemPrice = catchAsync(async (req, res) => {
     baseVersion: typeof baseVersion === "number" ? baseVersion : undefined,
   });
 
-  res.json({
-    success: true,
-    price,
-  });
+  res.json(toItemPriceUpdateView(price));
 });
