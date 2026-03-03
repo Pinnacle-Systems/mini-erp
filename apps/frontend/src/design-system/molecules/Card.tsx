@@ -45,8 +45,20 @@ export function CardDescription({ className, children, ...props }: CardProps) {
 }
 
 export function CardContent({ className, children, ...props }: CardProps) {
+  const tokens = className?.split(/\s+/) ?? [];
+  const hasExplicitVerticalSpacing = tokens.some((token) => /(^|:)space-y-/.test(token));
+  const hasLayoutClass = tokens.some((token) =>
+    /(^|:)(grid|inline-grid|flex|inline-flex)$/.test(token),
+  );
+
   return (
-    <div className={cn("space-y-2.5 lg:space-y-2", className)} {...props}>
+    <div
+      className={cn(
+        hasExplicitVerticalSpacing || hasLayoutClass ? undefined : "space-y-2.5 lg:space-y-2",
+        className,
+      )}
+      {...props}
+    >
       {children}
     </div>
   );
