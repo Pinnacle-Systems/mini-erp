@@ -327,20 +327,37 @@ const normalizeCategory = (value: unknown) => {
 const ensureCategoryExists = async (tx, tenantId: string, category: string) => {
   const trimmed = category.trim();
   if (!trimmed) return;
-  const txAny = tx as any;
-  await txAny.itemCategory.upsert({
+  const existing = await tx.itemCategory.findFirst({
     where: {
-      business_id_name: {
-        business_id: tenantId,
-        name: trimmed,
-      },
-    },
-    update: {},
-    create: {
       business_id: tenantId,
       name: trimmed,
     },
+    select: {
+      id: true,
+      is_active: true,
+      deleted_at: true,
+    },
   });
+
+  if (!existing) {
+    await tx.itemCategory.create({
+      data: {
+        business_id: tenantId,
+        name: trimmed,
+      },
+    });
+    return;
+  }
+
+  if (!existing.is_active || existing.deleted_at) {
+    await tx.itemCategory.update({
+      where: { id: existing.id },
+      data: {
+        is_active: true,
+        deleted_at: null,
+      },
+    });
+  }
 };
 
 const buildItemForCreate = (payload) => {
