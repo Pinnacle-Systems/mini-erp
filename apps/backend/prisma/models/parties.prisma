@@ -9,6 +9,7 @@ enum PartyType {
 model Party {
   id                         String                @id @default(uuid()) @db.Uuid
   business_id                String                @db.Uuid
+  // Active party names are enforced unique per business by a partial unique index in SQL migrations.
   name                       String
   email                      String?
   phone                      String?

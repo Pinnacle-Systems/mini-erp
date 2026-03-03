@@ -2,8 +2,23 @@ import syncService from "./sync.service.js";
 import tenantService from "../tenant/tenant.service.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
 import { ForbiddenError } from "../../shared/utils/errors.js";
-import { getBusinessModulesFromLicense } from "../license/license.service.js";
+import {
+  getBusinessCapabilitiesFromLicense,
+  getBusinessModulesFromLicense,
+} from "../license/license.service.js";
 import { successResponse } from "../../shared/http/response-mappers.js";
+
+const getLicenseAccessFlags = async (tenantId: string) => {
+  const capabilities = await getBusinessCapabilitiesFromLicense(tenantId);
+  const capabilitySet = new Set(capabilities);
+
+  return {
+    canManageCustomers: capabilitySet.has("PARTIES_CUSTOMERS"),
+    canManageSuppliers: capabilitySet.has("PARTIES_SUPPLIERS"),
+    canManageProducts: capabilitySet.has("ITEM_PRODUCTS"),
+    canManageServices: capabilitySet.has("ITEM_SERVICES"),
+  };
+};
 
 const toPushView = (result: {
   cursor: string;
@@ -52,7 +67,10 @@ export const push = catchAsync(async (req, res) => {
     throw new ForbiddenError("Access denied");
   }
 
-  const result = await syncService.processMutations(tenantId, req.user.id, mutations);
+  const access = await getLicenseAccessFlags(String(tenantId));
+  const result = await syncService.processMutations(tenantId, req.user.id, mutations, {
+    ...access,
+  });
 
   res.json(toPushView(result));
 });
@@ -64,13 +82,27 @@ export const pull = catchAsync(async (req, res) => {
     throw new ForbiddenError("Access denied");
   }
 
+  const access = await getLicenseAccessFlags(String(tenantId));
   const result = await syncService.getDeltasSinceCursor(
     tenantId,
     String(cursor),
     Number(limit),
   );
 
-  res.json(toPullView(result));
+  res.json(
+    toPullView({
+      ...result,
+      deltas: result.deltas.filter((delta) => {
+        if (delta.entity === "customer" && !access.canManageCustomers) {
+          return false;
+        }
+        if (delta.entity === "supplier" && !access.canManageSuppliers) {
+          return false;
+        }
+        return true;
+      }),
+    }),
+  );
 });
 
 export const optionKeys = catchAsync(async (req, res) => {
@@ -78,6 +110,10 @@ export const optionKeys = catchAsync(async (req, res) => {
   const member = await tenantService.validateMembership(req.user.id, tenantId);
   if (!member) {
     throw new ForbiddenError("Access denied");
+  }
+  const access = await getLicenseAccessFlags(String(tenantId));
+  if (!access.canManageProducts && !access.canManageServices) {
+    throw new ForbiddenError("Item management is not enabled for this store license");
   }
 
   const optionDiscovery = await syncService.getOptionKeys(String(tenantId));
@@ -90,6 +126,10 @@ export const itemCategories = catchAsync(async (req, res) => {
   const member = await tenantService.validateMembership(req.user.id, tenantId);
   if (!member) {
     throw new ForbiddenError("Access denied");
+  }
+  const access = await getLicenseAccessFlags(String(tenantId));
+  if (!access.canManageProducts && !access.canManageServices) {
+    throw new ForbiddenError("Item management is not enabled for this store license");
   }
 
   const categories = await syncService.getItemCategories(
@@ -117,13 +157,17 @@ export const itemPrices = catchAsync(async (req, res) => {
   if (!modules.pricing) {
     throw new ForbiddenError("Pricing module is not enabled for this store license");
   }
+  const access = await getLicenseAccessFlags(String(tenantId));
+  if (!access.canManageProducts && !access.canManageServices) {
+    throw new ForbiddenError("Item management is not enabled for this store license");
+  }
 
   const result = await syncService.getItemPrices(String(tenantId), {
     q: typeof q === "string" ? q : undefined,
     includeInactive: Boolean(includeInactive),
     page: Number(page),
     limit: Number(limit),
-  });
+  }, access);
 
   res.json(toItemPricesView(result));
 });
@@ -139,13 +183,14 @@ export const upsertItemPrice = catchAsync(async (req, res) => {
   if (!modules.pricing) {
     throw new ForbiddenError("Pricing module is not enabled for this store license");
   }
+  const access = await getLicenseAccessFlags(String(tenantId));
 
   const price = await syncService.upsertItemPrice(String(tenantId), String(variantId), {
     amount,
     currency,
     actorUserId: req.user.id,
     baseVersion: typeof baseVersion === "number" ? baseVersion : undefined,
-  });
+  }, access);
 
   res.json(toItemPriceUpdateView(price));
 });

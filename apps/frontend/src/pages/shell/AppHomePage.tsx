@@ -26,7 +26,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useSessionStore, type BusinessModules } from "../../features/auth/session-business";
+import {
+  hasAssignedStoreCapability,
+  useSessionStore,
+  type BusinessCapability,
+  type BusinessModules,
+} from "../../features/auth/session-business";
 import { useLogoutFlow } from "../../features/auth/useLogoutFlow";
 import { useSyncActions } from "../../features/sync/SyncProvider";
 import { getPendingOutboxCount } from "../../features/sync/engine";
@@ -56,8 +61,10 @@ type UserAppId =
   | "sales-bills"
   | "sales-orders"
   | "sales-returns"
-  | "catalog-items"
-  | "catalog-pricing"
+  | "catalog-products"
+  | "catalog-services"
+  | "catalog-product-pricing"
+  | "catalog-service-pricing"
   | "catalog-categories"
   | "catalog-collections"
   | "stock-levels"
@@ -75,19 +82,23 @@ type UserAppId =
   | "admin-settings"
   | "admin-item-sync"
   | "admin-sync";
-type RoutableAppId = Exclude<UserAppId, "catalog-items">;
+type RoutableAppId = UserAppId;
 
 type UserFolderApp = {
   id: UserAppId;
   label: string;
   Icon: LucideIcon;
+  requiredAnyCapability?: BusinessCapability[];
 };
 
 const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
   "sales-bills": "sales-bills",
   "sales-orders": "sales-orders",
   "sales-returns": "sales-returns",
-  "catalog-pricing": "item-pricing",
+  "catalog-products": "products",
+  "catalog-services": "services",
+  "catalog-product-pricing": "product-pricing",
+  "catalog-service-pricing": "service-pricing",
   "catalog-categories": "item-categories",
   "catalog-collections": "item-collections",
   "stock-levels": "stock-levels",
@@ -127,16 +138,19 @@ const folders: Array<{
         id: "sales-bills",
         label: "Bills",
         Icon: HandCoins,
+        requiredAnyCapability: ["TXN_SALE_CREATE"],
       },
       {
         id: "sales-orders",
         label: "Orders",
         Icon: FileText,
+        requiredAnyCapability: ["TXN_SALE_CREATE"],
       },
       {
         id: "sales-returns",
         label: "Returns",
         Icon: Undo2,
+        requiredAnyCapability: ["TXN_SALE_RETURN"],
       },
     ],
   },
@@ -147,24 +161,40 @@ const folders: Array<{
     requiredModule: "catalog",
     apps: [
       {
-        id: "catalog-items",
-        label: "Items",
+        id: "catalog-products",
+        label: "Products",
         Icon: Package,
+        requiredAnyCapability: ["ITEM_PRODUCTS"],
       },
       {
-        id: "catalog-pricing",
-        label: "Pricing",
+        id: "catalog-services",
+        label: "Services",
+        Icon: Package,
+        requiredAnyCapability: ["ITEM_SERVICES"],
+      },
+      {
+        id: "catalog-product-pricing",
+        label: "Product Pricing",
         Icon: TicketPercent,
+        requiredAnyCapability: ["ITEM_PRODUCTS"],
+      },
+      {
+        id: "catalog-service-pricing",
+        label: "Service Pricing",
+        Icon: TicketPercent,
+        requiredAnyCapability: ["ITEM_SERVICES"],
       },
       {
         id: "catalog-categories",
         label: "Categories",
         Icon: Boxes,
+        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
       },
       {
         id: "catalog-collections",
         label: "Collections",
         Icon: PackageSearch,
+        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
       },
     ],
   },
@@ -200,16 +230,19 @@ const folders: Array<{
         id: "people-customers",
         label: "Customers",
         Icon: Users,
+        requiredAnyCapability: ["PARTIES_CUSTOMERS"],
       },
       {
         id: "people-groups",
         label: "Groups",
         Icon: UserRoundCog,
+        requiredAnyCapability: ["PARTIES_CUSTOMERS"],
       },
       {
         id: "people-suppliers",
         label: "Suppliers",
         Icon: ShoppingBag,
+        requiredAnyCapability: ["PARTIES_SUPPLIERS"],
       },
     ],
   },
@@ -272,6 +305,7 @@ const folders: Array<{
         id: "admin-item-sync",
         label: "Item Sync",
         Icon: Boxes,
+        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
       },
       {
         id: "admin-sync",
@@ -297,10 +331,17 @@ const landingQuickActions: Array<{
     Icon: HandCoins,
   },
   {
-    label: "Find Item",
-    description: "Open item catalog",
+    label: "Find Product",
+    description: "Open product catalog",
     folderId: "products",
-    appId: "catalog-items",
+    appId: "catalog-products",
+    Icon: Package,
+  },
+  {
+    label: "Find Service",
+    description: "Open service catalog",
+    folderId: "products",
+    appId: "catalog-services",
     Icon: Package,
   },
   {
@@ -356,11 +397,13 @@ export function AppHomePage() {
   const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
   const activeBusinessModules = useSessionStore((state) => state.activeBusinessModules);
-  const activeBusinessName = useMemo(
-    () =>
-      businesses.find((business) => business.id === activeStore)?.name ??
-      "No business selected",
+  const activeBusiness = useMemo(
+    () => businesses.find((business) => business.id === activeStore) ?? null,
     [activeStore, businesses],
+  );
+  const activeBusinessName = useMemo(
+    () => activeBusiness?.name ?? "No business selected",
+    [activeBusiness],
   );
   const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(null);
   const [pendingFolderId, setPendingFolderId] = useState<UserFolderId | null>(null);
@@ -381,11 +424,31 @@ export function AppHomePage() {
   );
   const visibleFolders = useMemo(
     () =>
-      folders.filter(
-        (folder) =>
-          !folder.requiredModule || enabledModules[folder.requiredModule],
-      ),
-    [enabledModules],
+      folders
+        .filter(
+          (folder) =>
+            !folder.requiredModule || enabledModules[folder.requiredModule],
+        )
+        .map((folder) => ({
+          ...folder,
+          apps: folder.apps.filter(
+            (app) =>
+              !app.requiredAnyCapability?.length ||
+              app.requiredAnyCapability.some((capability) =>
+                hasAssignedStoreCapability(activeBusiness, capability),
+              ),
+          ),
+        }))
+        .filter((folder) => folder.apps.length > 0),
+    [activeBusiness, enabledModules],
+  );
+  const visibleAppIds = useMemo(
+    () => new Set(visibleFolders.flatMap((folder) => folder.apps.map((app) => app.id))),
+    [visibleFolders],
+  );
+  const visibleLandingQuickActions = useMemo(
+    () => landingQuickActions.filter((action) => visibleAppIds.has(action.appId)),
+    [visibleAppIds],
   );
 
   const activeFolder = useMemo(
@@ -424,14 +487,12 @@ export function AppHomePage() {
     [mobileVisibleFolders, visibleFolders],
   );
 
-  const isItemsRoute = location.pathname.startsWith("/app/items");
   const routeDrivenAppId: UserAppId | null = useMemo(() => {
-    if (isItemsRoute) return "catalog-items";
     if (!location.pathname.startsWith("/app/")) return null;
     const appSegment = location.pathname.slice("/app/".length).split("/")[0] ?? "";
     if (!appSegment) return null;
     return APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null;
-  }, [isItemsRoute, location.pathname]);
+  }, [location.pathname]);
 
   const updateAppTabsOverflow = useCallback(() => {
     const container = appTabsScrollRef.current;
@@ -485,12 +546,12 @@ export function AppHomePage() {
 
   useEffect(() => {
     if (!pendingFolderId) return;
-    if (isItemsRoute || routeDrivenAppId) return;
+    if (routeDrivenAppId) return;
     queueMicrotask(() => {
       setActiveFolderId(pendingFolderId);
       setPendingFolderId(null);
     });
-  }, [isItemsRoute, pendingFolderId, routeDrivenAppId]);
+  }, [pendingFolderId, routeDrivenAppId]);
 
   useEffect(() => {
     const initialFrameId = window.requestAnimationFrame(() => {
@@ -580,16 +641,12 @@ export function AppHomePage() {
   }, [activeStore]);
 
   const handleAppSelect = (appId: UserAppId) => {
-    if (appId === "catalog-items") {
-      navigate("/app/items");
-      return;
-    }
     navigate(`/app/${APP_ROUTE_SEGMENT_BY_ID[appId]}`);
   };
 
   const handleFolderSelect = (folderId: UserFolderId) => {
     setShowSessionMenu(false);
-    if (isItemsRoute || routeDrivenAppId) {
+    if (routeDrivenAppId) {
       setPendingFolderId(folderId);
       navigate("/app");
       return;
@@ -608,8 +665,8 @@ export function AppHomePage() {
               Placeholder dashboard for <strong>{activeBusinessName}</strong>. Replace each card with live data as modules are implemented.
             </CardDescription>
           </CardHeader>
-            <CardContent className="grid gap-2 sm:grid-cols-3">
-              {landingQuickActions.map((action) => (
+          <CardContent className="grid gap-2 sm:grid-cols-3">
+              {visibleLandingQuickActions.map((action) => (
                 <LandingQuickActionButton
                   key={action.label}
                   type="button"
@@ -622,7 +679,7 @@ export function AppHomePage() {
                   }}
                 />
               ))}
-            </CardContent>
+          </CardContent>
           </Card>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:col-span-4">

@@ -8,7 +8,10 @@ import { Label } from "../../design-system/atoms/Label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../design-system/molecules/Card";
 import { ItemVariantFlatTable } from "../../design-system/organisms/ItemVariantFlatTable";
 import type { ItemVariantFlatRow } from "../../design-system/organisms/ItemVariantFlatTable";
-import { useSessionStore } from "../../features/auth/session-business";
+import {
+  hasAssignedStoreCapability,
+  useSessionStore,
+} from "../../features/auth/session-business";
 import {
   getLocalItemCollectionEntriesForStore,
   getLocalItemCollectionMembershipsForStore,
@@ -45,6 +48,7 @@ type CollectionBucket = {
 
 export function CollectionsPage() {
   const identityId = useSessionStore((state) => state.identityId);
+  const businesses = useSessionStore((state) => state.businesses);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const activeStore = useSessionStore((state) => state.activeStore);
   const [items, setItems] = useState<ItemDisplay[]>([]);
@@ -62,6 +66,20 @@ export function CollectionsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activeBusiness = useMemo(
+    () => businesses.find((business) => business.id === activeStore) ?? null,
+    [activeStore, businesses],
+  );
+  const filteredItems = useMemo(
+    () =>
+      items.filter((item) => {
+        if (item.itemType === "SERVICE") {
+          return hasAssignedStoreCapability(activeBusiness, "ITEM_SERVICES");
+        }
+        return hasAssignedStoreCapability(activeBusiness, "ITEM_PRODUCTS");
+      }),
+    [activeBusiness, items],
+  );
   const debouncedItemSearch = useDebouncedValue(itemSearchDraft, 250);
   const appliedItemSearch = (itemSearchDraft.trim().length === 0 ? "" : debouncedItemSearch)
     .trim()
@@ -135,7 +153,14 @@ export function CollectionsPage() {
   }, [activeStore]);
 
   const buckets = useMemo<CollectionBucket[]>(() => {
-    const itemById = new Map(items.map((item) => [item.entityId, item]));
+    const itemById = new Map(filteredItems.map((item) => [item.entityId, item]));
+    const membershipCountByCollectionId = memberships.reduce<Record<string, number>>(
+      (acc, membership) => {
+        acc[membership.collectionId] = (acc[membership.collectionId] ?? 0) + 1;
+        return acc;
+      },
+      {},
+    );
     const linksByCollectionId = memberships.reduce<Record<string, CollectionItemGroup[]>>(
       (acc, membership) => {
         const item = itemById.get(membership.itemId);
@@ -164,8 +189,12 @@ export function CollectionsPage() {
           left.item.name.localeCompare(right.item.name),
         ),
       }))
+      .filter(
+        (collection) =>
+          collection.items.length > 0 || (membershipCountByCollectionId[collection.id] ?? 0) === 0,
+      )
       .sort((left, right) => left.name.localeCompare(right.name));
-  }, [collections, items, memberships]);
+  }, [collections, filteredItems, memberships]);
 
   const activeBucket =
     buckets.find((bucket) => bucket.id === selectedCollectionId) ?? buckets[0] ?? null;
@@ -370,14 +399,14 @@ export function CollectionsPage() {
   };
 
   const addableItems = useMemo(() => {
-    return items
+    return filteredItems
       .filter((item) => {
         const activeCount = activeVariantIdsByItemId.get(item.entityId)?.size ?? 0;
         const totalCount = Math.max(item.variantCount, 1);
         return activeCount < totalCount;
       })
       .sort((left, right) => left.name.localeCompare(right.name));
-  }, [activeVariantIdsByItemId, items]);
+  }, [activeVariantIdsByItemId, filteredItems]);
 
   useEffect(() => {
     if (!activeStore) return;

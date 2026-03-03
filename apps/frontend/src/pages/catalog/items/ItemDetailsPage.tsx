@@ -52,6 +52,13 @@ type DraftItem = {
   variants: DraftVariant[];
 };
 
+type ItemDetailsPageProps = {
+  itemType: "PRODUCT" | "SERVICE";
+  title: string;
+  singularLabel: string;
+  routeBasePath: string;
+};
+
 const isItemActive = (variants: DraftVariant[]) => variants.some((variant) => variant.isActive);
 
 const sortUnique = (values: string[]) =>
@@ -134,7 +141,12 @@ const toDraft = (item: ItemDetailDisplay): DraftItem => ({
   })),
 });
 
-export function ItemDetailsPage() {
+export function ItemDetailsPage({
+  itemType: forcedItemType,
+  title,
+  singularLabel,
+  routeBasePath,
+}: ItemDetailsPageProps) {
   const navigate = useNavigate();
   const { itemId = "" } = useParams();
   const identityId = useSessionStore((state) => state.identityId);
@@ -159,6 +171,13 @@ export function ItemDetailsPage() {
         setIsEditing(false);
         return;
       }
+      if (detail.itemType !== forcedItemType) {
+        navigate(
+          detail.itemType === "PRODUCT" ? `/app/products/${itemId}` : `/app/services/${itemId}`,
+          { replace: true },
+        );
+        return;
+      }
       const draft = toDraft(detail);
       setItem(draft);
       setInitialItem(draft);
@@ -168,7 +187,7 @@ export function ItemDetailsPage() {
       setOptionValueDraft("");
       setSaveError(null);
     });
-  }, [activeStore, itemId]);
+  }, [activeStore, forcedItemType, itemId, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -345,7 +364,7 @@ export function ItemDetailsPage() {
       await syncOnce(activeStore);
       const refreshedDetail = await getLocalItemDetailForDisplay(activeStore, nextItem.id);
       if (!refreshedDetail) {
-        navigate("/app/items", { replace: true });
+        navigate(routeBasePath, { replace: true });
         return;
       }
       const refreshedDraft = toDraft(refreshedDetail);
@@ -404,7 +423,7 @@ export function ItemDetailsPage() {
       navigate(-1);
       return;
     }
-    navigate("/app/items");
+    navigate(routeBasePath);
   };
 
   if (!item) {
@@ -425,9 +444,9 @@ export function ItemDetailsPage() {
         <CardHeader className="pb-1.5 lg:shrink-0">
           <div className="flex flex-wrap items-start justify-between gap-1.5">
             <div>
-              <CardTitle className="text-base">Manage Item</CardTitle>
+              <CardTitle className="text-base">Manage {singularLabel}</CardTitle>
               <CardDescription className="text-xs">
-                Edit item details and variants.
+                Edit {singularLabel.toLowerCase()} details and variants.
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -543,20 +562,7 @@ export function ItemDetailsPage() {
             </div>
             <div className="grid gap-1 lg:col-span-2">
               <Label>Type</Label>
-              <Select
-                className={`${DENSE_SELECT_CLASS} w-full`}
-                value={item.itemType}
-                disabled={!isEditing || loading}
-                onChange={(event) =>
-                  setItem({
-                    ...item,
-                    itemType: event.target.value as "PRODUCT" | "SERVICE",
-                  })
-                }
-              >
-                <option value="PRODUCT">Product</option>
-                <option value="SERVICE">Service</option>
-              </Select>
+              <Input className={DENSE_INPUT_CLASS} value={title} disabled />
             </div>
           </div>
 

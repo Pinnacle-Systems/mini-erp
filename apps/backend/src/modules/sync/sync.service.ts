@@ -56,6 +56,7 @@ class SyncRejectionError extends AppError {
 
 const SUPPORTED_ENTITIES = new Set([
   "customer",
+  "supplier",
   "item",
   "item_variant",
   "item_category",
@@ -207,6 +208,167 @@ const toPrismaSyncOperation = (op) => {
   if (op === "create") return "CREATE";
   if (op === "update") return "UPDATE";
   return "DELETE";
+};
+
+const hasItemCapabilityForType = (
+  itemType: "PRODUCT" | "SERVICE",
+  options: {
+    canManageProducts?: boolean;
+    canManageServices?: boolean;
+  },
+) => {
+  if (itemType === "SERVICE") {
+    return Boolean(options.canManageServices);
+  }
+  return Boolean(options.canManageProducts);
+};
+
+const getItemTypePermissionMessage = (itemType: "PRODUCT" | "SERVICE") =>
+  itemType === "SERVICE"
+    ? "Service management is not enabled for this store license"
+    : "Product management is not enabled for this store license";
+
+const resolveRequestedItemType = (payload: unknown): "PRODUCT" | "SERVICE" => {
+  const raw =
+    payload && typeof payload === "object" ? (payload as Record<string, unknown>).itemType : undefined;
+  return raw === "SERVICE" ? "SERVICE" : "PRODUCT";
+};
+
+const resolveExistingItemType = async (tenantId: string, itemId: string) => {
+  const item = await prismaAny.item.findUnique({
+    where: { id: itemId },
+    select: {
+      business_id: true,
+      item_type: true,
+    },
+  });
+  if (!item || item.business_id !== tenantId) {
+    return null;
+  }
+  return item.item_type === "SERVICE" ? "SERVICE" : "PRODUCT";
+};
+
+const resolveVariantItemType = async (tenantId: string, variantId: string) => {
+  const variant = await prismaAny.itemVariant.findUnique({
+    where: { id: variantId },
+    select: {
+      business_id: true,
+      item: {
+        select: {
+          business_id: true,
+          item_type: true,
+        },
+      },
+    },
+  });
+  if (
+    !variant ||
+    variant.business_id !== tenantId ||
+    !variant.item ||
+    variant.item.business_id !== tenantId
+  ) {
+    return null;
+  }
+  return variant.item.item_type === "SERVICE" ? "SERVICE" : "PRODUCT";
+};
+
+const assertItemMutationCapability = async (
+  tenantId: string,
+  mutation,
+  options: {
+    canManageProducts?: boolean;
+    canManageServices?: boolean;
+  },
+) => {
+  if (mutation.entity === "item") {
+    if (mutation.op === "create") {
+      const requestedType = resolveRequestedItemType(mutation.payload);
+      if (!hasItemCapabilityForType(requestedType, options)) {
+        throw permissionDeniedError(
+          getItemTypePermissionMessage(requestedType),
+          mutation.entity,
+          mutation.entityId,
+        );
+      }
+      return;
+    }
+
+    const currentType = await resolveExistingItemType(tenantId, mutation.entityId);
+    if (currentType && !hasItemCapabilityForType(currentType, options)) {
+      throw permissionDeniedError(
+        getItemTypePermissionMessage(currentType),
+        mutation.entity,
+        mutation.entityId,
+      );
+    }
+    if (mutation.op === "update" && currentType) {
+      const requestedType = resolveRequestedItemType(mutation.payload);
+      if (requestedType !== currentType && !hasItemCapabilityForType(requestedType, options)) {
+        throw permissionDeniedError(
+          getItemTypePermissionMessage(requestedType),
+          mutation.entity,
+          mutation.entityId,
+        );
+      }
+    }
+    return;
+  }
+
+  if (mutation.entity === "item_variant") {
+    const variantPayload =
+      mutation.payload && typeof mutation.payload === "object"
+        ? (mutation.payload as Record<string, unknown>)
+        : {};
+    const parentItemId =
+      mutation.op === "create" && typeof variantPayload.itemId === "string"
+        ? variantPayload.itemId
+        : null;
+    const itemType = parentItemId
+      ? await resolveExistingItemType(tenantId, parentItemId)
+      : await resolveVariantItemType(tenantId, mutation.entityId);
+    if (itemType && !hasItemCapabilityForType(itemType, options)) {
+      throw permissionDeniedError(
+        getItemTypePermissionMessage(itemType),
+        mutation.entity,
+        mutation.entityId,
+      );
+    }
+    return;
+  }
+
+  if (mutation.entity === "item_price") {
+    const pricePayload =
+      mutation.payload && typeof mutation.payload === "object"
+        ? (mutation.payload as Record<string, unknown>)
+        : {};
+    const variantId =
+      typeof pricePayload.variantId === "string" && pricePayload.variantId
+        ? pricePayload.variantId
+        : mutation.entityId;
+    const itemType = await resolveVariantItemType(tenantId, variantId);
+    if (itemType && !hasItemCapabilityForType(itemType, options)) {
+      throw permissionDeniedError(
+        getItemTypePermissionMessage(itemType),
+        mutation.entity,
+        mutation.entityId,
+      );
+    }
+    return;
+  }
+
+  if (
+    (mutation.entity === "item_category" ||
+      mutation.entity === "item_collection" ||
+      mutation.entity === "item_collection_item") &&
+    !options.canManageProducts &&
+    !options.canManageServices
+  ) {
+    throw permissionDeniedError(
+      "Item management is not enabled for this store license",
+      mutation.entity,
+      mutation.entityId,
+    );
+  }
 };
 
 const toSyncOperation = (op) => {
@@ -392,6 +554,44 @@ const assertUniqueActiveItemName = async (
 
   if (existing) {
     throw validationError("Item name already exists in this business.", entity, entityId, {
+      field: "name",
+      conflictingEntityId: existing.id,
+    });
+  }
+};
+
+const assertUniqueActivePartyName = async (
+  tx,
+  tenantId: string,
+  name: string,
+  entity: string,
+  entityId: string,
+  excludePartyId?: string,
+) => {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+
+  const existing = await tx.party.findFirst({
+    where: {
+      business_id: tenantId,
+      name: trimmed,
+      is_active: true,
+      deleted_at: null,
+      ...(excludePartyId
+        ? {
+            id: {
+              not: excludePartyId,
+            },
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existing) {
+    throw validationError("Party name already exists in this business.", entity, entityId, {
       field: "name",
       conflictingEntityId: existing.id,
     });
@@ -786,6 +986,23 @@ const toCustomerSnapshot = (customer) => {
   };
 };
 
+const toSupplierSnapshot = (supplier) => {
+  return {
+    id: supplier.id,
+    businessId: supplier.business_id,
+    name: supplier.name,
+    phone: supplier.phone ?? null,
+    email: supplier.email ?? null,
+    address: supplier.address ?? null,
+    gstNo: supplier.tax_id ?? null,
+    type: supplier.type,
+    isActive: supplier.is_active ?? true,
+    deletedAt: toDeletedAtValue(supplier.deleted_at),
+    createdAt: supplier.created_at.toISOString(),
+    updatedAt: supplier.updated_at.toISOString(),
+  };
+};
+
 const normalizeOptionValuesForCompare = (value: Record<string, string>) => {
   return Object.fromEntries(
     Object.entries(value)
@@ -1009,10 +1226,19 @@ const applyCustomerMutation = async (tx, tenantId, mutation) => {
   const payload = sanitizeCustomerPayload(mutation.payload);
 
   if (mutation.op === "create") {
+    const current = await txAny.party.findUnique({
+      where: { id: mutation.entityId },
+    });
+    if (current && current.business_id === tenantId) {
+      const promoteMutation = { ...mutation, op: "update" };
+      return applyCustomerMutation(tx, tenantId, promoteMutation);
+    }
+
     const name = typeof payload.name === "string" ? payload.name.trim() : "";
     if (!name) {
       throw validationError("Customer name is required", mutation.entity, mutation.entityId);
     }
+    await assertUniqueActivePartyName(tx, tenantId, name, mutation.entity, mutation.entityId);
 
     const created = await txAny.party.create({
       data: {
@@ -1036,7 +1262,7 @@ const applyCustomerMutation = async (tx, tenantId, mutation) => {
     where: { id: mutation.entityId },
   });
 
-  if (!current || current.business_id !== tenantId || current.type === "SUPPLIER") {
+  if (!current || current.business_id !== tenantId) {
     if (mutation.op === "delete") {
       return null;
     }
@@ -1044,6 +1270,18 @@ const applyCustomerMutation = async (tx, tenantId, mutation) => {
   }
 
   if (mutation.op === "delete") {
+    if (current.type === "BOTH") {
+      const demoted = await txAny.party.update({
+        where: { id: mutation.entityId },
+        data: {
+          type: "SUPPLIER",
+          is_active: true,
+          deleted_at: null,
+        },
+      });
+      return toSupplierSnapshot(demoted);
+    }
+
     await txAny.party.update({
       where: { id: mutation.entityId },
       data: {
@@ -1055,12 +1293,14 @@ const applyCustomerMutation = async (tx, tenantId, mutation) => {
   }
 
   const patch: Record<string, unknown> = {};
+  let nextName = current.name;
   if (typeof payload.name === "string") {
     const name = payload.name.trim();
     if (!name) {
       throw validationError("Customer name is required", mutation.entity, mutation.entityId);
     }
     patch.name = name;
+    nextName = name;
   }
   if (payload.phone !== undefined) {
     patch.phone = toNullableTrimmedValue(payload.phone);
@@ -1074,11 +1314,27 @@ const applyCustomerMutation = async (tx, tenantId, mutation) => {
   if (payload.gstNo !== undefined) {
     patch.tax_id = toNullableTrimmedValue(payload.gstNo);
   }
-  if (current.type !== "BOTH") {
+  if (current.type === "SUPPLIER") {
+    patch.type = "BOTH";
+  } else if (current.type !== "BOTH") {
     patch.type = "CUSTOMER";
   }
   patch.is_active = true;
   patch.deleted_at = null;
+
+  if (
+    typeof nextName === "string" &&
+    (patch.name !== undefined || current.deleted_at || current.is_active === false)
+  ) {
+    await assertUniqueActivePartyName(
+      tx,
+      tenantId,
+      nextName,
+      mutation.entity,
+      mutation.entityId,
+      current.id,
+    );
+  }
 
   const updated =
     Object.keys(patch).length > 0
@@ -1089,6 +1345,132 @@ const applyCustomerMutation = async (tx, tenantId, mutation) => {
       : current;
 
   return toCustomerSnapshot(updated);
+};
+
+const applySupplierMutation = async (tx, tenantId, mutation) => {
+  const txAny = tx as any;
+  const payload = sanitizeCustomerPayload(mutation.payload);
+
+  if (mutation.op === "create") {
+    const current = await txAny.party.findUnique({
+      where: { id: mutation.entityId },
+    });
+    if (current && current.business_id === tenantId) {
+      const promoteMutation = { ...mutation, op: "update" };
+      return applySupplierMutation(tx, tenantId, promoteMutation);
+    }
+
+    const name = typeof payload.name === "string" ? payload.name.trim() : "";
+    if (!name) {
+      throw validationError("Supplier name is required", mutation.entity, mutation.entityId);
+    }
+    await assertUniqueActivePartyName(tx, tenantId, name, mutation.entity, mutation.entityId);
+
+    const created = await txAny.party.create({
+      data: {
+        id: mutation.entityId,
+        business_id: tenantId,
+        name,
+        phone: toNullableTrimmedValue(payload.phone),
+        email: toNullableTrimmedValue(payload.email),
+        address: toNullableTrimmedValue(payload.address),
+        tax_id: toNullableTrimmedValue(payload.gstNo),
+        type: "SUPPLIER",
+        is_active: true,
+        deleted_at: null,
+      },
+    });
+
+    return toSupplierSnapshot(created);
+  }
+
+  const current = await txAny.party.findUnique({
+    where: { id: mutation.entityId },
+  });
+
+  if (!current || current.business_id !== tenantId) {
+    if (mutation.op === "delete") {
+      return null;
+    }
+    throw dependencyMissingError("Supplier not found in business", mutation.entity, mutation.entityId);
+  }
+
+  if (mutation.op === "delete") {
+    if (current.type === "BOTH") {
+      const demoted = await txAny.party.update({
+        where: { id: mutation.entityId },
+        data: {
+          type: "CUSTOMER",
+          is_active: true,
+          deleted_at: null,
+        },
+      });
+      return toCustomerSnapshot(demoted);
+    }
+
+    await txAny.party.update({
+      where: { id: mutation.entityId },
+      data: {
+        is_active: false,
+        deleted_at: new Date(),
+      },
+    });
+    return null;
+  }
+
+  const patch: Record<string, unknown> = {};
+  let nextName = current.name;
+  if (typeof payload.name === "string") {
+    const name = payload.name.trim();
+    if (!name) {
+      throw validationError("Supplier name is required", mutation.entity, mutation.entityId);
+    }
+    patch.name = name;
+    nextName = name;
+  }
+  if (payload.phone !== undefined) {
+    patch.phone = toNullableTrimmedValue(payload.phone);
+  }
+  if (payload.email !== undefined) {
+    patch.email = toNullableTrimmedValue(payload.email);
+  }
+  if (payload.address !== undefined) {
+    patch.address = toNullableTrimmedValue(payload.address);
+  }
+  if (payload.gstNo !== undefined) {
+    patch.tax_id = toNullableTrimmedValue(payload.gstNo);
+  }
+  if (current.type === "CUSTOMER") {
+    patch.type = "BOTH";
+  } else if (current.type !== "BOTH") {
+    patch.type = "SUPPLIER";
+  }
+  patch.is_active = true;
+  patch.deleted_at = null;
+
+  if (
+    typeof nextName === "string" &&
+    (patch.name !== undefined || current.deleted_at || current.is_active === false)
+  ) {
+    await assertUniqueActivePartyName(
+      tx,
+      tenantId,
+      nextName,
+      mutation.entity,
+      mutation.entityId,
+      current.id,
+    );
+  }
+
+  const updated =
+    Object.keys(patch).length > 0
+      ? await txAny.party.update({
+          where: { id: mutation.entityId },
+          data: patch,
+        })
+      : current;
+
+  return toSupplierSnapshot(updated);
 };
 
 const applyItemMutation = async (tx, tenantId, mutation) => {
@@ -2071,6 +2453,38 @@ const applyMutation = async (
     }> = [];
     if (mutation.entity === "customer") {
       snapshot = await applyCustomerMutation(tx, tenantId, mutation);
+      if (mutation.op === "delete" && snapshot?.type === "SUPPLIER") {
+        additionalChanges.push({
+          entity: "supplier",
+          entityId: mutation.entityId,
+          operation: "UPDATE" as const,
+          data: snapshot,
+        });
+      } else if (snapshot?.type === "BOTH") {
+        additionalChanges.push({
+          entity: "supplier",
+          entityId: mutation.entityId,
+          operation: "UPDATE" as const,
+          data: snapshot,
+        });
+      }
+    } else if (mutation.entity === "supplier") {
+      snapshot = await applySupplierMutation(tx, tenantId, mutation);
+      if (mutation.op === "delete" && snapshot?.type === "CUSTOMER") {
+        additionalChanges.push({
+          entity: "customer",
+          entityId: mutation.entityId,
+          operation: "UPDATE" as const,
+          data: snapshot,
+        });
+      } else if (snapshot?.type === "BOTH") {
+        additionalChanges.push({
+          entity: "customer",
+          entityId: mutation.entityId,
+          operation: "UPDATE" as const,
+          data: snapshot,
+        });
+      }
     } else if (mutation.entity === "item") {
       snapshot = await applyItemMutation(tx, tenantId, mutation);
     } else if (mutation.entity === "item_variant") {
@@ -2136,7 +2550,17 @@ const applyMutation = async (
   });
 };
 
-const processMutations = async (tenantId, userId, mutations) => {
+const processMutations = async (
+  tenantId,
+  userId,
+  mutations,
+  options: {
+    canManageCustomers?: boolean;
+    canManageSuppliers?: boolean;
+    canManageProducts?: boolean;
+    canManageServices?: boolean;
+  } = {},
+) => {
   const acknowledgements: MutationAcknowledgement[] = [];
 
   for (const mutation of mutations) {
@@ -2154,6 +2578,54 @@ const processMutations = async (tenantId, userId, mutations) => {
         ),
       );
       continue;
+    }
+
+    if (mutation.entity === "customer" && !options.canManageCustomers) {
+      acknowledgements.push(
+        toSyncRejection(
+          mutation,
+          new SyncRejectionError({
+            message: "Customer management is not enabled for this store license",
+            statusCode: 403,
+            reasonCode: "PERMISSION_DENIED",
+            entity: mutation.entity,
+            entityId: mutation.entityId,
+          }),
+        ),
+      );
+      continue;
+    }
+
+    if (mutation.entity === "supplier" && !options.canManageSuppliers) {
+      acknowledgements.push(
+        toSyncRejection(
+          mutation,
+          new SyncRejectionError({
+            message: "Supplier management is not enabled for this store license",
+            statusCode: 403,
+            reasonCode: "PERMISSION_DENIED",
+            entity: mutation.entity,
+            entityId: mutation.entityId,
+          }),
+        ),
+      );
+      continue;
+    }
+
+    if (
+      mutation.entity === "item" ||
+      mutation.entity === "item_variant" ||
+      mutation.entity === "item_category" ||
+      mutation.entity === "item_collection" ||
+      mutation.entity === "item_collection_item" ||
+      mutation.entity === "item_price"
+    ) {
+      try {
+        await assertItemMutationCapability(tenantId, mutation, options);
+      } catch (error) {
+        acknowledgements.push(toSyncRejection(mutation, error));
+        continue;
+      }
     }
 
     if (mutation.userId !== userId) {
@@ -2538,7 +3010,22 @@ const getItemPrices = async (
     page?: number;
     limit?: number;
   } = {},
+  options: {
+    canManageProducts?: boolean;
+    canManageServices?: boolean;
+  } = {},
 ) => {
+  const allowedItemTypes = [
+    ...(options.canManageProducts ? (["PRODUCT"] as const) : []),
+    ...(options.canManageServices ? (["SERVICE"] as const) : []),
+  ];
+  if (allowedItemTypes.length === 0) {
+    throw permissionDeniedError(
+      "Item management is not enabled for this store license",
+      "item_price",
+      tenantId,
+    );
+  }
   const query = params.q?.trim();
   const includeInactive = Boolean(params.includeInactive);
   const page = Math.max(1, Number(params.page ?? 1));
@@ -2552,6 +3039,9 @@ const getItemPrices = async (
         deleted_at: null,
         item: {
           deleted_at: null,
+          item_type: {
+            in: [...allowedItemTypes],
+          },
         },
         ...(includeInactive ? {} : { is_active: true }),
         ...(query
@@ -2572,6 +3062,9 @@ const getItemPrices = async (
         deleted_at: null,
         item: {
           deleted_at: null,
+          item_type: {
+            in: [...allowedItemTypes],
+          },
         },
         ...(includeInactive ? {} : { is_active: true }),
         ...(query
@@ -2665,7 +3158,19 @@ const upsertItemPrice = async (
     actorUserId?: string;
     baseVersion?: number;
   },
+  options: {
+    canManageProducts?: boolean;
+    canManageServices?: boolean;
+  } = {},
 ) => {
+  const itemType = await resolveVariantItemType(tenantId, variantId);
+  if (itemType && !hasItemCapabilityForType(itemType, options)) {
+    throw permissionDeniedError(
+      getItemTypePermissionMessage(itemType),
+      "item_price",
+      variantId,
+    );
+  }
   return prisma.$transaction(async (tx) => {
     const txAny = tx as any;
     await assertEntityBaseVersion(

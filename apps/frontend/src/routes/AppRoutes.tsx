@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { X } from "lucide-react";
 import { IconButton } from "../design-system/atoms/IconButton";
-import { useSessionStore } from "../features/auth/session-business";
+import {
+  hasAssignedStoreCapability,
+  useSessionStore,
+} from "../features/auth/session-business";
 import { useLogoutFlow } from "../features/auth/useLogoutFlow";
 import { useSyncActions } from "../features/sync/SyncProvider";
 import { LoginPage } from "../pages/auth";
@@ -12,18 +15,47 @@ import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/bu
 import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
 import { CategoriesPage, CollectionsPage, PricingPage } from "../pages/catalog";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
-import { AddCustomerPage, CustomerDetailsPage, CustomersPage } from "../pages/people";
+import {
+  AddCustomerPage,
+  AddSupplierPage,
+  CustomerDetailsPage,
+  CustomersPage,
+  SupplierDetailsPage,
+  SuppliersPage,
+} from "../pages/people";
 import { AppFeaturePlaceholderPage, DataSyncAppPage, ItemSyncAppPage } from "../pages/shell/UserAppPages";
 import { AdjustmentsPage, HistoryPage, LevelsPage } from "../pages/stock";
 import { OfflinePage } from "../pages/system";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
-import { RequireAuth, RequireHydrated, RequireModule, RequireRole } from "./guards";
+import {
+  RequireAuth,
+  RequireAnyCapability,
+  RequireCapability,
+  RequireHydrated,
+  RequireModule,
+  RequireRole,
+} from "./guards";
 
 function AppEntryRoute() {
   const role = useSessionStore((state) => state.role);
 
   if (role === "PLATFORM_ADMIN") return <Navigate to="/app/businesses" replace />;
   return <AppHomePage />;
+}
+
+function PricingEntryRoute() {
+  const activeStore = useSessionStore((state) => state.activeStore);
+  const businesses = useSessionStore((state) => state.businesses);
+  const activeBusiness =
+    businesses.find((business) => business.id === activeStore) ?? null;
+
+  if (hasAssignedStoreCapability(activeBusiness, "ITEM_PRODUCTS")) {
+    return <Navigate to="/app/product-pricing" replace />;
+  }
+  if (hasAssignedStoreCapability(activeBusiness, "ITEM_SERVICES")) {
+    return <Navigate to="/app/service-pricing" replace />;
+  }
+  return <Navigate to="/app" replace />;
 }
 
 function AppLayout({ onLogout }: { onLogout: () => void }) {
@@ -36,10 +68,14 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
   const isPlatformAdmin = role === "PLATFORM_ADMIN";
   const shouldShowUserBack =
     !isPlatformAdmin &&
-    (/^\/app\/items\/new$/.test(location.pathname) ||
-      /^\/app\/items\/[^/]+$/.test(location.pathname) ||
+    (/^\/app\/products\/new$/.test(location.pathname) ||
+      /^\/app\/products\/[^/]+$/.test(location.pathname) ||
+      /^\/app\/services\/new$/.test(location.pathname) ||
+      /^\/app\/services\/[^/]+$/.test(location.pathname) ||
       /^\/app\/customers\/new$/.test(location.pathname) ||
-      /^\/app\/customers\/[^/]+$/.test(location.pathname));
+      /^\/app\/customers\/[^/]+$/.test(location.pathname) ||
+      /^\/app\/suppliers\/new$/.test(location.pathname) ||
+      /^\/app\/suppliers\/[^/]+$/.test(location.pathname));
   const headerContext = (() => {
     if (!isPlatformAdmin) return null;
     const { pathname } = location;
@@ -189,19 +225,131 @@ export function AppRoutes() {
                 <Route path="sales-orders" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Orders" />} />
                 <Route path="sales-returns" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Returns" />} />
                 <Route element={<RequireModule moduleKey="pricing" />}>
-                  <Route path="item-pricing" element={<PricingPage />} />
+                  <Route path="item-pricing" element={<PricingEntryRoute />} />
+                  <Route element={<RequireCapability capability="ITEM_PRODUCTS" />}>
+                    <Route
+                      path="product-pricing"
+                      element={
+                        <PricingPage
+                          itemType="PRODUCT"
+                          title="Product Pricing"
+                          singularLabel="product"
+                        />
+                      }
+                    />
+                  </Route>
+                  <Route element={<RequireCapability capability="ITEM_SERVICES" />}>
+                    <Route
+                      path="service-pricing"
+                      element={
+                        <PricingPage
+                          itemType="SERVICE"
+                          title="Service Pricing"
+                          singularLabel="service"
+                        />
+                      }
+                    />
+                  </Route>
                 </Route>
-                <Route path="item-categories" element={<CategoriesPage />} />
-                <Route path="item-collections" element={<CollectionsPage />} />
-                <Route path="item-sync" element={<Navigate to="/app/admin-item-sync" replace />} />
+                <Route element={<RequireCapability capability="ITEM_PRODUCTS" />}>
+                  <Route
+                    path="products"
+                    element={
+                      <ItemsPage
+                        itemType="PRODUCT"
+                        title="Products"
+                        singularLabel="Product"
+                        routeBasePath="/app/products"
+                      />
+                    }
+                  />
+                  <Route
+                    path="products/new"
+                    element={
+                      <AddItemPage
+                        itemType="PRODUCT"
+                        title="Products"
+                        singularLabel="Product"
+                        routeBasePath="/app/products"
+                      />
+                    }
+                  />
+                  <Route
+                    path="products/:itemId"
+                    element={
+                      <ItemDetailsPage
+                        itemType="PRODUCT"
+                        title="Product"
+                        singularLabel="Product"
+                        routeBasePath="/app/products"
+                      />
+                    }
+                  />
+                </Route>
+                <Route element={<RequireCapability capability="ITEM_SERVICES" />}>
+                  <Route
+                    path="services"
+                    element={
+                      <ItemsPage
+                        itemType="SERVICE"
+                        title="Services"
+                        singularLabel="Service"
+                        routeBasePath="/app/services"
+                      />
+                    }
+                  />
+                  <Route
+                    path="services/new"
+                    element={
+                      <AddItemPage
+                        itemType="SERVICE"
+                        title="Services"
+                        singularLabel="Service"
+                        routeBasePath="/app/services"
+                      />
+                    }
+                  />
+                  <Route
+                    path="services/:itemId"
+                    element={
+                      <ItemDetailsPage
+                        itemType="SERVICE"
+                        title="Service"
+                        singularLabel="Service"
+                        routeBasePath="/app/services"
+                      />
+                    }
+                  />
+                </Route>
+                <Route
+                  element={
+                    <RequireAnyCapability capabilities={["ITEM_PRODUCTS", "ITEM_SERVICES"]} />
+                  }
+                >
+                  <Route path="item-categories" element={<CategoriesPage />} />
+                  <Route path="item-collections" element={<CollectionsPage />} />
+                  <Route path="item-sync" element={<Navigate to="/app/admin-item-sync" replace />} />
+                  <Route path="admin-item-sync" element={<ItemSyncAppPage />} />
+                </Route>
                 <Route path="stock-levels" element={<LevelsPage />} />
                 <Route path="stock-adjustments" element={<AdjustmentsPage />} />
                 <Route path="stock-history" element={<HistoryPage />} />
-                <Route path="customers" element={<CustomersPage />} />
-                <Route path="customers/new" element={<AddCustomerPage />} />
-                <Route path="customers/:customerId" element={<CustomerDetailsPage />} />
-                <Route path="customer-groups" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />} />
-                <Route path="suppliers" element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Suppliers" />} />
+                <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
+                  <Route path="customers" element={<CustomersPage />} />
+                  <Route path="customers/new" element={<AddCustomerPage />} />
+                  <Route path="customers/:customerId" element={<CustomerDetailsPage />} />
+                </Route>
+                <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
+                  <Route
+                    path="customer-groups"
+                    element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />}
+                  />
+                </Route>
+                <Route element={<RequireCapability capability="PARTIES_SUPPLIERS" />}>
+                  <Route path="suppliers" element={<SuppliersPage />} />
+                  <Route path="suppliers/new" element={<AddSupplierPage />} />
+                  <Route path="suppliers/:supplierId" element={<SupplierDetailsPage />} />
+                </Route>
                 <Route path="promo-rules" element={<AppFeaturePlaceholderPage sectionTitle="Promotions" appLabel="Rules" />} />
                 <Route path="promo-bundles" element={<AppFeaturePlaceholderPage sectionTitle="Promotions" appLabel="Bundles" />} />
                 <Route path="promo-codes" element={<AppFeaturePlaceholderPage sectionTitle="Promotions" appLabel="Codes" />} />
@@ -209,11 +357,7 @@ export function AppRoutes() {
                 <Route path="top-items-report" element={<AppFeaturePlaceholderPage sectionTitle="Reports" appLabel="Top Items" />} />
                 <Route path="stock-value-report" element={<AppFeaturePlaceholderPage sectionTitle="Reports" appLabel="Stock Value" />} />
                 <Route path="settings" element={<AppFeaturePlaceholderPage sectionTitle="Admin" appLabel="Business Settings" />} />
-                <Route path="admin-item-sync" element={<ItemSyncAppPage />} />
                 <Route path="data-sync" element={<DataSyncAppPage />} />
-                <Route path="items" element={<ItemsPage />} />
-                <Route path="items/new" element={<AddItemPage />} />
-                <Route path="items/:itemId" element={<ItemDetailsPage />} />
               </Route>
             </Route>
 

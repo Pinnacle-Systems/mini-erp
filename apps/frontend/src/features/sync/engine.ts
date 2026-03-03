@@ -141,8 +141,8 @@ export const queueCustomerCreate = async (
   tenantId: string,
   userId: string,
   payload: CustomerInput,
+  entityId = crypto.randomUUID(),
 ) => {
-  const entityId = crypto.randomUUID();
   await queueMutation(tenantId, {
     mutationId: crypto.randomUUID(),
     deviceId: getOrCreateDeviceId(),
@@ -172,6 +172,79 @@ export const queueCustomerUpdate = async (
     op: "update",
     payload: toCustomerPayload(payload),
     ...(typeof baseVersion === "number" ? { baseVersion } : {}),
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueCustomerDelete = async (
+  tenantId: string,
+  userId: string,
+  customerId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "customer",
+    entityId: customerId,
+    op: "delete",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueSupplierCreate = async (
+  tenantId: string,
+  userId: string,
+  payload: CustomerInput,
+  entityId = crypto.randomUUID(),
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "supplier",
+    entityId,
+    op: "create",
+    payload: toCustomerPayload(payload),
+    clientTimestamp: new Date().toISOString(),
+  });
+  return entityId;
+};
+
+export const queueSupplierUpdate = async (
+  tenantId: string,
+  userId: string,
+  supplierId: string,
+  payload: CustomerInput,
+  baseVersion?: number,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "supplier",
+    entityId: supplierId,
+    op: "update",
+    payload: toCustomerPayload(payload),
+    ...(typeof baseVersion === "number" ? { baseVersion } : {}),
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueSupplierDelete = async (
+  tenantId: string,
+  userId: string,
+  supplierId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "supplier",
+    entityId: supplierId,
+    op: "delete",
+    payload: {},
     clientTimestamp: new Date().toISOString(),
   });
 };
@@ -393,6 +466,7 @@ export type ItemDisplay = {
   name: string;
   sku: string;
   category: string;
+  itemType: "PRODUCT" | "SERVICE";
   isActive: boolean;
   variantSkus: string[];
   variantCount: number;
@@ -566,6 +640,9 @@ export const getLocalItemsForDisplay = async (
         name: String(item.data.name ?? "Untitled Item"),
         sku: primarySku,
         category: String(item.data.category ?? ""),
+        itemType: String(item.data.itemType ?? "PRODUCT") as
+          | "PRODUCT"
+          | "SERVICE",
         isActive,
         variantSkus,
         variantCount: variants.length,
@@ -712,6 +789,8 @@ export type CustomerRow = {
   pending: boolean;
 };
 
+export type SupplierRow = CustomerRow;
+
 const readCustomerText = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
@@ -736,6 +815,11 @@ const toCustomerRowFromEntity = (record: EntityRecord): CustomerRow => ({
   deletedAt: readEntityDeletedAt(record),
   serverVersion: record.serverVersion ?? 0,
   pending: false,
+});
+
+const toSupplierRowFromEntity = (record: EntityRecord): SupplierRow => ({
+  ...toCustomerRowFromEntity(record),
+  name: readCustomerText(record.data.name) || "Untitled Supplier",
 });
 
 const applyCustomerPayloadToRow = (
@@ -804,6 +888,17 @@ const buildPendingCustomerRow = (
     true,
   );
 
+const buildPendingSupplierRow = (
+  entityId: string,
+  payload: Record<string, unknown>,
+): SupplierRow => ({
+  ...buildPendingCustomerRow(entityId, payload),
+  name:
+    typeof payload.name === "string" && payload.name.trim()
+      ? payload.name.trim()
+      : "Untitled Supplier",
+});
+
 export const getLocalCustomers = async (tenantId: string): Promise<CustomerRow[]> => {
   const [customerEntities, pendingMutations] = await Promise.all([
     listEntities(tenantId, "customer"),
@@ -858,6 +953,60 @@ export const getLocalCustomers = async (tenantId: string): Promise<CustomerRow[]
   });
 };
 
+export const getLocalSuppliers = async (tenantId: string): Promise<SupplierRow[]> => {
+  const [supplierEntities, pendingMutations] = await Promise.all([
+    listEntities(tenantId, "supplier"),
+    syncDb.outbox
+      .where("[tenantId+status]")
+      .equals([tenantId, "pending"])
+      .filter((item) => item.entity === "supplier")
+      .toArray(),
+  ]);
+
+  const suppliersById = new Map<string, SupplierRow>();
+
+  for (const record of supplierEntities) {
+    if (record.deletedAt) continue;
+    suppliersById.set(record.entityId, toSupplierRowFromEntity(record));
+  }
+
+  for (const mutation of pendingMutations) {
+    if (mutation.op === "delete") {
+      suppliersById.delete(mutation.entityId);
+      continue;
+    }
+
+    const payload =
+      mutation.payload && typeof mutation.payload === "object"
+        ? (mutation.payload as Record<string, unknown>)
+        : {};
+    const current = suppliersById.get(mutation.entityId);
+
+    if (mutation.op === "create") {
+      suppliersById.set(
+        mutation.entityId,
+        current
+          ? applyCustomerPayloadToRow(current, payload, true)
+          : buildPendingSupplierRow(mutation.entityId, payload),
+      );
+      continue;
+    }
+
+    suppliersById.set(
+      mutation.entityId,
+      current
+        ? applyCustomerPayloadToRow(current, payload, true)
+        : buildPendingSupplierRow(mutation.entityId, payload),
+    );
+  }
+
+  return Array.from(suppliersById.values()).sort((left, right) => {
+    const nameOrder = left.name.localeCompare(right.name);
+    if (nameOrder !== 0) return nameOrder;
+    return left.entityId.localeCompare(right.entityId);
+  });
+};
+
 export type OptionDiscovery = {
   optionKeys: string[];
   optionValuesByKey: Record<string, string[]>;
@@ -887,6 +1036,7 @@ export type ItemPricingRow = {
   variantId: string;
   itemId: string;
   itemName: string;
+  itemType: "PRODUCT" | "SERVICE";
   itemCategory: string;
   unit: string;
   variantName: string;
@@ -1578,6 +1728,7 @@ export const getLocalItemPricingRowsForDisplay = async (
     {
       itemId: string;
       itemName: string;
+      itemType: "PRODUCT" | "SERVICE";
       itemCategory: string;
       unit: string;
       variantName: string;
@@ -1594,6 +1745,7 @@ export const getLocalItemPricingRowsForDisplay = async (
     variantMetaById.set(variant.entityId, {
       itemId,
       itemName: String(item?.data.name ?? "Untitled Item"),
+      itemType: String(item?.data.itemType ?? "PRODUCT") as "PRODUCT" | "SERVICE",
       itemCategory: String(item?.data.category ?? ""),
       unit: String(item?.data.unit ?? "PCS"),
       variantName: String(variant.data.name ?? ""),
@@ -1615,6 +1767,7 @@ export const getLocalItemPricingRowsForDisplay = async (
       variantMetaById.set(variant.id, {
         itemId,
         itemName,
+        itemType: String(itemEntity.data.itemType ?? "PRODUCT") as "PRODUCT" | "SERVICE",
         itemCategory,
         unit,
         variantName: variant.name,
@@ -1690,6 +1843,7 @@ export const getLocalItemPricingRowsForDisplay = async (
         variantId,
         itemId: variant.itemId,
         itemName: variant.itemName,
+        itemType: variant.itemType,
         itemCategory: variant.itemCategory,
         unit: variant.unit,
         variantName: variant.variantName,

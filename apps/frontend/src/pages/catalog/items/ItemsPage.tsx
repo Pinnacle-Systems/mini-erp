@@ -21,7 +21,19 @@ import { useDebouncedValue } from "../../../lib/useDebouncedValue";
 
 const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
 
-export function ItemsPage() {
+type ItemsPageProps = {
+  itemType: "PRODUCT" | "SERVICE";
+  title: string;
+  singularLabel: string;
+  routeBasePath: string;
+};
+
+export function ItemsPage({
+  itemType,
+  title,
+  singularLabel,
+  routeBasePath,
+}: ItemsPageProps) {
   const navigate = useNavigate();
   const activeStore = useSessionStore((state) => state.activeStore);
   const [items, setItems] = useState<ItemDisplay[]>([]);
@@ -30,6 +42,10 @@ export function ItemsPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const debouncedQuery = useDebouncedValue(query, 250);
+  const typedItems = useMemo(
+    () => (activeStore ? items.filter((item) => item.itemType === itemType) : []),
+    [activeStore, itemType, items],
+  );
 
   useEffect(() => {
     if (!activeStore) {
@@ -67,7 +83,7 @@ export function ItemsPage() {
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = (query.trim().length === 0 ? "" : debouncedQuery).trim().toLowerCase();
-    const list = activeStore ? items : [];
+    const list = typedItems;
 
     return list.filter((item) => {
       const matchesQuery =
@@ -81,7 +97,7 @@ export function ItemsPage() {
 
       return matchesQuery && matchesStatus;
     });
-  }, [activeStore, debouncedQuery, includeInactive, items, query]);
+  }, [debouncedQuery, includeInactive, query, typedItems]);
 
   const isLoading = activeStore ? loading : false;
   const visibleLoadError = activeStore ? loadError : null;
@@ -92,18 +108,18 @@ export function ItemsPage() {
         <CardHeader className="p-0 pb-1.5 lg:shrink-0 lg:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-1.5">
             <div>
-              <CardTitle className="text-sm">Items</CardTitle>
+              <CardTitle className="text-sm">{title}</CardTitle>
               <CardDescription className="text-[11px] lg:text-[10px]">
-                Browse, filter, and expand variants for catalog items.
+                Browse, filter, and expand variants for catalog {title.toLowerCase()}.
               </CardDescription>
             </div>
             <Button
               type="button"
               size="sm"
               className="hidden lg:inline-flex"
-              onClick={() => navigate("/app/items/new")}
+              onClick={() => navigate(`${routeBasePath}/new`)}
             >
-              Add Item
+              Add {singularLabel}
             </Button>
           </div>
         </CardHeader>
@@ -114,10 +130,10 @@ export function ItemsPage() {
               Filters
             </legend>
             <p className="app-filter-help">
-              Refine items by search text and active status.
+              Refine {title.toLowerCase()} by search text and active status.
             </p>
             <Label htmlFor="items-search" className="text-[11px] font-medium lg:text-[10px]">
-              Search items
+              Search {title.toLowerCase()}
             </Label>
             <div className="app-filter-row">
               <Input
@@ -161,26 +177,33 @@ export function ItemsPage() {
               <div className="card text-sm text-muted-foreground">Loading items...</div>
             ) : visibleLoadError ? (
               <div className="card text-sm text-red-600">{visibleLoadError}</div>
-            ) : items.length === 0 ? (
-              <div className="card text-sm text-muted-foreground">No items available.</div>
+            ) : typedItems.length === 0 ? (
+              <div className="card text-sm text-muted-foreground">
+                No {title.toLowerCase()} available.
+              </div>
             ) : filteredItems.length === 0 ? (
               <div className="card text-sm text-muted-foreground">
-                No items match your current filters.
+                No {title.toLowerCase()} match your current filters.
               </div>
             ) : (
               <ItemVariantFlatTable
                 items={filteredItems}
                 activeStore={activeStore}
                 actionLabel="View"
-                onOpenItem={(itemId) => navigate(`/app/items/${itemId}`)}
+                onOpenItem={(itemId) => navigate(`${routeBasePath}/${itemId}`)}
               />
             )}
           </div>
         </CardContent>
       </Card>
       <div className="fixed bottom-[5.25rem] right-3 z-30 lg:hidden">
-        <Button type="button" size="sm" className="h-10 px-4 shadow-sm" onClick={() => navigate("/app/items/new")}>
-          Add Item
+        <Button
+          type="button"
+          size="sm"
+          className="h-10 px-4 shadow-sm"
+          onClick={() => navigate(`${routeBasePath}/new`)}
+        >
+          Add {singularLabel}
         </Button>
       </div>
     </section>

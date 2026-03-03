@@ -17,7 +17,10 @@ import {
   CardTitle,
 } from "../../design-system/molecules/Card";
 import { ItemVariantFlatTable } from "../../design-system/organisms/ItemVariantFlatTable";
-import { useSessionStore } from "../../features/auth/session-business";
+import {
+  hasAssignedStoreCapability,
+  useSessionStore,
+} from "../../features/auth/session-business";
 import {
   getLocalItemsForDisplay,
   getLocalItemCategoryEntriesForStore,
@@ -39,6 +42,7 @@ type CategoryBucket = {
 export function CategoriesPage() {
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
+  const businesses = useSessionStore((state) => state.businesses);
   const isBusinessSelected = useSessionStore(
     (state) => state.isBusinessSelected,
   );
@@ -54,6 +58,20 @@ export function CategoriesPage() {
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const activeBusiness = useMemo(
+    () => businesses.find((business) => business.id === activeStore) ?? null,
+    [activeStore, businesses],
+  );
+  const filteredItems = useMemo(
+    () =>
+      items.filter((item) => {
+        if (item.itemType === "SERVICE") {
+          return hasAssignedStoreCapability(activeBusiness, "ITEM_SERVICES");
+        }
+        return hasAssignedStoreCapability(activeBusiness, "ITEM_PRODUCTS");
+      }),
+    [activeBusiness, items],
+  );
 
   useEffect(() => {
     if (!activeStore) {
@@ -96,8 +114,11 @@ export function CategoriesPage() {
   }, [activeStore]);
 
   const buckets = useMemo<CategoryBucket[]>(() => {
+    const allCategoryNames = new Set(
+      items.map((item) => item.category.trim()).filter((name) => name.length > 0),
+    );
     const map = new Map<string, { id: string | null; items: ItemDisplay[] }>();
-    for (const item of items) {
+    for (const item of filteredItems) {
       const category = item.category.trim();
       if (!category) continue;
       const current = map.get(category) ?? { id: null, items: [] };
@@ -108,6 +129,9 @@ export function CategoriesPage() {
     for (const entry of entries) {
       const name = entry.name.trim();
       if (!name) continue;
+      if (allCategoryNames.has(name) && !map.has(name)) {
+        continue;
+      }
       const current = map.get(name) ?? { id: entry.id, items: [] };
       current.id = current.id ?? entry.id;
       map.set(name, current);
@@ -122,7 +146,7 @@ export function CategoriesPage() {
           left.name.localeCompare(right.name),
         ),
       }));
-  }, [entries, items]);
+  }, [entries, filteredItems, items]);
 
   const selectedBucket = selectedCategory
     ? (buckets.find((bucket) => bucket.name === selectedCategory) ?? null)
@@ -442,7 +466,15 @@ export function CategoriesPage() {
               items={activeBucket.items}
               activeStore={activeStore}
               actionLabel="View"
-              onOpenItem={(itemId) => navigate(`/app/items/${itemId}`)}
+              onOpenItem={(itemId) => {
+                const item = activeBucket.items.find((entry) => entry.entityId === itemId);
+                if (!item) return;
+                navigate(
+                  item.itemType === "PRODUCT"
+                    ? `/app/products/${itemId}`
+                    : `/app/services/${itemId}`,
+                );
+              }}
               showCategory={false}
             />
           )}

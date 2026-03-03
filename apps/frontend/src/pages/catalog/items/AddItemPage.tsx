@@ -126,6 +126,13 @@ type QuickItemDraft = {
   itemType: "PRODUCT" | "SERVICE";
 };
 
+type AddItemPageProps = {
+  itemType: "PRODUCT" | "SERVICE";
+  title: string;
+  singularLabel: string;
+  routeBasePath: string;
+};
+
 const EMPTY_VARIANT = (): ItemVariantDraft => ({
   id: crypto.randomUUID(),
   name: "",
@@ -134,13 +141,13 @@ const EMPTY_VARIANT = (): ItemVariantDraft => ({
   optionRows: [],
 });
 
-const EMPTY_QUICK_ROW = (): QuickItemDraft => ({
+const EMPTY_QUICK_ROW = (itemType: "PRODUCT" | "SERVICE"): QuickItemDraft => ({
   id: crypto.randomUUID(),
   name: "",
   sku: "",
   category: "",
   unit: "PCS",
-  itemType: "PRODUCT",
+  itemType,
 });
 
 const getDefaultQuickRowCount = () => {
@@ -150,22 +157,31 @@ const getDefaultQuickRowCount = () => {
     : MOBILE_QUICK_ROW_COUNT;
 };
 
-const buildInitialRows = (count = getDefaultQuickRowCount()) =>
-  Array.from({ length: count }, () => EMPTY_QUICK_ROW());
+const buildInitialRows = (
+  itemType: "PRODUCT" | "SERVICE",
+  count = getDefaultQuickRowCount(),
+) => Array.from({ length: count }, () => EMPTY_QUICK_ROW(itemType));
 
-export function AddItemPage() {
+export function AddItemPage({
+  itemType: forcedItemType,
+  title,
+  singularLabel,
+  routeBasePath,
+}: AddItemPageProps) {
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
 
-  const [itemType, setItemType] = useState<"PRODUCT" | "SERVICE">("PRODUCT");
+  const [itemType, setItemType] = useState<"PRODUCT" | "SERVICE">(forcedItemType);
   const [hasVariants, setHasVariants] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const [unit, setUnit] = useState<(typeof UNIT_OPTIONS)[number]>("PCS");
   const [variants, setVariants] = useState<ItemVariantDraft[]>([EMPTY_VARIANT()]);
-  const [quickRows, setQuickRows] = useState<QuickItemDraft[]>(() => buildInitialRows());
+  const [quickRows, setQuickRows] = useState<QuickItemDraft[]>(() =>
+    buildInitialRows(forcedItemType),
+  );
   const [optionModalVariantId, setOptionModalVariantId] = useState<string | null>(null);
   const [optionKeyDraft, setOptionKeyDraft] = useState("");
   const [optionValueDraft, setOptionValueDraft] = useState("");
@@ -176,6 +192,13 @@ export function AddItemPage() {
   const [savedCategories, setSavedCategories] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setItemType(forcedItemType);
+    setQuickRows((current) =>
+      current.map((row) => ({ ...row, itemType: forcedItemType })),
+    );
+  }, [forcedItemType]);
 
   const optionKeySuggestions = useMemo(() => {
     const fromVariants = variants
@@ -237,7 +260,7 @@ export function AddItemPage() {
             row.sku.trim().length === 0 &&
             row.category.trim().length === 0 &&
             row.unit === "PCS" &&
-            row.itemType === "PRODUCT",
+            row.itemType === forcedItemType,
         );
         if (!isPristine) return current;
 
@@ -246,7 +269,7 @@ export function AddItemPage() {
           : MOBILE_QUICK_ROW_COUNT;
         if (current.length === nextCount) return current;
 
-        return buildInitialRows(nextCount);
+        return buildInitialRows(forcedItemType, nextCount);
       });
     };
 
@@ -256,7 +279,7 @@ export function AddItemPage() {
     return () => {
       desktopMedia.removeEventListener("change", syncQuickRowDefaults);
     };
-  }, []);
+  }, [forcedItemType]);
 
   useEffect(() => {
     if (!activeStore) return;
@@ -459,7 +482,7 @@ export function AddItemPage() {
         );
 
         await syncOnce(activeStore);
-        navigate("/app/items");
+        navigate(routeBasePath);
         return;
       }
 
@@ -510,7 +533,7 @@ export function AddItemPage() {
         sortUnique([...current, normalizeCategory(category)]),
       );
       await syncOnce(activeStore);
-      navigate("/app/items");
+      navigate(routeBasePath);
     } catch (error) {
       console.error(error);
       setFormError(toUserItemErrorMessage(error));
@@ -527,23 +550,25 @@ export function AddItemPage() {
         <CardHeader className="pb-1.5 lg:shrink-0">
           <div className="flex flex-wrap items-start justify-between gap-1.5">
             <div>
-              <CardTitle className="text-sm lg:text-[13px]">Add Items</CardTitle>
+              <CardTitle className="text-sm lg:text-[13px]">Add {title}</CardTitle>
               <CardDescription className="text-[11px] lg:text-[10px]">
-                Compact quick-entry for multiple items. Toggle variant mode for advanced single-item setup.
+                Compact quick-entry for multiple {title.toLowerCase()}. Toggle variant mode for advanced single-{singularLabel.toLowerCase()} setup.
               </CardDescription>
             </div>
             <PageActionBar
               primaryType="submit"
               primaryForm="add-items-form"
               primaryLabel={
-                hasVariants ? "Add Variant Item" : `Add Items (${quickRowsWithName})`
+                hasVariants
+                  ? `Add ${singularLabel}`
+                  : `Add ${title} (${quickRowsWithName})`
               }
               primaryLoading={loading}
               primaryLoadingLabel="Saving..."
               primaryDisabled={loading}
               secondaryLabel="Cancel"
               secondaryDisabled={loading}
-              onSecondaryClick={() => navigate("/app/items")}
+              onSecondaryClick={() => navigate(routeBasePath)}
             />
           </div>
         </CardHeader>
@@ -576,11 +601,10 @@ export function AddItemPage() {
               {!hasVariants ? (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
                 <div className="overflow-visible rounded-lg border border-border/80 bg-white lg:flex lg:min-h-0 lg:flex-col">
-                  <div className="hidden grid-cols-[minmax(0,2.35fr)_minmax(0,1.55fr)_92px_92px_minmax(0,1.85fr)_56px] gap-1.5 border-b border-border/70 bg-slate-50/95 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0">
+                  <div className="hidden grid-cols-[minmax(0,2.35fr)_minmax(0,1.55fr)_92px_minmax(0,1.85fr)_56px] gap-1.5 border-b border-border/70 bg-slate-50/95 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0">
                     <span>Name</span>
                     <span>SKU</span>
                     <span>Unit</span>
-                    <span>Type</span>
                     <span>Category</span>
                     <span className="text-right">Actions</span>
                   </div>
@@ -589,7 +613,7 @@ export function AddItemPage() {
                     {quickRows.map((row, index) => (
                       <div
                         key={row.id}
-                        className="grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:grid-cols-[minmax(0,2.35fr)_minmax(0,1.55fr)_92px_92px_minmax(0,1.85fr)_56px] lg:items-center lg:border-0 lg:bg-transparent lg:p-0"
+                        className="grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:grid-cols-[minmax(0,2.35fr)_minmax(0,1.55fr)_92px_minmax(0,1.85fr)_56px] lg:items-center lg:border-0 lg:bg-transparent lg:p-0"
                       >
                         <Input
                           className={QUICK_ENTRY_INPUT_CLASS}
@@ -640,25 +664,6 @@ export function AddItemPage() {
                               {option}
                             </option>
                           ))}
-                        </Select>
-                        <Select
-                          className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
-                          value={row.itemType}
-                          onChange={(event) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? {
-                                      ...entry,
-                                      itemType: event.target.value as "PRODUCT" | "SERVICE",
-                                    }
-                                  : entry,
-                              ),
-                            )
-                          }
-                        >
-                          <option value="PRODUCT">Product</option>
-                          <option value="SERVICE">Service</option>
                         </Select>
                         <LookupDropdownInput
                           value={row.category}
@@ -726,7 +731,7 @@ export function AddItemPage() {
                       size="sm"
                       className="h-7 px-2"
                       onClick={() =>
-                        setQuickRows((current) => [...current, EMPTY_QUICK_ROW()])
+                        setQuickRows((current) => [...current, EMPTY_QUICK_ROW(forcedItemType)])
                       }
                     >
                       Add Row
@@ -736,7 +741,7 @@ export function AddItemPage() {
                       variant="outline"
                       size="sm"
                       className="h-7 px-2"
-                      onClick={() => setQuickRows(buildInitialRows())}
+                      onClick={() => setQuickRows(buildInitialRows(forcedItemType))}
                     >
                       Reset
                     </Button>
@@ -771,19 +776,6 @@ export function AddItemPage() {
                           {option}
                         </option>
                       ))}
-                    </Select>
-                  </div>
-                  <div className="grid gap-1 lg:col-span-2">
-                    <Label>Type</Label>
-                    <Select
-                      className={`${DENSE_SELECT_CLASS} w-full`}
-                      value={itemType}
-                      onChange={(event) =>
-                        setItemType(event.target.value as "PRODUCT" | "SERVICE")
-                      }
-                    >
-                      <option value="PRODUCT">Product</option>
-                      <option value="SERVICE">Service</option>
                     </Select>
                   </div>
                   <div className="grid gap-1 lg:col-span-3">

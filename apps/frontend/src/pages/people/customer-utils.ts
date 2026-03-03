@@ -22,23 +22,30 @@ export const toCustomerDraft = (customer: CustomerRow): CustomerDraft => ({
   gstNo: customer.gstNo,
 });
 
-export const toUserCustomerErrorMessage = (error: unknown) => {
+export const toUserPartyErrorMessage = (
+  error: unknown,
+  entity: "customer" | "supplier",
+  label: string,
+) => {
   const rejection = getSyncRejectionFromError(error);
-  if (
-    rejection?.reasonCode === "VERSION_CONFLICT" &&
-    rejection.entity === "customer"
-  ) {
-    return "This customer changed on another device. Refresh and apply your edits again.";
+  if (rejection?.reasonCode === "VERSION_CONFLICT" && rejection.entity === entity) {
+    return `This ${label} changed on another device. Refresh and apply your edits again.`;
   }
-  if (
-    rejection?.reasonCode === "DEPENDENCY_MISSING" &&
-    rejection.entity === "customer"
-  ) {
-    return "This customer is no longer available. Refresh and select another row.";
+  if (rejection?.reasonCode === "DEPENDENCY_MISSING" && rejection.entity === entity) {
+    return `This ${label} is no longer available. Refresh and select another row.`;
+  }
+  if (rejection?.reasonCode === "PERMISSION_DENIED" && rejection.entity === entity) {
+    return `This business is not licensed to manage ${label}s.`;
   }
   if (!(error instanceof Error)) {
-    return "Unable to save customers right now.";
+    return `Unable to save ${label}s right now.`;
   }
 
-  return error.message || "Unable to save customers right now.";
+  return error.message || `Unable to save ${label}s right now.`;
 };
+
+export const toUserCustomerErrorMessage = (error: unknown) =>
+  toUserPartyErrorMessage(error, "customer", "customer");
+
+export const toUserSupplierErrorMessage = (error: unknown) =>
+  toUserPartyErrorMessage(error, "supplier", "supplier");

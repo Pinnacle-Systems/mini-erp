@@ -28,6 +28,12 @@ import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
 
+type PricingPageProps = {
+  itemType: "PRODUCT" | "SERVICE";
+  title: string;
+  singularLabel: string;
+};
+
 const formatAmount = (amount: number | null) => {
   if (amount === null || Number.isNaN(amount)) return "";
   return amount.toFixed(2);
@@ -55,7 +61,7 @@ const toUserPricingErrorMessage = (error: unknown) => {
   return message || fallback;
 };
 
-export function PricingPage() {
+export function PricingPage({ itemType, title, singularLabel }: PricingPageProps) {
   const identityId = useSessionStore((state) => state.identityId);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const activeStore = useSessionStore((state) => state.activeStore);
@@ -70,6 +76,7 @@ export function PricingPage() {
   const debouncedQuery = useDebouncedValue(query, 250);
   const appliedQuery = (query.trim().length === 0 ? "" : debouncedQuery).trim();
   const { lastSyncCompletedAt } = useSyncActions();
+  const visibleRows = rows.filter((row) => row.itemType === itemType);
 
   const refresh = useCallback(async (preserveDrafts = true) => {
     if (!activeStore) {
@@ -240,7 +247,7 @@ export function PricingPage() {
     return { amount, error: null };
   };
 
-  const dirtyVariantIds = rows.filter((row) => {
+  const dirtyVariantIds = visibleRows.filter((row) => {
     const parsed = toParsedAmount(row.variantId);
     if (parsed.error) return false;
     return parsed.amount !== row.amount;
@@ -294,7 +301,7 @@ export function PricingPage() {
 
   const onDiscardAll = () => {
     setDraftsByVariantId(
-      Object.fromEntries(rows.map((row) => [row.variantId, formatAmount(row.amount)])),
+      Object.fromEntries(visibleRows.map((row) => [row.variantId, formatAmount(row.amount)])),
     );
     setError(null);
   };
@@ -319,9 +326,9 @@ export function PricingPage() {
         <CardHeader className="p-0 pb-1.5 lg:shrink-0 lg:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-1.5">
             <div>
-              <CardTitle className="text-sm">Pricing</CardTitle>
+              <CardTitle className="text-sm">{title}</CardTitle>
               <CardDescription className="text-[11px] lg:text-[10px]">
-                Maintain base selling prices per variant.
+                Maintain base selling prices for {title.toLowerCase()}.
               </CardDescription>
             </div>
           </div>
@@ -330,12 +337,14 @@ export function PricingPage() {
         <CardContent className="space-y-1.5 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
           <fieldset className="app-filter-panel lg:shrink-0">
             <legend className="app-filter-legend">Filters</legend>
-            <p className="app-filter-help">Search by item, variant, SKU, or category.</p>
+            <p className="app-filter-help">
+              Search {title.toLowerCase()} by {singularLabel.toLowerCase()}, variant, SKU, or category.
+            </p>
             <Label
               htmlFor="item-pricing-search"
               className="text-[11px] font-medium lg:text-[10px]"
             >
-              Search pricing rows
+              Search {title.toLowerCase()} pricing
             </Label>
             <div className="app-filter-row">
               <Input
@@ -379,10 +388,12 @@ export function PricingPage() {
           <div className="space-y-2 lg:hidden">
             {loading ? (
               <div className="card text-sm text-muted-foreground">Loading prices...</div>
-            ) : rows.length === 0 ? (
-              <div className="card text-sm text-muted-foreground">No variants found for current filters.</div>
+            ) : visibleRows.length === 0 ? (
+              <div className="card text-sm text-muted-foreground">
+                No {title.toLowerCase()} found for current filters.
+              </div>
             ) : (
-              rows.map((row) => {
+              visibleRows.map((row) => {
                 return (
                   <div key={row.variantId} className="rounded-xl border border-border/70 bg-white p-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -450,14 +461,14 @@ export function PricingPage() {
                     Loading prices...
                   </DenseTableCell>
                 </DenseTableRow>
-              ) : rows.length === 0 ? (
+              ) : visibleRows.length === 0 ? (
                 <DenseTableRow>
                   <DenseTableCell className="py-3 text-muted-foreground" colSpan={7}>
-                    No variants found for current filters.
+                    No {title.toLowerCase()} found for current filters.
                   </DenseTableCell>
                 </DenseTableRow>
               ) : (
-                rows.map((row) => {
+                visibleRows.map((row) => {
                   return (
                     <DenseTableRow key={row.variantId}>
                       <DenseTableCell className="truncate font-medium text-foreground" title={row.itemName}>
@@ -514,7 +525,7 @@ export function PricingPage() {
           </DenseTable>
 
           <p className="text-[11px] text-muted-foreground">
-            Showing {rows.length} variants.
+            Showing {visibleRows.length} variants.
           </p>
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Button

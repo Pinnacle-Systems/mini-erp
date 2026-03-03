@@ -15,26 +15,26 @@ import {
 import {
   getLocalCustomers,
   getLocalSuppliers,
+  queueCustomerCreate,
   queueCustomerDelete,
   queueSupplierDelete,
-  queueSupplierCreate,
-  queueCustomerUpdate,
+  queueSupplierUpdate,
   syncOnce,
-  type CustomerRow,
+  type SupplierRow,
 } from "../../features/sync/engine";
 import { CustomerFormFields } from "./customer-form";
 import {
   EMPTY_CUSTOMER_DRAFT,
   toCustomerDraft,
-  toUserCustomerErrorMessage,
+  toUserSupplierErrorMessage,
 } from "./customer-utils";
 
 const isOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine;
 
-export function CustomerDetailsPage() {
+export function SupplierDetailsPage() {
   const navigate = useNavigate();
-  const { customerId = "" } = useParams();
+  const { supplierId = "" } = useParams();
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const businesses = useSessionStore((state) => state.businesses);
@@ -42,20 +42,20 @@ export function CustomerDetailsPage() {
   const [loading, setLoading] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [customer, setCustomer] = useState<CustomerRow | null>(null);
-  const [isAlsoSupplier, setIsAlsoSupplier] = useState(false);
-  const [alsoManageAsSupplier, setAlsoManageAsSupplier] = useState(false);
+  const [supplier, setSupplier] = useState<SupplierRow | null>(null);
+  const [isAlsoCustomer, setIsAlsoCustomer] = useState(false);
+  const [alsoManageAsCustomer, setAlsoManageAsCustomer] = useState(false);
   const [draft, setDraft] = useState(EMPTY_CUSTOMER_DRAFT);
   const [initialDraft, setInitialDraft] = useState(EMPTY_CUSTOMER_DRAFT);
   const activeBusiness =
     businesses.find((business) => business.id === activeStore) ?? null;
-  const canAlsoBeSupplier = hasAssignedStoreCapability(activeBusiness, "PARTIES_SUPPLIERS");
+  const canAlsoBeCustomer = hasAssignedStoreCapability(activeBusiness, "PARTIES_CUSTOMERS");
 
   useEffect(() => {
-    if (!activeStore || !isBusinessSelected || !customerId) {
-      setCustomer(null);
-      setIsAlsoSupplier(false);
-      setAlsoManageAsSupplier(false);
+    if (!activeStore || !isBusinessSelected || !supplierId) {
+      setSupplier(null);
+      setIsAlsoCustomer(false);
+      setAlsoManageAsCustomer(false);
       setDraft(EMPTY_CUSTOMER_DRAFT);
       setInitialDraft(EMPTY_CUSTOMER_DRAFT);
       setHasLoaded(false);
@@ -67,19 +67,19 @@ export function CustomerDetailsPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const [localRows, localSuppliers] = await Promise.all([
-          getLocalCustomers(activeStore),
+        const [localSuppliers, localCustomers] = await Promise.all([
           getLocalSuppliers(activeStore),
+          getLocalCustomers(activeStore),
         ]);
-        const localCustomer =
-          localRows.find((row) => row.entityId === customerId) ?? null;
-        const localSupplierExists = localSuppliers.some((row) => row.entityId === customerId);
+        const localSupplier =
+          localSuppliers.find((row) => row.entityId === supplierId) ?? null;
+        const localCustomerExists = localCustomers.some((row) => row.entityId === supplierId);
         if (!cancelled) {
-          setCustomer(localCustomer);
-          setIsAlsoSupplier(localSupplierExists);
-          setAlsoManageAsSupplier(localSupplierExists);
-          const nextDraft = localCustomer
-            ? toCustomerDraft(localCustomer)
+          setSupplier(localSupplier);
+          setIsAlsoCustomer(localCustomerExists);
+          setAlsoManageAsCustomer(localCustomerExists);
+          const nextDraft = localSupplier
+            ? toCustomerDraft(localSupplier)
             : EMPTY_CUSTOMER_DRAFT;
           setDraft(nextDraft);
           setInitialDraft(nextDraft);
@@ -87,19 +87,19 @@ export function CustomerDetailsPage() {
         }
 
         await syncOnce(activeStore);
-        const [syncedRows, syncedSuppliers] = await Promise.all([
-          getLocalCustomers(activeStore),
+        const [syncedSuppliers, syncedCustomers] = await Promise.all([
           getLocalSuppliers(activeStore),
+          getLocalCustomers(activeStore),
         ]);
-        const syncedCustomer =
-          syncedRows.find((row) => row.entityId === customerId) ?? null;
-        const syncedSupplierExists = syncedSuppliers.some((row) => row.entityId === customerId);
+        const syncedSupplier =
+          syncedSuppliers.find((row) => row.entityId === supplierId) ?? null;
+        const syncedCustomerExists = syncedCustomers.some((row) => row.entityId === supplierId);
         if (!cancelled) {
-          setCustomer(syncedCustomer);
-          setIsAlsoSupplier(syncedSupplierExists);
-          setAlsoManageAsSupplier(syncedSupplierExists);
-          const nextDraft = syncedCustomer
-            ? toCustomerDraft(syncedCustomer)
+          setSupplier(syncedSupplier);
+          setIsAlsoCustomer(syncedCustomerExists);
+          setAlsoManageAsCustomer(syncedCustomerExists);
+          const nextDraft = syncedSupplier
+            ? toCustomerDraft(syncedSupplier)
             : EMPTY_CUSTOMER_DRAFT;
           setDraft(nextDraft);
           setInitialDraft(nextDraft);
@@ -108,7 +108,7 @@ export function CustomerDetailsPage() {
       } catch (nextError) {
         console.error(nextError);
         if (!cancelled) {
-          setSaveError(toUserCustomerErrorMessage(nextError));
+          setSaveError(toUserSupplierErrorMessage(nextError));
           setHasLoaded(true);
         }
       } finally {
@@ -123,23 +123,23 @@ export function CustomerDetailsPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeStore, customerId, isBusinessSelected]);
+  }, [activeStore, isBusinessSelected, supplierId]);
 
   const isDirty = useMemo(
     () =>
       JSON.stringify(draft) !== JSON.stringify(initialDraft) ||
-      alsoManageAsSupplier !== isAlsoSupplier,
-    [alsoManageAsSupplier, draft, initialDraft, isAlsoSupplier],
+      alsoManageAsCustomer !== isAlsoCustomer,
+    [alsoManageAsCustomer, draft, initialDraft, isAlsoCustomer],
   );
 
   const onSave = async () => {
-    if (!customer || !activeStore || !identityId || !isBusinessSelected || loading) {
+    if (!supplier || !activeStore || !identityId || !isBusinessSelected || loading) {
       return;
     }
 
     const trimmedName = draft.name.trim();
     if (!trimmedName) {
-      setSaveError("Customer name is required.");
+      setSaveError("Supplier name is required.");
       return;
     }
 
@@ -147,62 +147,62 @@ export function CustomerDetailsPage() {
     setSaveError(null);
 
     try {
-      await queueCustomerUpdate(
+      await queueSupplierUpdate(
         activeStore,
         identityId,
-        customer.entityId,
+        supplier.entityId,
         {
           ...draft,
           name: trimmedName,
         },
-        customer.serverVersion,
+        supplier.serverVersion,
       );
-      if (alsoManageAsSupplier && canAlsoBeSupplier && !isAlsoSupplier) {
-        await queueSupplierCreate(
+      if (alsoManageAsCustomer && canAlsoBeCustomer && !isAlsoCustomer) {
+        await queueCustomerCreate(
           activeStore,
           identityId,
           {
             ...draft,
             name: trimmedName,
           },
-          customer.entityId,
+          supplier.entityId,
         );
-      } else if (!alsoManageAsSupplier && isAlsoSupplier) {
-        await queueSupplierDelete(activeStore, identityId, customer.entityId);
+      } else if (!alsoManageAsCustomer && isAlsoCustomer) {
+        await queueCustomerDelete(activeStore, identityId, supplier.entityId);
       }
       await syncOnce(activeStore);
-      navigate("/app/customers", {
+      navigate("/app/suppliers", {
         replace: true,
         state: {
-          customerMessage: isOnline()
-            ? alsoManageAsSupplier && canAlsoBeSupplier && !isAlsoSupplier
-              ? "Customer updated and added to suppliers."
-              : !alsoManageAsSupplier && isAlsoSupplier
-                ? "Customer updated and removed from suppliers."
-                : "Customer updated."
-            : alsoManageAsSupplier && canAlsoBeSupplier && !isAlsoSupplier
-              ? "Customer and supplier updates queued offline and will sync automatically."
-              : !alsoManageAsSupplier && isAlsoSupplier
-                ? "Customer update and supplier removal queued offline and will sync automatically."
-                : "Customer update queued offline and will sync automatically.",
+          supplierMessage: isOnline()
+            ? alsoManageAsCustomer && canAlsoBeCustomer && !isAlsoCustomer
+              ? "Supplier updated and added to customers."
+              : !alsoManageAsCustomer && isAlsoCustomer
+                ? "Supplier updated and removed from customers."
+                : "Supplier updated."
+            : alsoManageAsCustomer && canAlsoBeCustomer && !isAlsoCustomer
+              ? "Supplier and customer updates queued offline and will sync automatically."
+              : !alsoManageAsCustomer && isAlsoCustomer
+                ? "Supplier update and customer removal queued offline and will sync automatically."
+                : "Supplier update queued offline and will sync automatically.",
         },
       });
     } catch (nextError) {
       console.error(nextError);
-      setSaveError(toUserCustomerErrorMessage(nextError));
+      setSaveError(toUserSupplierErrorMessage(nextError));
       setLoading(false);
     }
   };
 
   const onDelete = async () => {
-    if (!customer || !activeStore || !identityId || !isBusinessSelected || loading) {
+    if (!supplier || !activeStore || !identityId || !isBusinessSelected || loading) {
       return;
     }
 
     const confirmed = window.confirm(
-      isAlsoSupplier
-        ? `Delete '${customer.name}'? This will delete the shared party from both customers and suppliers. To keep it as only a supplier, clear the supplier checkbox and save instead.`
-        : `Delete '${customer.name}'? This will mark the customer inactive.`,
+      isAlsoCustomer
+        ? `Delete '${supplier.name}'? This will delete the shared party from both suppliers and customers. To keep it as only a customer, clear the customer checkbox and save instead.`
+        : `Delete '${supplier.name}'? This will mark the supplier inactive.`,
     );
     if (!confirmed) {
       return;
@@ -212,34 +212,34 @@ export function CustomerDetailsPage() {
     setSaveError(null);
 
     try {
-      await queueCustomerDelete(activeStore, identityId, customer.entityId);
+      await queueSupplierDelete(activeStore, identityId, supplier.entityId);
       await syncOnce(activeStore);
-      navigate("/app/customers", {
+      navigate("/app/suppliers", {
         replace: true,
         state: {
-          customerMessage: isOnline()
-            ? isAlsoSupplier
-              ? "Party deleted from customers and suppliers."
-              : "Customer deleted."
-            : isAlsoSupplier
-              ? "Party delete queued offline and will remove it from customers and suppliers after sync."
-              : "Customer delete queued offline and will sync automatically.",
+          supplierMessage: isOnline()
+            ? isAlsoCustomer
+              ? "Party deleted from suppliers and customers."
+              : "Supplier deleted."
+            : isAlsoCustomer
+              ? "Party delete queued offline and will remove it from suppliers and customers after sync."
+              : "Supplier delete queued offline and will sync automatically.",
         },
       });
     } catch (nextError) {
       console.error(nextError);
-      setSaveError(toUserCustomerErrorMessage(nextError));
+      setSaveError(toUserSupplierErrorMessage(nextError));
       setLoading(false);
     }
   };
 
-  if (!customer && hasLoaded && !loading) {
+  if (!supplier && hasLoaded && !loading) {
     return (
       <Card className="lg:h-full lg:min-h-0">
         <CardHeader>
-          <CardTitle>Customer Details</CardTitle>
+          <CardTitle>Supplier Details</CardTitle>
           <CardDescription>
-            This customer is no longer available. Return to the customer table and
+            This supplier is no longer available. Return to the supplier table and
             select another record.
           </CardDescription>
         </CardHeader>
@@ -247,9 +247,9 @@ export function CustomerDetailsPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate("/app/customers")}
+            onClick={() => navigate("/app/suppliers")}
           >
-            Back to Customers
+            Back to Suppliers
           </Button>
         </CardContent>
       </Card>
@@ -259,28 +259,28 @@ export function CustomerDetailsPage() {
   return (
     <Card className="lg:h-full lg:min-h-0">
       <CardHeader>
-        <CardTitle>{customer?.name || "Customer Details"}</CardTitle>
+        <CardTitle>{supplier?.name || "Supplier Details"}</CardTitle>
         <CardDescription>
-          Review and update the selected customer record in its own detail page.
+          Review and update the selected supplier record in its own detail page.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 lg:max-w-3xl">
         {saveError ? <p className="text-xs text-red-700">{saveError}</p> : null}
-        {customer ? (
+        {supplier ? (
           <>
             <CustomerFormFields
               draft={draft}
               setDraft={setDraft}
               disabled={loading}
-              fieldIdPrefix="details"
-              secondaryRoleLabel={canAlsoBeSupplier ? "Supplier" : undefined}
-              secondaryRoleChecked={alsoManageAsSupplier}
-              onSecondaryRoleChange={setAlsoManageAsSupplier}
+              fieldIdPrefix="supplier-details"
+              secondaryRoleLabel={canAlsoBeCustomer ? "Customer" : undefined}
+              secondaryRoleChecked={alsoManageAsCustomer}
+              onSecondaryRoleChange={setAlsoManageAsCustomer}
               secondaryRoleHint={
-                canAlsoBeSupplier
-                  ? isAlsoSupplier
-                    ? "Clear this to keep the party only as a customer."
-                    : "Add this shared party record to the supplier list too."
+                canAlsoBeCustomer
+                  ? isAlsoCustomer
+                    ? "Clear this to keep the party only as a supplier."
+                    : "Add this shared party record to the customer list too."
                   : undefined
               }
             />
@@ -305,7 +305,7 @@ export function CustomerDetailsPage() {
                 variant="outline"
                 onClick={() => {
                   setDraft(initialDraft);
-                  setAlsoManageAsSupplier(isAlsoSupplier);
+                  setAlsoManageAsCustomer(isAlsoCustomer);
                 }}
                 disabled={loading || !isDirty}
               >
@@ -314,10 +314,10 @@ export function CustomerDetailsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => navigate("/app/customers")}
+                onClick={() => navigate("/app/suppliers")}
                 disabled={loading}
               >
-                Back to Customers
+                Back to Suppliers
               </Button>
               <Button
                 type="button"
@@ -328,12 +328,12 @@ export function CustomerDetailsPage() {
                 }}
                 disabled={loading}
               >
-                Delete Customer
+                Delete Supplier
               </Button>
             </div>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">Loading customer...</p>
+          <p className="text-xs text-muted-foreground">Loading supplier...</p>
         )}
       </CardContent>
     </Card>

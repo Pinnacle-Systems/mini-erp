@@ -54,6 +54,69 @@ export type BusinessModules = {
   pricing: boolean;
 };
 
+type SessionLicense = NonNullable<AssignedStore["license"]>;
+
+export type BusinessCapability = SessionLicense["addOnCapabilities"][number];
+
+const BUNDLE_CAPABILITY_MAP: Record<SessionLicense["bundleKey"], BusinessCapability[]> = {
+  SALES_LITE: [
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "FINANCE_RECEIVABLES",
+  ],
+  SALES_STOCK_OUT: [
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "INV_STOCK_OUT",
+    "FINANCE_RECEIVABLES",
+  ],
+  TRADING: [
+    "ITEM_PRODUCTS",
+    "ITEM_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "PARTIES_SUPPLIERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "TXN_PURCHASE_CREATE",
+    "TXN_PURCHASE_RETURN",
+    "INV_STOCK_OUT",
+    "INV_STOCK_IN",
+    "INV_ADJUSTMENT",
+    "INV_TRANSFER",
+    "FINANCE_RECEIVABLES",
+    "FINANCE_PAYABLES",
+  ],
+  SERVICE_BILLING: [
+    "ITEM_SERVICES",
+    "PARTIES_CUSTOMERS",
+    "TXN_SALE_CREATE",
+    "TXN_SALE_RETURN",
+    "FINANCE_RECEIVABLES",
+  ],
+  CUSTOM: [],
+};
+
+export const hasAssignedStoreCapability = (
+  store: AssignedStore | null | undefined,
+  capability: BusinessCapability,
+) => {
+  const license = store?.license;
+  if (!license) {
+    return false;
+  }
+
+  const effective = new Set<BusinessCapability>(BUNDLE_CAPABILITY_MAP[license.bundleKey]);
+  for (const key of license.addOnCapabilities) effective.add(key);
+  for (const key of license.removedCapabilities) effective.delete(key);
+  return effective.has(capability);
+};
+
 export type Role = "USER" | "PLATFORM_ADMIN" | null;
 
 type SessionState = {

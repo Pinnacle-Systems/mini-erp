@@ -159,15 +159,7 @@ export const getBusinessModulesFromLicense = async (
   businessId: string,
   db: LicenseWriteDbClient = prisma,
 ) => {
-  const license = await findBusinessLicense(businessId, db);
-
-  const effectiveCapabilities = license
-    ? resolveBundleCapabilities({
-        bundle_key: license.bundle_key,
-        add_on_capability_keys: filterCapabilities(license.add_on_capability_keys),
-        removed_capability_keys: filterCapabilities(license.removed_capability_keys),
-      })
-    : [];
+  const effectiveCapabilities = await getBusinessCapabilitiesFromLicense(businessId, db);
   const capabilitySet = new Set(effectiveCapabilities);
 
   return {
@@ -177,6 +169,32 @@ export const getBusinessModulesFromLicense = async (
       MODULE_TO_CAPABILITIES.PRICING.some((key) => capabilitySet.has(key)) ||
       capabilitySet.has("TXN_SALE_CREATE"),
   };
+};
+
+export const getBusinessCapabilitiesFromLicense = async (
+  businessId: string,
+  db: LicenseWriteDbClient = prisma,
+) => {
+  const license = await findBusinessLicense(businessId, db);
+
+  if (!license) {
+    return [];
+  }
+
+  return resolveBundleCapabilities({
+    bundle_key: license.bundle_key,
+    add_on_capability_keys: filterCapabilities(license.add_on_capability_keys),
+    removed_capability_keys: filterCapabilities(license.removed_capability_keys),
+  });
+};
+
+export const hasBusinessLicenseCapability = async (
+  businessId: string,
+  capability: BusinessCapabilityKey,
+  db: LicenseWriteDbClient = prisma,
+) => {
+  const capabilities = await getBusinessCapabilitiesFromLicense(businessId, db);
+  return capabilities.includes(capability);
 };
 
 export const upsertBusinessLicense = async (

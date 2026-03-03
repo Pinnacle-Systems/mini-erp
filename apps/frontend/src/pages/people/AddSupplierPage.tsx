@@ -20,25 +20,25 @@ import {
 import { CustomerFormFields } from "./customer-form";
 import {
   EMPTY_CUSTOMER_DRAFT,
-  toUserCustomerErrorMessage,
+  toUserSupplierErrorMessage,
 } from "./customer-utils";
 
 const isOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine;
 
-export function AddCustomerPage() {
+export function AddSupplierPage() {
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const businesses = useSessionStore((state) => state.businesses);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [draft, setDraft] = useState(EMPTY_CUSTOMER_DRAFT);
-  const [alsoCreateSupplier, setAlsoCreateSupplier] = useState(false);
+  const [alsoCreateCustomer, setAlsoCreateCustomer] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const activeBusiness =
     businesses.find((business) => business.id === activeStore) ?? null;
-  const canAlsoBeSupplier = hasAssignedStoreCapability(activeBusiness, "PARTIES_SUPPLIERS");
+  const canAlsoBeCustomer = hasAssignedStoreCapability(activeBusiness, "PARTIES_CUSTOMERS");
 
   const onSave = async () => {
     if (!activeStore || !identityId || !isBusinessSelected || loading) {
@@ -47,7 +47,7 @@ export function AddCustomerPage() {
 
     const trimmedName = draft.name.trim();
     if (!trimmedName) {
-      setError("Customer name is required.");
+      setError("Supplier name is required.");
       return;
     }
 
@@ -60,26 +60,26 @@ export function AddCustomerPage() {
         ...draft,
         name: trimmedName,
       };
-      await queueCustomerCreate(activeStore, identityId, payload, sharedEntityId);
-      if (alsoCreateSupplier && canAlsoBeSupplier) {
-        await queueSupplierCreate(activeStore, identityId, payload, sharedEntityId);
+      await queueSupplierCreate(activeStore, identityId, payload, sharedEntityId);
+      if (alsoCreateCustomer && canAlsoBeCustomer) {
+        await queueCustomerCreate(activeStore, identityId, payload, sharedEntityId);
       }
       await syncOnce(activeStore);
-      navigate("/app/customers", {
+      navigate("/app/suppliers", {
         replace: true,
         state: {
-          customerMessage: isOnline()
-            ? alsoCreateSupplier && canAlsoBeSupplier
-              ? "Customer saved and added to suppliers."
-              : "Customer saved."
-            : alsoCreateSupplier && canAlsoBeSupplier
-              ? "Customer and supplier records queued offline and will sync automatically."
-              : "Customer queued offline and will sync automatically.",
+          supplierMessage: isOnline()
+            ? alsoCreateCustomer && canAlsoBeCustomer
+              ? "Supplier saved and added to customers."
+              : "Supplier saved."
+            : alsoCreateCustomer && canAlsoBeCustomer
+              ? "Supplier and customer records queued offline and will sync automatically."
+              : "Supplier queued offline and will sync automatically.",
         },
       });
     } catch (nextError) {
       console.error(nextError);
-      setError(toUserCustomerErrorMessage(nextError));
+      setError(toUserSupplierErrorMessage(nextError));
       setLoading(false);
     }
   };
@@ -87,9 +87,9 @@ export function AddCustomerPage() {
   return (
     <Card className="lg:h-full lg:min-h-0">
       <CardHeader>
-        <CardTitle>Add Customer</CardTitle>
+        <CardTitle>Add Supplier</CardTitle>
         <CardDescription>
-          Create a customer record in its own form, then return to the customer
+          Create a supplier record in its own form, then return to the supplier
           table for review and edits.
         </CardDescription>
       </CardHeader>
@@ -99,13 +99,13 @@ export function AddCustomerPage() {
           draft={draft}
           setDraft={setDraft}
           disabled={loading}
-          fieldIdPrefix="new"
-          secondaryRoleLabel={canAlsoBeSupplier ? "Supplier" : undefined}
-          secondaryRoleChecked={alsoCreateSupplier}
-          onSecondaryRoleChange={setAlsoCreateSupplier}
+          fieldIdPrefix="new-supplier"
+          secondaryRoleLabel={canAlsoBeCustomer ? "Customer" : undefined}
+          secondaryRoleChecked={alsoCreateCustomer}
+          onSecondaryRoleChange={setAlsoCreateCustomer}
           secondaryRoleHint={
-            canAlsoBeSupplier
-              ? "Use one shared party record in both customer and supplier lists."
+            canAlsoBeCustomer
+              ? "Use one shared party record in both supplier and customer lists."
               : undefined
           }
         />
@@ -117,12 +117,12 @@ export function AddCustomerPage() {
             }}
             disabled={!activeStore || !isBusinessSelected || !identityId || loading}
           >
-            {loading ? "Saving..." : "Add Customer"}
+            {loading ? "Saving..." : "Add Supplier"}
           </Button>
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate("/app/customers")}
+            onClick={() => navigate("/app/suppliers")}
             disabled={loading}
           >
             Cancel
