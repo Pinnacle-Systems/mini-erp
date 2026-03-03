@@ -42,12 +42,13 @@ type LicenseDbClient = Pick<typeof prisma, "businessLicense" | "businessMember" 
 type LicenseWriteDbClient = Pick<typeof prisma, "businessLicense">;
 type SessionWriteDbClient = Pick<typeof prisma, "session">;
 
-type LegacyBusinessModuleKey = "CATALOG" | "INVENTORY" | "PRICING";
+type LegacyBusinessModuleKey = "CATALOG" | "INVENTORY" | "PRICING" | "SALES";
 
 const MODULE_TO_CAPABILITIES: Record<LegacyBusinessModuleKey, BusinessCapabilityKey[]> = {
   CATALOG: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
   INVENTORY: ["INV_STOCK_OUT", "INV_STOCK_IN", "INV_ADJUSTMENT", "INV_TRANSFER"],
   PRICING: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
+  SALES: ["TXN_SALE_CREATE", "TXN_SALE_RETURN"],
 };
 
 const BUNDLE_CAPABILITIES: Record<BusinessBundleKey, BusinessCapabilityKey[]> = {
@@ -165,6 +166,7 @@ export const getBusinessModulesFromLicense = async (
   return {
     catalog: MODULE_TO_CAPABILITIES.CATALOG.some((key) => capabilitySet.has(key)),
     inventory: MODULE_TO_CAPABILITIES.INVENTORY.some((key) => capabilitySet.has(key)),
+    sales: MODULE_TO_CAPABILITIES.SALES.some((key) => capabilitySet.has(key)),
     pricing:
       MODULE_TO_CAPABILITIES.PRICING.some((key) => capabilitySet.has(key)) ||
       capabilitySet.has("TXN_SALE_CREATE"),

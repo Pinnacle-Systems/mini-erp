@@ -19,6 +19,7 @@ import {
   AddCustomerPage,
   AddSupplierPage,
   CustomerDetailsPage,
+  CustomerGroupsPage,
   CustomersPage,
   SupplierDetailsPage,
   SuppliersPage,
@@ -26,6 +27,7 @@ import {
 import { AppFeaturePlaceholderPage, DataSyncAppPage, ItemSyncAppPage } from "../pages/shell/UserAppPages";
 import { AdjustmentsPage, HistoryPage, LevelsPage } from "../pages/stock";
 import { OfflinePage } from "../pages/system";
+import { BillsPage } from "../pages/sales";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import {
   RequireAuth,
@@ -221,9 +223,43 @@ export function AppRoutes() {
           <Route element={<AppLayout onLogout={() => void onLogout()} />}>
             <Route path="/app" element={<AppEntryRoute />}>
               <Route element={<RequireRole role="USER" />}>
-                <Route path="sales-bills" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Bills" />} />
-                <Route path="sales-orders" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Orders" />} />
-                <Route path="sales-returns" element={<AppFeaturePlaceholderPage sectionTitle="Sell" appLabel="Returns" />} />
+                <Route element={<RequireModule moduleKey="sales" />}>
+                  <Route
+                    element={
+                      <RequireAnyCapability
+                        capabilities={["ITEM_PRODUCTS", "ITEM_SERVICES"]}
+                      />
+                    }
+                  >
+                    <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
+                      <Route element={<RequireCapability capability="TXN_SALE_CREATE" />}>
+                        <Route path="sales-bills" element={<BillsPage />} />
+                        <Route
+                          path="sales-orders"
+                          element={
+                            <AppFeaturePlaceholderPage
+                              sectionTitle="Sell"
+                              appLabel="Orders"
+                            />
+                          }
+                        />
+                      </Route>
+                    </Route>
+                  </Route>
+                  <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
+                    <Route element={<RequireCapability capability="TXN_SALE_RETURN" />}>
+                      <Route
+                        path="sales-returns"
+                        element={
+                          <AppFeaturePlaceholderPage
+                            sectionTitle="Sell"
+                            appLabel="Returns"
+                          />
+                        }
+                      />
+                    </Route>
+                  </Route>
+                </Route>
                 <Route element={<RequireModule moduleKey="pricing" />}>
                   <Route path="item-pricing" element={<PricingEntryRoute />} />
                   <Route element={<RequireCapability capability="ITEM_PRODUCTS" />}>
@@ -340,10 +376,7 @@ export function AppRoutes() {
                   <Route path="customers/:customerId" element={<CustomerDetailsPage />} />
                 </Route>
                 <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
-                  <Route
-                    path="customer-groups"
-                    element={<AppFeaturePlaceholderPage sectionTitle="People" appLabel="Groups" />}
-                  />
+                  <Route path="customer-groups" element={<CustomerGroupsPage />} />
                 </Route>
                 <Route element={<RequireCapability capability="PARTIES_SUPPLIERS" />}>
                   <Route path="suppliers" element={<SuppliersPage />} />

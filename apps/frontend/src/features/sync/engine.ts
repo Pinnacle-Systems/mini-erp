@@ -110,7 +110,33 @@ export type VariantInput = {
 export type ItemInput = {
   name?: string;
   category?: string | null;
-  unit?: "PCS" | "KG" | "M" | "BOX";
+  unit?:
+    | "PCS"
+    | "UNIT"
+    | "SET"
+    | "PAIR"
+    | "PACK"
+    | "BOX"
+    | "CARTON"
+    | "BAGS"
+    | "BOTTLES"
+    | "CANS"
+    | "ROLL"
+    | "SHEET"
+    | "JOB"
+    | "VISIT"
+    | "SESSION"
+    | "HOUR"
+    | "DAY"
+    | "GRAM"
+    | "KG"
+    | "MILLILITRE"
+    | "LITRE"
+    | "MM"
+    | "CM"
+    | "M"
+    | "FEET"
+    | "INCH";
   itemType?: "PRODUCT" | "SERVICE";
   variants?: VariantInput[];
 };
@@ -255,7 +281,33 @@ export const queueItemCreate = async (
   payload: {
     name: string;
     category?: string;
-    unit: "PCS" | "KG" | "M" | "BOX";
+    unit:
+      | "PCS"
+      | "UNIT"
+      | "SET"
+      | "PAIR"
+      | "PACK"
+      | "BOX"
+      | "CARTON"
+      | "BAGS"
+      | "BOTTLES"
+      | "CANS"
+      | "ROLL"
+      | "SHEET"
+      | "JOB"
+      | "VISIT"
+      | "SESSION"
+      | "HOUR"
+      | "DAY"
+      | "GRAM"
+      | "KG"
+      | "MILLILITRE"
+      | "LITRE"
+      | "MM"
+      | "CM"
+      | "M"
+      | "FEET"
+      | "INCH";
     itemType: "PRODUCT" | "SERVICE";
     variants?: VariantInput[];
   }
@@ -490,7 +542,33 @@ export type ItemDetailDisplay = {
   id: string;
   name: string;
   category: string;
-  unit: "PCS" | "KG" | "M" | "BOX";
+  unit:
+    | "PCS"
+    | "UNIT"
+    | "SET"
+    | "PAIR"
+    | "PACK"
+    | "BOX"
+    | "CARTON"
+    | "BAGS"
+    | "BOTTLES"
+    | "CANS"
+    | "ROLL"
+    | "SHEET"
+    | "JOB"
+    | "VISIT"
+    | "SESSION"
+    | "HOUR"
+    | "DAY"
+    | "GRAM"
+    | "KG"
+    | "MILLILITRE"
+    | "LITRE"
+    | "MM"
+    | "CM"
+    | "M"
+    | "FEET"
+    | "INCH";
   itemType: "PRODUCT" | "SERVICE";
   pending: boolean;
   variants: ItemVariantDisplay[];
@@ -762,7 +840,33 @@ export const getLocalItemDetailForDisplay = async (
     id: item.entityId,
     name: String(item.data.name ?? "Untitled Item"),
     category: String(item.data.category ?? ""),
-    unit: String(item.data.unit ?? "PCS") as "PCS" | "KG" | "M" | "BOX",
+    unit: String(item.data.unit ?? "PCS") as
+      | "PCS"
+      | "UNIT"
+      | "SET"
+      | "PAIR"
+      | "PACK"
+      | "BOX"
+      | "CARTON"
+      | "BAGS"
+      | "BOTTLES"
+      | "CANS"
+      | "ROLL"
+      | "SHEET"
+      | "JOB"
+      | "VISIT"
+      | "SESSION"
+      | "HOUR"
+      | "DAY"
+      | "GRAM"
+      | "KG"
+      | "MILLILITRE"
+      | "LITRE"
+      | "MM"
+      | "CM"
+      | "M"
+      | "FEET"
+      | "INCH",
     itemType: String(item.data.itemType ?? "PRODUCT") as
       | "PRODUCT"
       | "SERVICE",

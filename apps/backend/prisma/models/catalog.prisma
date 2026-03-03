@@ -1,8 +1,30 @@
 enum UnitType {
   PCS
-  KG
-  M
+  UNIT
+  SET
+  PAIR
+  PACK
   BOX
+  CARTON
+  BAGS
+  BOTTLES
+  CANS
+  ROLL
+  SHEET
+  JOB
+  VISIT
+  SESSION
+  HOUR
+  DAY
+  GRAM
+  KG
+  MILLILITRE
+  LITRE
+  MM
+  CM
+  M
+  FEET
+  INCH
 
   @@schema("catalog")
 }

@@ -33,7 +33,42 @@ import {
 } from "../../../features/sync/engine";
 import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-utils";
 
-const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
+const UNIT_GROUPS = [
+  {
+    label: "General",
+    options: ["PCS", "UNIT", "SET", "PAIR", "PACK"] as const,
+  },
+  {
+    label: "Packaging",
+    options: ["BOX", "CARTON", "BAGS", "BOTTLES", "CANS"] as const,
+  },
+  {
+    label: "Service",
+    options: ["JOB", "VISIT", "SESSION", "HOUR", "DAY"] as const,
+  },
+  {
+    label: "Material",
+    options: ["ROLL", "SHEET"] as const,
+  },
+  {
+    label: "Weight & Volume",
+    options: ["GRAM", "KG", "MILLILITRE", "LITRE"] as const,
+  },
+  {
+    label: "Length",
+    options: ["MM", "CM", "M", "FEET", "INCH"] as const,
+  },
+] as const;
+const getOrderedUnitGroups = (itemType: "PRODUCT" | "SERVICE") => {
+  if (itemType !== "SERVICE") {
+    return UNIT_GROUPS;
+  }
+
+  const serviceGroup = UNIT_GROUPS.find((group) => group.label === "Service");
+  const remainingGroups = UNIT_GROUPS.filter((group) => group.label !== "Service");
+  return serviceGroup ? [serviceGroup, ...remainingGroups] : UNIT_GROUPS;
+};
+type UnitOption = (typeof UNIT_GROUPS)[number]["options"][number];
 const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
 const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
 
@@ -47,7 +82,7 @@ type DraftItem = {
   id: string;
   name: string;
   category: string;
-  unit: "PCS" | "KG" | "M" | "BOX";
+  unit: UnitOption;
   itemType: "PRODUCT" | "SERVICE";
   variants: DraftVariant[];
 };
@@ -123,6 +158,14 @@ const hasIncompleteOptionRows = (variant: DraftVariant) => {
   });
 };
 
+const hasAdvancedVariantStructure = (variant: DraftVariant) =>
+  variant.name.trim().length > 0;
+
+const canUseSimpleVariantEditor = (draft: DraftItem) =>
+  draft.variants.length === 1 && !hasAdvancedVariantStructure(draft.variants[0]);
+
+const shouldShowVariantEditorByDefault = (draft: DraftItem) => !canUseSimpleVariantEditor(draft);
+
 const toDraft = (item: ItemDetailDisplay): DraftItem => ({
   id: item.id,
   name: item.name,
@@ -157,10 +200,15 @@ export function ItemDetailsPage({
   const [item, setItem] = useState<DraftItem | null>(null);
   const [initialItem, setInitialItem] = useState<DraftItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [showVariantEditor, setShowVariantEditor] = useState(true);
   const [optionModalVariantId, setOptionModalVariantId] = useState<string | null>(null);
   const [optionKeyDraft, setOptionKeyDraft] = useState("");
   const [optionValueDraft, setOptionValueDraft] = useState("");
   const [savedCategories, setSavedCategories] = useState<string[]>([]);
+  const orderedUnitGroups = useMemo(
+    () => getOrderedUnitGroups(forcedItemType),
+    [forcedItemType],
+  );
 
   useEffect(() => {
     if (!activeStore || !itemId) return;
@@ -182,6 +230,7 @@ export function ItemDetailsPage({
       setItem(draft);
       setInitialItem(draft);
       setIsEditing(false);
+      setShowVariantEditor(shouldShowVariantEditorByDefault(draft));
       setOptionModalVariantId(null);
       setOptionKeyDraft("");
       setOptionValueDraft("");
@@ -256,6 +305,11 @@ export function ItemDetailsPage({
     () => (item ? isItemActive(item.variants) : true),
     [item],
   );
+  const canShowSimpleEditor = useMemo(
+    () => (item ? canUseSimpleVariantEditor(item) : false),
+    [item],
+  );
+  const primaryVariant = item?.variants[0] ?? null;
 
   const onSave = async () => {
     if (!item || !initialItem || !identityId || !activeStore || !isBusinessSelected) return;
@@ -371,6 +425,7 @@ export function ItemDetailsPage({
       setItem(refreshedDraft);
       setInitialItem(refreshedDraft);
       setIsEditing(false);
+      setShowVariantEditor(shouldShowVariantEditorByDefault(refreshedDraft));
       closeOptionModal();
     } catch (error) {
       console.error(error);
@@ -492,6 +547,7 @@ export function ItemDetailsPage({
                     setItem(initialItem);
                     setSaveError(null);
                     setIsEditing(false);
+                    setShowVariantEditor(shouldShowVariantEditorByDefault(initialItem));
                     closeOptionModal();
                   }}
                 />
@@ -501,6 +557,7 @@ export function ItemDetailsPage({
                   onPrimaryClick={() => {
                     setSaveError(null);
                     setIsEditing(true);
+                    setShowVariantEditor(shouldShowVariantEditorByDefault(item));
                   }}
                   primaryDisabled={loading}
                   secondaryLabel="Back"
@@ -549,14 +606,18 @@ export function ItemDetailsPage({
                 onChange={(event) =>
                   setItem({
                     ...item,
-                    unit: event.target.value as "PCS" | "KG" | "M" | "BOX",
+                    unit: event.target.value as UnitOption,
                   })
                 }
               >
-                {UNIT_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
+                {orderedUnitGroups.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </Select>
             </div>
@@ -567,43 +628,104 @@ export function ItemDetailsPage({
           </div>
 
           <div className="mt-1 grid gap-1.5">
-            <ItemVariantCardsEditor
-              variants={item.variants}
-              onVariantsChange={(next) =>
-                setItem({
-                  ...item,
-                  variants: next as DraftVariant[],
-                })
-              }
-              onAddVariant={() => {
-                if (!isEditing || loading) return;
-                setItem({
-                  ...item,
-                  variants: [
-                    ...item.variants,
-                    {
-                      id: `temp-${crypto.randomUUID()}`,
-                      name: "",
-                      sku: "",
-                      barcode: "",
-                      isActive: itemActiveState,
-                      optionRows: [],
-                      usageCount: 0,
-                      isLocked: false,
-                    },
-                  ],
-                });
-              }}
-              onOpenOptionModal={(variantId) => {
-                if (!isEditing || loading) return;
-                setSaveError(null);
-                setOptionModalVariantId(variantId);
-              }}
-              addVariantLabel="Add Row"
-              denseInputClassName={DENSE_INPUT_CLASS}
-              showActiveToggle
-              disabled={!isEditing || loading}
-            />
+            <div className="rounded-lg border border-border/80 bg-white p-1.5">
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-foreground lg:text-[10px]">
+                <Switch
+                  id="edit-variant-mode"
+                  checked={showVariantEditor}
+                  aria-label="Variant mode"
+                  onCheckedChange={(checked) => {
+                    if (!isEditing || loading) return;
+                    if (!checked && !canShowSimpleEditor) return;
+                    setShowVariantEditor(checked);
+                    setSaveError(null);
+                  }}
+                  disabled={!isEditing || loading || (!showVariantEditor && !canShowSimpleEditor)}
+                  className="h-6 w-11 border"
+                  checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                  uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+                />
+                <Label htmlFor="edit-variant-mode">
+                  Variant mode {canShowSimpleEditor ? "(advanced)" : "(required)"}
+                </Label>
+              </div>
+            </div>
+
+            {showVariantEditor ? (
+              <ItemVariantCardsEditor
+                variants={item.variants}
+                onVariantsChange={(next) =>
+                  setItem({
+                    ...item,
+                    variants: next as DraftVariant[],
+                  })
+                }
+                onAddVariant={() => {
+                  if (!isEditing || loading) return;
+                  setItem({
+                    ...item,
+                    variants: [
+                      ...item.variants,
+                      {
+                        id: `temp-${crypto.randomUUID()}`,
+                        name: "",
+                        sku: "",
+                        barcode: "",
+                        isActive: itemActiveState,
+                        optionRows: [],
+                        usageCount: 0,
+                        isLocked: false,
+                      },
+                    ],
+                  });
+                  setShowVariantEditor(true);
+                }}
+                onOpenOptionModal={(variantId) => {
+                  if (!isEditing || loading) return;
+                  setSaveError(null);
+                  setOptionModalVariantId(variantId);
+                }}
+                addVariantLabel="Add Row"
+                denseInputClassName={DENSE_INPUT_CLASS}
+                showActiveToggle
+                disabled={!isEditing || loading}
+              />
+            ) : primaryVariant ? (
+              <div className="grid gap-1.5 rounded-lg border border-border/80 bg-white p-1.5 lg:grid-cols-12 lg:items-end">
+                <div className="grid gap-1 lg:col-span-6">
+                  <Label>SKU</Label>
+                  <Input
+                    className={DENSE_INPUT_CLASS}
+                    value={primaryVariant.sku}
+                    disabled={!isEditing || loading}
+                    onChange={(event) =>
+                      setItem({
+                        ...item,
+                        variants: item.variants.map((variant, index) =>
+                          index === 0 ? { ...variant, sku: event.target.value } : variant,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+                <div className="grid gap-1 lg:col-span-6">
+                  <Label>Barcode</Label>
+                  <Input
+                    className={DENSE_INPUT_CLASS}
+                    value={primaryVariant.barcode}
+                    disabled={!isEditing || loading}
+                    onChange={(event) =>
+                      setItem({
+                        ...item,
+                        variants: item.variants.map((variant, index) =>
+                          index === 0 ? { ...variant, barcode: event.target.value } : variant,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {saveError ? (

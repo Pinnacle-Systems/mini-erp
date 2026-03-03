@@ -133,6 +133,7 @@ const folders: Array<{
     id: "sell",
     label: "Sell",
     Icon: HandCoins,
+    requiredModule: "sales",
     apps: [
       {
         id: "sales-bills",
@@ -418,6 +419,7 @@ export function AppHomePage() {
       activeBusinessModules ?? {
         catalog: true,
         inventory: true,
+        sales: true,
         pricing: true,
       },
     [activeBusinessModules],

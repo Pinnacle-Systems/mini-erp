@@ -34,7 +34,42 @@ import {
 } from "../../../features/sync/engine";
 import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-utils";
 
-const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
+const UNIT_GROUPS = [
+  {
+    label: "General",
+    options: ["PCS", "UNIT", "SET", "PAIR", "PACK"] as const,
+  },
+  {
+    label: "Packaging",
+    options: ["BOX", "CARTON", "BAGS", "BOTTLES", "CANS"] as const,
+  },
+  {
+    label: "Service",
+    options: ["JOB", "VISIT", "SESSION", "HOUR", "DAY"] as const,
+  },
+  {
+    label: "Material",
+    options: ["ROLL", "SHEET"] as const,
+  },
+  {
+    label: "Weight & Volume",
+    options: ["GRAM", "KG", "MILLILITRE", "LITRE"] as const,
+  },
+  {
+    label: "Length",
+    options: ["MM", "CM", "M", "FEET", "INCH"] as const,
+  },
+] as const;
+type UnitOption = (typeof UNIT_GROUPS)[number]["options"][number];
+const getOrderedUnitGroups = (itemType: "PRODUCT" | "SERVICE") => {
+  if (itemType !== "SERVICE") {
+    return UNIT_GROUPS;
+  }
+
+  const serviceGroup = UNIT_GROUPS.find((group) => group.label === "Service");
+  const remainingGroups = UNIT_GROUPS.filter((group) => group.label !== "Service");
+  return serviceGroup ? [serviceGroup, ...remainingGroups] : UNIT_GROUPS;
+};
 const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
 const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
 const QUICK_ENTRY_INPUT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
@@ -122,7 +157,7 @@ type QuickItemDraft = {
   name: string;
   sku: string;
   category: string;
-  unit: (typeof UNIT_OPTIONS)[number];
+  unit: UnitOption;
   itemType: "PRODUCT" | "SERVICE";
 };
 
@@ -177,7 +212,7 @@ export function AddItemPage({
   const [hasVariants, setHasVariants] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [unit, setUnit] = useState<(typeof UNIT_OPTIONS)[number]>("PCS");
+  const [unit, setUnit] = useState<UnitOption>("PCS");
   const [variants, setVariants] = useState<ItemVariantDraft[]>([EMPTY_VARIANT()]);
   const [quickRows, setQuickRows] = useState<QuickItemDraft[]>(() =>
     buildInitialRows(forcedItemType),
@@ -192,6 +227,10 @@ export function AddItemPage({
   const [savedCategories, setSavedCategories] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const orderedUnitGroups = useMemo(
+    () => getOrderedUnitGroups(forcedItemType),
+    [forcedItemType],
+  );
 
   useEffect(() => {
     setItemType(forcedItemType);
@@ -652,17 +691,21 @@ export function AddItemPage({
                                 entry.id === row.id
                                   ? {
                                       ...entry,
-                                      unit: event.target.value as (typeof UNIT_OPTIONS)[number],
+                                      unit: event.target.value as UnitOption,
                                     }
                                   : entry,
                               ),
                             )
                           }
                         >
-                          {UNIT_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
+                          {orderedUnitGroups.map((group) => (
+                            <optgroup key={group.label} label={group.label}>
+                              {group.options.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </optgroup>
                           ))}
                         </Select>
                         <LookupDropdownInput
@@ -768,13 +811,17 @@ export function AddItemPage({
                       className={`${DENSE_SELECT_CLASS} w-full`}
                       value={unit}
                       onChange={(event) =>
-                        setUnit(event.target.value as (typeof UNIT_OPTIONS)[number])
+                        setUnit(event.target.value as UnitOption)
                       }
                     >
-                      {UNIT_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
+                      {orderedUnitGroups.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.options.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </optgroup>
                       ))}
                     </Select>
                   </div>

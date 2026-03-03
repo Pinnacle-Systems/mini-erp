@@ -51,6 +51,7 @@ export type AssignedStore = {
 export type BusinessModules = {
   catalog: boolean;
   inventory: boolean;
+  sales: boolean;
   pricing: boolean;
 };
 

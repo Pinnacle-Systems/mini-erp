@@ -4,9 +4,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Input } from "../atoms/Input";
 import { cn } from "../../lib/utils";
 
@@ -54,7 +56,10 @@ export function LookupDropdownInput<T>({
 }: LookupDropdownInputProps<T>) {
   const [isFocused, setIsFocused] = useState(false);
   const [activeOptionIndex, setActiveOptionIndex] = useState(-1);
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties | null>(null);
   const listboxId = useId();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const filteredOptions = useMemo(() => {
@@ -83,14 +88,68 @@ export function LookupDropdownInput<T>({
     optionRefs.current[highlightedOptionIndex]?.scrollIntoView({ block: "nearest" });
   }, [highlightedOptionIndex]);
 
+  useEffect(() => {
+    if (!isDropdownOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const updateDropdownPosition = () => {
+      const container = containerRef.current;
+      if (!container) {
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const viewportPadding = 8;
+      const dropdownGap = 4;
+      const estimatedHeight = Math.min(
+        dropdownRef.current?.offsetHeight ?? filteredOptions.length * 36 + 8,
+        160,
+      );
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding - dropdownGap;
+      const spaceAbove = rect.top - viewportPadding - dropdownGap;
+      const openAbove = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+
+      if (openAbove) {
+        setDropdownStyle({
+          position: "fixed",
+          left: rect.left,
+          bottom: Math.max(window.innerHeight - rect.top + dropdownGap, viewportPadding),
+          width: rect.width,
+          maxHeight: Math.max(spaceAbove, 96),
+        });
+        return;
+      }
+
+      setDropdownStyle({
+        position: "fixed",
+        left: rect.left,
+        top: Math.min(rect.bottom + dropdownGap, window.innerHeight - viewportPadding),
+        width: rect.width,
+        maxHeight: Math.max(spaceBelow, 96),
+      });
+    };
+    const frameId = window.requestAnimationFrame(updateDropdownPosition);
+
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [filteredOptions.length, isDropdownOpen]);
+
   const selectOption = (option: T) => {
     onOptionSelect(option);
     setIsFocused(false);
     setActiveOptionIndex(-1);
+    setDropdownStyle(null);
   };
 
   return (
-    <div className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
+    <div ref={containerRef} className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
       <Input
         {...inputProps}
         id={id}
@@ -116,6 +175,7 @@ export function LookupDropdownInput<T>({
           window.setTimeout(() => {
             setIsFocused(false);
             setActiveOptionIndex(-1);
+            setDropdownStyle(null);
           }, 100);
         }}
         onChange={(event) => onValueChange(event.target.value)}
@@ -153,6 +213,7 @@ export function LookupDropdownInput<T>({
             event.preventDefault();
             setIsFocused(false);
             setActiveOptionIndex(-1);
+            setDropdownStyle(null);
           }
         }}
         className={inputClassName}
@@ -160,44 +221,49 @@ export function LookupDropdownInput<T>({
       {loading && loadingLabel ? (
         <p className="text-[10px] text-muted-foreground">{loadingLabel}</p>
       ) : null}
-      {isDropdownOpen ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          className={cn(
-            "absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-border bg-card p-1 shadow-sm",
-            dropdownClassName,
-          )}
-        >
-          <div className="grid gap-1">
-            {filteredOptions.map((option, index) => (
-              <button
-                id={`${listboxId}-option-${index}`}
-                ref={(node) => {
-                  optionRefs.current[index] = node;
-                }}
-                key={getOptionKey(option)}
-                type="button"
-                role="option"
-                aria-selected={highlightedOptionIndex === index}
-                disabled={disabled}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                }}
-                onMouseEnter={() => setActiveOptionIndex(index)}
-                onClick={() => selectOption(option)}
-                className={cn(
-                  "rounded-md border border-transparent px-2 py-1 text-left text-[11px] text-foreground hover:border-border hover:bg-muted/70",
-                  highlightedOptionIndex === index && "border-border bg-muted/70",
-                  optionClassName,
-                )}
-              >
-                {renderOption(option)}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {isDropdownOpen && dropdownStyle && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              id={listboxId}
+              role="listbox"
+              style={dropdownStyle}
+              className={cn(
+                "z-50 overflow-y-auto rounded-md border border-border bg-card p-1 shadow-sm",
+                dropdownClassName,
+              )}
+            >
+              <div className="grid gap-1">
+                {filteredOptions.map((option, index) => (
+                  <button
+                    id={`${listboxId}-option-${index}`}
+                    ref={(node) => {
+                      optionRefs.current[index] = node;
+                    }}
+                    key={getOptionKey(option)}
+                    type="button"
+                    role="option"
+                    aria-selected={highlightedOptionIndex === index}
+                    disabled={disabled}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                    }}
+                    onMouseEnter={() => setActiveOptionIndex(index)}
+                    onClick={() => selectOption(option)}
+                    className={cn(
+                      "rounded-md border border-transparent px-2 py-1 text-left text-[11px] text-foreground hover:border-border hover:bg-muted/70",
+                      highlightedOptionIndex === index && "border-border bg-muted/70",
+                      optionClassName,
+                    )}
+                  >
+                    {renderOption(option)}
+                  </button>
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

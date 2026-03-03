@@ -252,6 +252,7 @@ export const updateBusinessSchema = z.object({
         .object({
           catalog: z.boolean().optional(),
           inventory: z.boolean().optional(),
+          sales: z.boolean().optional(),
           pricing: z.boolean().optional(),
         })
         .strict()

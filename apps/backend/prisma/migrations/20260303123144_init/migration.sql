@@ -35,7 +35,7 @@ CREATE TYPE "accounts"."AccountType" AS ENUM ('ASSET', 'LIABILITY', 'EQUITY', 'R
 CREATE TYPE "auth"."SystemRole" AS ENUM ('USER', 'PLATFORM_ADMIN');
 
 -- CreateEnum
-CREATE TYPE "catalog"."UnitType" AS ENUM ('PCS', 'KG', 'M', 'BOX');
+CREATE TYPE "catalog"."UnitType" AS ENUM ('PCS', 'UNIT', 'SET', 'PAIR', 'PACK', 'BOX', 'CARTON', 'BAGS', 'BOTTLES', 'CANS', 'ROLL', 'SHEET', 'JOB', 'VISIT', 'SESSION', 'HOUR', 'DAY', 'GRAM', 'KG', 'MILLILITRE', 'LITRE', 'MM', 'CM', 'M', 'FEET', 'INCH');
 
 -- CreateEnum
 CREATE TYPE "catalog"."ItemType" AS ENUM ('PRODUCT', 'SERVICE');
@@ -315,9 +315,9 @@ CREATE TABLE "parties"."parties" (
 CREATE TABLE "parties"."customer_groups" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
-    "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -329,6 +329,8 @@ CREATE TABLE "parties"."customer_group_members" (
     "id" UUID NOT NULL,
     "customer_group_id" UUID NOT NULL,
     "party_id" UUID NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "customer_group_members_pkey" PRIMARY KEY ("id")
@@ -606,9 +608,6 @@ CREATE UNIQUE INDEX "documents_business_id_type_doc_number_key" ON "documents"."
 
 -- CreateIndex
 CREATE INDEX "stock_ledger_business_id_variant_id_idx" ON "inventory"."stock_ledger"("business_id", "variant_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "customer_groups_business_id_code_key" ON "parties"."customer_groups"("business_id", "code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "customer_group_members_customer_group_id_party_id_key" ON "parties"."customer_group_members"("customer_group_id", "party_id");

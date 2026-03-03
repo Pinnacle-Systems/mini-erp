@@ -87,6 +87,7 @@ export type AdminStore = {
   modules?: {
     catalog: boolean;
     inventory: boolean;
+    sales: boolean;
     pricing: boolean;
   };
   license?: {
