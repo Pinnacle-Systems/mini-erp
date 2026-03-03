@@ -25,6 +25,7 @@ import {
   type ItemDetailDisplay,
   type ItemDisplay,
 } from "../../features/sync/engine";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 type CollectionVariantLink = {
   membershipId: string;
@@ -61,6 +62,10 @@ export function CollectionsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const debouncedItemSearch = useDebouncedValue(itemSearchDraft, 250);
+  const appliedItemSearch = (itemSearchDraft.trim().length === 0 ? "" : debouncedItemSearch)
+    .trim()
+    .toLowerCase();
 
   const refresh = async () => {
     if (!activeStore) return;
@@ -376,7 +381,7 @@ export function CollectionsPage() {
 
   useEffect(() => {
     if (!activeStore) return;
-    if (itemSearchDraft.trim().length === 0) return;
+    if (!appliedItemSearch) return;
 
     const idsToHydrate = addableItems
       .map((item) => item.entityId)
@@ -385,10 +390,10 @@ export function CollectionsPage() {
     if (idsToHydrate.length === 0) return;
 
     void Promise.all(idsToHydrate.map((itemId) => ensureItemDetailsLoaded(itemId).catch(() => null)));
-  }, [activeStore, addableItems, ensureItemDetailsLoaded, itemDetailsById, itemSearchDraft, loadingDetailsById]);
+  }, [activeStore, addableItems, appliedItemSearch, ensureItemDetailsLoaded, itemDetailsById, loadingDetailsById]);
 
   const searchableItems = useMemo(() => {
-    const q = itemSearchDraft.trim().toLowerCase();
+    const q = appliedItemSearch;
     if (!q) return [];
 
     return addableItems
@@ -432,7 +437,7 @@ export function CollectionsPage() {
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
       .slice(0, 8);
-  }, [activeVariantIdsByItemId, addableItems, itemDetailsById, itemSearchDraft, loadingDetailsById]);
+  }, [activeVariantIdsByItemId, addableItems, appliedItemSearch, itemDetailsById, loadingDetailsById]);
 
   const activeCollectionVariantRows = useMemo<ItemVariantFlatRow[]>(() => {
     const rows: ItemVariantFlatRow[] = [];

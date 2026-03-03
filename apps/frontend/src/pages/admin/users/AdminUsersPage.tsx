@@ -1,5 +1,5 @@
 import { Eye, RefreshCw, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../../design-system/atoms/Button";
 import { IconButton } from "../../../design-system/atoms/IconButton";
@@ -15,6 +15,7 @@ import {
   type AdminUser,
   type AdminUsersPagination,
 } from "../../../features/admin/users";
+import { useDebouncedValue } from "../../../lib/useDebouncedValue";
 
 const initialPagination: AdminUsersPagination = {
   page: 1,
@@ -41,137 +42,85 @@ export function AdminUsersPage() {
   const [filterPhone, setFilterPhone] = useState("");
   const [filterEmail, setFilterEmail] = useState("");
   const [filterIncludeDeleted, setFilterIncludeDeleted] = useState(false);
-  const filterReadyRef = useRef(false);
+  const debouncedFilterName = useDebouncedValue(filterName, 300);
+  const debouncedFilterPhone = useDebouncedValue(filterPhone, 300);
+  const debouncedFilterEmail = useDebouncedValue(filterEmail, 300);
+  const appliedFilterName = (filterName.trim().length === 0 ? "" : debouncedFilterName).trim();
+  const appliedFilterPhone = (filterPhone.trim().length === 0 ? "" : debouncedFilterPhone).trim();
+  const appliedFilterEmail = (filterEmail.trim().length === 0 ? "" : debouncedFilterEmail).trim();
 
-  const requestUsers = useCallback(
-    async (
-      targetPage = page,
-      filters: UserFilters = {
-        name: filterName,
-        phone: filterPhone,
-        email: filterEmail,
-        includeDeleted: filterIncludeDeleted,
-      },
-    ) => {
-      return listAdminUsers({
-        name: filters.name,
-        phone: filters.phone,
-        email: filters.email,
-        includeDeleted: filters.includeDeleted,
-        page: targetPage,
-        limit: 10,
-      });
-    },
-    [filterEmail, filterIncludeDeleted, filterName, filterPhone, page],
-  );
+  const requestUsers = useCallback(async (targetPage: number, filters: UserFilters) => {
+    return listAdminUsers({
+      name: filters.name,
+      phone: filters.phone,
+      email: filters.email,
+      includeDeleted: filters.includeDeleted,
+      page: targetPage,
+      limit: 10,
+    });
+  }, []);
 
-  useEffect(() => {
-    queueMicrotask(() => {
+  const runUserRequest = useCallback(
+    async (targetPage: number, filters: UserFilters) => {
       setLoading(true);
       setError(null);
-    });
-    void requestUsers(1)
-      .then((result) => {
+      try {
+        const result = await requestUsers(targetPage, filters);
         setUsers(result.users);
         setPage(result.pagination.page);
         setPagination(result.pagination);
-      })
-      .catch((requestError) => {
+      } catch (requestError) {
         setError(
           requestError instanceof Error
             ? requestError.message
             : "Unable to load users",
         );
-      })
-      .finally(() => {
+      } finally {
         setLoading(false);
-      });
-  }, [requestUsers]);
+      }
+    },
+    [requestUsers],
+  );
 
   useEffect(() => {
-    if (!filterReadyRef.current) {
-      filterReadyRef.current = true;
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setLoading(true);
-      setError(null);
-      void requestUsers(1, {
-        name: filterName,
-        phone: filterPhone,
-        email: filterEmail,
-        includeDeleted: filterIncludeDeleted,
-      })
-        .then((result) => {
-          setUsers(result.users);
-          setPage(result.pagination.page);
-          setPagination(result.pagination);
-        })
-        .catch((requestError) => {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Unable to load users",
-          );
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }, 300);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [filterEmail, filterIncludeDeleted, filterName, filterPhone, requestUsers]);
+    void runUserRequest(1, {
+      name: appliedFilterName,
+      phone: appliedFilterPhone,
+      email: appliedFilterEmail,
+      includeDeleted: filterIncludeDeleted,
+    });
+  }, [
+    appliedFilterEmail,
+    appliedFilterName,
+    appliedFilterPhone,
+    filterIncludeDeleted,
+    runUserRequest,
+  ]);
 
   const onClearFilters = () => {
     setFilterName("");
     setFilterPhone("");
     setFilterEmail("");
     setFilterIncludeDeleted(false);
-    setLoading(true);
     setError(null);
-    void requestUsers(1, {
-      name: "",
-      phone: "",
-      email: "",
-      includeDeleted: false,
-    })
-      .then((result) => {
-        setUsers(result.users);
-        setPage(result.pagination.page);
-        setPagination(result.pagination);
-      })
-      .catch((requestError) => {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Unable to load users",
-        );
-      })
-      .finally(() => {
-        setLoading(false);
-      });
   };
 
   const onReload = () => {
-    setLoading(true);
-    setError(null);
-    void requestUsers(page)
-      .then((result) => {
-        setUsers(result.users);
-        setPage(result.pagination.page);
-        setPagination(result.pagination);
-      })
-      .catch((requestError) => {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Unable to load users",
-        );
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    void runUserRequest(page, {
+      name: appliedFilterName,
+      phone: appliedFilterPhone,
+      email: appliedFilterEmail,
+      includeDeleted: filterIncludeDeleted,
+    });
+  };
+
+  const loadUsers = async (targetPage: number) => {
+    await runUserRequest(targetPage, {
+      name: appliedFilterName,
+      phone: appliedFilterPhone,
+      email: appliedFilterEmail,
+      includeDeleted: filterIncludeDeleted,
+    });
   };
 
   return (

@@ -17,6 +17,7 @@ import {
   getLocalItemsForDisplay,
   type ItemDisplay,
 } from "../../../features/sync/engine";
+import { useDebouncedValue } from "../../../lib/useDebouncedValue";
 
 const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
 
@@ -28,6 +29,7 @@ export function ItemsPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const debouncedQuery = useDebouncedValue(query, 250);
 
   useEffect(() => {
     if (!activeStore) {
@@ -64,7 +66,7 @@ export function ItemsPage() {
   }, [activeStore]);
 
   const filteredItems = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = (query.trim().length === 0 ? "" : debouncedQuery).trim().toLowerCase();
     const list = activeStore ? items : [];
 
     return list.filter((item) => {
@@ -79,7 +81,7 @@ export function ItemsPage() {
 
       return matchesQuery && matchesStatus;
     });
-  }, [activeStore, includeInactive, items, query]);
+  }, [activeStore, debouncedQuery, includeInactive, items, query]);
 
   const isLoading = activeStore ? loading : false;
   const visibleLoadError = activeStore ? loadError : null;

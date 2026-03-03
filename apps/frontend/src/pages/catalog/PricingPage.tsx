@@ -24,6 +24,7 @@ import {
   syncOnce,
   type ItemPricingRow,
 } from "../../features/sync/engine";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
 
@@ -66,6 +67,8 @@ export function PricingPage() {
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const syncedStoreRef = useRef<string | null>(null);
+  const debouncedQuery = useDebouncedValue(query, 250);
+  const appliedQuery = (query.trim().length === 0 ? "" : debouncedQuery).trim();
   const { lastSyncCompletedAt } = useSyncActions();
 
   const refresh = useCallback(async (preserveDrafts = true) => {
@@ -75,7 +78,7 @@ export function PricingPage() {
       return;
     }
 
-    const nextRows = await getLocalItemPricingRowsForDisplay(activeStore, query, includeInactive);
+    const nextRows = await getLocalItemPricingRowsForDisplay(activeStore, appliedQuery, includeInactive);
     setRows(nextRows);
     setDraftsByVariantId((current) => {
       const defaults = Object.fromEntries(
@@ -93,7 +96,7 @@ export function PricingPage() {
         ),
       };
     });
-  }, [activeStore, includeInactive, query]);
+  }, [activeStore, appliedQuery, includeInactive]);
 
   useEffect(() => {
     if (!activeStore) {

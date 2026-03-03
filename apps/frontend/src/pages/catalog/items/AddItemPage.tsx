@@ -32,6 +32,7 @@ import {
   type OptionDiscovery,
   type VariantInput,
 } from "../../../features/sync/engine";
+import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-utils";
 
 const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
 const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
@@ -424,6 +425,22 @@ export function AddItemPage() {
           return;
         }
 
+        const quickEntryPreflightError = await runLocalItemPreflightChecks(
+          activeStore,
+          rowsToCreate.map((row) => ({
+            name: row.name,
+            variants: [
+              {
+                sku: row.sku || undefined,
+              },
+            ],
+          })),
+        );
+        if (quickEntryPreflightError) {
+          setFormError(quickEntryPreflightError);
+          return;
+        }
+
         for (const row of rowsToCreate) {
           await queueItemCreate(activeStore, identityId, {
             itemType: row.itemType,
@@ -441,7 +458,7 @@ export function AddItemPage() {
           sortUnique([...current, ...rowsToCreate.map((row) => row.category)]),
         );
 
-        await syncOnce(activeStore).catch(() => null);
+        await syncOnce(activeStore);
         navigate("/app/items");
         return;
       }
@@ -469,6 +486,19 @@ export function AddItemPage() {
         };
       });
 
+      const preflightError = await runLocalItemPreflightChecks(activeStore, [
+        {
+          name: name.trim(),
+          variants: variantPayload.map((variant) => ({
+            sku: variant.sku,
+          })),
+        },
+      ]);
+      if (preflightError) {
+        setFormError(preflightError);
+        return;
+      }
+
       await queueItemCreate(activeStore, identityId, {
         itemType,
         name: name.trim(),
@@ -479,11 +509,11 @@ export function AddItemPage() {
       setSavedCategories((current) =>
         sortUnique([...current, normalizeCategory(category)]),
       );
-      await syncOnce(activeStore).catch(() => null);
+      await syncOnce(activeStore);
       navigate("/app/items");
     } catch (error) {
       console.error(error);
-      setFormError("Unable to save items right now. Please try again.");
+      setFormError(toUserItemErrorMessage(error));
     } finally {
       setLoading(false);
     }

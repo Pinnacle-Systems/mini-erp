@@ -11,6 +11,7 @@ import {
 } from "../../../features/admin/businesses";
 import { useAdminBusinessesStore } from "../../../features/admin/admin-businesses-store";
 import { BusinessManagementPanel } from "../../../design-system/organisms/BusinessManagementPanel";
+import { useDebouncedValue } from "../../../lib/useDebouncedValue";
 
 type AdminBusinessesPageProps = {
   mode: "list" | "new";
@@ -94,6 +95,15 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   const [ownerLookupResults, setOwnerLookupResults] = useState<AdminOwnerLookupResult[]>([]);
   const [ownerLookupLoading, setOwnerLookupLoading] = useState(false);
   const filterReadyRef = useRef(false);
+  const debouncedFilterBusinessName = useDebouncedValue(filterBusinessName, 350);
+  const debouncedFilterOwnerPhone = useDebouncedValue(filterOwnerPhone, 350);
+  const appliedFilterBusinessName = (
+    filterBusinessName.trim().length === 0 ? "" : debouncedFilterBusinessName
+  ).trim();
+  const appliedFilterOwnerPhone = (
+    filterOwnerPhone.trim().length === 0 ? "" : debouncedFilterOwnerPhone
+  ).trim();
+  const debouncedOwnerLookupPhone = useDebouncedValue(newOwnerPhone, 250);
 
   const fileToBase64 = (file: File) =>
     new Promise<string>((resolvePromise, rejectPromise) => {
@@ -123,15 +133,11 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
 
   const loadAdminStores = useCallback(
     async (
-      targetPage = page,
+      targetPage: number,
       filters: {
         businessName: string;
         ownerPhone: string;
         includeDeleted: boolean;
-      } = {
-        businessName: filterBusinessName,
-        ownerPhone: filterOwnerPhone,
-        includeDeleted: filterIncludeDeleted,
       },
     ) => {
       const result = await listAdminStores({
@@ -146,7 +152,7 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         pagination: result.pagination,
       });
     },
-    [filterBusinessName, filterIncludeDeleted, filterOwnerPhone, page, setBusinessesPage],
+    [setBusinessesPage],
   );
 
   useEffect(() => {
@@ -155,37 +161,9 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
     if (businesses.length === 0) {
       setLoading(true);
       setError(null);
-      void loadAdminStores(1)
-        .catch((requestError) => {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Unable to load businesses",
-          );
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    }
-  }, [businesses.length, loadAdminStores, mode, setError]);
-
-  useEffect(() => {
-    if (mode !== "list") {
-      filterReadyRef.current = false;
-      return;
-    }
-
-    if (!filterReadyRef.current) {
-      filterReadyRef.current = true;
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setLoading(true);
-      setError(null);
       void loadAdminStores(1, {
-        businessName: filterBusinessName,
-        ownerPhone: filterOwnerPhone,
+        businessName: appliedFilterBusinessName,
+        ownerPhone: appliedFilterOwnerPhone,
         includeDeleted: filterIncludeDeleted,
       })
         .catch((requestError) => {
@@ -198,13 +176,49 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         .finally(() => {
           setLoading(false);
         });
-    }, 350);
-
-    return () => window.clearTimeout(timeoutId);
+    }
   }, [
-    filterBusinessName,
+    appliedFilterBusinessName,
+    appliedFilterOwnerPhone,
+    businesses.length,
     filterIncludeDeleted,
-    filterOwnerPhone,
+    loadAdminStores,
+    mode,
+    setError,
+  ]);
+
+  useEffect(() => {
+    if (mode !== "list") {
+      filterReadyRef.current = false;
+      return;
+    }
+
+    if (!filterReadyRef.current) {
+      filterReadyRef.current = true;
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    void loadAdminStores(1, {
+      businessName: appliedFilterBusinessName,
+      ownerPhone: appliedFilterOwnerPhone,
+      includeDeleted: filterIncludeDeleted,
+    })
+      .catch((requestError) => {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load businesses",
+        );
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [
+    appliedFilterBusinessName,
+    filterIncludeDeleted,
+    appliedFilterOwnerPhone,
     loadAdminStores,
     mode,
     setError,
@@ -216,34 +230,35 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
       setOwnerLookupLoading(false);
       return;
     }
-    const query = newOwnerPhone.trim();
-    if (query.length < 2) {
+    const immediateQuery = newOwnerPhone.trim();
+    if (immediateQuery.length < 2) {
       setOwnerLookupResults([]);
       setOwnerLookupLoading(false);
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      setOwnerLookupLoading(true);
-      void lookupAdminOwners(query)
-        .then((owners) => {
-          setOwnerLookupResults(owners);
-        })
-        .catch((requestError) => {
-          setOwnerLookupResults([]);
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Unable to load owners",
-          );
-        })
-        .finally(() => {
-          setOwnerLookupLoading(false);
-        });
-    }, 250);
+    const query = debouncedOwnerLookupPhone.trim();
+    if (query.length < 2) {
+      return;
+    }
 
-    return () => window.clearTimeout(timeoutId);
-  }, [mode, newOwnerPhone, setError]);
+    setOwnerLookupLoading(true);
+    void lookupAdminOwners(query)
+      .then((owners) => {
+        setOwnerLookupResults(owners);
+      })
+      .catch((requestError) => {
+        setOwnerLookupResults([]);
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load owners",
+        );
+      })
+      .finally(() => {
+        setOwnerLookupLoading(false);
+      });
+  }, [debouncedOwnerLookupPhone, mode, newOwnerPhone, setError]);
 
   const onCreate = async () => {
     const normalizedOwnerPhone = newOwnerPhone.trim().replace(/\D/g, "");
@@ -343,7 +358,11 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
       setLogoFile(null);
       setLogoPreviewUrl(null);
       setOwnerLookupResults([]);
-      await loadAdminStores(1);
+      await loadAdminStores(1, {
+        businessName: appliedFilterBusinessName,
+        ownerPhone: appliedFilterOwnerPhone,
+        includeDeleted: filterIncludeDeleted,
+      });
       if (logoUploadWarning) {
         setError(
           `Business created successfully, but logo was not set: ${logoUploadWarning}. You can upload it later from business details.`,
@@ -366,7 +385,11 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
     setLoading(true);
     setError(null);
     try {
-      await loadAdminStores(page);
+      await loadAdminStores(page, {
+        businessName: appliedFilterBusinessName,
+        ownerPhone: appliedFilterOwnerPhone,
+        includeDeleted: filterIncludeDeleted,
+      });
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -379,13 +402,8 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
   };
 
   const onClearFilters = () => {
-    const cleared = {
-      businessName: "",
-      ownerPhone: "",
-      includeDeleted: false,
-    };
+    setError(null);
     clearFilters();
-    void loadAdminStores(1, cleared);
   };
 
   const onOpenStore = (business: AdminStore) => {
@@ -454,8 +472,20 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         onFilterOwnerPhoneChange={setFilterOwnerPhone}
         onFilterIncludeDeletedChange={setFilterIncludeDeleted}
         onClearFilters={onClearFilters}
-        onPrevPage={() => void loadAdminStores(Math.max(1, page - 1))}
-        onNextPage={() => void loadAdminStores(page + 1)}
+        onPrevPage={() =>
+          void loadAdminStores(Math.max(1, page - 1), {
+            businessName: appliedFilterBusinessName,
+            ownerPhone: appliedFilterOwnerPhone,
+            includeDeleted: filterIncludeDeleted,
+          })
+        }
+        onNextPage={() =>
+          void loadAdminStores(page + 1, {
+            businessName: appliedFilterBusinessName,
+            ownerPhone: appliedFilterOwnerPhone,
+            includeDeleted: filterIncludeDeleted,
+          })
+        }
         onNewBusinessNameChange={setNewBusinessName}
         onOwnerLookupQueryChange={(value) => {
           setNewOwnerPhone(value);

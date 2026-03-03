@@ -26,6 +26,7 @@ import {
   type StockAdjustmentHistoryRow,
   type StockAdjustmentReason,
 } from "../../features/sync/engine";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 const MOVEMENT_FILTER_OPTIONS: Array<{
   value: "ALL" | StockAdjustmentReason;
@@ -74,6 +75,7 @@ export function HistoryPage() {
   const [movementFilter, setMovementFilter] = useState<"ALL" | StockAdjustmentReason>("ALL");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const debouncedQuery = useDebouncedValue(query, 250);
 
   useEffect(() => {
     if (!activeStore || !isBusinessSelected) {
@@ -131,7 +133,7 @@ export function HistoryPage() {
     }
   };
 
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = (query.trim().length === 0 ? "" : debouncedQuery).trim().toLowerCase();
   const filteredRows = useMemo(
     () =>
       rows.filter((row) => {

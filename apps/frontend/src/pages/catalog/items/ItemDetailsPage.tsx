@@ -31,6 +31,7 @@ import {
   type ItemDetailDisplay,
   type VariantInput,
 } from "../../../features/sync/engine";
+import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-utils";
 
 const UNIT_OPTIONS = ["PCS", "KG", "M", "BOX"] as const;
 const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
@@ -299,6 +300,22 @@ export function ItemDetailsPage() {
           .map((variant) => variant.id),
       );
 
+      const preflightError = await runLocalItemPreflightChecks(activeStore, [
+        {
+          itemId: nextItem.id,
+          name: nextItem.name,
+          variants: nextItem.variants.map((variant) => ({
+            id: variant.id.startsWith("temp-") ? undefined : variant.id,
+            sku: variant.sku,
+            isActive: variant.isActive,
+          })),
+        },
+      ]);
+      if (preflightError) {
+        setSaveError(preflightError);
+        return;
+      }
+
       for (const initialVariant of initialItem.variants) {
         if (initialVariant.id.startsWith("temp-")) continue;
         if (!currentVariantIds.has(initialVariant.id)) {
@@ -338,7 +355,7 @@ export function ItemDetailsPage() {
       closeOptionModal();
     } catch (error) {
       console.error(error);
-      setSaveError("Unable to save changes. Some variant fields may be locked after usage.");
+      setSaveError(toUserItemErrorMessage(error));
     } finally {
       setLoading(false);
     }

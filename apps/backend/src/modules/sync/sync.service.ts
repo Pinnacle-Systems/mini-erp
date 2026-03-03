@@ -360,6 +360,108 @@ const ensureCategoryExists = async (tx, tenantId: string, category: string) => {
   }
 };
 
+const assertUniqueActiveItemName = async (
+  tx,
+  tenantId: string,
+  name: string,
+  entity: string,
+  entityId: string,
+  excludeItemId?: string,
+) => {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+
+  const existing = await tx.item.findFirst({
+    where: {
+      business_id: tenantId,
+      name: trimmed,
+      is_active: true,
+      deleted_at: null,
+      ...(excludeItemId
+        ? {
+            id: {
+              not: excludeItemId,
+            },
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existing) {
+    throw validationError("Item name already exists in this business.", entity, entityId, {
+      field: "name",
+      conflictingEntityId: existing.id,
+    });
+  }
+};
+
+const assertUniqueActiveSku = async (
+  tx,
+  tenantId: string,
+  sku: string | null | undefined,
+  entity: string,
+  entityId: string,
+  excludeVariantId?: string,
+) => {
+  const normalizedSku = normalizeSku(sku);
+  if (normalizedSku === undefined || normalizedSku === null) {
+    return;
+  }
+
+  const existing = await tx.itemVariant.findFirst({
+    where: {
+      business_id: tenantId,
+      sku: normalizedSku,
+      is_active: true,
+      deleted_at: null,
+      ...(excludeVariantId
+        ? {
+            id: {
+              not: excludeVariantId,
+            },
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (existing) {
+    throw validationError("SKU already exists in this business.", entity, entityId, {
+      field: "sku",
+      conflictingEntityId: existing.id,
+    });
+  }
+};
+
+const assertUniqueSkusInItemPayload = (
+  variants: Array<{ sku?: string | null }>,
+  entity: string,
+  entityId: string,
+) => {
+  const seen = new Set<string>();
+
+  for (const variant of variants) {
+    const normalizedSku = normalizeSku(variant.sku);
+    if (normalizedSku === undefined || normalizedSku === null) {
+      continue;
+    }
+
+    if (seen.has(normalizedSku)) {
+      throw validationError("SKU must be unique within the item.", entity, entityId, {
+        field: "sku",
+        value: normalizedSku,
+      });
+    }
+
+    seen.add(normalizedSku);
+  }
+};
+
 const buildItemForCreate = (payload) => {
   const normalized = sanitizeItemPayload(payload);
 
@@ -993,6 +1095,13 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   const txAny = tx as any;
   if (mutation.op === "create") {
     const createData = buildItemForCreate(mutation.payload);
+    await assertUniqueActiveItemName(
+      tx,
+      tenantId,
+      createData.item.name,
+      mutation.entity,
+      mutation.entityId,
+    );
     if (createData.item.category) {
       await ensureCategoryExists(tx, tenantId, createData.item.category);
     }
@@ -1012,6 +1121,18 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
         variant.barcode !== undefined ||
         (variant.optionValues && Object.keys(variant.optionValues).length > 0),
     );
+    const requestedVariants =
+      variantInputs.length === 0 ? [createData.defaultVariant] : variantInputs;
+    assertUniqueSkusInItemPayload(requestedVariants, mutation.entity, mutation.entityId);
+    for (const variant of requestedVariants) {
+      await assertUniqueActiveSku(
+        tx,
+        tenantId,
+        variant.sku,
+        mutation.entity,
+        mutation.entityId,
+      );
+    }
 
     const createdVariantIds: string[] = [];
     let preferredDefaultId: string | undefined;
@@ -1084,6 +1205,20 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   }
 
   const { itemPatch, category, sku } = buildItemForUpdate(mutation.payload);
+  const nextItemName = typeof itemPatch.name === "string" ? itemPatch.name : current.name;
+  if (
+    typeof nextItemName === "string" &&
+    (itemPatch.name !== undefined || current.deleted_at || current.is_active === false)
+  ) {
+    await assertUniqueActiveItemName(
+      tx,
+      tenantId,
+      nextItemName,
+      mutation.entity,
+      mutation.entityId,
+      current.id,
+    );
+  }
   const itemPatchWithCategory =
     category !== undefined ? { ...itemPatch, category } : itemPatch;
   if (typeof category === "string" && category.trim()) {
@@ -1111,8 +1246,16 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   let defaultVariant = await getDefaultVariant(tx, tenantId, mutation.entityId);
 
   if (sku !== undefined) {
+    const nextSku = normalizeSku(sku);
+    await assertUniqueActiveSku(
+      tx,
+      tenantId,
+      nextSku,
+      mutation.entity,
+      mutation.entityId,
+      defaultVariant?.id,
+    );
     if (defaultVariant) {
-      const nextSku = toNullableTrimmedValue(sku);
       const currentSku = toNullableTrimmedValue(defaultVariant.sku);
       if (nextSku !== currentSku) {
         const usageCount = await getVariantUsageCount(tx, tenantId, defaultVariant.id);
@@ -1174,6 +1317,14 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
     if (!parentItem || parentItem.business_id !== tenantId || parentItem.deleted_at) {
       throw dependencyMissingError("Item not found in business", "item", payload.itemId);
     }
+
+    await assertUniqueActiveSku(
+      tx,
+      tenantId,
+      payload.sku,
+      mutation.entity,
+      mutation.entityId,
+    );
 
     const variant = await txAny.itemVariant.create({
       data: {
@@ -1252,6 +1403,18 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
       "Variant identity fields are locked after usage. Create a new variant for these changes.",
       mutation.entity,
       mutation.entityId,
+    );
+  }
+
+  const nextVariantSku = payload.sku !== undefined ? payload.sku : current.sku;
+  if (payload.sku !== undefined || current.deleted_at || current.is_active === false) {
+    await assertUniqueActiveSku(
+      tx,
+      tenantId,
+      nextVariantSku,
+      mutation.entity,
+      mutation.entityId,
+      current.id,
     );
   }
 

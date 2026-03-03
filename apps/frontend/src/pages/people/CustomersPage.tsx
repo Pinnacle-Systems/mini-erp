@@ -29,6 +29,7 @@ import {
 import {
   toUserCustomerErrorMessage,
 } from "./customer-utils";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
 
@@ -42,8 +43,9 @@ export function CustomersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const debouncedQuery = useDebouncedValue(query, 250);
 
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = (query.trim().length === 0 ? "" : debouncedQuery).trim().toLowerCase();
   const locationState =
     location.state as { customerMessage?: string | null } | null;
   const filteredRows = useMemo(

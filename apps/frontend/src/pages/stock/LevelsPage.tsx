@@ -25,6 +25,7 @@ import {
   syncOnce,
   type StockLevelRow,
 } from "../../features/sync/engine";
+import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 type BusinessStockRow = {
   key: string;
@@ -88,6 +89,7 @@ export function LevelsPage() {
   const [itemQuery, setItemQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const debouncedItemQuery = useDebouncedValue(itemQuery, 250);
 
   useEffect(() => {
     if (!activeStore || !isBusinessSelected) {
@@ -146,7 +148,7 @@ export function LevelsPage() {
   };
 
   const aggregatedRows = useMemo(() => aggregateBusinessStock(rows), [rows]);
-  const trimmedQuery = itemQuery.trim().toLowerCase();
+  const trimmedQuery = (itemQuery.trim().length === 0 ? "" : debouncedItemQuery).trim().toLowerCase();
   const filteredRows = aggregatedRows.filter((row) => {
     if (!trimmedQuery) {
       return true;
