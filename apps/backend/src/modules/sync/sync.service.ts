@@ -73,14 +73,22 @@ const SUPPORTED_ITEM_FIELDS = new Set([
   "category",
   "unit",
   "itemType",
+  "metadata",
   "variants",
 ]);
+const METADATA_KEY_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/;
+const ITEM_METADATA_MAX_BYTES = 8 * 1024;
+const VARIANT_METADATA_MAX_BYTES = 4 * 1024;
+const METADATA_MAX_DEPTH = 4;
+const METADATA_MAX_KEYS = 100;
+const METADATA_MAX_STRING_LENGTH = 500;
 type ItemPayload = {
   sku?: string | null;
   name?: string;
   category?: string | null;
   unit?: string;
   itemType?: string;
+  metadata?: Record<string, unknown> | null;
   variants?: VariantPayload[];
 };
 type VariantPayload = {
@@ -92,6 +100,7 @@ type VariantPayload = {
   isDefault?: boolean;
   isActive?: boolean;
   optionValues?: Record<string, string>;
+  metadata?: Record<string, unknown> | null;
 };
 type CustomerPayload = {
   name?: string;
@@ -414,6 +423,155 @@ const toDeletedAtValue = (value: unknown) => {
   return null;
 };
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+
+const normalizeMetadataValue = (
+  value: unknown,
+  options: {
+    entity: string;
+    entityId: string;
+    maxBytes: number;
+  },
+): Record<string, unknown> | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!isPlainObject(value)) {
+    throw validationError(
+      "metadata must be a JSON object or null",
+      options.entity,
+      options.entityId,
+      { field: "metadata" },
+    );
+  }
+
+  let keyCount = 0;
+  const normalizeNode = (node: unknown, path: string, depth: number): unknown => {
+    if (depth > METADATA_MAX_DEPTH) {
+      throw validationError(
+        `metadata depth must be ${METADATA_MAX_DEPTH} or less`,
+        options.entity,
+        options.entityId,
+        { field: "metadata", path },
+      );
+    }
+
+    if (node === null || typeof node === "boolean") return node;
+    if (typeof node === "number") {
+      if (!Number.isFinite(node)) {
+        throw validationError(
+          "metadata numbers must be finite",
+          options.entity,
+          options.entityId,
+          { field: "metadata", path },
+        );
+      }
+      return node;
+    }
+    if (typeof node === "string") {
+      const trimmed = node.trim();
+      if (trimmed.length > METADATA_MAX_STRING_LENGTH) {
+        throw validationError(
+          `metadata string values must be ${METADATA_MAX_STRING_LENGTH} characters or less`,
+          options.entity,
+          options.entityId,
+          { field: "metadata", path },
+        );
+      }
+      return trimmed;
+    }
+    if (Array.isArray(node)) {
+      return node.map((entry) => normalizeNode(entry, path, depth + 1));
+    }
+    if (!isPlainObject(node)) {
+      throw validationError(
+        "metadata contains unsupported value types",
+        options.entity,
+        options.entityId,
+        { field: "metadata", path },
+      );
+    }
+
+    const normalizedObject: Record<string, unknown> = {};
+    for (const [rawKey, rawValue] of Object.entries(node)) {
+      const key = rawKey.trim();
+      if (!METADATA_KEY_PATTERN.test(key)) {
+        throw validationError(
+          "metadata keys must start with a letter and use lowercase letters, numbers, dot, underscore, or hyphen",
+          options.entity,
+          options.entityId,
+          { field: "metadata", key: rawKey, path },
+        );
+      }
+
+      const fullPath = path ? `${path}.${key}` : key;
+      if (fullPath.startsWith("sys.") || fullPath === "sys") {
+        throw validationError(
+          "metadata under sys.* is reserved",
+          options.entity,
+          options.entityId,
+          { field: "metadata", path: fullPath },
+        );
+      }
+      if (fullPath.startsWith("billing.") || fullPath === "billing") {
+        throw validationError(
+          "metadata under billing.* is reserved",
+          options.entity,
+          options.entityId,
+          { field: "metadata", path: fullPath },
+        );
+      }
+      if (!fullPath.startsWith("custom.") && fullPath !== "custom") {
+        throw validationError(
+          "metadata keys must live under custom.*",
+          options.entity,
+          options.entityId,
+          { field: "metadata", path: fullPath },
+        );
+      }
+
+      keyCount += 1;
+      if (keyCount > METADATA_MAX_KEYS) {
+        throw validationError(
+          `metadata can contain at most ${METADATA_MAX_KEYS} keys`,
+          options.entity,
+          options.entityId,
+          { field: "metadata" },
+        );
+      }
+
+      normalizedObject[key] = normalizeNode(rawValue, fullPath, depth + 1);
+    }
+
+    return normalizedObject;
+  };
+
+  const normalized = normalizeNode(value, "", 1);
+  if (!isPlainObject(normalized)) {
+    throw validationError(
+      "metadata must be a JSON object",
+      options.entity,
+      options.entityId,
+      { field: "metadata" },
+    );
+  }
+
+  const bytes = Buffer.byteLength(JSON.stringify(normalized), "utf8");
+  if (bytes > options.maxBytes) {
+    throw validationError(
+      `metadata exceeds size limit of ${options.maxBytes} bytes`,
+      options.entity,
+      options.entityId,
+      { field: "metadata", bytes, maxBytes: options.maxBytes },
+    );
+  }
+
+  return normalized;
+};
+
 const sanitizeItemPayload = (payload) => {
   const normalized: ItemPayload = {};
   for (const [key, value] of Object.entries(payload ?? {})) {
@@ -467,6 +625,11 @@ const sanitizeVariantPayload = (payload) => {
     normalized.optionValues = Object.fromEntries(
       entries.map(([key, value]) => [key.trim(), String(value).trim()]),
     );
+  }
+  if (raw.metadata === null) {
+    normalized.metadata = null;
+  } else if (raw.metadata !== undefined) {
+    normalized.metadata = raw.metadata;
   }
 
   return normalized;
@@ -662,8 +825,12 @@ const assertUniqueSkusInItemPayload = (
   }
 };
 
-const buildItemForCreate = (payload) => {
+const buildItemForCreate = (payload, options: { entity: string; entityId: string }) => {
   const normalized = sanitizeItemPayload(payload);
+  const metadata = normalizeMetadataValue(normalized.metadata, {
+    ...options,
+    maxBytes: ITEM_METADATA_MAX_BYTES,
+  });
 
   return {
     item: {
@@ -676,6 +843,7 @@ const buildItemForCreate = (payload) => {
         typeof normalized.unit === "string" ? normalized.unit : DEFAULT_ITEM_VALUES.unit,
       item_type:
         normalized.itemType === "SERVICE" ? "SERVICE" : DEFAULT_ITEM_VALUES.itemType,
+      metadata: metadata ?? null,
     },
     defaultVariant: {
       sku: normalizeSku(normalized.sku) ?? null,
@@ -688,11 +856,15 @@ const buildItemForCreate = (payload) => {
   };
 };
 
-const buildItemForUpdate = (payload) => {
+const buildItemForUpdate = (
+  payload,
+  options: { entity: string; entityId: string },
+) => {
   const normalized = sanitizeItemPayload(payload);
   const patch: ItemPayload & { item_type?: string } = {};
   let sku: string | null | undefined = undefined;
   let category: string | null | undefined = undefined;
+  let metadata: Record<string, unknown> | null | undefined = undefined;
 
   const normalizedSku = normalizeSku(normalized.sku);
   if (normalized.sku === null) {
@@ -715,6 +887,13 @@ const buildItemForUpdate = (payload) => {
   if (normalized.itemType === "PRODUCT" || normalized.itemType === "SERVICE") {
     patch.item_type = normalized.itemType;
   }
+  metadata = normalizeMetadataValue(normalized.metadata, {
+    ...options,
+    maxBytes: ITEM_METADATA_MAX_BYTES,
+  });
+  if (metadata !== undefined) {
+    patch.metadata = metadata;
+  }
 
   return {
     itemPatch: patch,
@@ -733,6 +912,7 @@ const toItemSnapshot = (item, defaultVariant) => {
     unit: item.unit,
     sku: defaultVariant?.sku ?? null,
     defaultVariantId: defaultVariant?.id ?? null,
+    metadata: item.metadata ?? null,
     isActive: item.is_active ?? true,
     deletedAt: toDeletedAtValue(item.deleted_at),
   };
@@ -751,6 +931,7 @@ const toVariantSnapshot = (
     sku: variant.sku ?? null,
     barcode: variant.barcode ?? null,
     name: variant.name ?? null,
+    metadata: variant.metadata ?? null,
     isDefault: variant.is_default,
     isActive: variant.is_active,
     deletedAt: toDeletedAtValue(variant.deleted_at),
@@ -1476,7 +1657,10 @@ const applySupplierMutation = async (tx, tenantId, mutation) => {
 const applyItemMutation = async (tx, tenantId, mutation) => {
   const txAny = tx as any;
   if (mutation.op === "create") {
-    const createData = buildItemForCreate(mutation.payload);
+    const createData = buildItemForCreate(mutation.payload, {
+      entity: mutation.entity,
+      entityId: mutation.entityId,
+    });
     await assertUniqueActiveItemName(
       tx,
       tenantId,
@@ -1501,6 +1685,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
         variant.sku !== undefined ||
         variant.name !== undefined ||
         variant.barcode !== undefined ||
+        variant.metadata !== undefined ||
         (variant.optionValues && Object.keys(variant.optionValues).length > 0),
     );
     const requestedVariants =
@@ -1541,6 +1726,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
             barcode: variant.barcode?.trim() || null,
             is_default: Boolean(variant.isDefault),
             is_active: variant.isActive ?? true,
+            metadata: variant.metadata ?? null,
             deleted_at: null,
           },
         });
@@ -1586,7 +1772,10 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     return null;
   }
 
-  const { itemPatch, category, sku } = buildItemForUpdate(mutation.payload);
+  const { itemPatch, category, sku } = buildItemForUpdate(mutation.payload, {
+    entity: mutation.entity,
+    entityId: mutation.entityId,
+  });
   const nextItemName = typeof itemPatch.name === "string" ? itemPatch.name : current.name;
   if (
     typeof nextItemName === "string" &&
@@ -1687,6 +1876,11 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
 const applyItemVariantMutation = async (tx, tenantId, mutation) => {
   const txAny = tx as any;
   const payload = sanitizeVariantPayload(mutation.payload);
+  const metadata = normalizeMetadataValue(payload.metadata, {
+    entity: mutation.entity,
+    entityId: mutation.entityId,
+    maxBytes: VARIANT_METADATA_MAX_BYTES,
+  });
 
   if (mutation.op === "create") {
     if (!payload.itemId) {
@@ -1718,6 +1912,7 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
         name: payload.name?.trim() || null,
         is_default: Boolean(payload.isDefault),
         is_active: payload.isActive ?? true,
+        metadata: metadata ?? null,
         deleted_at: null,
       },
     });
@@ -1775,6 +1970,7 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
   if (payload.barcode !== undefined) patch.barcode = payload.barcode?.trim() || null;
   if (payload.isActive !== undefined) patch.is_active = payload.isActive;
   if (payload.isDefault !== undefined) patch.is_default = payload.isDefault;
+  if (metadata !== undefined) patch.metadata = metadata;
 
   const [currentOptionValues, usageCount] = await Promise.all([
     getVariantOptionValues(tx, mutation.entityId),

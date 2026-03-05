@@ -105,11 +105,13 @@ export type VariantInput = {
   barcode?: string | null;
   isActive?: boolean;
   optionValues?: Record<string, string>;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type ItemInput = {
   name?: string;
   category?: string | null;
+  metadata?: Record<string, unknown> | null;
   unit?:
     | "PCS"
     | "UNIT"
