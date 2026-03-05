@@ -196,6 +196,19 @@ Keep those sections focused on stable rules that should apply to future work in 
 - Stock review screens should summarize the business-wide quantity users are currently filtering, not split the same product into internal location rows.
 - Keep inventory filters compact and labeled, with dense desktop tables as the primary review pattern.
 
+## Catalog
+
+- Catalog authoring should separate identity definition from commercial configuration:
+  item and variant structure are created in catalog flows, while prices are managed in pricing flows.
+- Desktop variant authoring should use a dense, spreadsheet-like table as the primary editing surface once variants are generated.
+- Variant generation should support key-value option entry that can expand to cartesian combinations before save.
+- When option-based variants are shown in a table, option keys should be rendered as explicit columns for readability, with a default cap of 3 option columns before fallback behavior is applied.
+- Variant workflows should support two editing depths:
+  dense inline fields for common attributes (name, SKU, barcode, active state, base price where applicable) and a secondary side-surface for advanced attributes.
+- Bulk operations should be scoped and explicit:
+  use selection plus apply actions (for example, apply a price to selected variants) rather than hidden mass edits.
+- Stock initialization can be offered during initial variant setup, but ongoing stock changes must remain in dedicated inventory adjustment flows.
+
 ## How To Use This
 
 When requesting design changes, reference this file and specify:

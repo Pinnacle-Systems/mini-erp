@@ -193,3 +193,71 @@ Implication for current screens:
 2. Stock Adjustments should remain the only place that creates inventory quantity changes from the frontend.
 3. Internal transfers and location management are intentionally out of scope for the current product flow, and the inventory persistence model is now business-scoped as well.
 4. Stock adjustment history should remain bounded in the default sync dataset. For now, sync only the most recent 10 `stock_adjustment` records per variant to devices, while the full audit ledger remains on the server.
+
+## Catalog And Billing Checklist
+
+Status legend:
+
+- `[x]` implemented
+- `[~]` partial
+- `[ ]` not implemented
+
+Sequence rule: complete each phase in order unless an explicit exception is agreed.
+
+### Phase 1: Data Contract And Integrity
+
+1. `[x]` Keep catalog definition and billing operations decoupled:
+   - item/variant identity in `catalog.*`
+   - price state and history in `pricing.*`
+2. `[x]` Keep inventory as append-oriented ledger events in `inventory.stock_ledger`, with `stock_level` treated as a derived snapshot.
+3. `[x]` Enforce at least one variant per item and exactly one default variant for active items.
+4. `[x]` Add extensible `metadata` JSON fields to `catalog.items` and `catalog.item_variants` with ownership and validation rules:
+   - metadata writes are accepted only through backend item and item-variant mutation handlers
+   - `sys.*` and `billing.*` namespaces are reserved and rejected for client-authored writes
+   - client-authored metadata keys must live under `custom.*`
+   - metadata values must be JSON objects (or `null` to clear), with bounded depth, key count, string length, and payload size
+5. `[~]` Preserve immutable sales snapshots:
+   - `documents.line_items` already stores `description` and `unit_price`
+   - sales/invoice generation must explicitly guarantee item/variant display data is copied at posting time
+
+### Phase 2: Variant Authoring Model
+
+1. `[ ]` Add key-value variant generator input that produces cartesian combinations in-memory.
+2. `[ ]` Add dynamic option columns in the variant editor table (desktop), with a documented cap of 3 option dimensions for default rendering.
+3. `[~]` Keep manual row support for asymmetric variants:
+   - manual add/remove rows exists
+   - generated combinations flow is not yet present
+4. `[ ]` Add SKU assist tools:
+   - deterministic SKU batch generator
+   - duplicate prevention feedback before save
+5. `[ ]` Add default variant display-name generation from options with manual override support.
+
+### Phase 3: Pricing Operations
+
+1. `[x]` Keep price write-path versioned through `item_price_events` (`SET`/`CLEARED`) when base price changes.
+2. `[~]` Maintain dense bulk price editing as primary:
+   - inline editing and `Save All (n)` exist
+   - select-and-apply scoped bulk action is not yet present
+3. `[ ]` Add advanced pricing editor surface (drawer or side sheet) for recurring rules, multi-currency policy, tax attributes, and advanced metadata.
+4. `[ ]` Define and implement invoice description composition rules from item + option values for posted documents.
+
+### Phase 4: Inventory UX Boundaries
+
+1. `[x]` Keep ongoing stock changes in dedicated stock adjustment flow; do not couple them to pricing pages.
+2. `[~]` Keep stock adjustments as dense desktop-first batch entry:
+   - current flow supports multiple rows
+   - continue reducing remaining non-conformance noted in `DESIGN_GUIDELINES.md`
+3. `[ ]` Add explicit reason-code policy documentation for all stock movement entry points and reporting joins.
+
+### Validation And Rollout Gates
+
+1. `[ ]` Add migration and backfill plan for metadata fields and any new pricing attributes.
+2. `[ ]` Add tests for:
+   - default-variant invariants
+   - variant immutability after usage
+   - price event history continuity
+   - stock negative-prevention and ledger pruning behavior
+3. `[ ]` Add end-to-end flow checks for:
+   - variant generation + manual overrides
+   - bulk price operations
+   - invoice snapshot correctness
