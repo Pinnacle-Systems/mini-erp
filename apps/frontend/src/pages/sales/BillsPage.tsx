@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Eye, Trash2 } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
+import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
 import {
@@ -123,6 +125,7 @@ function BillsWorkspace({
 }) {
   const [initialDrafts] = useState<SavedBillDraft[]>(() => loadStoredDrafts(activeStore));
   const [drafts, setDrafts] = useState<SavedBillDraft[]>(initialDrafts);
+  const [viewMode, setViewMode] = useState<"list" | "editor">("list");
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [billNumber, setBillNumber] = useState(() => createBillNumber(initialDrafts.length));
   const [customerName, setCustomerName] = useState("");
@@ -158,6 +161,12 @@ function BillsWorkspace({
     setCustomerName("");
     setNotes("");
     setLines([createLine()]);
+  };
+
+  const openNewDraft = () => {
+    resetEditor(drafts.length);
+    setSaveMessage(activeStore ? null : "Select a business to start a bill.");
+    setViewMode("editor");
   };
 
   const saveDraft = () => {
@@ -204,6 +213,7 @@ function BillsWorkspace({
     setNotes(draft.notes);
     setLines(draft.lines.map((line) => ({ ...line })));
     setSaveMessage(null);
+    setViewMode("editor");
   };
 
   const removeDraft = (draftId: string) => {
@@ -233,89 +243,335 @@ function BillsWorkspace({
     });
   };
 
-  return (
-    <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
-      <div className="grid gap-2 lg:grid-cols-[minmax(0,1.7fr)_320px] lg:min-h-0 lg:flex-1">
-        <div className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+  if (viewMode === "list") {
+    return (
+      <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
+        <div className="flex flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:min-h-0 lg:flex-1">
           <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
               <h1 className="text-sm font-semibold text-foreground">Sales Bills</h1>
               <p className="text-xs text-muted-foreground">
-                Start invoice entry now. Drafts stay local until the backend posting
-                flow is wired.
+                Recent bill drafts stay local until the backend posting flow is wired.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  resetEditor(drafts.length);
-                  setSaveMessage(null);
-                }}
-              >
-                New Bill
-              </Button>
-              <Button type="button" size="sm" onClick={saveDraft}>
-                Save Draft ({normalizeLines(lines).length || 1})
-              </Button>
-            </div>
+            <Button type="button" size="sm" onClick={openNewDraft}>
+              Create Bill
+            </Button>
           </div>
 
-          <div className="grid gap-2 py-2 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
-            <div className="space-y-1">
-              <Label htmlFor="sales-bill-number">Bill number</Label>
-              <Input
-                id="sales-bill-number"
-                value={billNumber}
-                onChange={(event) => setBillNumber(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="sales-bill-customer">Customer</Label>
-              <Input
-                id="sales-bill-customer"
-                value={customerName}
-                onChange={(event) => setCustomerName(event.target.value)}
-                placeholder="Customer name"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="sales-bill-notes">Notes</Label>
-              <Input
-                id="sales-bill-notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Optional internal note"
-              />
-            </div>
-          </div>
-
-          <div className="flex min-h-0 flex-1 flex-col gap-2 lg:overflow-hidden">
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-                Line Items
+          <div className="space-y-2 pt-2 lg:hidden">
+            {drafts.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+                No recent bills yet. Create a bill to start this transaction flow.
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setLines((currentLines) => [...currentLines, createLine()])}
-              >
-                Add Line
-              </Button>
-            </div>
+            ) : (
+              drafts.map((draft) => (
+                <div
+                  key={draft.id}
+                  className={`rounded-lg border px-2 py-2 text-xs ${
+                    draft.id === activeDraftId
+                      ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
+                      : "border-border/70 bg-white text-foreground"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{draft.billNumber}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {draft.customerName}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                    <span>{new Date(draft.savedAt).toLocaleString()}</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-0 py-0 font-semibold text-[#1f4167] hover:bg-transparent"
+                        onClick={() => loadDraft(draft)}
+                      >
+                        Open
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-0 py-0 font-semibold text-[#8a2b2b] hover:bg-transparent"
+                        onClick={() => removeDraft(draft.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
 
-            <div className="space-y-2 lg:hidden">
-              {lines.map((line, index) => {
+          <div className="hidden lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {drafts.length === 0 ? (
+              <div className="mt-2 rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+                No recent bills yet. Create a bill to start this transaction flow.
+              </div>
+            ) : (
+              <DenseTable className="mt-2 rounded-xl border-border/80">
+                <DenseTableHead>
+                  <tr>
+                    <DenseTableHeaderCell className="w-[18%]">Bill</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[26%]">Customer</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[14%]">Lines</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[24%]">Saved</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[18%] text-right">Actions</DenseTableHeaderCell>
+                  </tr>
+                </DenseTableHead>
+                <DenseTableBody>
+                  {drafts.map((draft) => (
+                    <DenseTableRow key={draft.id}>
+                      <DenseTableCell className="font-semibold text-foreground">
+                        {draft.billNumber}
+                      </DenseTableCell>
+                      <DenseTableCell>{draft.customerName}</DenseTableCell>
+                      <DenseTableCell>
+                        {draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}
+                      </DenseTableCell>
+                      <DenseTableCell>
+                        {new Date(draft.savedAt).toLocaleString()}
+                      </DenseTableCell>
+                      <DenseTableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <IconButton
+                            type="button"
+                            icon={Eye}
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                            onClick={() => loadDraft(draft)}
+                            aria-label={`Open ${draft.billNumber}`}
+                            title="Open"
+                          />
+                          <IconButton
+                            type="button"
+                            icon={Trash2}
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-white/55"
+                            onClick={() => removeDraft(draft.id)}
+                            aria-label={`Delete ${draft.billNumber}`}
+                            title="Delete"
+                          />
+                        </div>
+                      </DenseTableCell>
+                    </DenseTableRow>
+                  ))}
+                </DenseTableBody>
+              </DenseTable>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
+      <div className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-1 lg:overflow-hidden">
+        <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-sm font-semibold text-foreground">
+              {activeDraftId ? "Edit Bill" : "Create Bill"}
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              Enter bill details, then review the summary directly below the line items.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setViewMode("list")}>
+              Back to Recent
+            </Button>
+            <Button type="button" size="sm" onClick={saveDraft}>
+              Save Draft ({normalizeLines(lines).length || 1})
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-2 py-2 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
+          <div className="space-y-1">
+            <Label htmlFor="sales-bill-number">Bill number</Label>
+            <Input
+              id="sales-bill-number"
+              value={billNumber}
+              onChange={(event) => setBillNumber(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="sales-bill-customer">Customer</Label>
+            <Input
+              id="sales-bill-customer"
+              value={customerName}
+              onChange={(event) => setCustomerName(event.target.value)}
+              placeholder="Customer name"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="sales-bill-notes">Notes</Label>
+            <Input
+              id="sales-bill-notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Optional internal note"
+            />
+          </div>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+              Line Items
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setLines((currentLines) => [...currentLines, createLine()])}
+            >
+              Add Line
+            </Button>
+          </div>
+
+          <div className="space-y-2 lg:hidden">
+            {lines.map((line, index) => {
+              const lineTotals = getLineTotals(line);
+              return (
+                <div key={line.id} className="rounded-lg border border-border/80 bg-slate-50 p-2">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-xs font-semibold text-foreground">Line {index + 1}</div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-0 py-0 text-[11px] font-semibold text-[#8a2b2b] hover:bg-transparent"
+                      onClick={() => removeLine(line.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor={`sales-line-mobile-description-${line.id}`}>
+                        Description
+                      </Label>
+                      <Input
+                        id={`sales-line-mobile-description-${line.id}`}
+                        value={line.description}
+                        onChange={(event) =>
+                          updateLine(line.id, "description", event.target.value)
+                        }
+                        placeholder="Item or service"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor={`sales-line-mobile-qty-${line.id}`}>Qty</Label>
+                        <Input
+                          id={`sales-line-mobile-qty-${line.id}`}
+                          value={line.quantity}
+                          onChange={(event) =>
+                            updateLine(line.id, "quantity", event.target.value)
+                          }
+                          inputMode="decimal"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`sales-line-mobile-rate-${line.id}`}>Rate</Label>
+                        <Input
+                          id={`sales-line-mobile-rate-${line.id}`}
+                          value={line.unitPrice}
+                          onChange={(event) =>
+                            updateLine(line.id, "unitPrice", event.target.value)
+                          }
+                          inputMode="decimal"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`sales-line-mobile-tax-${line.id}`}>Tax %</Label>
+                        <Input
+                          id={`sales-line-mobile-tax-${line.id}`}
+                          value={line.taxRate}
+                          onChange={(event) =>
+                            updateLine(line.id, "taxRate", event.target.value)
+                          }
+                          inputMode="decimal"
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 text-xs text-muted-foreground">
+                      Line total: {formatCurrency(lineTotals.total)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DenseTable className="rounded-xl border-border/80">
+            <DenseTableHead>
+              <tr>
+                <DenseTableHeaderCell className="w-[42%]">Description</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[12%]">Qty</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[16%]">Rate</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[12%]">Tax %</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[13%] text-right">Total</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[5%] text-right"> </DenseTableHeaderCell>
+              </tr>
+            </DenseTableHead>
+            <DenseTableBody>
+              {lines.map((line) => {
                 const lineTotals = getLineTotals(line);
                 return (
-                  <div key={line.id} className="rounded-lg border border-border/80 bg-slate-50 p-2">
-                    <div className="mb-2 flex items-center justify-between">
-                      <div className="text-xs font-semibold text-foreground">
-                        Line {index + 1}
-                      </div>
+                  <DenseTableRow key={line.id}>
+                    <DenseTableCell>
+                      <Input
+                        value={line.description}
+                        onChange={(event) =>
+                          updateLine(line.id, "description", event.target.value)
+                        }
+                        placeholder="Item or service"
+                      />
+                    </DenseTableCell>
+                    <DenseTableCell>
+                      <Input
+                        value={line.quantity}
+                        onChange={(event) =>
+                          updateLine(line.id, "quantity", event.target.value)
+                        }
+                        inputMode="decimal"
+                      />
+                    </DenseTableCell>
+                    <DenseTableCell>
+                      <Input
+                        value={line.unitPrice}
+                        onChange={(event) =>
+                          updateLine(line.id, "unitPrice", event.target.value)
+                        }
+                        inputMode="decimal"
+                      />
+                    </DenseTableCell>
+                    <DenseTableCell>
+                      <Input
+                        value={line.taxRate}
+                        onChange={(event) =>
+                          updateLine(line.id, "taxRate", event.target.value)
+                        }
+                        inputMode="decimal"
+                      />
+                    </DenseTableCell>
+                    <DenseTableCell className="text-right font-semibold text-foreground">
+                      {formatCurrency(lineTotals.total)}
+                    </DenseTableCell>
+                    <DenseTableCell className="text-right">
                       <Button
                         type="button"
                         variant="ghost"
@@ -325,147 +581,18 @@ function BillsWorkspace({
                       >
                         Remove
                       </Button>
-                    </div>
-                    <div className="grid gap-2">
-                      <div className="space-y-1">
-                        <Label htmlFor={`sales-line-mobile-description-${line.id}`}>
-                          Description
-                        </Label>
-                        <Input
-                          id={`sales-line-mobile-description-${line.id}`}
-                          value={line.description}
-                          onChange={(event) =>
-                            updateLine(line.id, "description", event.target.value)
-                          }
-                          placeholder="Item or service"
-                        />
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="space-y-1">
-                          <Label htmlFor={`sales-line-mobile-qty-${line.id}`}>Qty</Label>
-                          <Input
-                            id={`sales-line-mobile-qty-${line.id}`}
-                            value={line.quantity}
-                            onChange={(event) =>
-                              updateLine(line.id, "quantity", event.target.value)
-                            }
-                            inputMode="decimal"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor={`sales-line-mobile-rate-${line.id}`}>Rate</Label>
-                          <Input
-                            id={`sales-line-mobile-rate-${line.id}`}
-                            value={line.unitPrice}
-                            onChange={(event) =>
-                              updateLine(line.id, "unitPrice", event.target.value)
-                            }
-                            inputMode="decimal"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor={`sales-line-mobile-tax-${line.id}`}>Tax %</Label>
-                          <Input
-                            id={`sales-line-mobile-tax-${line.id}`}
-                            value={line.taxRate}
-                            onChange={(event) =>
-                              updateLine(line.id, "taxRate", event.target.value)
-                            }
-                            inputMode="decimal"
-                          />
-                        </div>
-                      </div>
-                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 text-xs text-muted-foreground">
-                        Line total: {formatCurrency(lineTotals.total)}
-                      </div>
-                    </div>
-                  </div>
+                    </DenseTableCell>
+                  </DenseTableRow>
                 );
               })}
-            </div>
+            </DenseTableBody>
+          </DenseTable>
 
-            <DenseTable className="rounded-xl border-border/80">
-              <DenseTableHead>
-                <tr>
-                  <DenseTableHeaderCell className="w-[42%]">Description</DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[12%]">Qty</DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[16%]">Rate</DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[12%]">Tax %</DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[13%] text-right">Total</DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[5%] text-right"> </DenseTableHeaderCell>
-                </tr>
-              </DenseTableHead>
-              <DenseTableBody>
-                {lines.map((line) => {
-                  const lineTotals = getLineTotals(line);
-                  return (
-                    <DenseTableRow key={line.id}>
-                      <DenseTableCell>
-                        <Input
-                          value={line.description}
-                          onChange={(event) =>
-                            updateLine(line.id, "description", event.target.value)
-                          }
-                          placeholder="Item or service"
-                        />
-                      </DenseTableCell>
-                      <DenseTableCell>
-                        <Input
-                          value={line.quantity}
-                          onChange={(event) =>
-                            updateLine(line.id, "quantity", event.target.value)
-                          }
-                          inputMode="decimal"
-                        />
-                      </DenseTableCell>
-                      <DenseTableCell>
-                        <Input
-                          value={line.unitPrice}
-                          onChange={(event) =>
-                            updateLine(line.id, "unitPrice", event.target.value)
-                          }
-                          inputMode="decimal"
-                        />
-                      </DenseTableCell>
-                      <DenseTableCell>
-                        <Input
-                          value={line.taxRate}
-                          onChange={(event) =>
-                            updateLine(line.id, "taxRate", event.target.value)
-                          }
-                          inputMode="decimal"
-                        />
-                      </DenseTableCell>
-                      <DenseTableCell className="text-right font-semibold text-foreground">
-                        {formatCurrency(lineTotals.total)}
-                      </DenseTableCell>
-                      <DenseTableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto px-0 py-0 text-[11px] font-semibold text-[#8a2b2b] hover:bg-transparent"
-                          onClick={() => removeLine(line.id)}
-                        >
-                          Remove
-                        </Button>
-                      </DenseTableCell>
-                    </DenseTableRow>
-                  );
-                })}
-              </DenseTableBody>
-            </DenseTable>
-          </div>
-        </div>
-
-        <aside className="flex min-h-0 flex-col gap-2 lg:overflow-hidden">
           <div className="rounded-xl border border-border/85 bg-white p-2">
             <div className="flex items-center justify-between border-b border-border/70 pb-2">
               <div>
                 <h2 className="text-xs font-semibold text-foreground">Bill Summary</h2>
-                <p className="text-[11px] text-muted-foreground">
-                  {activeBusinessName}
-                </p>
+                <p className="text-[11px] text-muted-foreground">{activeBusinessName}</p>
               </div>
             </div>
             <div className="space-y-2 pt-2">
@@ -494,66 +621,7 @@ function BillsWorkspace({
               ) : null}
             </div>
           </div>
-
-          <div className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 lg:flex-1 lg:overflow-hidden">
-            <div className="border-b border-border/70 pb-2">
-              <h2 className="text-xs font-semibold text-foreground">Saved Drafts</h2>
-              <p className="text-[11px] text-muted-foreground">
-                Local device drafts for the active business.
-              </p>
-            </div>
-            <div className="space-y-2 pt-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              {drafts.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
-                  No saved drafts yet.
-                </div>
-              ) : (
-                drafts.map((draft) => (
-                  <div
-                    key={draft.id}
-                    className={`rounded-lg border px-2 py-2 text-xs ${
-                      draft.id === activeDraftId
-                        ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
-                        : "border-border/70 bg-white text-foreground"
-                    }`}
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="flex h-auto w-full justify-start rounded-none px-0 py-0 text-left hover:bg-transparent"
-                      onClick={() => loadDraft(draft)}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate font-semibold">{draft.billNumber}</div>
-                          <div className="truncate text-[11px] text-muted-foreground">
-                            {draft.customerName}
-                          </div>
-                        </div>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                    </Button>
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-                      <span>{new Date(draft.savedAt).toLocaleString()}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto px-0 py-0 font-semibold text-[#8a2b2b] hover:bg-transparent"
-                        onClick={() => removeDraft(draft.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </aside>
+        </div>
       </div>
     </section>
   );
