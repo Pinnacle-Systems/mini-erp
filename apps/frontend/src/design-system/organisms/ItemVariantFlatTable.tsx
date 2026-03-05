@@ -13,9 +13,11 @@ import {
 import { DENSE_TABLE_COLUMN_WIDTHS } from "../molecules/denseTableColumns";
 import {
   getLocalItemDetailForDisplay,
+  getLocalItemPricingRowsForDisplay,
   type ItemDetailDisplay,
   type ItemDisplay,
 } from "../../features/sync/engine";
+import { useSyncActions } from "../../features/sync/SyncProvider";
 
 type ItemVariantFlatTableProps = {
   items?: ItemDisplay[];
@@ -24,6 +26,10 @@ type ItemVariantFlatTableProps = {
   loading?: boolean;
   emptyMessage?: string;
   showCategory?: boolean;
+  showUnit?: boolean;
+  taxCodeLabel?: "HSN" | "SAC";
+  showCommercialFields?: boolean;
+  showPurchasePrice?: boolean;
   actionLabel?: string;
   actionIcon?: LucideIcon;
   actionClassName?: string;
@@ -41,6 +47,12 @@ export type ItemVariantFlatRow = {
   variantName: string;
   sku: string;
   category: string;
+  unit?: string;
+  itemType?: "PRODUCT" | "SERVICE";
+  hsnSac?: string;
+  salesPrice?: number | null;
+  purchasePrice?: number | null;
+  currency?: string;
   isActive: boolean;
   pending: boolean;
   actionId?: string;
@@ -52,6 +64,12 @@ const toVariantLabel = (variantName: string) => {
   return "-";
 };
 
+const formatPrice = (amount: number | null, currency: string) => {
+  if (amount === null || !Number.isFinite(amount)) return "-";
+  const normalizedCurrency = currency.trim().toUpperCase() || "INR";
+  return `${normalizedCurrency} ${amount.toFixed(2)}`;
+};
+
 export function ItemVariantFlatTable({
   items = [],
   activeStore,
@@ -59,6 +77,10 @@ export function ItemVariantFlatTable({
   loading = false,
   emptyMessage = "No variants found.",
   showCategory = true,
+  showUnit = false,
+  taxCodeLabel = "HSN",
+  showCommercialFields = false,
+  showPurchasePrice = true,
   actionLabel = "View",
   actionIcon = Eye,
   actionClassName,
@@ -68,6 +90,13 @@ export function ItemVariantFlatTable({
   onOpenItem,
 }: ItemVariantFlatTableProps) {
   const [detailsByItemId, setDetailsByItemId] = useState<Record<string, ItemDetailDisplay | null>>({});
+  const [salesPriceByVariantId, setSalesPriceByVariantId] = useState<
+    Record<string, { amount: number | null; currency: string }>
+  >({});
+  const [purchasePriceByVariantId, setPurchasePriceByVariantId] = useState<
+    Record<string, { amount: number | null; currency: string }>
+  >({});
+  const { lastSyncCompletedAt } = useSyncActions();
   const hasAction = Boolean(onAction || onOpenItem);
 
   useEffect(() => {
@@ -88,7 +117,50 @@ export function ItemVariantFlatTable({
     return () => {
       cancelled = true;
     };
-  }, [activeStore, items, rows]);
+  }, [activeStore, items, lastSyncCompletedAt, rows]);
+
+  useEffect(() => {
+    if (rows) return;
+    if (!activeStore || items.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all([
+      getLocalItemPricingRowsForDisplay(activeStore, undefined, true, "SALES"),
+      getLocalItemPricingRowsForDisplay(activeStore, undefined, true, "PURCHASE"),
+    ]).then(([salesRows, purchaseRows]) => {
+      if (cancelled) return;
+      setSalesPriceByVariantId(
+        Object.fromEntries(
+          salesRows.map((row) => [
+            row.variantId,
+            {
+              amount: row.amount,
+              currency: row.currency,
+            },
+          ]),
+        ),
+      );
+      setPurchasePriceByVariantId(
+        Object.fromEntries(
+          purchaseRows.map((row) => [
+            row.variantId,
+            {
+              amount: row.amount,
+              currency: row.currency,
+            },
+          ]),
+        ),
+      );
+    }).catch(() => {
+      if (cancelled) return;
+      setSalesPriceByVariantId({});
+      setPurchasePriceByVariantId({});
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, items, lastSyncCompletedAt, rows]);
 
   const derivedRows = useMemo<ItemVariantFlatRow[]>(() => {
     const flatRows: ItemVariantFlatRow[] = [];
@@ -96,6 +168,29 @@ export function ItemVariantFlatTable({
       const detail = detailsByItemId[item.entityId];
       const variants = detail?.variants ?? [];
       if (variants.length === 0) {
+        const pendingVariantDrafts = item.pendingVariantDrafts ?? [];
+        if (item.pending && pendingVariantDrafts.length > 0) {
+          for (const pendingVariant of pendingVariantDrafts) {
+            flatRows.push({
+              key: pendingVariant.id,
+              itemId: item.entityId,
+          itemName: item.name,
+          variantName: toVariantLabel(pendingVariant.name),
+          sku: pendingVariant.sku || item.sku || item.variantSkus[0] || "",
+          category: item.category || "",
+          unit: item.unit,
+          itemType: item.itemType,
+          hsnSac: item.hsnSac,
+              salesPrice: pendingVariant.salesPrice,
+              purchasePrice: pendingVariant.purchasePrice,
+              currency: "INR",
+              isActive: pendingVariant.isActive,
+              pending: true,
+            });
+          }
+          continue;
+        }
+
         flatRows.push({
           key: `${item.entityId}:single`,
           itemId: item.entityId,
@@ -103,6 +198,12 @@ export function ItemVariantFlatTable({
           variantName: toVariantLabel(""),
           sku: item.sku || item.variantSkus[0] || "",
           category: item.category || "",
+          unit: item.unit,
+          itemType: item.itemType,
+          hsnSac: item.hsnSac,
+          salesPrice: null,
+          purchasePrice: null,
+          currency: "INR",
           isActive: item.isActive,
           pending: item.pending,
         });
@@ -117,6 +218,15 @@ export function ItemVariantFlatTable({
           variantName: toVariantLabel(variant.name),
           sku: variant.sku || "",
           category: item.category || "",
+          unit: item.unit,
+          itemType: item.itemType,
+          hsnSac: item.hsnSac,
+          salesPrice: salesPriceByVariantId[variant.id]?.amount ?? null,
+          purchasePrice: purchasePriceByVariantId[variant.id]?.amount ?? null,
+          currency:
+            salesPriceByVariantId[variant.id]?.currency ??
+            purchasePriceByVariantId[variant.id]?.currency ??
+            "INR",
           isActive: variant.isActive,
           pending: item.pending || variant.pending,
         });
@@ -124,7 +234,7 @@ export function ItemVariantFlatTable({
     }
 
     return flatRows;
-  }, [detailsByItemId, items]);
+  }, [detailsByItemId, items, purchasePriceByVariantId, salesPriceByVariantId]);
   const visibleRows = rows ?? derivedRows;
 
   const handleAction = useCallback(
@@ -166,6 +276,24 @@ export function ItemVariantFlatTable({
                     <p className="text-[11px] text-muted-foreground">
                       SKU: <span className="font-mono">{row.sku || "-"}</span>
                     </p>
+                    {showUnit ? (
+                      <p className="text-[11px] text-muted-foreground">Unit: {row.unit || "-"}</p>
+                    ) : null}
+                    {showCommercialFields ? (
+                      <>
+                        <p className="text-[11px] text-muted-foreground">
+                          {taxCodeLabel}: {row.hsnSac || "-"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Sales: {formatPrice(row.salesPrice ?? null, row.currency ?? "INR")}
+                        </p>
+                        {showPurchasePrice ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Purchase: {formatPrice(row.purchasePrice ?? null, row.currency ?? "INR")}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : null}
                     {showCategory ? (
                       <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
                     ) : null}
@@ -188,6 +316,24 @@ export function ItemVariantFlatTable({
                     <p className="text-[11px] text-muted-foreground">
                       SKU: <span className="font-mono">{row.sku || "-"}</span>
                     </p>
+                    {showUnit ? (
+                      <p className="text-[11px] text-muted-foreground">Unit: {row.unit || "-"}</p>
+                    ) : null}
+                    {showCommercialFields ? (
+                      <>
+                        <p className="text-[11px] text-muted-foreground">
+                          {taxCodeLabel}: {row.hsnSac || "-"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Sales: {formatPrice(row.salesPrice ?? null, row.currency ?? "INR")}
+                        </p>
+                        {showPurchasePrice ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Purchase: {formatPrice(row.purchasePrice ?? null, row.currency ?? "INR")}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : null}
                     {showCategory ? (
                       <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
                     ) : null}
@@ -229,6 +375,18 @@ export function ItemVariantFlatTable({
             <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.item} px-2`}>Item</DenseTableHeaderCell>
             <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.variant} px-2`}>Variant</DenseTableHeaderCell>
             <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.sku} px-2`}>SKU</DenseTableHeaderCell>
+            {showUnit ? (
+              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.unit} px-2`}>Unit</DenseTableHeaderCell>
+            ) : null}
+            {showCommercialFields ? (
+              <DenseTableHeaderCell className="w-24 px-2">{taxCodeLabel}</DenseTableHeaderCell>
+            ) : null}
+            {showCommercialFields ? (
+              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.price}>Sales</DenseTableHeaderCell>
+            ) : null}
+            {showCommercialFields && showPurchasePrice ? (
+              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.price}>Purchase</DenseTableHeaderCell>
+            ) : null}
             {showCategory ? (
               <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.category} px-2`}>Category</DenseTableHeaderCell>
             ) : null}
@@ -243,7 +401,14 @@ export function ItemVariantFlatTable({
             <DenseTableRow>
               <DenseTableCell
                 className="px-2 py-3 text-muted-foreground"
-                colSpan={showCategory ? (hasAction ? 6 : 5) : (hasAction ? 5 : 4)}
+                colSpan={
+                  (showCommercialFields ? 3 : 0) +
+                  (showCommercialFields && !showPurchasePrice ? -1 : 0) +
+                  (showUnit ? 1 : 0) +
+                  (showCategory ? 1 : 0) +
+                  (hasAction ? 1 : 0) +
+                  4
+                }
               >
                 Loading variants...
               </DenseTableCell>
@@ -254,6 +419,20 @@ export function ItemVariantFlatTable({
                 <DenseTableCell className="truncate px-2 py-2.5 font-medium text-foreground">{row.itemName}</DenseTableCell>
                 <DenseTableCell className="truncate px-2 py-2.5 text-muted-foreground">{row.variantName}</DenseTableCell>
                 <DenseTableCell className="truncate px-2 py-2.5 font-mono text-[11px]">{row.sku || "-"}</DenseTableCell>
+                {showUnit ? <DenseTableCell className="truncate px-2 py-2.5">{row.unit || "-"}</DenseTableCell> : null}
+                {showCommercialFields ? (
+                  <DenseTableCell className="truncate px-2 py-2.5">{row.hsnSac || "-"}</DenseTableCell>
+                ) : null}
+                {showCommercialFields ? (
+                  <DenseTableCell className="truncate px-2 py-2.5">
+                    {formatPrice(row.salesPrice ?? null, row.currency ?? "INR")}
+                  </DenseTableCell>
+                ) : null}
+                {showCommercialFields && showPurchasePrice ? (
+                  <DenseTableCell className="truncate px-2 py-2.5">
+                    {formatPrice(row.purchasePrice ?? null, row.currency ?? "INR")}
+                  </DenseTableCell>
+                ) : null}
                 {showCategory ? <DenseTableCell className="truncate px-2 py-2.5">{row.category || "-"}</DenseTableCell> : null}
                 <DenseTableCell className="px-2 py-2.5">
                   <div className="inline-flex items-center gap-2">

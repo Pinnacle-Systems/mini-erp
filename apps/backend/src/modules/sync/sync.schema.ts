@@ -13,6 +13,8 @@ const parseBooleanQueryParam = z.preprocess((value) => {
 }, z.boolean());
 
 const PRICE_AMOUNT_PATTERN = /^\d+(?:\.\d{1,2})?$/;
+const priceTypeSchema = z.enum(["SALES", "PURCHASE"]);
+const priceTaxModeSchema = z.enum(["EXCLUSIVE", "INCLUSIVE"]);
 
 const amountSchema = z.preprocess((value) => {
   if (value === null) return null;
@@ -76,6 +78,7 @@ export const itemPricesSchema = z.object({
     tenantId: z.uuid(),
     q: z.string().trim().max(128).optional(),
     includeInactive: parseBooleanQueryParam.default(false),
+    priceType: priceTypeSchema.default("SALES"),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(200).default(50),
   }),
@@ -89,6 +92,9 @@ export const upsertItemPriceSchema = z.object({
     tenantId: z.uuid(),
     amount: amountSchema,
     currency: z.string().trim().length(3).optional(),
+    priceType: priceTypeSchema.default("SALES"),
+    taxMode: priceTaxModeSchema.default("EXCLUSIVE"),
+    gstSlab: z.string().trim().max(32).optional().nullable(),
     baseVersion: z.number().int().min(0).optional(),
   }),
 });

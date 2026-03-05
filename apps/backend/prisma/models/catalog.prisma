@@ -42,6 +42,7 @@ model Item {
   item_type   ItemType      @default(PRODUCT)
   // Active item names are enforced unique per business by a partial unique index in SQL migrations.
   name        String
+  hsn_sac     String?
   category    String?
   metadata    Json?
   unit        UnitType      @default(PCS)

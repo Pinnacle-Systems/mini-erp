@@ -79,14 +79,30 @@ export const queueMutation = async (tenantId: string, mutation: SyncMutation) =>
 export const applyDeltas = async (tenantId: string, deltas: SyncDelta[]) => {
   await syncDb.transaction("rw", syncDb.entities, async () => {
     for (const delta of deltas) {
-      const key: [string, string, string] = [tenantId, delta.entity, delta.entityId];
+      const deltaData =
+        delta.data && typeof delta.data === "object" && !Array.isArray(delta.data)
+          ? (delta.data as Record<string, unknown>)
+          : {};
+      const itemPriceVariantId =
+        typeof deltaData.variantId === "string" && deltaData.variantId.trim().length > 0
+          ? deltaData.variantId.trim()
+          : delta.entityId;
+      const itemPriceType =
+        String(deltaData.priceType ?? "SALES").toUpperCase() === "PURCHASE"
+          ? "PURCHASE"
+          : "SALES";
+      const normalizedEntityId =
+        delta.entity === "item_price"
+          ? `${itemPriceVariantId}:${itemPriceType}`
+          : delta.entityId;
+      const key: [string, string, string] = [tenantId, delta.entity, normalizedEntityId];
 
       if (delta.op === "delete") {
         const existing = await syncDb.entities.get(key);
         await syncDb.entities.put({
           tenantId,
           entity: delta.entity,
-          entityId: delta.entityId,
+          entityId: normalizedEntityId,
           data: normalizeEntityStateData(delta, existing?.data),
           deletedAt: delta.serverTimestamp,
           serverVersion: delta.serverVersion,
@@ -98,7 +114,7 @@ export const applyDeltas = async (tenantId: string, deltas: SyncDelta[]) => {
       await syncDb.entities.put({
         tenantId,
         entity: delta.entity,
-        entityId: delta.entityId,
+        entityId: normalizedEntityId,
         data: normalizeEntityStateData(delta),
         serverVersion: delta.serverVersion,
         updatedAt: delta.serverTimestamp

@@ -146,6 +146,7 @@ export const itemPrices = catchAsync(async (req, res) => {
     tenantId,
     q,
     includeInactive = false,
+    priceType = "SALES",
     page = 1,
     limit = 50,
   } = req.query;
@@ -165,6 +166,7 @@ export const itemPrices = catchAsync(async (req, res) => {
   const result = await syncService.getItemPrices(String(tenantId), {
     q: typeof q === "string" ? q : undefined,
     includeInactive: Boolean(includeInactive),
+    priceType: typeof priceType === "string" ? (priceType as "SALES" | "PURCHASE") : "SALES",
     page: Number(page),
     limit: Number(limit),
   }, access);
@@ -174,7 +176,7 @@ export const itemPrices = catchAsync(async (req, res) => {
 
 export const upsertItemPrice = catchAsync(async (req, res) => {
   const { variantId } = req.params;
-  const { tenantId, amount, currency, baseVersion } = req.body;
+  const { tenantId, amount, currency, priceType, taxMode, gstSlab, baseVersion } = req.body;
   const member = await tenantService.validateMembership(req.user.id, tenantId);
   if (!member) {
     throw new ForbiddenError("Access denied");
@@ -188,6 +190,9 @@ export const upsertItemPrice = catchAsync(async (req, res) => {
   const price = await syncService.upsertItemPrice(String(tenantId), String(variantId), {
     amount,
     currency,
+    priceType,
+    taxMode,
+    gstSlab,
     actorUserId: req.user.id,
     baseVersion: typeof baseVersion === "number" ? baseVersion : undefined,
   }, access);

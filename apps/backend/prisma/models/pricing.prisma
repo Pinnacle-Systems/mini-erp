@@ -20,6 +20,20 @@ enum PriceEventType {
   @@schema("pricing")
 }
 
+enum PriceType {
+  SALES
+  PURCHASE
+
+  @@schema("pricing")
+}
+
+enum PriceTaxMode {
+  EXCLUSIVE
+  INCLUSIVE
+
+  @@schema("pricing")
+}
+
 model PriceBook {
   id               String                   @id @default(uuid()) @db.Uuid
   business_id      String                   @db.Uuid
@@ -66,6 +80,9 @@ model ItemPrice {
   max_qty           Int?
   amount            Decimal   @db.Decimal(12, 2)
   currency          String    @db.VarChar(3)
+  price_type        PriceType @default(SALES)
+  tax_mode          PriceTaxMode @default(EXCLUSIVE)
+  gst_slab          String?
   is_active         Boolean   @default(true)
   deleted_at        DateTime?
   starts_at         DateTime?
@@ -93,6 +110,9 @@ model ItemPriceEvent {
   max_qty           Int?
   amount            Decimal?       @db.Decimal(12, 2)
   currency          String         @db.VarChar(3)
+  price_type        PriceType      @default(SALES)
+  tax_mode          PriceTaxMode   @default(EXCLUSIVE)
+  gst_slab          String?
   event_type        PriceEventType
   effective_at      DateTime       @default(now())
   ended_at          DateTime?
