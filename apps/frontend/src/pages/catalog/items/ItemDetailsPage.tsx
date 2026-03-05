@@ -186,7 +186,7 @@ const toDraft = (item: ItemDetailDisplay): DraftItem => ({
 
 export function ItemDetailsPage({
   itemType: forcedItemType,
-  title,
+  title: _title,
   singularLabel,
   routeBasePath,
 }: ItemDetailsPageProps) {
@@ -323,8 +323,7 @@ export function ItemDetailsPage({
       const shouldUpdateItemRecord =
         nextItem.name !== initialItem.name ||
         nextItem.category !== initialItem.category ||
-        nextItem.unit !== initialItem.unit ||
-        nextItem.itemType !== initialItem.itemType;
+        nextItem.unit !== initialItem.unit;
 
       if (
         shouldUpdateItemRecord
@@ -333,7 +332,6 @@ export function ItemDetailsPage({
           name: nextItem.name,
           category: nextItem.category.trim() || null,
           unit: nextItem.unit,
-          itemType: nextItem.itemType,
         });
       }
 
@@ -597,7 +595,7 @@ export function ItemDetailsPage({
                 optionClassName="text-[10px]"
               />
             </div>
-            <div className="grid gap-1 lg:col-span-2">
+            <div className="grid gap-1 lg:col-span-3">
               <Label>Unit</Label>
               <Select
                 className={`${DENSE_SELECT_CLASS} w-full`}
@@ -620,10 +618,6 @@ export function ItemDetailsPage({
                   </optgroup>
                 ))}
               </Select>
-            </div>
-            <div className="grid gap-1 lg:col-span-2">
-              <Label>Type</Label>
-              <Input className={DENSE_INPUT_CLASS} value={title} disabled />
             </div>
           </div>
 

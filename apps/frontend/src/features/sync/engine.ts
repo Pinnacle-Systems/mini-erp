@@ -86,6 +86,29 @@ const setCursor = async (tenantId: string, cursor: string) => {
 };
 
 const toMutation = (item: OutboxItem): SyncMutation => ({
+  ...(item.entity === "item_price"
+    ? (() => {
+        const payloadVariantId =
+          typeof item.payload.variantId === "string" ? item.payload.variantId : "";
+        const compositeVariantId =
+          typeof item.entityId === "string" ? item.entityId.split(":")[0] : "";
+        const normalizedVariantId = payloadVariantId || compositeVariantId || item.entityId;
+        return {
+          mutationId: item.mutationId,
+          deviceId: item.deviceId,
+          userId: item.userId,
+          entity: item.entity,
+          entityId: normalizedVariantId,
+          op: item.op,
+          payload: {
+            ...item.payload,
+            variantId: normalizedVariantId,
+          },
+          baseVersion: item.baseVersion,
+          clientTimestamp: item.clientTimestamp,
+        } satisfies SyncMutation;
+      })()
+    : {
   mutationId: item.mutationId,
   deviceId: item.deviceId,
   userId: item.userId,
@@ -95,6 +118,7 @@ const toMutation = (item: OutboxItem): SyncMutation => ({
   payload: item.payload,
   baseVersion: item.baseVersion,
   clientTimestamp: item.clientTimestamp
+}),
 });
 
 export type VariantInput = {
@@ -106,10 +130,13 @@ export type VariantInput = {
   isActive?: boolean;
   optionValues?: Record<string, string>;
   metadata?: Record<string, unknown> | null;
+  salesPrice?: number | null;
+  purchasePrice?: number | null;
 };
 
 export type ItemInput = {
   name?: string;
+  hsnSac?: string | null;
   category?: string | null;
   metadata?: Record<string, unknown> | null;
   unit?:
@@ -282,6 +309,7 @@ export const queueItemCreate = async (
   userId: string,
   payload: {
     name: string;
+    hsnSac?: string | null;
     category?: string;
     unit:
       | "PCS"
@@ -405,11 +433,28 @@ export const queueItemVariantDelete = async (
 const push = async (tenantId: string) => {
   if (!isNetworkOnline()) return;
 
-  const pending = await syncDb.outbox
+  const pendingAll = await syncDb.outbox
     .where("[tenantId+status]")
     .equals([tenantId, "pending"])
-    .limit(100)
     .toArray();
+
+  const pending = pendingAll
+    .sort((left, right) => {
+      const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+      if (createdAtOrder !== 0) return createdAtOrder;
+
+      const priority = (item: OutboxItem) => {
+        if (item.entity === "item" && item.op === "create") return 0;
+        if (item.entity === "item_variant" && item.op === "create") return 1;
+        if (item.entity === "item_price") return 3;
+        return 2;
+      };
+      const priorityOrder = priority(left) - priority(right);
+      if (priorityOrder !== 0) return priorityOrder;
+
+      return left.mutationId.localeCompare(right.mutationId);
+    })
+    .slice(0, 100);
 
   if (pending.length === 0) return;
 
@@ -519,11 +564,21 @@ export type ItemDisplay = {
   entityId: string;
   name: string;
   sku: string;
+  hsnSac: string;
   category: string;
+  unit: string;
   itemType: "PRODUCT" | "SERVICE";
   isActive: boolean;
   variantSkus: string[];
   variantCount: number;
+  pendingVariantDrafts?: Array<{
+    id: string;
+    name: string;
+    sku: string;
+    isActive: boolean;
+    salesPrice: number | null;
+    purchasePrice: number | null;
+  }>;
   pending: boolean;
 };
 
@@ -719,7 +774,9 @@ export const getLocalItemsForDisplay = async (
         entityId: item.entityId,
         name: String(item.data.name ?? "Untitled Item"),
         sku: primarySku,
+        hsnSac: String(item.data.hsnSac ?? ""),
         category: String(item.data.category ?? ""),
+        unit: String(item.data.unit ?? "PCS"),
         itemType: String(item.data.itemType ?? "PRODUCT") as
           | "PRODUCT"
           | "SERVICE",
@@ -737,12 +794,37 @@ export const getLocalItemsForDisplay = async (
     .map((item) => {
       const payload = item.payload as {
         name?: unknown;
+        hsnSac?: unknown;
         category?: unknown;
+        unit?: unknown;
         variants?: unknown;
       };
       const variants = Array.isArray(payload.variants)
         ? payload.variants.filter((value) => typeof value === "object" && value !== null)
         : [];
+      const pendingVariantDrafts = variants.map((variant, index) => {
+        const record = variant as Record<string, unknown>;
+        const parseAmount = (raw: unknown) => {
+          if (raw === null || raw === undefined || raw === "") return null;
+          if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+          if (typeof raw === "string" && raw.trim().length > 0) {
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) ? parsed : null;
+          }
+          return null;
+        };
+        return {
+          id:
+            typeof record.id === "string" && record.id.trim().length > 0
+              ? record.id
+              : `pending-${item.entityId}-${index}`,
+          name: typeof record.name === "string" ? record.name.trim() : "",
+          sku: typeof record.sku === "string" ? record.sku.trim() : "",
+          isActive: record.isActive !== false,
+          salesPrice: parseAmount(record.salesPrice),
+          purchasePrice: parseAmount(record.purchasePrice),
+        };
+      });
       const variantSku =
         variants.length > 0 && typeof (variants[0] as { sku?: unknown }).sku === "string"
           ? String((variants[0] as { sku?: unknown }).sku)
@@ -760,10 +842,13 @@ export const getLocalItemsForDisplay = async (
         entityId: item.entityId,
         name: String(payload.name ?? "Untitled Item"),
         sku: variantSku,
+        hsnSac: String(payload.hsnSac ?? ""),
         category: String(payload.category ?? ""),
+        unit: String(payload.unit ?? "PCS"),
         isActive,
         variantSkus,
         variantCount: Math.max(variants.length, 1),
+        pendingVariantDrafts,
         pending: true,
       } satisfies ItemDisplay;
     });
@@ -1151,6 +1236,9 @@ export type ItemPricingRow = {
   isActive: boolean;
   amount: number | null;
   currency: string;
+  priceType: "SALES" | "PURCHASE";
+  taxMode: "EXCLUSIVE" | "INCLUSIVE";
+  gstSlab: string | null;
   updatedAt: string | null;
   serverVersion: number;
   pending: boolean;
@@ -1354,8 +1442,12 @@ export const queueItemPriceUpsert = async (
   amount: number | null,
   currency?: string,
   baseVersion?: number,
+  priceType: "SALES" | "PURCHASE" = "SALES",
+  taxMode: "EXCLUSIVE" | "INCLUSIVE" = "EXCLUSIVE",
+  gstSlab?: string | null,
 ) => {
   const mutationId = crypto.randomUUID();
+  const normalizedPriceType = priceType === "PURCHASE" ? "PURCHASE" : "SALES";
   await queueMutation(tenantId, {
     mutationId,
     deviceId: getOrCreateDeviceId(),
@@ -1367,6 +1459,9 @@ export const queueItemPriceUpsert = async (
       variantId,
       amount,
       ...(currency ? { currency } : {}),
+      priceType: normalizedPriceType,
+      taxMode,
+      ...(gstSlab !== undefined ? { gstSlab } : {}),
     },
     ...(typeof baseVersion === "number" ? { baseVersion } : {}),
     clientTimestamp: new Date().toISOString(),
@@ -1811,6 +1906,7 @@ export const getLocalItemPricingRowsForDisplay = async (
   tenantId: string,
   query?: string,
   includeInactive = false,
+  priceType: "SALES" | "PURCHASE" = "SALES",
 ): Promise<ItemPricingRow[]> => {
   const [variantEntities, itemEntities, priceEntities, pendingPriceMutations] = await Promise.all([
     listEntities(tenantId, "item_variant"),
@@ -1886,12 +1982,25 @@ export const getLocalItemPricingRowsForDisplay = async (
 
   const persistedPriceByVariantId = new Map<
     string,
-    { amount: number | null; currency: string; updatedAt: string | null; serverVersion: number }
+    {
+      amount: number | null;
+      currency: string;
+      priceType: "SALES" | "PURCHASE";
+      taxMode: "EXCLUSIVE" | "INCLUSIVE";
+      gstSlab: string | null;
+      updatedAt: string | null;
+      serverVersion: number;
+    }
   >();
   for (const price of priceEntities) {
     if (price.deletedAt) continue;
     const variantId = String(price.data.variantId ?? price.entityId ?? "");
     if (!variantId) continue;
+    const persistedPriceType =
+      String(price.data.priceType ?? "SALES").toUpperCase() === "PURCHASE"
+        ? "PURCHASE"
+        : "SALES";
+    if (persistedPriceType !== priceType) continue;
     const rawAmount = price.data.amount;
     const amount =
       rawAmount === null
@@ -1902,9 +2011,21 @@ export const getLocalItemPricingRowsForDisplay = async (
             ? Number(rawAmount)
             : null;
     const currency = String(price.data.currency ?? "INR").trim().toUpperCase() || "INR";
+    const taxMode =
+      String(price.data.taxMode ?? "EXCLUSIVE").toUpperCase() === "INCLUSIVE"
+        ? "INCLUSIVE"
+        : "EXCLUSIVE";
+    const gstSlabRaw = price.data.gstSlab;
+    const gstSlab =
+      typeof gstSlabRaw === "string" && gstSlabRaw.trim().length > 0
+        ? gstSlabRaw.trim().toUpperCase()
+        : null;
     persistedPriceByVariantId.set(variantId, {
       amount,
       currency,
+      priceType: persistedPriceType,
+      taxMode,
+      gstSlab,
       updatedAt: price.updatedAt,
       serverVersion: price.serverVersion ?? 0,
     });
@@ -1912,7 +2033,13 @@ export const getLocalItemPricingRowsForDisplay = async (
 
   const pendingPriceByVariantId = new Map<
     string,
-    { amount: number | null; currency?: string }
+    {
+      amount: number | null;
+      currency?: string;
+      priceType?: "SALES" | "PURCHASE";
+      taxMode?: "EXCLUSIVE" | "INCLUSIVE";
+      gstSlab?: string | null;
+    }
   >();
   for (const mutation of pendingPriceMutations) {
     const variantId =
@@ -1933,7 +2060,28 @@ export const getLocalItemPricingRowsForDisplay = async (
       typeof mutation.payload.currency === "string"
         ? mutation.payload.currency.trim().toUpperCase()
         : undefined;
-    pendingPriceByVariantId.set(variantId, { amount, currency });
+    const pendingPriceType =
+      String(mutation.payload.priceType ?? "SALES").toUpperCase() === "PURCHASE"
+        ? "PURCHASE"
+        : "SALES";
+    if (pendingPriceType !== priceType) continue;
+    const pendingTaxMode =
+      String(mutation.payload.taxMode ?? "EXCLUSIVE").toUpperCase() === "INCLUSIVE"
+        ? "INCLUSIVE"
+        : "EXCLUSIVE";
+    const pendingGstSlab =
+      typeof mutation.payload.gstSlab === "string" && mutation.payload.gstSlab.trim().length > 0
+        ? mutation.payload.gstSlab.trim().toUpperCase()
+        : mutation.payload.gstSlab === null
+          ? null
+          : undefined;
+    pendingPriceByVariantId.set(variantId, {
+      amount,
+      currency,
+      priceType: pendingPriceType,
+      taxMode: pendingTaxMode,
+      gstSlab: pendingGstSlab,
+    });
   }
 
   const normalizedQuery = query?.trim().toLowerCase() ?? "";
@@ -1944,6 +2092,14 @@ export const getLocalItemPricingRowsForDisplay = async (
       const persisted = persistedPriceByVariantId.get(variantId);
       const amount = pending ? pending.amount : (persisted?.amount ?? null);
       const currency = pending?.currency || persisted?.currency || "INR";
+      const rowPriceType = pending?.priceType || persisted?.priceType || priceType;
+      const taxMode = pending?.taxMode || persisted?.taxMode || "EXCLUSIVE";
+      const gstSlab =
+        pending?.gstSlab !== undefined
+          ? pending.gstSlab
+          : persisted?.gstSlab !== undefined
+            ? persisted.gstSlab
+            : null;
       const pendingState = Boolean(pending);
       return {
         variantId,
@@ -1958,6 +2114,9 @@ export const getLocalItemPricingRowsForDisplay = async (
         isActive: variant.isActive,
         amount,
         currency,
+        priceType: rowPriceType,
+        taxMode,
+        gstSlab,
         updatedAt: persisted?.updatedAt ?? null,
         serverVersion: persisted?.serverVersion ?? 0,
         pending: pendingState,

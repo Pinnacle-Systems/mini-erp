@@ -90,6 +90,8 @@ export function ItemsPage({
         normalizedQuery.length === 0 ||
         item.name.toLowerCase().includes(normalizedQuery) ||
         item.sku.toLowerCase().includes(normalizedQuery) ||
+        item.hsnSac.toLowerCase().includes(normalizedQuery) ||
+        item.unit.toLowerCase().includes(normalizedQuery) ||
         item.category.toLowerCase().includes(normalizedQuery) ||
         item.variantSkus.some((sku) => sku.toLowerCase().includes(normalizedQuery));
 
@@ -189,6 +191,10 @@ export function ItemsPage({
               <ItemVariantFlatTable
                 items={filteredItems}
                 activeStore={activeStore}
+                showUnit
+                taxCodeLabel={itemType === "SERVICE" ? "SAC" : "HSN"}
+                showCommercialFields
+                showPurchasePrice={itemType !== "SERVICE"}
                 actionLabel="View"
                 onOpenItem={(itemId) => navigate(`${routeBasePath}/${itemId}`)}
               />

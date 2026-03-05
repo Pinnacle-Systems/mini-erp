@@ -208,6 +208,7 @@ Sequence rule: complete each phase in order unless an explicit exception is agre
 
 1. `[x]` Keep catalog definition and billing operations decoupled:
    - item/variant identity in `catalog.*`
+   - regulatory item classification (`hsn_sac`) on `catalog.items` with type-aware validation (HSN for products, SAC for services)
    - price state and history in `pricing.*`
 2. `[x]` Keep inventory as append-oriented ledger events in `inventory.stock_ledger`, with `stock_level` treated as a derived snapshot.
 3. `[x]` Enforce at least one variant per item and exactly one default variant for active items.
@@ -234,7 +235,10 @@ Sequence rule: complete each phase in order unless an explicit exception is agre
 
 ### Phase 3: Pricing Operations
 
-1. `[x]` Keep price write-path versioned through `item_price_events` (`SET`/`CLEARED`) when base price changes.
+1. `[x]` Keep price write-path versioned through `item_price_events` (`SET`/`CLEARED`) when base price changes, including base dimensions:
+   - `priceType` (`SALES`/`PURCHASE`)
+   - `taxMode` (`EXCLUSIVE`/`INCLUSIVE`)
+   - `gstSlab` (optional)
 2. `[~]` Maintain dense bulk price editing as primary:
    - inline editing and `Save All (n)` exist
    - select-and-apply scoped bulk action is not yet present

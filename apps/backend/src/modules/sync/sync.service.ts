@@ -70,12 +70,14 @@ const RECENT_STOCK_ADJUSTMENT_LIMIT_PER_VARIANT = 10;
 const SUPPORTED_ITEM_FIELDS = new Set([
   "sku",
   "name",
+  "hsnSac",
   "category",
   "unit",
   "itemType",
   "metadata",
   "variants",
 ]);
+const HSN_SAC_DIGITS_PATTERN = /^\d+$/;
 const METADATA_KEY_PATTERN = /^[a-z][a-z0-9_.-]{0,63}$/;
 const ITEM_METADATA_MAX_BYTES = 8 * 1024;
 const VARIANT_METADATA_MAX_BYTES = 4 * 1024;
@@ -85,6 +87,7 @@ const METADATA_MAX_STRING_LENGTH = 500;
 type ItemPayload = {
   sku?: string | null;
   name?: string;
+  hsnSac?: string | null;
   category?: string | null;
   unit?: string;
   itemType?: string;
@@ -101,6 +104,8 @@ type VariantPayload = {
   isActive?: boolean;
   optionValues?: Record<string, string>;
   metadata?: Record<string, unknown> | null;
+  salesPrice?: number | string | null;
+  purchasePrice?: number | string | null;
 };
 type CustomerPayload = {
   name?: string;
@@ -109,10 +114,12 @@ type CustomerPayload = {
   address?: string | null;
   gstNo?: string | null;
 };
+type PriceTypeValue = "SALES" | "PURCHASE";
+type PriceTaxModeValue = "EXCLUSIVE" | "INCLUSIVE";
 const DEFAULT_ITEM_VALUES = {
   name: "Untitled Item",
   unit: "PCS",
-  itemType: "PRODUCT",
+  itemType: "PRODUCT" as const,
 };
 const DEFAULT_PRICE_BOOK_CODE = "STANDARD";
 const DEFAULT_PRICE_BOOK_NAME = "Standard";
@@ -122,6 +129,9 @@ const STOCK_ADJUSTMENT_REASONS = new Set([
   "ADJUSTMENT_INCREASE",
   "ADJUSTMENT_DECREASE",
 ]);
+const PRICE_TYPES = new Set(["SALES", "PURCHASE"]);
+const PRICE_TAX_MODES = new Set(["EXCLUSIVE", "INCLUSIVE"]);
+const GST_SLAB_PATTERN = /^[A-Z0-9][A-Z0-9._/-]{0,31}$/;
 const prismaAny = prisma as any;
 
 const toReasonCodeFromStatus = (statusCode?: number): SyncRejectionReasonCode => {
@@ -587,6 +597,9 @@ const sanitizeVariantPayload = (payload) => {
   const raw = (payload ?? {}) as VariantPayload;
   const normalized: VariantPayload = {};
 
+  if (typeof raw.id === "string" && raw.id) {
+    normalized.id = raw.id;
+  }
   if (typeof raw.itemId === "string" && raw.itemId) {
     normalized.itemId = raw.itemId;
   }
@@ -631,6 +644,12 @@ const sanitizeVariantPayload = (payload) => {
   } else if (raw.metadata !== undefined) {
     normalized.metadata = raw.metadata;
   }
+  if (raw.salesPrice !== undefined) {
+    normalized.salesPrice = raw.salesPrice;
+  }
+  if (raw.purchasePrice !== undefined) {
+    normalized.purchasePrice = raw.purchasePrice;
+  }
 
   return normalized;
 };
@@ -647,6 +666,142 @@ const normalizeCategory = (value: unknown) => {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+};
+
+const normalizeHsnSac = (
+  value: unknown,
+  itemType: "PRODUCT" | "SERVICE",
+  options: { entity: string; entityId: string },
+) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw validationError("hsnSac must be a string or null", options.entity, options.entityId, {
+      field: "hsnSac",
+    });
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!HSN_SAC_DIGITS_PATTERN.test(trimmed)) {
+    throw validationError("hsnSac must contain digits only", options.entity, options.entityId, {
+      field: "hsnSac",
+    });
+  }
+  if (itemType === "SERVICE") {
+    if (trimmed.length !== 6) {
+      throw validationError(
+        "SAC code must be exactly 6 digits for services",
+        options.entity,
+        options.entityId,
+        { field: "hsnSac" },
+      );
+    }
+    return trimmed;
+  }
+  if (trimmed.length < 4 || trimmed.length > 8) {
+    throw validationError(
+      "HSN code must be 4 to 8 digits for products",
+      options.entity,
+      options.entityId,
+      { field: "hsnSac" },
+    );
+  }
+  return trimmed;
+};
+
+const normalizePriceType = (
+  value: unknown,
+  options: { entity: string; entityId: string },
+): PriceTypeValue => {
+  if (value === undefined || value === null || value === "") return "SALES";
+  if (typeof value !== "string") {
+    throw validationError("priceType is invalid", options.entity, options.entityId, {
+      field: "priceType",
+    });
+  }
+  const normalized = value.trim().toUpperCase();
+  if (!PRICE_TYPES.has(normalized)) {
+    throw validationError("priceType must be SALES or PURCHASE", options.entity, options.entityId, {
+      field: "priceType",
+      value,
+    });
+  }
+  return normalized as PriceTypeValue;
+};
+
+const normalizePriceTaxMode = (
+  value: unknown,
+  options: { entity: string; entityId: string },
+): PriceTaxModeValue => {
+  if (value === undefined || value === null || value === "") return "EXCLUSIVE";
+  if (typeof value !== "string") {
+    throw validationError("taxMode is invalid", options.entity, options.entityId, {
+      field: "taxMode",
+    });
+  }
+  const normalized = value.trim().toUpperCase();
+  if (!PRICE_TAX_MODES.has(normalized)) {
+    throw validationError(
+      "taxMode must be EXCLUSIVE or INCLUSIVE",
+      options.entity,
+      options.entityId,
+      {
+        field: "taxMode",
+        value,
+      },
+    );
+  }
+  return normalized as PriceTaxModeValue;
+};
+
+const normalizeGstSlab = (
+  value: unknown,
+  options: { entity: string; entityId: string },
+) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw validationError("gstSlab is invalid", options.entity, options.entityId, {
+      field: "gstSlab",
+    });
+  }
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  if (!GST_SLAB_PATTERN.test(normalized)) {
+    throw validationError(
+      "gstSlab must use uppercase letters, numbers, dot, underscore, slash, or hyphen",
+      options.entity,
+      options.entityId,
+      { field: "gstSlab" },
+    );
+  }
+  return normalized;
+};
+
+const normalizeOptionalPriceAmount = (
+  value: unknown,
+  options: { entity: string; entityId: string; field: "salesPrice" | "purchasePrice" },
+) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw validationError(
+      `${options.field} must be a non-negative number or null`,
+      options.entity,
+      options.entityId,
+      { field: options.field },
+    );
+  }
+
+  return Number(parsed.toFixed(2));
 };
 
 const ensureCategoryExists = async (tx, tenantId: string, category: string) => {
@@ -831,6 +986,8 @@ const buildItemForCreate = (payload, options: { entity: string; entityId: string
     ...options,
     maxBytes: ITEM_METADATA_MAX_BYTES,
   });
+  const itemType = normalized.itemType === "SERVICE" ? "SERVICE" : DEFAULT_ITEM_VALUES.itemType;
+  const hsnSac = normalizeHsnSac(normalized.hsnSac, itemType, options);
 
   return {
     item: {
@@ -841,8 +998,8 @@ const buildItemForCreate = (payload, options: { entity: string; entityId: string
       category: normalizeCategory(normalized.category) ?? null,
       unit:
         typeof normalized.unit === "string" ? normalized.unit : DEFAULT_ITEM_VALUES.unit,
-      item_type:
-        normalized.itemType === "SERVICE" ? "SERVICE" : DEFAULT_ITEM_VALUES.itemType,
+      item_type: itemType,
+      hsn_sac: hsnSac ?? null,
       metadata: metadata ?? null,
     },
     defaultVariant: {
@@ -861,7 +1018,10 @@ const buildItemForUpdate = (
   options: { entity: string; entityId: string },
 ) => {
   const normalized = sanitizeItemPayload(payload);
-  const patch: ItemPayload & { item_type?: string } = {};
+  const patch: ItemPayload & {
+    item_type?: string;
+    hsn_sac?: string | null;
+  } = {};
   let sku: string | null | undefined = undefined;
   let category: string | null | undefined = undefined;
   let metadata: Record<string, unknown> | null | undefined = undefined;
@@ -887,6 +1047,9 @@ const buildItemForUpdate = (
   if (normalized.itemType === "PRODUCT" || normalized.itemType === "SERVICE") {
     patch.item_type = normalized.itemType;
   }
+  if (Object.hasOwn(normalized, "hsnSac")) {
+    patch.hsnSac = normalized.hsnSac;
+  }
   metadata = normalizeMetadataValue(normalized.metadata, {
     ...options,
     maxBytes: ITEM_METADATA_MAX_BYTES,
@@ -908,6 +1071,7 @@ const toItemSnapshot = (item, defaultVariant) => {
     businessId: item.business_id,
     itemType: item.item_type,
     name: item.name,
+    hsnSac: item.hsn_sac ?? null,
     category: item.category ?? null,
     unit: item.unit,
     sku: defaultVariant?.sku ?? null,
@@ -1656,6 +1820,8 @@ const applySupplierMutation = async (tx, tenantId, mutation) => {
 
 const applyItemMutation = async (tx, tenantId, mutation) => {
   const txAny = tx as any;
+  const toItemPriceSyncEntityId = (variantId: string, priceType: "SALES" | "PURCHASE") =>
+    `${variantId}:${priceType}`;
   if (mutation.op === "create") {
     const createData = buildItemForCreate(mutation.payload, {
       entity: mutation.entity,
@@ -1686,6 +1852,8 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
         variant.name !== undefined ||
         variant.barcode !== undefined ||
         variant.metadata !== undefined ||
+        variant.salesPrice !== undefined ||
+        variant.purchasePrice !== undefined ||
         (variant.optionValues && Object.keys(variant.optionValues).length > 0),
     );
     const requestedVariants =
@@ -1702,7 +1870,26 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     }
 
     const createdVariantIds: string[] = [];
+    const additionalChanges: Array<{
+      entity: string;
+      entityId: string;
+      operation: "CREATE" | "UPDATE" | "DELETE";
+      data: Record<string, unknown>;
+    }> = [];
     let preferredDefaultId: string | undefined;
+    const hasPriceSeeds = variantInputs.some(
+      (variant) => variant.salesPrice !== undefined || variant.purchasePrice !== undefined,
+    );
+    const pricingModules = hasPriceSeeds
+      ? await getBusinessModulesFromLicense(tenantId, tx as any)
+      : null;
+    if (hasPriceSeeds && !pricingModules?.pricing) {
+      throw permissionDeniedError(
+        "Pricing module is not enabled for this store license",
+        mutation.entity,
+        mutation.entityId,
+      );
+    }
 
     if (variantInputs.length === 0) {
       const defaultVariant = await txAny.itemVariant.create({
@@ -1717,8 +1904,19 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
       preferredDefaultId = defaultVariant.id;
     } else {
       for (const variant of variantInputs) {
+        const salesPrice = normalizeOptionalPriceAmount(variant.salesPrice, {
+          entity: mutation.entity,
+          entityId: mutation.entityId,
+          field: "salesPrice",
+        });
+        const purchasePrice = normalizeOptionalPriceAmount(variant.purchasePrice, {
+          entity: mutation.entity,
+          entityId: mutation.entityId,
+          field: "purchasePrice",
+        });
         const createdVariant = await txAny.itemVariant.create({
           data: {
+            ...(variant.id ? { id: variant.id } : {}),
             business_id: tenantId,
             item_id: item.id,
             sku: variant.sku ?? null,
@@ -1740,6 +1938,32 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
           createdVariant.id,
           variant.optionValues,
         );
+        if (salesPrice !== undefined) {
+          const salesSnapshot = await upsertItemPriceInTx(tx, tenantId, createdVariant.id, {
+            amount: salesPrice,
+            priceType: "SALES",
+            actorUserId: mutation.userId,
+          });
+          additionalChanges.push({
+            entity: "item_price",
+            entityId: toItemPriceSyncEntityId(createdVariant.id, "SALES"),
+            operation: "UPDATE",
+            data: salesSnapshot,
+          });
+        }
+        if (purchasePrice !== undefined) {
+          const purchaseSnapshot = await upsertItemPriceInTx(tx, tenantId, createdVariant.id, {
+            amount: purchasePrice,
+            priceType: "PURCHASE",
+            actorUserId: mutation.userId,
+          });
+          additionalChanges.push({
+            entity: "item_price",
+            entityId: toItemPriceSyncEntityId(createdVariant.id, "PURCHASE"),
+            operation: "UPDATE",
+            data: purchaseSnapshot,
+          });
+        }
       }
     }
 
@@ -1750,7 +1974,10 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
       preferredDefaultId,
     );
 
-    return getItemSnapshot(tx, tenantId, item.id);
+    return {
+      snapshot: await getItemSnapshot(tx, tenantId, item.id),
+      additionalChanges,
+    };
   }
 
   const current = await txAny.item.findUnique({
@@ -1769,13 +1996,31 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
         deleted_at: new Date(),
       },
     });
-    return null;
+    return {
+      snapshot: null,
+      additionalChanges: [],
+    };
   }
 
   const { itemPatch, category, sku } = buildItemForUpdate(mutation.payload, {
     entity: mutation.entity,
     entityId: mutation.entityId,
   });
+  const resolvedNextItemType =
+    itemPatch.item_type === "SERVICE" ? "SERVICE" : itemPatch.item_type === "PRODUCT" ? "PRODUCT" : current.item_type;
+  if (Object.hasOwn(itemPatch, "hsnSac")) {
+    const nextHsnSac = normalizeHsnSac(itemPatch.hsnSac, resolvedNextItemType, {
+      entity: mutation.entity,
+      entityId: mutation.entityId,
+    });
+    itemPatch.hsn_sac = nextHsnSac;
+    delete itemPatch.hsnSac;
+  } else if (itemPatch.item_type && itemPatch.item_type !== current.item_type) {
+    normalizeHsnSac(current.hsn_sac, resolvedNextItemType, {
+      entity: mutation.entity,
+      entityId: mutation.entityId,
+    });
+  }
   const nextItemName = typeof itemPatch.name === "string" ? itemPatch.name : current.name;
   if (
     typeof nextItemName === "string" &&
@@ -1870,7 +2115,10 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
   }
 
   const snapshot = await getItemSnapshot(tx, tenantId, nextItem.id);
-  return snapshot;
+  return {
+    snapshot,
+    additionalChanges: [],
+  };
 };
 
 const applyItemVariantMutation = async (tx, tenantId, mutation) => {
@@ -2430,6 +2678,18 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
           ? Number(rawAmount)
           : undefined;
   const currency = typeof payload.currency === "string" ? payload.currency : undefined;
+  const priceType = normalizePriceType((payload as Record<string, unknown>).priceType, {
+    entity: mutation.entity,
+    entityId: mutation.entityId,
+  });
+  const taxMode = normalizePriceTaxMode((payload as Record<string, unknown>).taxMode, {
+    entity: mutation.entity,
+    entityId: mutation.entityId,
+  });
+  const gstSlab = normalizeGstSlab((payload as Record<string, unknown>).gstSlab, {
+    entity: mutation.entity,
+    entityId: mutation.entityId,
+  });
 
   if (!variantId) {
     throw validationError("variantId is required for item price mutation", mutation.entity, mutation.entityId);
@@ -2439,6 +2699,9 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
     return upsertItemPriceInTx(tx, tenantId, variantId, {
       amount: null,
       currency,
+      priceType,
+      taxMode,
+      gstSlab,
       actorUserId: mutation.userId,
     });
   }
@@ -2457,6 +2720,9 @@ const applyItemPriceMutation = async (tx, tenantId, mutation) => {
   return upsertItemPriceInTx(tx, tenantId, variantId, {
     amount,
     currency,
+    priceType,
+    taxMode,
+    gstSlab,
     actorUserId: mutation.userId,
   });
 };
@@ -2682,7 +2948,9 @@ const applyMutation = async (
         });
       }
     } else if (mutation.entity === "item") {
-      snapshot = await applyItemMutation(tx, tenantId, mutation);
+      const itemResult = await applyItemMutation(tx, tenantId, mutation);
+      snapshot = itemResult.snapshot;
+      additionalChanges = itemResult.additionalChanges;
     } else if (mutation.entity === "item_variant") {
       snapshot = await applyItemVariantMutation(tx, tenantId, mutation);
     } else if (mutation.entity === "item_category") {
@@ -3032,6 +3300,9 @@ const upsertItemPriceInTx = async (
   input: {
     amount: number | null;
     currency?: string;
+    priceType?: PriceTypeValue;
+    taxMode?: PriceTaxModeValue;
+    gstSlab?: string | null;
     actorUserId?: string;
   },
 ) => {
@@ -3058,11 +3329,15 @@ const upsertItemPriceInTx = async (
     defaultPriceBook.default_currency ||
     DEFAULT_PRICE_CURRENCY
   ).slice(0, 3);
+  const normalizedPriceType = input.priceType ?? "SALES";
+  const normalizedTaxMode = input.taxMode ?? "EXCLUSIVE";
+  const normalizedGstSlab = input.gstSlab ?? null;
   const now = new Date();
   const eventScopeWhere = {
     business_id: tenantId,
     price_book_id: defaultPriceBook.id,
     variant_id: variantId,
+    price_type: normalizedPriceType,
     customer_group_id: null,
     min_qty: 1,
     max_qty: null,
@@ -3086,6 +3361,9 @@ const upsertItemPriceInTx = async (
         max_qty: null,
         amount: null,
         currency: normalizedCurrency,
+        price_type: normalizedPriceType,
+        tax_mode: normalizedTaxMode,
+        gst_slab: normalizedGstSlab,
         event_type: "CLEARED",
         effective_at: now,
         created_by: input.actorUserId,
@@ -3096,6 +3374,7 @@ const upsertItemPriceInTx = async (
         business_id: tenantId,
         price_book_id: defaultPriceBook.id,
         variant_id: variantId,
+        price_type: normalizedPriceType,
         customer_group_id: null,
         min_qty: 1,
         max_qty: null,
@@ -3118,6 +3397,9 @@ const upsertItemPriceInTx = async (
       deletedAt: now.toISOString(),
       amount: null,
       currency: normalizedCurrency,
+      priceType: normalizedPriceType,
+      taxMode: normalizedTaxMode,
+      gstSlab: normalizedGstSlab,
       updatedAt: null,
     };
   }
@@ -3127,6 +3409,7 @@ const upsertItemPriceInTx = async (
       business_id: tenantId,
       price_book_id: defaultPriceBook.id,
       variant_id: variantId,
+      price_type: normalizedPriceType,
       customer_group_id: null,
       min_qty: 1,
       max_qty: null,
@@ -3146,6 +3429,9 @@ const upsertItemPriceInTx = async (
       max_qty: null,
       amount: amountAsString,
       currency: normalizedCurrency,
+      price_type: normalizedPriceType,
+      tax_mode: normalizedTaxMode,
+      gst_slab: normalizedGstSlab,
       event_type: "SET",
       effective_at: now,
       created_by: input.actorUserId,
@@ -3157,6 +3443,8 @@ const upsertItemPriceInTx = async (
         data: {
           amount: amountAsString,
           currency: normalizedCurrency,
+          tax_mode: normalizedTaxMode,
+          gst_slab: normalizedGstSlab,
           is_active: true,
           deleted_at: null,
           starts_at: null,
@@ -3169,11 +3457,14 @@ const upsertItemPriceInTx = async (
           business_id: tenantId,
           price_book_id: defaultPriceBook.id,
           variant_id: variantId,
+          price_type: normalizedPriceType,
           customer_group_id: null,
           min_qty: 1,
           max_qty: null,
           amount: amountAsString,
           currency: normalizedCurrency,
+          tax_mode: normalizedTaxMode,
+          gst_slab: normalizedGstSlab,
           is_active: true,
           deleted_at: null,
           starts_at: null,
@@ -3194,6 +3485,9 @@ const upsertItemPriceInTx = async (
     deletedAt: toDeletedAtValue((saved as any).deleted_at),
     amount: Number(saved.amount),
     currency: saved.currency,
+    priceType: saved.price_type,
+    taxMode: saved.tax_mode,
+    gstSlab: saved.gst_slab ?? null,
     updatedAt: saved.updated_at.toISOString(),
   };
 };
@@ -3203,6 +3497,7 @@ const getItemPrices = async (
   params: {
     q?: string;
     includeInactive?: boolean;
+    priceType?: PriceTypeValue;
     page?: number;
     limit?: number;
   } = {},
@@ -3224,6 +3519,7 @@ const getItemPrices = async (
   }
   const query = params.q?.trim();
   const includeInactive = Boolean(params.includeInactive);
+  const priceType = params.priceType ?? "SALES";
   const page = Math.max(1, Number(params.page ?? 1));
   const limit = Math.min(200, Math.max(1, Number(params.limit ?? 50)));
 
@@ -3297,6 +3593,7 @@ const getItemPrices = async (
           variant_id: {
             in: variantIds,
           },
+          price_type: priceType,
           customer_group_id: null,
           min_qty: 1,
           max_qty: null,
@@ -3333,6 +3630,9 @@ const getItemPrices = async (
         isActive: Boolean(variant.is_active),
         amount: activePrice ? Number(activePrice.amount) : null,
         currency: activePrice?.currency ?? defaultPriceBook.default_currency,
+        priceType: activePrice?.price_type ?? priceType,
+        taxMode: activePrice?.tax_mode ?? "EXCLUSIVE",
+        gstSlab: activePrice?.gst_slab ?? null,
         updatedAt: activePrice?.updated_at?.toISOString() ?? null,
       };
     }),
@@ -3351,6 +3651,9 @@ const upsertItemPrice = async (
   input: {
     amount: number | null;
     currency?: string;
+    priceType?: PriceTypeValue;
+    taxMode?: PriceTaxModeValue;
+    gstSlab?: string | null;
     actorUserId?: string;
     baseVersion?: number;
   },
@@ -3359,6 +3662,18 @@ const upsertItemPrice = async (
     canManageServices?: boolean;
   } = {},
 ) => {
+  const normalizedPriceType = normalizePriceType(input.priceType, {
+    entity: "item_price",
+    entityId: variantId,
+  });
+  const normalizedTaxMode = normalizePriceTaxMode(input.taxMode, {
+    entity: "item_price",
+    entityId: variantId,
+  });
+  const normalizedGstSlab = normalizeGstSlab(input.gstSlab, {
+    entity: "item_price",
+    entityId: variantId,
+  });
   const itemType = await resolveVariantItemType(tenantId, variantId);
   if (itemType && !hasItemCapabilityForType(itemType, options)) {
     throw permissionDeniedError(
@@ -3376,7 +3691,12 @@ const upsertItemPrice = async (
       variantId,
       input.baseVersion,
     );
-    return upsertItemPriceInTx(tx, tenantId, variantId, input);
+    return upsertItemPriceInTx(tx, tenantId, variantId, {
+      ...input,
+      priceType: normalizedPriceType,
+      taxMode: normalizedTaxMode,
+      gstSlab: normalizedGstSlab,
+    });
   });
 };
 

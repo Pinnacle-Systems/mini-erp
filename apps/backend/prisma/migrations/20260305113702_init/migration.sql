@@ -59,6 +59,12 @@ CREATE TYPE "pricing"."DiscountValueType" AS ENUM ('FIXED_AMOUNT', 'PERCENTAGE')
 CREATE TYPE "pricing"."PriceEventType" AS ENUM ('SET', 'CLEARED');
 
 -- CreateEnum
+CREATE TYPE "pricing"."PriceType" AS ENUM ('SALES', 'PURCHASE');
+
+-- CreateEnum
+CREATE TYPE "pricing"."PriceTaxMode" AS ENUM ('EXCLUSIVE', 'INCLUSIVE');
+
+-- CreateEnum
 CREATE TYPE "reporting"."ItemActivitySourceType" AS ENUM ('POS_SALE', 'SALES_QUOTATION', 'SALES_ORDER', 'SALES_INVOICE', 'SALES_RETURN', 'PURCHASE_ORDER', 'GOODS_RECEIPT', 'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'STOCK_ADJUSTMENT', 'STOCK_TRANSFER', 'STOCK_COUNT');
 
 -- CreateEnum
@@ -152,6 +158,7 @@ CREATE TABLE "catalog"."items" (
     "business_id" UUID NOT NULL,
     "item_type" "catalog"."ItemType" NOT NULL DEFAULT 'PRODUCT',
     "name" TEXT NOT NULL,
+    "hsn_sac" TEXT,
     "category" TEXT,
     "metadata" JSONB,
     "unit" "catalog"."UnitType" NOT NULL DEFAULT 'PCS',
@@ -376,6 +383,9 @@ CREATE TABLE "pricing"."item_prices" (
     "max_qty" INTEGER,
     "amount" DECIMAL(12,2) NOT NULL,
     "currency" VARCHAR(3) NOT NULL,
+    "price_type" "pricing"."PriceType" NOT NULL DEFAULT 'SALES',
+    "tax_mode" "pricing"."PriceTaxMode" NOT NULL DEFAULT 'EXCLUSIVE',
+    "gst_slab" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "deleted_at" TIMESTAMP(3),
     "starts_at" TIMESTAMP(3),
@@ -398,6 +408,9 @@ CREATE TABLE "pricing"."item_price_events" (
     "max_qty" INTEGER,
     "amount" DECIMAL(12,2),
     "currency" VARCHAR(3) NOT NULL,
+    "price_type" "pricing"."PriceType" NOT NULL DEFAULT 'SALES',
+    "tax_mode" "pricing"."PriceTaxMode" NOT NULL DEFAULT 'EXCLUSIVE',
+    "gst_slab" TEXT,
     "event_type" "pricing"."PriceEventType" NOT NULL,
     "effective_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "ended_at" TIMESTAMP(3),

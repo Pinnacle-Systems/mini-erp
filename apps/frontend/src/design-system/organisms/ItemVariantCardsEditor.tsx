@@ -15,7 +15,10 @@ export type ItemVariantDraft = {
   id: string;
   name: string;
   sku: string;
+  skuManuallyEdited?: boolean;
   barcode: string;
+  salesPrice?: string;
+  purchasePrice?: string;
   optionRows: VariantOptionRowDraft[];
   isActive?: boolean;
   isLocked?: boolean;
@@ -25,12 +28,15 @@ export type ItemVariantDraft = {
 type ItemVariantCardsEditorProps = {
   variants: ItemVariantDraft[];
   onVariantsChange: (next: ItemVariantDraft[]) => void;
+  onVariantSkuChange?: (variantId: string, sku: string) => void;
   onAddVariant: () => void;
   onOpenOptionModal: (variantId: string) => void;
   addVariantLabel?: string;
   removeVariantLabel?: string;
   denseInputClassName?: string;
   showActiveToggle?: boolean;
+  showPricingFields?: boolean;
+  showPurchasePrice?: boolean;
   disabled?: boolean;
 };
 
@@ -44,14 +50,23 @@ const updateVariant = (
 export function ItemVariantCardsEditor({
   variants,
   onVariantsChange,
+  onVariantSkuChange,
   onAddVariant,
   onOpenOptionModal,
   addVariantLabel = "Add Variant",
   removeVariantLabel = "Remove variant",
   denseInputClassName = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]",
   showActiveToggle = false,
+  showPricingFields = false,
+  showPurchasePrice = true,
   disabled = false,
 }: ItemVariantCardsEditorProps) {
+  const desktopGridClass = showPricingFields
+    ? showPurchasePrice
+      ? "lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,2.4fr)_4.25rem_3.5rem]"
+      : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.8fr)_minmax(0,1.8fr)_minmax(0,1.4fr)_minmax(0,2.5fr)_4.25rem_3.5rem]"
+    : "lg:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_4.25rem_3.5rem]";
+
   return (
     <div className="grid gap-1.5 lg:self-start lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
       <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
@@ -69,10 +84,12 @@ export function ItemVariantCardsEditor({
       </div>
 
       <div className="grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0">
-        <div className="hidden bg-slate-50/95 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_4.25rem_3.5rem] lg:items-center lg:gap-1 lg:border-b lg:border-border/70 lg:px-2 lg:py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+        <div className={`hidden bg-slate-50/95 lg:grid lg:items-center lg:gap-1 lg:border-b lg:border-border/70 lg:px-2 lg:py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground ${desktopGridClass}`}>
           <span>Name</span>
           <span>SKU</span>
           <span>Barcode</span>
+          {showPricingFields ? <span>Sales</span> : null}
+          {showPricingFields && showPurchasePrice ? <span>Purchase</span> : null}
           <span>Options</span>
           <span className="text-center">{showActiveToggle ? "Active" : ""}</span>
           <span className="text-center">Actions</span>
@@ -92,7 +109,7 @@ export function ItemVariantCardsEditor({
                   and delete are locked.
                 </p>
               ) : null}
-              <div className="grid gap-1.5 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_4.25rem_3.5rem] lg:items-center lg:gap-1">
+              <div className={`grid gap-1.5 lg:items-center lg:gap-1 ${desktopGridClass}`}>
                 <div className="grid gap-1">
                   <Label className="lg:hidden">Name</Label>
                   <Input
@@ -117,12 +134,14 @@ export function ItemVariantCardsEditor({
                     value={variant.sku}
                     disabled={isReadOnly}
                     onChange={(event) =>
-                      onVariantsChange(
-                        updateVariant(variants, variant.id, (entry) => ({
-                          ...entry,
-                          sku: event.target.value,
-                        })),
-                      )
+                      onVariantSkuChange
+                        ? onVariantSkuChange(variant.id, event.target.value)
+                        : onVariantsChange(
+                            updateVariant(variants, variant.id, (entry) => ({
+                              ...entry,
+                              sku: event.target.value,
+                            })),
+                          )
                     }
                     placeholder="Variant SKU"
                   />
@@ -144,6 +163,46 @@ export function ItemVariantCardsEditor({
                     placeholder="Optional barcode"
                   />
                 </div>
+                {showPricingFields ? (
+                  <div className="grid gap-1">
+                    <Label className="lg:hidden">Sales</Label>
+                    <Input
+                      className={denseInputClassName}
+                      value={variant.salesPrice ?? ""}
+                      disabled={isReadOnly}
+                      onChange={(event) =>
+                        onVariantsChange(
+                          updateVariant(variants, variant.id, (entry) => ({
+                            ...entry,
+                            salesPrice: event.target.value,
+                          })),
+                        )
+                      }
+                      placeholder="Sales price"
+                      inputMode="decimal"
+                    />
+                  </div>
+                ) : null}
+                {showPricingFields && showPurchasePrice ? (
+                  <div className="grid gap-1">
+                    <Label className="lg:hidden">Purchase</Label>
+                    <Input
+                      className={denseInputClassName}
+                      value={variant.purchasePrice ?? ""}
+                      disabled={isReadOnly}
+                      onChange={(event) =>
+                        onVariantsChange(
+                          updateVariant(variants, variant.id, (entry) => ({
+                            ...entry,
+                            purchasePrice: event.target.value,
+                          })),
+                        )
+                      }
+                      placeholder="Purchase price"
+                      inputMode="decimal"
+                    />
+                  </div>
+                ) : null}
                 <div className="grid gap-1 lg:content-center">
                   <Label className="lg:hidden">Options</Label>
                   <div className="flex min-h-8 flex-wrap content-center items-center gap-1 rounded-md border border-border/70 bg-background/60 px-1.5 py-1 lg:min-h-7">
