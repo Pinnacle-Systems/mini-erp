@@ -380,9 +380,9 @@ const landingRecentActivity = [
 ];
 
 const landingBusinessPulse = [
-  { label: "Today sales", value: "INR 42,860" },
+  { label: "Today sales", value: "₹42,860" },
   { label: "Bills", value: "87" },
-  { label: "Avg bill value", value: "INR 493" },
+  { label: "Avg bill value", value: "₹493" },
 ];
 
 const MOBILE_NAV_BUTTON_WIDTH_PX = 76;

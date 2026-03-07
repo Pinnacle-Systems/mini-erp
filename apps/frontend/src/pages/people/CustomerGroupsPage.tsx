@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
-import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
 import { Switch } from "../../design-system/atoms/Switch";
@@ -459,18 +458,20 @@ export function CustomerGroupsPage() {
                       >
                         {group.isActive ? "Active" : "Inactive"}
                       </span>
-                      <IconButton
+                      <Button
                         type="button"
                         variant="ghost"
-                        icon={Trash2}
-                        iconSize={14}
-                        className="h-6 w-6 rounded-full text-[#8a2d2d] hover:bg-[#ffecec]"
+                        size="sm"
+                        className="h-6 gap-1 px-1.5 text-[11px] text-[#8a2d2d] hover:bg-[#fff1f1]"
                         onClick={() => {
                           void onDeleteGroup(group);
                         }}
                         disabled={loading || saving}
                         aria-label={`Delete group ${group.name}`}
-                      />
+                      >
+                        <Trash2 aria-hidden="true" />
+                        <span>Delete</span>
+                      </Button>
                     </div>
                   );
                 })}
@@ -659,16 +660,18 @@ export function CustomerGroupsPage() {
                                     .join(" • ") || "No contact details"}
                                 </span>
                               </span>
-                              <IconButton
+                              <Button
                                 type="button"
                                 variant="ghost"
-                                icon={X}
-                                iconSize={14}
-                                className="h-7 w-7 rounded-full text-[#8a2d2d] hover:bg-[#ffecec]"
+                                size="sm"
+                                className="h-7 gap-1 px-2 text-[11px] text-[#8a2d2d] hover:bg-[#fff1f1]"
                                 onClick={() => onToggleMember(customer.entityId, false)}
                                 disabled={loading || saving}
                                 aria-label={`Remove ${customer.name} from group`}
-                              />
+                              >
+                                <X aria-hidden="true" />
+                                <span>Remove</span>
+                              </Button>
                             </div>
                           ))}
                         </div>
@@ -689,16 +692,18 @@ export function CustomerGroupsPage() {
                                   Not available in the current local customer list
                                 </span>
                               </span>
-                              <IconButton
+                              <Button
                                 type="button"
                                 variant="ghost"
-                                icon={X}
-                                iconSize={14}
-                                className="h-7 w-7 rounded-full text-[#8a2d2d] hover:bg-[#ffecec]"
+                                size="sm"
+                                className="h-7 gap-1 px-2 text-[11px] text-[#8a2d2d] hover:bg-[#fff1f1]"
                                 onClick={() => onToggleMember(member.customerId, false)}
                                 disabled={loading || saving}
                                 aria-label={`Remove ${member.name} from group`}
-                              />
+                              >
+                                <X aria-hidden="true" />
+                                <span>Remove</span>
+                              </Button>
                             </div>
                           ))}
                         </div>

@@ -30,7 +30,7 @@ export function Switch({
         onCheckedChange?.(!checked);
       }}
       className={cn(
-        "relative inline-flex h-6 w-10 items-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2",
+        "relative inline-flex h-6 w-10 items-center overflow-hidden rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2",
         checked
           ? checkedTrackClassName ?? "bg-emerald-500"
           : uncheckedTrackClassName ?? "bg-sky-500",
@@ -41,8 +41,8 @@ export function Switch({
     >
       <span
         className={cn(
-          "inline-block h-4 w-4 rounded-full bg-white shadow transition",
-          checked ? "translate-x-5" : "translate-x-1",
+          "absolute top-1/2 inline-block h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow transition-[left]",
+          checked ? "left-[calc(100%-1.25rem)]" : "left-1",
         )}
       />
     </button>

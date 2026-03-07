@@ -71,7 +71,10 @@ CREATE TYPE "reporting"."ItemActivitySourceType" AS ENUM ('POS_SALE', 'SALES_QUO
 CREATE TYPE "reporting"."ItemActivityStatus" AS ENUM ('DRAFT', 'POSTED', 'CANCELLED');
 
 -- CreateEnum
-CREATE TYPE "sync"."SyncOperation" AS ENUM ('CREATE', 'UPDATE', 'DELETE');
+CREATE TYPE "sync"."SyncOperation" AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'PURGE');
+
+-- CreateEnum
+CREATE TYPE "sync"."SyncMutationResultStatus" AS ENUM ('APPLIED', 'REJECTED');
 
 -- CreateEnum
 CREATE TYPE "tenants"."BusinessLicenseLimitType" AS ENUM ('MAX_USERS', 'MAX_CONCURRENT_USERS');
@@ -515,6 +518,10 @@ CREATE TABLE "sync"."mutation_log" (
     "base_version" INTEGER,
     "client_timestamp" TIMESTAMP(3) NOT NULL,
     "server_timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "result_status" "sync"."SyncMutationResultStatus",
+    "result_summary" TEXT,
+    "result_payload" JSONB,
+    "processed_at" TIMESTAMP(3),
 
     CONSTRAINT "mutation_log_pkey" PRIMARY KEY ("id")
 );
@@ -707,6 +714,9 @@ CREATE UNIQUE INDEX "mutation_log_mutation_id_key" ON "sync"."mutation_log"("mut
 
 -- CreateIndex
 CREATE INDEX "mutation_log_tenant_id_server_timestamp_idx" ON "sync"."mutation_log"("tenant_id", "server_timestamp");
+
+-- CreateIndex
+CREATE INDEX "mutation_log_tenant_id_processed_at_idx" ON "sync"."mutation_log"("tenant_id", "processed_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "change_log_cursor_key" ON "sync"."change_log"("cursor");

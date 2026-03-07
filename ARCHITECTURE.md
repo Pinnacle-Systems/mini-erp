@@ -21,10 +21,19 @@ Rejected mutations must return structured data, not only a human-readable messag
 Current `acknowledgements` shape:
 
 ```ts
+type AppliedOutcome = {
+  category: "mutation" | "hybrid_delete";
+  summary: string;
+  archived: Array<{ entity: string; entityId: string }>;
+  purged: Array<{ entity: string; entityId: string }>;
+  updated: Array<{ entity: string; entityId: string }>;
+};
+
 type MutationAcknowledgement =
   | {
       mutationId: string;
       status: "applied";
+      outcome?: AppliedOutcome;
     }
   | SyncRejection;
 ```
@@ -39,7 +48,8 @@ type SyncRejection = {
     | "VERSION_CONFLICT"
     | "VALIDATION_FAILED"
     | "PERMISSION_DENIED"
-    | "DEPENDENCY_MISSING";
+    | "DEPENDENCY_MISSING"
+    | "ENTITY_IN_USE";
   message: string;
   entity: string;
   entityId: string;
@@ -80,6 +90,12 @@ Implemented in:
 - `apps/frontend/src/features/sync/SyncProvider.tsx`
 - `apps/frontend/src/pages/catalog/PricingPage.tsx`
 
+Durable sync outcome rule:
+
+1. Applied and rejected mutation results may be persisted in `sync.mutation_log` as a narrow extension of sync logging.
+2. This is allowed for durable sync diagnostics and authoritative post-sync messaging only.
+3. Do not generalize this into a broad cross-domain event system, notification bus, or subscription model.
+
 ## Synced Entity Lifecycle
 
 Synced entities should expose normalized lifecycle semantics in the sync contract.
@@ -91,6 +107,8 @@ Rules:
 3. Soft-deleted synced records should be represented by `isActive: false` and a non-null `deletedAt` value.
 4. Normal operational screens should derive entity status from these lifecycle fields, not from sync queue transport state.
 5. Sync transport state such as queued, pending, or offline remains a separate concern and should stay out of the entity lifecycle contract.
+6. `delete` remains the sync operation for soft delete/archive semantics.
+7. `purge` is a separate corrective sync operation for eligible catalog-definition entities and represents physical removal, not lifecycle state.
 
 Current `Party` rule:
 
@@ -225,9 +243,11 @@ Sequence rule: complete each phase in order unless an explicit exception is agre
 
 1. `[ ]` Add key-value variant generator input that produces cartesian combinations in-memory.
 2. `[ ]` Add dynamic option columns in the variant editor table (desktop), with a documented cap of 3 option dimensions for default rendering.
-3. `[~]` Keep manual row support for asymmetric variants:
-   - manual add/remove rows exists
-   - generated combinations flow is not yet present
+3. `[x]` Do not support asymmetric row-level option editing for a single item:
+   - option keys/values are defined once at the top-level variant option builder
+   - clicking apply generates cartesian variant rows from those definitions
+   - row-level option add/remove controls are intentionally not available
+   - users can remove unwanted combinations by deleting whole rows before save
 4. `[ ]` Add SKU assist tools:
    - deterministic SKU batch generator
    - duplicate prevention feedback before save

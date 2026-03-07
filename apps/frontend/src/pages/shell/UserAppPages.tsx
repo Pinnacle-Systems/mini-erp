@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../design-system/molecules/Card";
 import { SettingsPanel } from "../../design-system/organisms/SettingsPanel";
+import { SyncResultsPanel } from "../../design-system/organisms/SyncResultsPanel";
 import { SyncPanel } from "../../design-system/organisms/SyncPanel";
 import { useSessionStore } from "../../features/auth/session-business";
 import { useSyncActions } from "../../features/sync/SyncProvider";
 import { useUserAppStore } from "../../features/sync/user-app-business";
-import { getPendingOutboxCount, resetTenantSyncState } from "../../features/sync/engine";
+import {
+  getMergedSyncResults,
+  getPendingOutboxCount,
+  resetTenantSyncState,
+} from "../../features/sync/engine";
+import type { SyncResultRecord } from "../../features/sync/types";
 
 type AppFeaturePlaceholderPageProps = {
   sectionTitle: string;
@@ -70,6 +76,8 @@ export function DataSyncAppPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
+  const [syncResults, setSyncResults] = useState<SyncResultRecord[]>([]);
+  const [resultsLoading, setResultsLoading] = useState(false);
   const [resyncing, setResyncing] = useState(false);
   const { loading, onSyncNow } = useSyncActions();
 
@@ -88,6 +96,34 @@ export function DataSyncAppPage() {
       })
       .catch((error: unknown) => {
         console.error(error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, isBusinessSelected, loading, resyncing]);
+
+  useEffect(() => {
+    if (!activeStore || !isBusinessSelected) {
+      setSyncResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    setResultsLoading(true);
+    void getMergedSyncResults(activeStore, { limit: 25 })
+      .then((payload) => {
+        if (!cancelled) {
+          setSyncResults(payload.results);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setResultsLoading(false);
+        }
       });
 
     return () => {
@@ -124,13 +160,16 @@ export function DataSyncAppPage() {
   };
 
   return (
-    <SettingsPanel
-      pendingOutboxCount={pendingOutboxCount}
-      loading={resyncing || loading}
-      disabled={!identityId || !activeStore || !isBusinessSelected}
-      onResync={() => {
-        void onResync();
-      }}
-    />
+    <div className="space-y-4">
+      <SettingsPanel
+        pendingOutboxCount={pendingOutboxCount}
+        loading={resyncing || loading}
+        disabled={!identityId || !activeStore || !isBusinessSelected}
+        onResync={() => {
+          void onResync();
+        }}
+      />
+      <SyncResultsPanel loading={resultsLoading} results={syncResults} />
+    </div>
   );
 }

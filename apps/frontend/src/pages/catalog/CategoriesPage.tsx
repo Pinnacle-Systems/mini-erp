@@ -9,6 +9,8 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
+import { Label } from "../../design-system/atoms/Label";
+import { Switch } from "../../design-system/atoms/Switch";
 import {
   Card,
   CardContent,
@@ -32,6 +34,7 @@ import {
   type ItemCategoryEntry,
   type ItemDisplay,
 } from "../../features/sync/engine";
+import { useToast } from "../../features/toast/useToast";
 
 type CategoryBucket = {
   id: string | null;
@@ -47,6 +50,7 @@ export function CategoriesPage() {
     (state) => state.isBusinessSelected,
   );
   const activeStore = useSessionStore((state) => state.activeStore);
+  const { showToast } = useToast();
   const [items, setItems] = useState<ItemDisplay[]>([]);
   const [entries, setEntries] = useState<ItemCategoryEntry[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -56,8 +60,8 @@ export function CategoriesPage() {
   >(null);
   const [isEditingCategoryName, setIsEditingCategoryName] = useState(false);
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const activeBusiness = useMemo(
     () => businesses.find((business) => business.id === activeStore) ?? null,
     [activeStore, businesses],
@@ -72,6 +76,14 @@ export function CategoriesPage() {
       }),
     [activeBusiness, items],
   );
+  const reportError = (message: string) => {
+    showToast({
+      title: "Category update failed",
+      description: message,
+      tone: "error",
+      dedupeKey: `categories-error:${message}`,
+    });
+  };
 
   useEffect(() => {
     if (!activeStore) {
@@ -204,7 +216,6 @@ export function CategoriesPage() {
     setSelectedCategory(name);
     setPendingCreatedCategory(name);
     setLoading(true);
-    setError(null);
     try {
       await queueItemCategoryCreate(activeStore, identityId, name);
       await syncOnce(activeStore);
@@ -212,7 +223,7 @@ export function CategoriesPage() {
       setDraftCategory("");
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to create category right now.");
+      reportError("Unable to create category right now.");
     } finally {
       setPendingCreatedCategory(null);
       setLoading(false);
@@ -230,7 +241,6 @@ export function CategoriesPage() {
     if (!confirmed) return;
 
     setLoading(true);
-    setError(null);
     try {
       for (const item of category.items) {
         await queueItemUpdate(activeStore, identityId, item.entityId, {
@@ -244,7 +254,7 @@ export function CategoriesPage() {
       await refresh();
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to delete category right now.");
+      reportError("Unable to delete category right now.");
     } finally {
       setLoading(false);
     }
@@ -255,7 +265,7 @@ export function CategoriesPage() {
       return;
     const nextName = categoryNameDraft.trim();
     if (!nextName) {
-      setError("Category name is required.");
+      reportError("Category name is required.");
       return;
     }
     if (nextName === activeBucket.name) {
@@ -269,12 +279,11 @@ export function CategoriesPage() {
         bucket.name.toLowerCase() !== activeBucket.name.toLowerCase(),
     );
     if (duplicateExists) {
-      setError("A category with that name already exists.");
+      reportError("A category with that name already exists.");
       return;
     }
 
     setLoading(true);
-    setError(null);
     try {
       if (activeBucket.id) {
         await queueItemCategoryUpdate(
@@ -296,7 +305,7 @@ export function CategoriesPage() {
       setIsEditingCategoryName(false);
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to rename category right now.");
+      reportError("Unable to rename category right now.");
     } finally {
       setLoading(false);
     }
@@ -304,6 +313,17 @@ export function CategoriesPage() {
 
   const getBucketVariantCount = (bucket: CategoryBucket) =>
     bucket.items.reduce((total, item) => total + Math.max(item.variantCount, 1), 0);
+
+  const visibleCategoryItems = useMemo(
+    () =>
+      includeInactive
+        ? activeBucket?.items ?? []
+        : (activeBucket?.items ?? []).filter((item) => item.isActive),
+    [activeBucket?.items, includeInactive],
+  );
+
+  const hasVisibleInactiveCategoryItems =
+    includeInactive && visibleCategoryItems.some((item) => !item.isActive);
 
   return (
     <section className="grid gap-2 lg:h-full lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch lg:overflow-hidden">
@@ -341,7 +361,6 @@ export function CategoriesPage() {
                 Add
               </Button>
             </div>
-            {error ? <p className="text-[11px] text-red-600">{error}</p> : null}
           </div>
 
           <div className="space-y-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
@@ -366,19 +385,21 @@ export function CategoriesPage() {
                     {getBucketVariantCount(bucket)}
                   </span>
                 </Button>
-                <IconButton
+                <Button
                   type="button"
-                  icon={Trash2}
                   variant="ghost"
-                  className="h-6 w-6 rounded-full border-none bg-transparent p-0 text-[#8a2d2d] shadow-none hover:bg-[#ffecec] disabled:opacity-50"
+                  size="sm"
+                  className="h-6 gap-1 px-1.5 text-[11px] text-[#8a2d2d] hover:bg-[#fff1f1]"
                   onClick={() => {
                     void onDeleteCategory(bucket);
                   }}
                   disabled={loading}
                   aria-label={`Delete category ${bucket.name}`}
                   title={`Delete category ${bucket.name}`}
-                  iconSize={14}
-                />
+                >
+                  <Trash2 aria-hidden="true" />
+                  <span>Delete</span>
+                </Button>
               </div>
             ))}
           </div>
@@ -387,8 +408,9 @@ export function CategoriesPage() {
 
       <Card className="p-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
         <CardHeader className="p-0 pb-1.5">
-          {isEditingCategoryName ? (
-            <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            {isEditingCategoryName ? (
+              <div className="flex min-w-0 flex-1 items-center gap-1">
               <Input
                 value={categoryNameDraft}
                 onChange={(event) => setCategoryNameDraft(event.target.value)}
@@ -407,11 +429,42 @@ export function CategoriesPage() {
                 disabled={loading}
                 autoFocus
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-[#166534] hover:bg-[#ecfdf3] lg:hidden"
+                onClick={() => {
+                  void onRenameCategory();
+                }}
+                disabled={loading}
+              >
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <Check aria-hidden="true" />
+                  <span>Save</span>
+                </span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-foreground/70 hover:bg-white/80 lg:hidden"
+                onClick={() => {
+                  setIsEditingCategoryName(false);
+                  setCategoryNameDraft(activeBucket?.name ?? "");
+                }}
+                disabled={loading}
+              >
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <X aria-hidden="true" />
+                  <span>Cancel</span>
+                </span>
+              </Button>
               <IconButton
                 type="button"
                 icon={Check}
                 variant="ghost"
-                className="h-8 w-8 rounded-full border-none bg-transparent p-0 text-[#166534] shadow-none transition hover:bg-[#ecfdf3] disabled:opacity-50"
+                className="hidden h-8 w-8 rounded-full border-none bg-transparent p-0 text-[#166534] shadow-none transition hover:bg-[#ecfdf3] disabled:opacity-50 lg:inline-flex"
                 onClick={() => {
                   void onRenameCategory();
                 }}
@@ -423,7 +476,7 @@ export function CategoriesPage() {
                 type="button"
                 icon={X}
                 variant="ghost"
-                className="h-8 w-8 rounded-full border-none bg-transparent p-0 text-foreground/70 shadow-none transition hover:bg-white/80 disabled:opacity-50"
+                className="hidden h-8 w-8 rounded-full border-none bg-transparent p-0 text-foreground/70 shadow-none transition hover:bg-white/80 disabled:opacity-50 lg:inline-flex"
                 onClick={() => {
                   setIsEditingCategoryName(false);
                   setCategoryNameDraft(activeBucket?.name ?? "");
@@ -432,40 +485,80 @@ export function CategoriesPage() {
                 aria-label="Cancel category rename"
                 title="Cancel category rename"
               />
-            </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <CardTitle className="text-sm">
+              </div>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-1">
+                <CardTitle className="truncate text-sm">
                 {activeBucket?.name ?? "Category"}
               </CardTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-[#2f6fb7] hover:bg-[#e9f2ff] lg:hidden"
+                onClick={() => {
+                  setIsEditingCategoryName(true);
+                  setCategoryNameDraft(activeBucket?.name ?? "");
+                }}
+                disabled={loading || !activeBucket}
+              >
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <Pencil aria-hidden="true" />
+                  <span>Edit</span>
+                </span>
+              </Button>
               <IconButton
                 type="button"
                 icon={Pencil}
                 variant="ghost"
-                className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#2f6fb7] shadow-none transition hover:bg-[#e9f2ff] disabled:opacity-50"
+                className="hidden h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#2f6fb7] shadow-none transition hover:bg-[#e9f2ff] disabled:opacity-50 lg:inline-flex"
                 onClick={() => {
                   setIsEditingCategoryName(true);
                   setCategoryNameDraft(activeBucket?.name ?? "");
-                  setError(null);
                 }}
                 disabled={loading || !activeBucket}
                 aria-label="Edit category name"
                 title="Edit category name"
                 iconSize={14}
               />
+              </div>
+            )}
+            <div className="inline-flex min-h-8 items-center gap-2.5">
+              <Switch
+                id="include-inactive-category-items"
+                aria-label="Include inactive items in category"
+                checked={includeInactive}
+                onCheckedChange={setIncludeInactive}
+                className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
+                checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+              />
+              <Label htmlFor="include-inactive-category-items" className="shrink-0 leading-none">
+                Include inactive
+              </Label>
             </div>
-          )}
+          </div>
         </CardHeader>
-        <CardContent className="space-y-2 p-0 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-          {!activeBucket || activeBucket.items.length === 0 ? (
+        <CardContent className="space-y-2 p-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1">
+          {hasVisibleInactiveCategoryItems ? (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-100 px-2 py-1.5 text-[11px] text-amber-950 lg:shrink-0 lg:text-[10px]">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300" aria-hidden="true" />
+              <span>Tinted rows are inactive items included by the current filter.</span>
+            </div>
+          ) : null}
+          {!activeBucket || visibleCategoryItems.length === 0 ? (
             <div className="rounded-lg border border-white/70 bg-white/65 px-2 py-2 text-xs text-muted-foreground">
-              No items mapped to this category.
+              {activeBucket?.items.length
+                ? "No active items mapped to this category."
+                : "No items mapped to this category."}
             </div>
           ) : (
             <ItemVariantFlatTable
-              items={activeBucket.items}
+              items={visibleCategoryItems}
               activeStore={activeStore}
               actionLabel="View"
+              showStatus={false}
+              highlightInactiveRows={includeInactive}
               onOpenItem={(itemId) => {
                 const item = activeBucket.items.find((entry) => entry.entityId === itemId);
                 if (!item) return;

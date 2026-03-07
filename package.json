@@ -3,13 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "turbo dev",
     "backend:dev": "turbo dev --filter=backend",
     "frontend:dev": "turbo dev --filter=frontend",
-    "lint:apps": "turbo run lint",
-    "lint": "pnpm lint:apps && pnpm lint:deps",
-    "pwa:dev": "turbo dev --filter=backend --filter=frontend",
+    "lint": "turbo run lint && pnpm lint:deps",
     "pwa:preview": "pnpm --filter frontend build && concurrently -k -n backend,frontend \"pnpm --filter backend dev\" \"pnpm --filter frontend preview\"",
     "lint:deps": "depcruise --config .dependency-cruiser.cjs apps/frontend/src apps/backend/src"
   },

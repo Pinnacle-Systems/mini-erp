@@ -6,7 +6,8 @@ type SyncRejectionReasonCode =
   | "VERSION_CONFLICT"
   | "VALIDATION_FAILED"
   | "PERMISSION_DENIED"
-  | "DEPENDENCY_MISSING";
+  | "DEPENDENCY_MISSING"
+  | "ENTITY_IN_USE";
 
 type SyncRejection = {
   mutationId: string;
@@ -18,12 +19,44 @@ type SyncRejection = {
   details?: Record<string, unknown>;
 };
 
+type AppliedOutcomeEntity = {
+  entity: string;
+  entityId: string;
+};
+
+type AppliedOutcome = {
+  category: "mutation" | "hybrid_delete";
+  summary: string;
+  archived: AppliedOutcomeEntity[];
+  purged: AppliedOutcomeEntity[];
+  updated: AppliedOutcomeEntity[];
+};
+
 type MutationAcknowledgement =
   | {
       mutationId: string;
       status: "applied";
+      outcome?: AppliedOutcome;
     }
   | SyncRejection;
+
+type SyncResultRecord = {
+  mutationId: string;
+  entity: string;
+  entityId: string;
+  operation: "create" | "update" | "delete" | "purge";
+  resultStatus: "applied" | "rejected";
+  summary: string;
+  processedAt: string;
+  userId: string;
+  outcome?: AppliedOutcome;
+  rejection?: {
+    reasonCode: SyncRejectionReasonCode;
+    details?: Record<string, unknown>;
+  };
+};
+
+type MutationLogResultStatus = "APPLIED" | "REJECTED";
 
 class SyncRejectionError extends AppError {
   reasonCode: SyncRejectionReasonCode;
@@ -131,7 +164,7 @@ const STOCK_ADJUSTMENT_REASONS = new Set([
 ]);
 const PRICE_TYPES = new Set(["SALES", "PURCHASE"]);
 const PRICE_TAX_MODES = new Set(["EXCLUSIVE", "INCLUSIVE"]);
-const GST_SLAB_PATTERN = /^[A-Z0-9][A-Z0-9._/-]{0,31}$/;
+const GST_SLAB_PATTERN = /^[A-Z0-9][A-Z0-9._/%-]{0,31}$/;
 const prismaAny = prisma as any;
 
 const toReasonCodeFromStatus = (statusCode?: number): SyncRejectionReasonCode => {
@@ -175,6 +208,198 @@ const toSyncRejection = (
     message: error instanceof Error ? error.message : "Mutation failed",
     entity: mutation.entity,
     entityId: mutation.entityId,
+  };
+};
+
+const mapAppliedOutcomeEntity = (entity: string, entityId: string): AppliedOutcomeEntity => ({
+  entity,
+  entityId,
+});
+
+const toResultStatus = (status: MutationLogResultStatus): SyncResultRecord["resultStatus"] =>
+  status === "APPLIED" ? "applied" : "rejected";
+
+const toOperationLabel = (count: number, noun: string, verb: string) =>
+  `${count} ${noun}${count === 1 ? "" : "s"} ${count === 1 ? `was ${verb}` : `were ${verb}`}`;
+
+const buildAppliedOutcomeSummary = (outcome: Omit<AppliedOutcome, "summary" | "category">) => {
+  const archivedCount = outcome.archived.length;
+  const purgedCount = outcome.purged.length;
+  const updatedCount = outcome.updated.length;
+
+  if (archivedCount > 0 && purgedCount > 0) {
+    return {
+      category: "hybrid_delete" as const,
+      summary: `${toOperationLabel(archivedCount, "entity", "archived")} and ${toOperationLabel(purgedCount, "entity", "permanently deleted")}.`,
+    };
+  }
+
+  if (purgedCount > 0) {
+    return {
+      category: "mutation" as const,
+      summary: `${toOperationLabel(purgedCount, "entity", "permanently deleted")}.`,
+    };
+  }
+
+  if (archivedCount > 0) {
+    return {
+      category: "mutation" as const,
+      summary: `${toOperationLabel(archivedCount, "entity", "archived")}.`,
+    };
+  }
+
+  if (updatedCount > 0) {
+    return {
+      category: "mutation" as const,
+      summary: `${toOperationLabel(updatedCount, "entity", "updated")}.`,
+    };
+  }
+
+  return {
+    category: "mutation" as const,
+    summary: "Mutation applied.",
+  };
+};
+
+const buildAppliedOutcome = (
+  mutation,
+  additionalChanges: Array<{
+    entity: string;
+    entityId: string;
+    operation: "CREATE" | "UPDATE" | "DELETE" | "PURGE";
+    data: Record<string, unknown>;
+  }>,
+): AppliedOutcome => {
+  const archived: AppliedOutcomeEntity[] = [];
+  const purged: AppliedOutcomeEntity[] = [];
+  const updated: AppliedOutcomeEntity[] = [];
+
+  const applyOperation = (
+    entity: string,
+    entityId: string,
+    operation: "create" | "update" | "delete" | "purge" | "CREATE" | "UPDATE" | "DELETE" | "PURGE",
+  ) => {
+    if (operation === "delete" || operation === "DELETE") {
+      archived.push(mapAppliedOutcomeEntity(entity, entityId));
+      return;
+    }
+    if (operation === "purge" || operation === "PURGE") {
+      purged.push(mapAppliedOutcomeEntity(entity, entityId));
+      return;
+    }
+    updated.push(mapAppliedOutcomeEntity(entity, entityId));
+  };
+
+  applyOperation(mutation.entity, mutation.entityId, mutation.op);
+  for (const change of additionalChanges) {
+    applyOperation(change.entity, change.entityId, change.operation);
+  }
+
+  const summary = buildAppliedOutcomeSummary({ archived, purged, updated });
+  return {
+    category: summary.category,
+    summary: summary.summary,
+    archived,
+    purged,
+    updated,
+  };
+};
+
+const buildRejectedResultPayload = (rejection: SyncRejection) => ({
+  reasonCode: rejection.reasonCode,
+  message: rejection.message,
+  ...(rejection.details ? { details: rejection.details } : {}),
+});
+
+const persistRejectedMutationResult = async (
+  tenantId: string,
+  mutation,
+  rejection: SyncRejection,
+) => {
+  const processedAt = new Date();
+  const resultPayload = buildRejectedResultPayload(rejection);
+
+  await prismaAny.syncMutationLog.upsert({
+    where: { mutation_id: mutation.mutationId },
+    update: {
+      result_status: "REJECTED",
+      result_summary: rejection.message,
+      result_payload: resultPayload,
+      processed_at: processedAt,
+    },
+    create: {
+      mutation_id: mutation.mutationId,
+      tenant_id: tenantId,
+      device_id: mutation.deviceId,
+      user_id: mutation.userId,
+      entity: mutation.entity,
+      entity_id: mutation.entityId,
+      operation: toPrismaSyncOperation(mutation.op),
+      payload: mutation.payload,
+      base_version: mutation.baseVersion,
+      client_timestamp: new Date(mutation.clientTimestamp),
+      result_status: "REJECTED",
+      result_summary: rejection.message,
+      result_payload: resultPayload,
+      processed_at: processedAt,
+    },
+  });
+};
+
+const mapMutationLogToSyncResultRecord = (entry): SyncResultRecord | null => {
+  if (!entry?.result_status || !entry?.processed_at) {
+    return null;
+  }
+
+  const base = {
+    mutationId: entry.mutation_id,
+    entity: entry.entity,
+    entityId: entry.entity_id,
+    operation: toSyncOperation(entry.operation),
+    resultStatus: toResultStatus(entry.result_status),
+    summary:
+      typeof entry.result_summary === "string" && entry.result_summary.trim().length > 0
+        ? entry.result_summary
+        : entry.result_status === "APPLIED"
+          ? "Mutation applied."
+          : "Mutation rejected.",
+    processedAt: entry.processed_at.toISOString(),
+    userId: entry.user_id,
+  } satisfies Omit<SyncResultRecord, "outcome" | "rejection">;
+
+  if (entry.result_status === "APPLIED") {
+    return {
+      ...base,
+      ...(entry.result_payload &&
+      typeof entry.result_payload === "object" &&
+      !Array.isArray(entry.result_payload)
+        ? { outcome: entry.result_payload as AppliedOutcome }
+        : {}),
+    };
+  }
+
+  const payload =
+    entry.result_payload && typeof entry.result_payload === "object" && !Array.isArray(entry.result_payload)
+      ? (entry.result_payload as Record<string, unknown>)
+      : null;
+
+  return {
+    ...base,
+    ...(payload
+      ? {
+          rejection: {
+            reasonCode:
+              typeof payload.reasonCode === "string"
+                ? (payload.reasonCode as SyncRejectionReasonCode)
+                : "VALIDATION_FAILED",
+            ...(payload.details &&
+            typeof payload.details === "object" &&
+            !Array.isArray(payload.details)
+              ? { details: payload.details as Record<string, unknown> }
+              : {}),
+          },
+        }
+      : {}),
   };
 };
 
@@ -223,9 +448,30 @@ const permissionDeniedError = (
     details,
   });
 
+const entityInUseError = (
+  message: string,
+  entity: string,
+  entityId: string,
+  usageKinds: string[],
+  details?: Record<string, unknown>,
+) =>
+  new SyncRejectionError({
+    message,
+    statusCode: 409,
+    reasonCode: "ENTITY_IN_USE",
+    entity,
+    entityId,
+    details: {
+      usageKinds,
+      message,
+      ...(details ?? {}),
+    },
+  });
+
 const toPrismaSyncOperation = (op) => {
   if (op === "create") return "CREATE";
   if (op === "update") return "UPDATE";
+  if (op === "purge") return "PURGE";
   return "DELETE";
 };
 
@@ -393,6 +639,7 @@ const assertItemMutationCapability = async (
 const toSyncOperation = (op) => {
   if (op === "CREATE") return "create";
   if (op === "UPDATE") return "update";
+  if (op === "PURGE") return "purge";
   return "delete";
 };
 
@@ -769,7 +1016,7 @@ const normalizeGstSlab = (
   if (!normalized) return null;
   if (!GST_SLAB_PATTERN.test(normalized)) {
     throw validationError(
-      "gstSlab must use uppercase letters, numbers, dot, underscore, slash, or hyphen",
+      "gstSlab must use uppercase letters, numbers, percent, dot, underscore, slash, or hyphen",
       options.entity,
       options.entityId,
       { field: "gstSlab" },
@@ -1263,7 +1510,7 @@ const getVariantOptionValues = async (tx, variantId) => {
   return optionValues;
 };
 
-const getVariantUsageCount = async (tx, tenantId, variantId) => {
+const getVariantUsageSummary = async (tx, tenantId, variantId) => {
   const txAny = tx as any;
   const stockLedgerCountPromise = tx.stockLedger.count({
     where: {
@@ -1290,7 +1537,111 @@ const getVariantUsageCount = async (tx, tenantId, variantId) => {
     activityCountPromise,
   ]);
 
-  return stockLedgerCount + activityCount;
+  return {
+    stockLedgerCount,
+    activityCount,
+  };
+};
+
+const getVariantUsageCount = async (tx, tenantId, variantId) => {
+  const usage = await getVariantUsageSummary(tx, tenantId, variantId);
+  return usage.stockLedgerCount + usage.activityCount;
+};
+
+const getItemUsageSummary = async (tx, tenantId, itemId, variantIds: string[]) => {
+  const txAny = tx as any;
+  const lineItemCountPromise =
+    txAny.lineItem && typeof txAny.lineItem.count === "function"
+      ? txAny.lineItem.count({
+          where: {
+            item_id: itemId,
+          },
+        })
+      : Promise.resolve(0);
+  const activityDelegate = txAny.itemActivityProjection;
+  const activityCountPromise =
+    activityDelegate && typeof activityDelegate.count === "function"
+      ? activityDelegate
+          .count({
+            where: {
+              business_id: tenantId,
+              item_id: itemId,
+            },
+          })
+          .catch(() => 0)
+      : Promise.resolve(0);
+  const stockLedgerCountPromise =
+    variantIds.length > 0
+      ? tx.stockLedger.count({
+          where: {
+            business_id: tenantId,
+            variant_id: {
+              in: variantIds,
+            },
+          },
+        })
+      : Promise.resolve(0);
+
+  const [lineItemCount, activityCount, stockLedgerCount] = await Promise.all([
+    lineItemCountPromise,
+    activityCountPromise,
+    stockLedgerCountPromise,
+  ]);
+
+  return {
+    lineItemCount,
+    activityCount,
+    stockLedgerCount,
+  };
+};
+
+const formatUsageKinds = (usageKinds: string[]) => {
+  const labels = usageKinds.map((kind) => {
+    if (kind === "stock_history") return "stock history";
+    if (kind === "item_activity") return "item activity";
+    if (kind === "documents") return "documents";
+    if (kind === "item_reference") return "item references";
+    if (kind === "variant_count") return "remaining variant requirements";
+    return kind.replace(/_/g, " ");
+  });
+  if (labels.length <= 1) return labels[0] ?? "usage";
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+};
+
+const buildPriceChangeEntityId = (
+  variantId: string,
+  priceType: "SALES" | "PURCHASE",
+) => `${variantId}:${priceType}`;
+
+const deleteVariantCommercialRows = async (txAny: any, variantIds: string[]) => {
+  if (variantIds.length === 0) return;
+
+  await Promise.all([
+    txAny.itemPrice.deleteMany({
+      where: {
+        variant_id: {
+          in: variantIds,
+        },
+      },
+    }),
+    txAny.itemPriceEvent.deleteMany({
+      where: {
+        variant_id: {
+          in: variantIds,
+        },
+      },
+    }),
+    txAny.discountRuleVariant?.deleteMany
+      ? txAny.discountRuleVariant.deleteMany({
+          where: {
+            variant_id: {
+              in: variantIds,
+            },
+          },
+        })
+      : Promise.resolve(),
+  ]);
 };
 
 const toNullableTrimmedValue = (value: string | null | undefined) => {
@@ -1873,7 +2224,7 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
     const additionalChanges: Array<{
       entity: string;
       entityId: string;
-      operation: "CREATE" | "UPDATE" | "DELETE";
+      operation: "CREATE" | "UPDATE" | "DELETE" | "PURGE";
       data: Record<string, unknown>;
     }> = [];
     let preferredDefaultId: string | undefined;
@@ -1986,6 +2337,97 @@ const applyItemMutation = async (tx, tenantId, mutation) => {
 
   if (!current || current.business_id !== tenantId) {
     throw dependencyMissingError("Entity not found in business", "item", mutation.entityId);
+  }
+
+  if (mutation.op === "purge") {
+    const variants = await txAny.itemVariant.findMany({
+      where: {
+        business_id: tenantId,
+        item_id: mutation.entityId,
+      },
+      select: {
+        id: true,
+      },
+    });
+    const variantIds = variants.map((variant) => String(variant.id));
+    const usage = await getItemUsageSummary(tx, tenantId, mutation.entityId, variantIds);
+    const usageKinds = [
+      ...(usage.lineItemCount > 0 ? ["documents"] : []),
+      ...(usage.activityCount > 0 ? ["item_activity"] : []),
+      ...(usage.stockLedgerCount > 0 ? ["stock_history"] : []),
+    ];
+    if (usageKinds.length > 0) {
+      throw entityInUseError(
+        `Item cannot be purged because it is referenced in ${formatUsageKinds(usageKinds)}. Archive it instead.`,
+        mutation.entity,
+        mutation.entityId,
+        usageKinds,
+        {
+          lineItemCount: usage.lineItemCount,
+          activityCount: usage.activityCount,
+          stockLedgerCount: usage.stockLedgerCount,
+        },
+      );
+    }
+
+    const membershipIds =
+      variantIds.length === 0
+        ? []
+        : (
+            await txAny.itemCollectionItem.findMany({
+              where: {
+                business_id: tenantId,
+                variant_id: {
+                  in: variantIds,
+                },
+              },
+              select: {
+                id: true,
+              },
+            })
+          ).map((entry) => String(entry.id));
+
+    await deleteVariantCommercialRows(txAny, variantIds);
+    await txAny.discountRuleItem?.deleteMany?.({
+      where: {
+        item_id: mutation.entityId,
+      },
+    });
+    await txAny.item.delete({
+      where: { id: mutation.entityId },
+    });
+
+    return {
+      snapshot: null,
+      additionalChanges: [
+        ...variantIds.flatMap((variantId) => [
+          {
+            entity: "item_price",
+            entityId: buildPriceChangeEntityId(variantId, "SALES"),
+            operation: "PURGE" as const,
+            data: {},
+          },
+          {
+            entity: "item_price",
+            entityId: buildPriceChangeEntityId(variantId, "PURCHASE"),
+            operation: "PURGE" as const,
+            data: {},
+          },
+          {
+            entity: "item_variant",
+            entityId: variantId,
+            operation: "PURGE" as const,
+            data: {},
+          },
+        ]),
+        ...membershipIds.map((membershipId) => ({
+          entity: "item_collection_item",
+          entityId: membershipId,
+          operation: "PURGE" as const,
+          data: {},
+        })),
+      ],
+    };
   }
 
   if (mutation.op === "delete") {
@@ -2175,16 +2617,105 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
 
     const optionValues = await getVariantOptionValues(tx, variant.id);
     const usageCount = await getVariantUsageCount(tx, tenantId, variant.id);
-    return toVariantSnapshot(variant, optionValues, usageCount);
+    return {
+      snapshot: toVariantSnapshot(variant, optionValues, usageCount),
+      additionalChanges: [],
+    };
   }
 
   const current = await txAny.itemVariant.findUnique({
     where: { id: mutation.entityId },
   });
 
+  if (mutation.op === "purge") {
+    if (!current) {
+      return {
+        snapshot: null,
+        additionalChanges: [],
+      };
+    }
+    if (current.business_id !== tenantId) {
+      throw dependencyMissingError("Variant not found in business", "item_variant", mutation.entityId);
+    }
+    const siblingCount = await txAny.itemVariant.count({
+      where: {
+        business_id: tenantId,
+        item_id: current.item_id,
+        deleted_at: null,
+      },
+    });
+    if (siblingCount <= 1) {
+      throw validationError(
+        "The only remaining variant cannot be purged by itself. Purge the item instead.",
+        mutation.entity,
+        mutation.entityId,
+      );
+    }
+
+    const usage = await getVariantUsageSummary(tx, tenantId, mutation.entityId);
+    const usageKinds = [
+      ...(usage.stockLedgerCount > 0 ? ["stock_history"] : []),
+      ...(usage.activityCount > 0 ? ["item_activity"] : []),
+    ];
+    if (usageKinds.length > 0) {
+      throw entityInUseError(
+        `Variant cannot be purged because it is referenced in ${formatUsageKinds(usageKinds)}. Archive it instead.`,
+        mutation.entity,
+        mutation.entityId,
+        usageKinds,
+        usage,
+      );
+    }
+
+    const membershipIds = (
+      await txAny.itemCollectionItem.findMany({
+        where: {
+          business_id: tenantId,
+          variant_id: mutation.entityId,
+        },
+        select: {
+          id: true,
+        },
+      })
+    ).map((entry) => String(entry.id));
+
+    await deleteVariantCommercialRows(txAny, [mutation.entityId]);
+    await txAny.itemVariant.delete({
+      where: { id: mutation.entityId },
+    });
+    await ensureSingleDefaultVariant(tx, current.item_id);
+
+    return {
+      snapshot: null,
+      additionalChanges: [
+        {
+          entity: "item_price",
+          entityId: buildPriceChangeEntityId(mutation.entityId, "SALES"),
+          operation: "PURGE" as const,
+          data: {},
+        },
+        {
+          entity: "item_price",
+          entityId: buildPriceChangeEntityId(mutation.entityId, "PURCHASE"),
+          operation: "PURGE" as const,
+          data: {},
+        },
+        ...membershipIds.map((membershipId) => ({
+          entity: "item_collection_item",
+          entityId: membershipId,
+          operation: "PURGE" as const,
+          data: {},
+        })),
+      ],
+    };
+  }
+
   if (mutation.op === "delete") {
     if (!current) {
-      return null;
+      return {
+        snapshot: null,
+        additionalChanges: [],
+      };
     }
     if (current.business_id !== tenantId) {
       throw dependencyMissingError("Variant not found in business", "item_variant", mutation.entityId);
@@ -2205,7 +2736,10 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
       },
     });
     await ensureSingleDefaultVariant(tx, current.item_id);
-    return null;
+    return {
+      snapshot: null,
+      additionalChanges: [],
+    };
   }
 
   if (!current || current.business_id !== tenantId) {
@@ -2282,7 +2816,10 @@ const applyItemVariantMutation = async (tx, tenantId, mutation) => {
 
   const optionValues = await getVariantOptionValues(tx, variant.id);
   const nextUsageCount = await getVariantUsageCount(tx, tenantId, variant.id);
-  return toVariantSnapshot(variant, optionValues, nextUsageCount);
+  return {
+    snapshot: toVariantSnapshot(variant, optionValues, nextUsageCount),
+    additionalChanges: [],
+  };
 };
 
 const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
@@ -2325,13 +2862,40 @@ const applyItemCategoryMutation = async (tx, tenantId, mutation) => {
   });
 
   if (!current || current.business_id !== tenantId) {
-    if (mutation.op === "delete") {
+    if (mutation.op === "delete" || mutation.op === "purge") {
       return {
         snapshot: null,
         additionalChanges: [],
       };
     }
     throw dependencyMissingError("Category not found in business", mutation.entity, mutation.entityId);
+  }
+
+  if (mutation.op === "purge") {
+    const referencingItemCount = await tx.item.count({
+      where: {
+        business_id: tenantId,
+        category: current.name,
+      },
+    });
+    if (referencingItemCount > 0) {
+      throw entityInUseError(
+        "Category cannot be purged because items still reference it. Remove those references or archive the category instead.",
+        mutation.entity,
+        mutation.entityId,
+        ["item_reference"],
+        { referencingItemCount },
+      );
+    }
+
+    await (tx as any).itemCategory.delete({
+      where: { id: mutation.entityId },
+    });
+
+    return {
+      snapshot: null,
+      additionalChanges: [],
+    };
   }
 
   if (mutation.op === "delete") {
@@ -2492,13 +3056,37 @@ const applyItemCollectionMutation = async (tx, tenantId, mutation) => {
   });
 
   if (!current || current.business_id !== tenantId) {
-    if (mutation.op === "delete") {
+    if (mutation.op === "delete" || mutation.op === "purge") {
       return {
         snapshot: null,
         additionalChanges: [],
       };
     }
     throw dependencyMissingError("Collection not found in business", mutation.entity, mutation.entityId);
+  }
+
+  if (mutation.op === "purge") {
+    const memberships = await txAny.itemCollectionItem.findMany({
+      where: {
+        business_id: tenantId,
+        collection_id: current.id,
+      },
+      select: { id: true },
+    });
+
+    await txAny.itemCollection.delete({
+      where: { id: mutation.entityId },
+    });
+
+    return {
+      snapshot: null,
+      additionalChanges: memberships.map((membership) => ({
+        entity: "item_collection_item",
+        entityId: membership.id,
+        operation: "PURGE" as const,
+        data: {},
+      })),
+    };
   }
 
   if (mutation.op === "delete") {
@@ -2646,6 +3234,24 @@ const applyItemCollectionItemMutation = async (tx, tenantId, mutation) => {
         is_active: false,
         deleted_at: new Date(),
       },
+    });
+    return null;
+  }
+
+  if (mutation.op === "purge") {
+    const current = await txAny.itemCollectionItem.findUnique({
+      where: { id: mutation.entityId },
+    });
+    if (!current) return null;
+    if (current.business_id !== tenantId) {
+      throw dependencyMissingError(
+        "Collection item link not found in business",
+        mutation.entity,
+        mutation.entityId,
+      );
+    }
+    await txAny.itemCollectionItem.delete({
+      where: { id: mutation.entityId },
     });
     return null;
   }
@@ -2886,16 +3492,43 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
 const applyMutation = async (
   tenantId,
   mutation,
-): Promise<{ status: "applied" }> => {
+): Promise<{ status: "applied"; outcome?: AppliedOutcome }> => {
   return prisma.$transaction(async (tx) => {
     const txAny = tx as any;
     const existing = await txAny.syncMutationLog.findUnique({
       where: { mutation_id: mutation.mutationId },
-      select: { id: true },
+      select: {
+        mutation_id: true,
+        tenant_id: true,
+        user_id: true,
+        entity: true,
+        entity_id: true,
+        operation: true,
+        result_status: true,
+        result_summary: true,
+        result_payload: true,
+        processed_at: true,
+      },
     });
 
     if (existing) {
-      return { status: "applied" };
+      const existingResult = mapMutationLogToSyncResultRecord(existing);
+      if (existingResult?.resultStatus === "rejected") {
+        throw new SyncRejectionError({
+          message: existingResult.summary,
+          statusCode: 400,
+          reasonCode: existingResult.rejection?.reasonCode ?? "VALIDATION_FAILED",
+          entity: existing.entity,
+          entityId: existing.entity_id,
+          details: existingResult.rejection?.details,
+        });
+      }
+      return {
+        status: "applied",
+        ...(existingResult?.resultStatus === "applied" && existingResult.outcome
+          ? { outcome: existingResult.outcome }
+          : {}),
+      };
     }
 
     await assertEntityBaseVersion(
@@ -2910,7 +3543,7 @@ const applyMutation = async (
     let additionalChanges: Array<{
       entity: string;
       entityId: string;
-      operation: "CREATE" | "UPDATE" | "DELETE";
+      operation: "CREATE" | "UPDATE" | "DELETE" | "PURGE";
       data: Record<string, unknown>;
     }> = [];
     if (mutation.entity === "customer") {
@@ -2952,7 +3585,9 @@ const applyMutation = async (
       snapshot = itemResult.snapshot;
       additionalChanges = itemResult.additionalChanges;
     } else if (mutation.entity === "item_variant") {
-      snapshot = await applyItemVariantMutation(tx, tenantId, mutation);
+      const variantResult = await applyItemVariantMutation(tx, tenantId, mutation);
+      snapshot = variantResult.snapshot;
+      additionalChanges = variantResult.additionalChanges;
     } else if (mutation.entity === "item_category") {
       const categoryResult = await applyItemCategoryMutation(tx, tenantId, mutation);
       snapshot = categoryResult.snapshot;
@@ -2974,6 +3609,8 @@ const applyMutation = async (
     }
 
     const operation = toPrismaSyncOperation(mutation.op);
+    const processedAt = new Date();
+    const outcome = buildAppliedOutcome(mutation, additionalChanges);
 
     await txAny.syncMutationLog.create({
       data: {
@@ -2987,6 +3624,10 @@ const applyMutation = async (
         payload: mutation.payload,
         base_version: mutation.baseVersion,
         client_timestamp: new Date(mutation.clientTimestamp),
+        result_status: "APPLIED",
+        result_summary: outcome.summary,
+        result_payload: outcome,
+        processed_at: processedAt,
       },
     });
 
@@ -3010,7 +3651,7 @@ const applyMutation = async (
       );
     }
 
-    return { status: "applied" as const };
+    return { status: "applied" as const, outcome };
   });
 };
 
@@ -3029,50 +3670,50 @@ const processMutations = async (
 
   for (const mutation of mutations) {
     if (!SUPPORTED_ENTITIES.has(mutation.entity)) {
-      acknowledgements.push(
-        toSyncRejection(
-          mutation,
-          new SyncRejectionError({
-            message: `Unsupported entity '${mutation.entity}'`,
-            statusCode: 400,
-            reasonCode: "VALIDATION_FAILED",
-            entity: mutation.entity,
-            entityId: mutation.entityId,
-          }),
-        ),
+      const rejection = toSyncRejection(
+        mutation,
+        new SyncRejectionError({
+          message: `Unsupported entity '${mutation.entity}'`,
+          statusCode: 400,
+          reasonCode: "VALIDATION_FAILED",
+          entity: mutation.entity,
+          entityId: mutation.entityId,
+        }),
       );
+      acknowledgements.push(rejection);
+      await persistRejectedMutationResult(tenantId, mutation, rejection);
       continue;
     }
 
     if (mutation.entity === "customer" && !options.canManageCustomers) {
-      acknowledgements.push(
-        toSyncRejection(
-          mutation,
-          new SyncRejectionError({
-            message: "Customer management is not enabled for this store license",
-            statusCode: 403,
-            reasonCode: "PERMISSION_DENIED",
-            entity: mutation.entity,
-            entityId: mutation.entityId,
-          }),
-        ),
+      const rejection = toSyncRejection(
+        mutation,
+        new SyncRejectionError({
+          message: "Customer management is not enabled for this store license",
+          statusCode: 403,
+          reasonCode: "PERMISSION_DENIED",
+          entity: mutation.entity,
+          entityId: mutation.entityId,
+        }),
       );
+      acknowledgements.push(rejection);
+      await persistRejectedMutationResult(tenantId, mutation, rejection);
       continue;
     }
 
     if (mutation.entity === "supplier" && !options.canManageSuppliers) {
-      acknowledgements.push(
-        toSyncRejection(
-          mutation,
-          new SyncRejectionError({
-            message: "Supplier management is not enabled for this store license",
-            statusCode: 403,
-            reasonCode: "PERMISSION_DENIED",
-            entity: mutation.entity,
-            entityId: mutation.entityId,
-          }),
-        ),
+      const rejection = toSyncRejection(
+        mutation,
+        new SyncRejectionError({
+          message: "Supplier management is not enabled for this store license",
+          statusCode: 403,
+          reasonCode: "PERMISSION_DENIED",
+          entity: mutation.entity,
+          entityId: mutation.entityId,
+        }),
       );
+      acknowledgements.push(rejection);
+      await persistRejectedMutationResult(tenantId, mutation, rejection);
       continue;
     }
 
@@ -3087,24 +3728,26 @@ const processMutations = async (
       try {
         await assertItemMutationCapability(tenantId, mutation, options);
       } catch (error) {
-        acknowledgements.push(toSyncRejection(mutation, error));
+        const rejection = toSyncRejection(mutation, error);
+        acknowledgements.push(rejection);
+        await persistRejectedMutationResult(tenantId, mutation, rejection);
         continue;
       }
     }
 
     if (mutation.userId !== userId) {
-      acknowledgements.push(
-        toSyncRejection(
-          mutation,
-          new SyncRejectionError({
-            message: "Mutation user does not match authenticated user",
-            statusCode: 403,
-            reasonCode: "PERMISSION_DENIED",
-            entity: mutation.entity,
-            entityId: mutation.entityId,
-          }),
-        ),
+      const rejection = toSyncRejection(
+        mutation,
+        new SyncRejectionError({
+          message: "Mutation user does not match authenticated user",
+          statusCode: 403,
+          reasonCode: "PERMISSION_DENIED",
+          entity: mutation.entity,
+          entityId: mutation.entityId,
+        }),
       );
+      acknowledgements.push(rejection);
+      await persistRejectedMutationResult(tenantId, mutation, rejection);
       continue;
     }
 
@@ -3113,15 +3756,60 @@ const processMutations = async (
       acknowledgements.push({
         mutationId: mutation.mutationId,
         status: result.status,
+        ...(result.outcome ? { outcome: result.outcome } : {}),
       });
     } catch (error) {
-      acknowledgements.push(toSyncRejection(mutation, error));
+      const rejection = toSyncRejection(mutation, error);
+      acknowledgements.push(rejection);
+      await persistRejectedMutationResult(tenantId, mutation, rejection);
     }
   }
 
   return {
     cursor: await getTenantCursor(tenantId),
     acknowledgements,
+  };
+};
+
+const getSyncResults = async (
+  tenantId: string,
+  options: { page?: number; limit?: number } = {},
+) => {
+  const page = Number.isFinite(options.page) && (options.page ?? 0) > 0 ? Number(options.page) : 1;
+  const limit =
+    Number.isFinite(options.limit) && (options.limit ?? 0) > 0
+      ? Math.min(Number(options.limit), 100)
+      : 25;
+  const skip = (page - 1) * limit;
+
+  const [total, rows] = await prisma.$transaction([
+    prismaAny.syncMutationLog.count({
+      where: {
+        tenant_id: tenantId,
+        processed_at: { not: null },
+      },
+    }),
+    prismaAny.syncMutationLog.findMany({
+      where: {
+        tenant_id: tenantId,
+        processed_at: { not: null },
+      },
+      orderBy: [
+        { processed_at: "desc" },
+        { server_timestamp: "desc" },
+      ],
+      skip,
+      take: limit,
+    }),
+  ]);
+
+  return {
+    page,
+    limit,
+    total,
+    results: rows
+      .map((entry) => mapMutationLogToSyncResultRecord(entry))
+      .filter((entry): entry is SyncResultRecord => entry !== null),
   };
 };
 
@@ -3703,6 +4391,7 @@ const upsertItemPrice = async (
 export default {
   processMutations,
   getDeltasSinceCursor,
+  getSyncResults,
   getOptionKeys,
   getItemCategories,
   getItemPrices,
