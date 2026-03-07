@@ -1,17 +1,24 @@
 import { apiFetch } from "../../lib/api";
+import { normalizeGstSlab } from "../../lib/gst-slabs";
 import { selectStore } from "../auth/client";
 import { useSessionStore } from "../auth/session-business";
 import {
   applyDeltas,
   listEntities,
+  listSyncResults,
   queueMutation,
   syncDb,
   type EntityRecord,
+  type LocalSyncResultRecord,
   type OutboxItem,
+  upsertSyncResults,
 } from "./db";
 import type {
+  MutationAck,
   PullResponse,
   PushResponse,
+  SyncResultRecord,
+  SyncResultsResponse,
   SyncMutation,
   SyncRejection,
 } from "./types";
@@ -34,6 +41,10 @@ const isSyncRejection = (value: unknown): value is SyncRejection =>
 const isRejectedAck = (ack: PushResponse["acknowledgements"][number]): ack is SyncRejection =>
   ack.status === "rejected";
 
+const isAppliedAck = (
+  ack: PushResponse["acknowledgements"][number],
+): ack is Extract<MutationAck, { status: "applied" }> => ack.status === "applied";
+
 export class SyncRejectedError extends Error {
   rejection: SyncRejection;
 
@@ -41,6 +52,20 @@ export class SyncRejectedError extends Error {
     super(rejection.message);
     this.name = "SyncRejectedError";
     this.rejection = rejection;
+  }
+}
+
+export class SyncHttpError extends Error {
+  status: number;
+  operation: "push" | "pull" | "results";
+
+  constructor(operation: "push" | "pull" | "results", status: number) {
+    super(
+      `${operation === "push" ? "Push" : operation === "pull" ? "Pull" : "Results"} failed with status ${status}`,
+    );
+    this.name = "SyncHttpError";
+    this.status = status;
+    this.operation = operation;
   }
 }
 
@@ -85,24 +110,73 @@ const setCursor = async (tenantId: string, cursor: string) => {
   await syncDb.syncMeta.put({ tenantId, key: CURSOR_KEY, value: cursor });
 };
 
+const toLocalSyncResultRecord = (
+  tenantId: string,
+  result: SyncResultRecord,
+  source: "local" | "server",
+): LocalSyncResultRecord => ({
+  tenantId,
+  source,
+  ...result,
+});
+
+const mergeSyncResults = (
+  localResults: SyncResultRecord[],
+  remoteResults: SyncResultRecord[],
+) => {
+  const merged = new Map<string, SyncResultRecord>();
+  for (const result of remoteResults) {
+    merged.set(result.mutationId, result);
+  }
+  for (const result of localResults) {
+    merged.set(result.mutationId, result);
+  }
+  return Array.from(merged.values()).sort((left, right) =>
+    right.processedAt.localeCompare(left.processedAt),
+  );
+};
+
+const isHideMutation = (item: OutboxItem) => item.op === "delete" || item.op === "purge";
+
+const getPendingMutationsForEntity = async (tenantId: string, entity: string) =>
+  syncDb.outbox
+    .where("[tenantId+status]")
+    .equals([tenantId, "pending"])
+    .filter((item) => item.entity === entity)
+    .toArray();
+
+const getPendingHiddenEntityIds = (mutations: OutboxItem[]) =>
+  new Set(
+    mutations.filter(isHideMutation).map((mutation) => mutation.entityId),
+  );
+
 const toMutation = (item: OutboxItem): SyncMutation => ({
   ...(item.entity === "item_price"
     ? (() => {
         const payloadVariantId =
           typeof item.payload.variantId === "string" ? item.payload.variantId : "";
-        const compositeVariantId =
+        const persistedVariantId =
           typeof item.entityId === "string" ? item.entityId.split(":")[0] : "";
-        const normalizedVariantId = payloadVariantId || compositeVariantId || item.entityId;
+        const normalizedVariantId = payloadVariantId || persistedVariantId || item.entityId;
+        const normalizedPriceType =
+          String(item.payload.priceType ?? "SALES").toUpperCase() === "PURCHASE"
+            ? "PURCHASE"
+            : "SALES";
+        const normalizedEntityId =
+          typeof item.entityId === "string" && item.entityId.includes(":")
+            ? item.entityId
+            : `${normalizedVariantId}:${normalizedPriceType}`;
         return {
           mutationId: item.mutationId,
           deviceId: item.deviceId,
           userId: item.userId,
           entity: item.entity,
-          entityId: normalizedVariantId,
+          entityId: normalizedEntityId,
           op: item.op,
           payload: {
             ...item.payload,
             variantId: normalizedVariantId,
+            priceType: normalizedPriceType,
           },
           baseVersion: item.baseVersion,
           clientTimestamp: item.clientTimestamp,
@@ -378,14 +452,14 @@ export const queueItemVariantCreate = async (
   userId: string,
   itemId: string,
   payload: VariantInput,
+  entityId = crypto.randomUUID(),
 ) => {
-  const variantId = crypto.randomUUID();
   await queueMutation(tenantId, {
     mutationId: crypto.randomUUID(),
     deviceId: getOrCreateDeviceId(),
     userId,
     entity: "item_variant",
-    entityId: variantId,
+    entityId,
     op: "create",
     payload: {
       ...payload,
@@ -393,6 +467,7 @@ export const queueItemVariantCreate = async (
     },
     clientTimestamp: new Date().toISOString(),
   });
+  return entityId;
 };
 
 export const queueItemVariantUpdate = async (
@@ -425,6 +500,40 @@ export const queueItemVariantDelete = async (
     entity: "item_variant",
     entityId: variantId,
     op: "delete",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemPurge = async (
+  tenantId: string,
+  userId: string,
+  itemId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item",
+    entityId: itemId,
+    op: "purge",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemVariantPurge = async (
+  tenantId: string,
+  userId: string,
+  variantId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_variant",
+    entityId: variantId,
+    op: "purge",
     payload: {},
     clientTimestamp: new Date().toISOString(),
   });
@@ -468,13 +577,14 @@ const push = async (tenantId: string) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Push failed with status ${response.status}`);
+    throw new SyncHttpError("push", response.status);
   }
 
   const payload = (await response.json()) as PushResponse;
   const now = new Date().toISOString();
+  const localSyncResults: LocalSyncResultRecord[] = [];
 
-  await syncDb.transaction("rw", syncDb.outbox, async () => {
+  await syncDb.transaction("rw", syncDb.outbox, syncDb.syncResults, async () => {
     for (const ack of payload.acknowledgements) {
       const current = await syncDb.outbox.get(ack.mutationId);
       if (!current) continue;
@@ -486,12 +596,65 @@ const push = async (tenantId: string) => {
         rejection: isRejectedAck(ack) ? ack : undefined,
         updatedAt: now
       });
+
+      if (isAppliedAck(ack) && ack.outcome) {
+        localSyncResults.push(
+          toLocalSyncResultRecord(
+            tenantId,
+            {
+              mutationId: ack.mutationId,
+              entity: current.entity,
+              entityId: current.entityId,
+              operation: current.op,
+              resultStatus: "applied",
+              summary: ack.outcome.summary,
+              processedAt: now,
+              userId: current.userId,
+              outcome: ack.outcome,
+            },
+            "local",
+          ),
+        );
+      }
+
+      if (isRejectedAck(ack)) {
+        localSyncResults.push(
+          toLocalSyncResultRecord(
+            tenantId,
+            {
+              mutationId: ack.mutationId,
+              entity: ack.entity,
+              entityId: ack.entityId,
+              operation: current.op,
+              resultStatus: "rejected",
+              summary: ack.message,
+              processedAt: now,
+              userId: current.userId,
+              rejection: {
+                reasonCode: ack.reasonCode,
+                ...(ack.details ? { details: ack.details } : {}),
+              },
+            },
+            "local",
+          ),
+        );
+      }
+    }
+
+    if (localSyncResults.length > 0) {
+      await upsertSyncResults(localSyncResults);
     }
   });
 
   const rejectedAcks = payload.acknowledgements.filter(isRejectedAck);
+  const appliedResults = localSyncResults
+    .filter((result) => result.resultStatus === "applied")
+    .map(({ tenantId: _tenantId, source: _source, ...result }) => result);
 
-  return rejectedAcks;
+  return {
+    rejectedAcks,
+    appliedResults,
+  };
 };
 
 const pull = async (tenantId: string) => {
@@ -502,7 +665,7 @@ const pull = async (tenantId: string) => {
   const response = await apiFetch(`/api/sync/pull?${params.toString()}`, { method: "GET" });
 
   if (!response.ok) {
-    throw new Error(`Pull failed with status ${response.status}`);
+    throw new SyncHttpError("pull", response.status);
   }
 
   const payload = (await response.json()) as PullResponse;
@@ -517,11 +680,17 @@ export const syncOnce = async (tenantId: string) => {
   if (!isNetworkOnline()) return;
   await ensureOnlineLicenseValidation(tenantId);
 
-  const rejectedAcks = (await push(tenantId)) ?? [];
+  const pushResult = await push(tenantId);
+  const rejectedAcks = pushResult?.rejectedAcks ?? [];
   await pull(tenantId);
   if (rejectedAcks.length > 0) {
     throw new SyncRejectedError(rejectedAcks[0]);
   }
+
+  return {
+    appliedResults: pushResult?.appliedResults ?? [],
+    rejectedAcks,
+  };
 };
 
 export const resetLocalSyncState = async () => {
@@ -530,10 +699,12 @@ export const resetLocalSyncState = async () => {
     syncDb.outbox,
     syncDb.syncMeta,
     syncDb.entities,
+    syncDb.syncResults,
     async () => {
       await syncDb.outbox.clear();
       await syncDb.syncMeta.clear();
       await syncDb.entities.clear();
+      await syncDb.syncResults.clear();
     },
   );
 };
@@ -544,16 +715,71 @@ export const resetTenantSyncState = async (tenantId: string) => {
     syncDb.outbox,
     syncDb.syncMeta,
     syncDb.entities,
+    syncDb.syncResults,
     async () => {
       await syncDb.outbox.where("tenantId").equals(tenantId).delete();
       await syncDb.syncMeta.where("tenantId").equals(tenantId).delete();
       await syncDb.entities.where("tenantId").equals(tenantId).delete();
+      await syncDb.syncResults.where("tenantId").equals(tenantId).delete();
     },
   );
 };
 
 export const getPendingOutboxCount = async (tenantId: string) => {
   return syncDb.outbox.where("[tenantId+status]").equals([tenantId, "pending"]).count();
+};
+
+export const getRecentLocalSyncResults = async (tenantId: string, limit = 25) => {
+  return listSyncResults(tenantId, limit);
+};
+
+export const getRemoteSyncResults = async (
+  tenantId: string,
+  options: { page?: number; limit?: number } = {},
+) => {
+  const params = new URLSearchParams({
+    tenantId,
+    page: String(options.page ?? 1),
+    limit: String(options.limit ?? 25),
+  });
+  const response = await apiFetch(`/api/sync/results?${params.toString()}`, { method: "GET" });
+  if (!response.ok) {
+    throw new SyncHttpError("results", response.status);
+  }
+  return (await response.json()) as SyncResultsResponse;
+};
+
+export const getMergedSyncResults = async (
+  tenantId: string,
+  options: { page?: number; limit?: number } = {},
+) => {
+  const limit = options.limit ?? 25;
+  const localResults = await getRecentLocalSyncResults(tenantId, limit);
+  if (!isNetworkOnline()) {
+    return {
+      success: true,
+      page: options.page ?? 1,
+      limit,
+      total: localResults.length,
+      results: localResults.map(({ tenantId: _tenantId, source: _source, ...result }) => result),
+    };
+  }
+
+  const remotePayload = await getRemoteSyncResults(tenantId, options);
+
+  const mergedResults = mergeSyncResults(
+    localResults.map(({ tenantId: _tenantId, source: _source, ...result }) => result),
+    remotePayload.results,
+  );
+
+  await upsertSyncResults(
+    remotePayload.results.map((result) => toLocalSyncResultRecord(tenantId, result, "server")),
+  );
+
+  return {
+    ...remotePayload,
+    results: mergedResults.slice(0, limit),
+  };
 };
 
 export const getLocalItems = async (tenantId: string) => {
@@ -599,6 +825,7 @@ export type ItemDetailDisplay = {
   id: string;
   name: string;
   category: string;
+  baseSku: string;
   unit:
     | "PCS"
     | "UNIT"
@@ -665,37 +892,33 @@ const extractVariantsFromItemData = (itemData: Record<string, unknown>, itemId: 
     .filter((variant) => Boolean(variant.id));
 };
 
-const mergeVariants = (
-  base: ItemVariantDisplay[],
-  overlays: ItemVariantDisplay[],
-): ItemVariantDisplay[] => {
-  const map = new Map<string, ItemVariantDisplay>();
-  for (const variant of base) {
-    map.set(variant.id, variant);
-  }
-  for (const variant of overlays) {
-    map.set(variant.id, variant);
-  }
-
-  return Array.from(map.values());
-};
+const resolveItemVariants = (
+  fallbackVariants: ItemVariantDisplay[],
+  explicitVariants: ItemVariantDisplay[],
+) => (explicitVariants.length > 0 ? explicitVariants : fallbackVariants);
 
 export const getLocalItemsForDisplay = async (
   tenantId: string,
 ): Promise<ItemDisplay[]> => {
-  const [entities, variantEntities, pendingCreates] = await Promise.all([
-    getLocalItems(tenantId),
-    listEntities(tenantId, "item_variant"),
-    syncDb.outbox
-      .where("[tenantId+status]")
-      .equals([tenantId, "pending"])
-      .filter((item) => item.entity === "item" && item.op === "create")
-      .toArray(),
-  ]);
+  const [entities, variantEntities, pendingItemMutations, pendingVariantMutations] =
+    await Promise.all([
+      getLocalItems(tenantId),
+      listEntities(tenantId, "item_variant"),
+      getPendingMutationsForEntity(tenantId, "item"),
+      getPendingMutationsForEntity(tenantId, "item_variant"),
+    ]);
 
-  const activeVariants = variantEntities.filter((variant) => !variant.deletedAt);
+  const hiddenItemIds = getPendingHiddenEntityIds(pendingItemMutations);
+  const hiddenVariantIds = getPendingHiddenEntityIds(pendingVariantMutations);
+  const pendingCreates = pendingItemMutations.filter((item) => item.op === "create");
+
+  const activeVariants = variantEntities.filter(
+    (variant) => !variant.deletedAt && !hiddenVariantIds.has(variant.entityId),
+  );
   const deletedVariantIdsByItemId = variantEntities
-    .filter((variant) => Boolean(variant.deletedAt))
+    .filter(
+      (variant) => Boolean(variant.deletedAt) || hiddenVariantIds.has(variant.entityId),
+    )
     .reduce<Record<string, Set<string>>>((acc, variant) => {
       const itemId = String(variant.data.itemId ?? "");
       if (!itemId) return acc;
@@ -715,7 +938,7 @@ export const getLocalItemsForDisplay = async (
   );
 
   const confirmed = entities
-    .filter((item) => !item.deletedAt)
+    .filter((item) => !item.deletedAt && !hiddenItemIds.has(item.entityId))
     .map((item) => {
       const deletedVariantIds = deletedVariantIdsByItemId[item.entityId] ?? new Set<string>();
       const baseVariants = extractVariantsFromItemData(item.data, item.entityId).filter(
@@ -746,7 +969,7 @@ export const getLocalItemsForDisplay = async (
         } satisfies ItemVariantDisplay;
       });
 
-      const mergedVariants = mergeVariants(baseVariants, overlayVariants);
+      const mergedVariants = resolveItemVariants(baseVariants, overlayVariants);
       const variants =
         mergedVariants.length > 0
           ? mergedVariants
@@ -790,7 +1013,9 @@ export const getLocalItemsForDisplay = async (
   const confirmedByEntityId = new Set(confirmed.map((item) => item.entityId));
 
   const pendingOnly = pendingCreates
-    .filter((item) => !confirmedByEntityId.has(item.entityId))
+    .filter(
+      (item) => !confirmedByEntityId.has(item.entityId) && !hiddenItemIds.has(item.entityId),
+    )
     .map((item) => {
       const payload = item.payload as {
         name?: unknown;
@@ -860,15 +1085,20 @@ export const getLocalItemDetailForDisplay = async (
   tenantId: string,
   itemId: string,
 ): Promise<ItemDetailDisplay | null> => {
-  const [item, variantEntities] = await Promise.all([
+  const [item, variantEntities, pendingItemMutations, pendingVariantMutations] = await Promise.all([
     syncDb.entities.get([tenantId, "item", itemId]),
     listEntities(tenantId, "item_variant"),
+    getPendingMutationsForEntity(tenantId, "item"),
+    getPendingMutationsForEntity(tenantId, "item_variant"),
   ]);
 
-  if (!item || item.deletedAt) return null;
+  const hiddenItemIds = getPendingHiddenEntityIds(pendingItemMutations);
+  const hiddenVariantIds = getPendingHiddenEntityIds(pendingVariantMutations);
+
+  if (!item || item.deletedAt || hiddenItemIds.has(itemId)) return null;
 
   const variantRows = variantEntities
-    .filter((variant) => !variant.deletedAt)
+    .filter((variant) => !variant.deletedAt && !hiddenVariantIds.has(variant.entityId))
     .filter((variant) => String(variant.data.itemId ?? "") === item.entityId)
     .map((variant) => {
       const optionValuesRaw =
@@ -897,14 +1127,14 @@ export const getLocalItemDetailForDisplay = async (
 
   const deletedVariantIds = new Set(
     variantEntities
-      .filter((variant) => Boolean(variant.deletedAt))
+      .filter((variant) => Boolean(variant.deletedAt) || hiddenVariantIds.has(variant.entityId))
       .filter((variant) => String(variant.data.itemId ?? "") === item.entityId)
       .map((variant) => variant.entityId),
   );
   const fallbackFromItem = extractVariantsFromItemData(item.data, item.entityId).filter(
     (variant) => !deletedVariantIds.has(variant.id),
   );
-  const mergedVariants = mergeVariants(fallbackFromItem, variantRows);
+  const mergedVariants = resolveItemVariants(fallbackFromItem, variantRows);
   const variants =
     mergedVariants.length > 0
       ? mergedVariants
@@ -927,6 +1157,18 @@ export const getLocalItemDetailForDisplay = async (
     id: item.entityId,
     name: String(item.data.name ?? "Untitled Item"),
     category: String(item.data.category ?? ""),
+    baseSku:
+      item.data.metadata &&
+      typeof item.data.metadata === "object" &&
+      (item.data.metadata as Record<string, unknown>).custom &&
+      typeof (item.data.metadata as Record<string, unknown>).custom === "object" &&
+      typeof ((item.data.metadata as Record<string, unknown>).custom as Record<string, unknown>).base_sku ===
+        "string"
+        ? String(
+            ((item.data.metadata as Record<string, unknown>).custom as Record<string, unknown>)
+              .base_sku,
+          )
+        : "",
     unit: String(item.data.unit ?? "PCS") as
       | "PCS"
       | "UNIT"
@@ -1319,6 +1561,23 @@ export const queueItemCategoryDelete = async (
   });
 };
 
+export const queueItemCategoryPurge = async (
+  tenantId: string,
+  userId: string,
+  categoryId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_category",
+    entityId: categoryId,
+    op: "purge",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
 export const queueItemCollectionCreate = async (
   tenantId: string,
   userId: string,
@@ -1376,6 +1635,23 @@ export const queueItemCollectionDelete = async (
   });
 };
 
+export const queueItemCollectionPurge = async (
+  tenantId: string,
+  userId: string,
+  collectionId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_collection",
+    entityId: collectionId,
+    op: "purge",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
 export const queueItemCollectionMembershipCreate = async (
   tenantId: string,
   userId: string,
@@ -1410,6 +1686,23 @@ export const queueItemCollectionMembershipDelete = async (
     entity: "item_collection_item",
     entityId: membershipId,
     op: "delete",
+    payload: {},
+    clientTimestamp: new Date().toISOString(),
+  });
+};
+
+export const queueItemCollectionMembershipPurge = async (
+  tenantId: string,
+  userId: string,
+  membershipId: string,
+) => {
+  await queueMutation(tenantId, {
+    mutationId: crypto.randomUUID(),
+    deviceId: getOrCreateDeviceId(),
+    userId,
+    entity: "item_collection_item",
+    entityId: membershipId,
+    op: "purge",
     payload: {},
     clientTimestamp: new Date().toISOString(),
   });
@@ -1453,7 +1746,7 @@ export const queueItemPriceUpsert = async (
     deviceId: getOrCreateDeviceId(),
     userId,
     entity: "item_price",
-    entityId: variantId,
+    entityId: `${variantId}:${normalizedPriceType}`,
     op: "update",
     payload: {
       variantId,
@@ -1561,7 +1854,7 @@ export const getLocalStockVariantOptions = async (
           pending: false,
         } satisfies ItemVariantDisplay;
       });
-      return mergeVariants(baseVariants, overlayVariants)
+      return resolveItemVariants(baseVariants, overlayVariants)
         .filter((variant) => variant.isActive)
         .map((variant) => {
           const suffix = variant.sku
@@ -1775,16 +2068,21 @@ export const getRemoteOptionDiscoveryForStore = async (
 export const getLocalItemCategoriesForStore = async (
   tenantId: string,
 ): Promise<string[]> => {
-  const [itemEntities, categoryEntities] = await Promise.all([
+  const [itemEntities, categoryEntities, pendingItemMutations, pendingCategoryMutations] =
+    await Promise.all([
     listEntities(tenantId, "item"),
     listEntities(tenantId, "item_category"),
+    getPendingMutationsForEntity(tenantId, "item"),
+    getPendingMutationsForEntity(tenantId, "item_category"),
   ]);
+  const hiddenItemIds = getPendingHiddenEntityIds(pendingItemMutations);
+  const hiddenCategoryIds = getPendingHiddenEntityIds(pendingCategoryMutations);
   const categoriesFromItems = itemEntities
-    .filter((item) => !item.deletedAt)
+    .filter((item) => !item.deletedAt && !hiddenItemIds.has(item.entityId))
     .map((item) => String(item.data.category ?? "").trim())
     .filter((category) => category.length > 0);
   const categoriesFromEntries = categoryEntities
-    .filter((entry) => !entry.deletedAt)
+    .filter((entry) => !entry.deletedAt && !hiddenCategoryIds.has(entry.entityId))
     .map((entry) => String(entry.data.name ?? "").trim())
     .filter((name) => name.length > 0);
 
@@ -1796,9 +2094,13 @@ export const getLocalItemCategoriesForStore = async (
 export const getLocalItemCategoryEntriesForStore = async (
   tenantId: string,
 ): Promise<ItemCategoryEntry[]> => {
-  const categoryEntities = await listEntities(tenantId, "item_category");
+  const [categoryEntities, pendingCategoryMutations] = await Promise.all([
+    listEntities(tenantId, "item_category"),
+    getPendingMutationsForEntity(tenantId, "item_category"),
+  ]);
+  const hiddenCategoryIds = getPendingHiddenEntityIds(pendingCategoryMutations);
   return categoryEntities
-    .filter((entry) => !entry.deletedAt)
+    .filter((entry) => !entry.deletedAt && !hiddenCategoryIds.has(entry.entityId))
     .map((entry) => ({
       id: entry.entityId,
       name: String(entry.data.name ?? "").trim(),
@@ -1810,9 +2112,13 @@ export const getLocalItemCategoryEntriesForStore = async (
 export const getLocalItemCollectionEntriesForStore = async (
   tenantId: string,
 ): Promise<ItemCollectionEntry[]> => {
-  const collectionEntities = await listEntities(tenantId, "item_collection");
+  const [collectionEntities, pendingCollectionMutations] = await Promise.all([
+    listEntities(tenantId, "item_collection"),
+    getPendingMutationsForEntity(tenantId, "item_collection"),
+  ]);
+  const hiddenCollectionIds = getPendingHiddenEntityIds(pendingCollectionMutations);
   return collectionEntities
-    .filter((entry) => !entry.deletedAt)
+    .filter((entry) => !entry.deletedAt && !hiddenCollectionIds.has(entry.entityId))
     .map((entry) => ({
       id: entry.entityId,
       name: String(entry.data.name ?? "").trim(),
@@ -1824,14 +2130,27 @@ export const getLocalItemCollectionEntriesForStore = async (
 export const getLocalItemCollectionMembershipsForStore = async (
   tenantId: string,
 ): Promise<ItemCollectionMembership[]> => {
-  const [membershipEntities, variantEntities, itemEntities] = await Promise.all([
+  const [
+    membershipEntities,
+    variantEntities,
+    itemEntities,
+    pendingMembershipMutations,
+    pendingVariantMutations,
+    pendingItemMutations,
+  ] = await Promise.all([
     listEntities(tenantId, "item_collection_item"),
     listEntities(tenantId, "item_variant"),
     listEntities(tenantId, "item"),
+    getPendingMutationsForEntity(tenantId, "item_collection_item"),
+    getPendingMutationsForEntity(tenantId, "item_variant"),
+    getPendingMutationsForEntity(tenantId, "item"),
   ]);
+  const hiddenMembershipIds = getPendingHiddenEntityIds(pendingMembershipMutations);
+  const hiddenVariantIds = getPendingHiddenEntityIds(pendingVariantMutations);
+  const hiddenItemIds = getPendingHiddenEntityIds(pendingItemMutations);
   const itemIdByVariantId = new Map<string, string>(
     variantEntities
-      .filter((entry) => !entry.deletedAt)
+      .filter((entry) => !entry.deletedAt && !hiddenVariantIds.has(entry.entityId))
       .map((entry) => [
         entry.entityId,
         String(entry.data.itemId ?? ""),
@@ -1846,7 +2165,7 @@ export const getLocalItemCollectionMembershipsForStore = async (
     }
   >(
     variantEntities
-      .filter((entry) => !entry.deletedAt)
+      .filter((entry) => !entry.deletedAt && !hiddenVariantIds.has(entry.entityId))
       .map((entry) => [
         entry.entityId,
         {
@@ -1857,7 +2176,7 @@ export const getLocalItemCollectionMembershipsForStore = async (
       ]),
   );
   for (const itemEntity of itemEntities) {
-    if (itemEntity.deletedAt) continue;
+    if (itemEntity.deletedAt || hiddenItemIds.has(itemEntity.entityId)) continue;
     const itemId = itemEntity.entityId;
     const variants = extractVariantsFromItemData(itemEntity.data, itemId);
     for (const variant of variants) {
@@ -1875,7 +2194,7 @@ export const getLocalItemCollectionMembershipsForStore = async (
     }
   }
   return membershipEntities
-    .filter((entry) => !entry.deletedAt)
+    .filter((entry) => !entry.deletedAt && !hiddenMembershipIds.has(entry.entityId))
     .map((entry) => {
       const collectionId = String(entry.data.collectionId ?? "");
       const variantId = String(entry.data.variantId ?? "");
@@ -1898,7 +2217,9 @@ export const getLocalItemCollectionMembershipsForStore = async (
         entry.id.length > 0 &&
         entry.collectionId.length > 0 &&
         entry.variantId.length > 0 &&
-        entry.itemId.length > 0,
+        entry.itemId.length > 0 &&
+        variantMetaByVariantId.has(entry.variantId) &&
+        !hiddenItemIds.has(entry.itemId),
     );
 };
 
@@ -1908,7 +2229,14 @@ export const getLocalItemPricingRowsForDisplay = async (
   includeInactive = false,
   priceType: "SALES" | "PURCHASE" = "SALES",
 ): Promise<ItemPricingRow[]> => {
-  const [variantEntities, itemEntities, priceEntities, pendingPriceMutations] = await Promise.all([
+  const [
+    variantEntities,
+    itemEntities,
+    priceEntities,
+    pendingPriceMutations,
+    pendingItemMutations,
+    pendingVariantMutations,
+  ] = await Promise.all([
     listEntities(tenantId, "item_variant"),
     listEntities(tenantId, "item"),
     listEntities(tenantId, "item_price"),
@@ -1917,11 +2245,16 @@ export const getLocalItemPricingRowsForDisplay = async (
       .equals([tenantId, "pending"])
       .filter((item) => item.entity === "item_price" && item.op === "update")
       .toArray(),
+    getPendingMutationsForEntity(tenantId, "item"),
+    getPendingMutationsForEntity(tenantId, "item_variant"),
   ]);
+
+  const hiddenItemIds = getPendingHiddenEntityIds(pendingItemMutations);
+  const hiddenVariantIds = getPendingHiddenEntityIds(pendingVariantMutations);
 
   const itemById = new Map(
     itemEntities
-      .filter((item) => !item.deletedAt)
+      .filter((item) => !item.deletedAt && !hiddenItemIds.has(item.entityId))
       .map((item) => [item.entityId, item]),
   );
 
@@ -1941,7 +2274,7 @@ export const getLocalItemPricingRowsForDisplay = async (
   >();
 
   for (const variant of variantEntities) {
-    if (variant.deletedAt) continue;
+    if (variant.deletedAt || hiddenVariantIds.has(variant.entityId)) continue;
     const itemId = String(variant.data.itemId ?? "");
     const item = itemById.get(itemId);
     variantMetaById.set(variant.entityId, {
@@ -1958,7 +2291,7 @@ export const getLocalItemPricingRowsForDisplay = async (
   }
 
   for (const itemEntity of itemEntities) {
-    if (itemEntity.deletedAt) continue;
+    if (itemEntity.deletedAt || hiddenItemIds.has(itemEntity.entityId)) continue;
     const itemId = itemEntity.entityId;
     const itemName = String(itemEntity.data.name ?? "Untitled Item");
     const itemCategory = String(itemEntity.data.category ?? "");
@@ -1995,7 +2328,7 @@ export const getLocalItemPricingRowsForDisplay = async (
   for (const price of priceEntities) {
     if (price.deletedAt) continue;
     const variantId = String(price.data.variantId ?? price.entityId ?? "");
-    if (!variantId) continue;
+    if (!variantId || hiddenVariantIds.has(variantId)) continue;
     const persistedPriceType =
       String(price.data.priceType ?? "SALES").toUpperCase() === "PURCHASE"
         ? "PURCHASE"
@@ -2015,11 +2348,8 @@ export const getLocalItemPricingRowsForDisplay = async (
       String(price.data.taxMode ?? "EXCLUSIVE").toUpperCase() === "INCLUSIVE"
         ? "INCLUSIVE"
         : "EXCLUSIVE";
-    const gstSlabRaw = price.data.gstSlab;
     const gstSlab =
-      typeof gstSlabRaw === "string" && gstSlabRaw.trim().length > 0
-        ? gstSlabRaw.trim().toUpperCase()
-        : null;
+      typeof price.data.gstSlab === "string" ? normalizeGstSlab(price.data.gstSlab) : null;
     persistedPriceByVariantId.set(variantId, {
       amount,
       currency,
@@ -2070,8 +2400,8 @@ export const getLocalItemPricingRowsForDisplay = async (
         ? "INCLUSIVE"
         : "EXCLUSIVE";
     const pendingGstSlab =
-      typeof mutation.payload.gstSlab === "string" && mutation.payload.gstSlab.trim().length > 0
-        ? mutation.payload.gstSlab.trim().toUpperCase()
+      typeof mutation.payload.gstSlab === "string"
+        ? normalizeGstSlab(mutation.payload.gstSlab)
         : mutation.payload.gstSlab === null
           ? null
           : undefined;

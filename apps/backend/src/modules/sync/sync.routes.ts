@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   push,
   pull,
+  syncResults,
   optionKeys,
   itemCategories,
   itemPrices,
@@ -15,6 +16,7 @@ import {
   optionKeysSchema,
   pullSchema,
   pushSchema,
+  syncResultsSchema,
   upsertItemPriceSchema,
 } from "./sync.schema.js";
 
@@ -23,6 +25,7 @@ const router = Router();
 router.use(protect);
 router.post("/push", validateRequest(pushSchema), push);
 router.get("/pull", validateRequest(pullSchema), pull);
+router.get("/results", validateRequest(syncResultsSchema), syncResults);
 router.get("/option-keys", validateRequest(optionKeysSchema), optionKeys);
 router.get("/item-categories", validateRequest(itemCategoriesSchema), itemCategories);
 router.get("/item-prices", validateRequest(itemPricesSchema), itemPrices);

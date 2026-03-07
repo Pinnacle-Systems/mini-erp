@@ -17,6 +17,8 @@ import {
   type ItemDetailDisplay,
   type ItemDisplay,
 } from "../../features/sync/engine";
+import { formatCurrencyDisplay } from "../../lib/currency-display";
+import { formatGstSlabLabel } from "../../lib/gst-slabs";
 import { useSyncActions } from "../../features/sync/SyncProvider";
 
 type ItemVariantFlatTableProps = {
@@ -30,6 +32,8 @@ type ItemVariantFlatTableProps = {
   taxCodeLabel?: "HSN" | "SAC";
   showCommercialFields?: boolean;
   showPurchasePrice?: boolean;
+  showStatus?: boolean;
+  highlightInactiveRows?: boolean;
   actionLabel?: string;
   actionIcon?: LucideIcon;
   actionClassName?: string;
@@ -45,11 +49,13 @@ export type ItemVariantFlatRow = {
   itemId: string;
   itemName: string;
   variantName: string;
+  hasMultipleVariants?: boolean;
   sku: string;
   category: string;
   unit?: string;
   itemType?: "PRODUCT" | "SERVICE";
   hsnSac?: string;
+  gstSlab?: string | null;
   salesPrice?: number | null;
   purchasePrice?: number | null;
   currency?: string;
@@ -64,11 +70,18 @@ const toVariantLabel = (variantName: string) => {
   return "-";
 };
 
-const formatPrice = (amount: number | null, currency: string) => {
-  if (amount === null || !Number.isFinite(amount)) return "-";
-  const normalizedCurrency = currency.trim().toUpperCase() || "INR";
-  return `${normalizedCurrency} ${amount.toFixed(2)}`;
+const getPrimaryName = (row: ItemVariantFlatRow) => {
+  const hasMultipleVariants =
+    row.hasMultipleVariants ??
+    (row.variantName.trim().length > 0 &&
+      row.variantName.trim() !== "-" &&
+      row.variantName.trim() !== row.itemName.trim());
+  return hasMultipleVariants ? row.variantName : row.itemName;
 };
+
+const ITEMS_LIST_SKU_COLUMN_WIDTH = "w-[18%]";
+const ITEMS_LIST_PRICE_COLUMN_WIDTH = "w-28";
+const getGstSlabDisplay = (value: string | null | undefined) => formatGstSlabLabel(value) || "-";
 
 export function ItemVariantFlatTable({
   items = [],
@@ -81,6 +94,8 @@ export function ItemVariantFlatTable({
   taxCodeLabel = "HSN",
   showCommercialFields = false,
   showPurchasePrice = true,
+  showStatus = true,
+  highlightInactiveRows = false,
   actionLabel = "View",
   actionIcon = Eye,
   actionClassName,
@@ -91,7 +106,7 @@ export function ItemVariantFlatTable({
 }: ItemVariantFlatTableProps) {
   const [detailsByItemId, setDetailsByItemId] = useState<Record<string, ItemDetailDisplay | null>>({});
   const [salesPriceByVariantId, setSalesPriceByVariantId] = useState<
-    Record<string, { amount: number | null; currency: string }>
+    Record<string, { amount: number | null; currency: string; gstSlab: string | null }>
   >({});
   const [purchasePriceByVariantId, setPurchasePriceByVariantId] = useState<
     Record<string, { amount: number | null; currency: string }>
@@ -136,6 +151,7 @@ export function ItemVariantFlatTable({
             {
               amount: row.amount,
               currency: row.currency,
+              gstSlab: row.gstSlab,
             },
           ]),
         ),
@@ -174,16 +190,22 @@ export function ItemVariantFlatTable({
             flatRows.push({
               key: pendingVariant.id,
               itemId: item.entityId,
-          itemName: item.name,
-          variantName: toVariantLabel(pendingVariant.name),
-          sku: pendingVariant.sku || item.sku || item.variantSkus[0] || "",
-          category: item.category || "",
-          unit: item.unit,
-          itemType: item.itemType,
-          hsnSac: item.hsnSac,
-              salesPrice: pendingVariant.salesPrice,
-              purchasePrice: pendingVariant.purchasePrice,
-              currency: "INR",
+              itemName: item.name,
+              variantName: toVariantLabel(pendingVariant.name),
+              hasMultipleVariants: pendingVariantDrafts.length > 1,
+              sku: pendingVariant.sku || item.sku || item.variantSkus[0] || "",
+              category: item.category || "",
+              unit: item.unit,
+              itemType: item.itemType,
+              hsnSac: item.hsnSac,
+              salesPrice: salesPriceByVariantId[pendingVariant.id]?.amount ?? pendingVariant.salesPrice,
+              purchasePrice:
+                purchasePriceByVariantId[pendingVariant.id]?.amount ?? pendingVariant.purchasePrice,
+              gstSlab: salesPriceByVariantId[pendingVariant.id]?.gstSlab ?? null,
+              currency:
+                salesPriceByVariantId[pendingVariant.id]?.currency ??
+                purchasePriceByVariantId[pendingVariant.id]?.currency ??
+                "INR",
               isActive: pendingVariant.isActive,
               pending: true,
             });
@@ -196,6 +218,7 @@ export function ItemVariantFlatTable({
           itemId: item.entityId,
           itemName: item.name,
           variantName: toVariantLabel(""),
+          hasMultipleVariants: false,
           sku: item.sku || item.variantSkus[0] || "",
           category: item.category || "",
           unit: item.unit,
@@ -203,6 +226,7 @@ export function ItemVariantFlatTable({
           hsnSac: item.hsnSac,
           salesPrice: null,
           purchasePrice: null,
+          gstSlab: null,
           currency: "INR",
           isActive: item.isActive,
           pending: item.pending,
@@ -216,11 +240,13 @@ export function ItemVariantFlatTable({
           itemId: item.entityId,
           itemName: item.name,
           variantName: toVariantLabel(variant.name),
+          hasMultipleVariants: variants.length > 1,
           sku: variant.sku || "",
           category: item.category || "",
           unit: item.unit,
           itemType: item.itemType,
           hsnSac: item.hsnSac,
+          gstSlab: salesPriceByVariantId[variant.id]?.gstSlab ?? null,
           salesPrice: salesPriceByVariantId[variant.id]?.amount ?? null,
           purchasePrice: purchasePriceByVariantId[variant.id]?.amount ?? null,
           currency:
@@ -265,14 +291,17 @@ export function ItemVariantFlatTable({
               <button
                 key={row.key}
                 type="button"
-                className="block w-full space-y-2 rounded-xl border border-border/70 bg-white p-3 text-left transition hover:bg-white/90"
+                className={`block w-full space-y-2 rounded-xl border p-3 text-left transition ${
+                  highlightInactiveRows && !row.isActive
+                    ? "border-amber-400 bg-amber-100 hover:bg-amber-100"
+                    : "border-border/70 bg-white hover:bg-white/90"
+                }`}
                 onClick={() => handleAction(row)}
-                aria-label={`${actionLabel} ${row.itemName}`}
+                aria-label={`${actionLabel} ${getPrimaryName(row)}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{row.itemName}</p>
-                    <p className="text-xs text-muted-foreground">{row.variantName}</p>
+                    <p className="text-sm font-semibold text-foreground">{getPrimaryName(row)}</p>
                     <p className="text-[11px] text-muted-foreground">
                       SKU: <span className="font-mono">{row.sku || "-"}</span>
                     </p>
@@ -285,34 +314,45 @@ export function ItemVariantFlatTable({
                           {taxCodeLabel}: {row.hsnSac || "-"}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          Sales: {formatPrice(row.salesPrice ?? null, row.currency ?? "INR")}
+                          Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                         </p>
                         {showPurchasePrice ? (
                           <p className="text-[11px] text-muted-foreground">
-                            Purchase: {formatPrice(row.purchasePrice ?? null, row.currency ?? "INR")}
+                            Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
                           </p>
                         ) : null}
+                        <p className="text-[11px] text-muted-foreground">
+                          GST Slab: {getGstSlabDisplay(row.gstSlab)}
+                        </p>
                       </>
                     ) : null}
                     {showCategory ? (
                       <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
                     ) : null}
                   </div>
-                  <span
-                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                      row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    {row.isActive ? "Active" : "Inactive"}
-                  </span>
+                  {showStatus ? (
+                    <span
+                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                        row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {row.isActive ? "Active" : "Inactive"}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             ) : (
-              <div key={row.key} className="space-y-2 rounded-xl border border-border/70 bg-white p-3">
+              <div
+                key={row.key}
+                className={`space-y-2 rounded-xl border p-3 ${
+                  highlightInactiveRows && !row.isActive
+                    ? "border-amber-400 bg-amber-100"
+                    : "border-border/70 bg-white"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{row.itemName}</p>
-                    <p className="text-xs text-muted-foreground">{row.variantName}</p>
+                    <p className="text-sm font-semibold text-foreground">{getPrimaryName(row)}</p>
                     <p className="text-[11px] text-muted-foreground">
                       SKU: <span className="font-mono">{row.sku || "-"}</span>
                     </p>
@@ -325,26 +365,31 @@ export function ItemVariantFlatTable({
                           {taxCodeLabel}: {row.hsnSac || "-"}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          Sales: {formatPrice(row.salesPrice ?? null, row.currency ?? "INR")}
+                          Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                         </p>
                         {showPurchasePrice ? (
                           <p className="text-[11px] text-muted-foreground">
-                            Purchase: {formatPrice(row.purchasePrice ?? null, row.currency ?? "INR")}
+                            Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
                           </p>
                         ) : null}
+                        <p className="text-[11px] text-muted-foreground">
+                          GST Slab: {getGstSlabDisplay(row.gstSlab)}
+                        </p>
                       </>
                     ) : null}
                     {showCategory ? (
                       <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
                     ) : null}
                   </div>
-                  <span
-                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                      row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    {row.isActive ? "Active" : "Inactive"}
-                  </span>
+                  {showStatus ? (
+                    <span
+                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                        row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {row.isActive ? "Active" : "Inactive"}
+                    </span>
+                  ) : null}
                 </div>
                 {hasAction && mobileActionTrigger === "button" ? (
                   <div className="pt-1">
@@ -372,9 +417,11 @@ export function ItemVariantFlatTable({
       <DenseTable tableClassName="text-xs">
         <DenseTableHead className="bg-slate-50/95">
           <tr>
-            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.item} px-2`}>Item</DenseTableHeaderCell>
-            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.variant} px-2`}>Variant</DenseTableHeaderCell>
-            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.sku} px-2`}>SKU</DenseTableHeaderCell>
+            {showCategory ? (
+              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.category} px-2`}>Category</DenseTableHeaderCell>
+            ) : null}
+            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.item} px-2`}>Name</DenseTableHeaderCell>
+            <DenseTableHeaderCell className={`${ITEMS_LIST_SKU_COLUMN_WIDTH} px-2`}>SKU</DenseTableHeaderCell>
             {showUnit ? (
               <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.unit} px-2`}>Unit</DenseTableHeaderCell>
             ) : null}
@@ -382,15 +429,17 @@ export function ItemVariantFlatTable({
               <DenseTableHeaderCell className="w-24 px-2">{taxCodeLabel}</DenseTableHeaderCell>
             ) : null}
             {showCommercialFields ? (
-              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.price}>Sales</DenseTableHeaderCell>
+              <DenseTableHeaderCell className={ITEMS_LIST_PRICE_COLUMN_WIDTH}>Sales</DenseTableHeaderCell>
             ) : null}
             {showCommercialFields && showPurchasePrice ? (
-              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.price}>Purchase</DenseTableHeaderCell>
+              <DenseTableHeaderCell className={ITEMS_LIST_PRICE_COLUMN_WIDTH}>Purchase</DenseTableHeaderCell>
             ) : null}
-            {showCategory ? (
-              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.category} px-2`}>Category</DenseTableHeaderCell>
+            {showCommercialFields ? (
+              <DenseTableHeaderCell className="w-24 px-2">GST Slab</DenseTableHeaderCell>
             ) : null}
-            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.status} px-2`}>Status</DenseTableHeaderCell>
+            {showStatus ? (
+              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.status} px-2`}>Status</DenseTableHeaderCell>
+            ) : null}
             {hasAction ? (
               <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.action} text-right`}>Actions</DenseTableHeaderCell>
             ) : null}
@@ -402,12 +451,12 @@ export function ItemVariantFlatTable({
               <DenseTableCell
                 className="px-2 py-3 text-muted-foreground"
                 colSpan={
-                  (showCommercialFields ? 3 : 0) +
-                  (showCommercialFields && !showPurchasePrice ? -1 : 0) +
+                  (showCommercialFields ? (showPurchasePrice ? 4 : 3) : 0) +
                   (showUnit ? 1 : 0) +
                   (showCategory ? 1 : 0) +
+                  (showStatus ? 1 : 0) +
                   (hasAction ? 1 : 0) +
-                  4
+                  2
                 }
               >
                 Loading variants...
@@ -415,38 +464,69 @@ export function ItemVariantFlatTable({
             </DenseTableRow>
           ) : (
             visibleRows.map((row) => (
-              <DenseTableRow key={row.key} className="align-top">
-                <DenseTableCell className="truncate px-2 py-2.5 font-medium text-foreground">{row.itemName}</DenseTableCell>
-                <DenseTableCell className="truncate px-2 py-2.5 text-muted-foreground">{row.variantName}</DenseTableCell>
-                <DenseTableCell className="truncate px-2 py-2.5 font-mono text-[11px]">{row.sku || "-"}</DenseTableCell>
-                {showUnit ? <DenseTableCell className="truncate px-2 py-2.5">{row.unit || "-"}</DenseTableCell> : null}
-                {showCommercialFields ? (
-                  <DenseTableCell className="truncate px-2 py-2.5">{row.hsnSac || "-"}</DenseTableCell>
+              <DenseTableRow
+                key={row.key}
+                className={`align-top ${
+                  highlightInactiveRows && !row.isActive ? "bg-amber-100" : ""
+                }`}
+              >
+                {showCategory ? (
+                  <DenseTableCell className="truncate" title={row.category || "-"}>
+                    {row.category || "-"}
+                  </DenseTableCell>
+                ) : null}
+                <DenseTableCell className="truncate font-medium text-foreground" title={getPrimaryName(row)}>
+                  {getPrimaryName(row)}
+                </DenseTableCell>
+                <DenseTableCell className="truncate font-mono text-[11px]" title={row.sku || "-"}>
+                  {row.sku || "-"}
+                </DenseTableCell>
+                {showUnit ? (
+                  <DenseTableCell className="truncate" title={row.unit || "-"}>
+                    {row.unit || "-"}
+                  </DenseTableCell>
                 ) : null}
                 {showCommercialFields ? (
-                  <DenseTableCell className="truncate px-2 py-2.5">
-                    {formatPrice(row.salesPrice ?? null, row.currency ?? "INR")}
+                  <DenseTableCell className="truncate" title={row.hsnSac || "-"}>
+                    {row.hsnSac || "-"}
+                  </DenseTableCell>
+                ) : null}
+                {showCommercialFields ? (
+                  <DenseTableCell
+                    className="truncate"
+                    title={formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
+                  >
+                    {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                   </DenseTableCell>
                 ) : null}
                 {showCommercialFields && showPurchasePrice ? (
-                  <DenseTableCell className="truncate px-2 py-2.5">
-                    {formatPrice(row.purchasePrice ?? null, row.currency ?? "INR")}
+                  <DenseTableCell
+                    className="truncate"
+                    title={formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
+                  >
+                    {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
                   </DenseTableCell>
                 ) : null}
-                {showCategory ? <DenseTableCell className="truncate px-2 py-2.5">{row.category || "-"}</DenseTableCell> : null}
-                <DenseTableCell className="px-2 py-2.5">
-                  <div className="inline-flex items-center gap-2">
-                    <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                        row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      {row.isActive ? "Active" : "Inactive"}
-                    </span>
-                  </div>
-                </DenseTableCell>
+                {showCommercialFields ? (
+                  <DenseTableCell className="truncate" title={getGstSlabDisplay(row.gstSlab)}>
+                    {getGstSlabDisplay(row.gstSlab)}
+                  </DenseTableCell>
+                ) : null}
+                {showStatus ? (
+                  <DenseTableCell>
+                    <div className="inline-flex items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                          row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {row.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  </DenseTableCell>
+                ) : null}
                 {hasAction ? (
-                  <DenseTableCell className="px-2 py-2.5 text-right">
+                  <DenseTableCell className="text-right">
                     <IconButton
                       type="button"
                       icon={actionIcon}
@@ -456,7 +536,7 @@ export function ItemVariantFlatTable({
                         actionClassName ??
                         "h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
                       }
-                      aria-label={`${actionLabel} ${row.itemName}`}
+                      aria-label={`${actionLabel} ${getPrimaryName(row)}`}
                       title={actionLabel}
                     />
                   </DenseTableCell>

@@ -2,6 +2,14 @@ enum SyncOperation {
   CREATE
   UPDATE
   DELETE
+  PURGE
+
+  @@schema("sync")
+}
+
+enum SyncMutationResultStatus {
+  APPLIED
+  REJECTED
 
   @@schema("sync")
 }
@@ -19,8 +27,13 @@ model SyncMutationLog {
   base_version     Int?
   client_timestamp DateTime
   server_timestamp DateTime      @default(now())
+  result_status    SyncMutationResultStatus?
+  result_summary   String?
+  result_payload   Json?
+  processed_at     DateTime?
 
   @@index([tenant_id, server_timestamp])
+  @@index([tenant_id, processed_at])
   @@map("mutation_log")
   @@schema("sync")
 }

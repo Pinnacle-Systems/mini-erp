@@ -38,6 +38,19 @@ const toPullView = (result: {
     deltas: result.deltas,
   });
 
+const toSyncResultsView = (result: {
+  page: number;
+  limit: number;
+  total: number;
+  results: unknown[];
+}) =>
+  successResponse({
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+    results: result.results,
+  });
+
 const toOptionDiscoveryView = (optionDiscovery: {
   optionKeys: string[];
   optionValuesByKey: Record<string, string[]>;
@@ -119,6 +132,21 @@ export const optionKeys = catchAsync(async (req, res) => {
   const optionDiscovery = await syncService.getOptionKeys(String(tenantId));
 
   res.json(toOptionDiscoveryView(optionDiscovery));
+});
+
+export const syncResults = catchAsync(async (req, res) => {
+  const { tenantId, page = 1, limit = 25 } = req.query;
+  const member = await tenantService.validateMembership(req.user.id, tenantId);
+  if (!member) {
+    throw new ForbiddenError("Access denied");
+  }
+
+  const result = await syncService.getSyncResults(String(tenantId), {
+    page: Number(page),
+    limit: Number(limit),
+  });
+
+  res.json(toSyncResultsView(result));
 });
 
 export const itemCategories = catchAsync(async (req, res) => {

@@ -1,9 +1,11 @@
 import { Trash2 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
-import { VariantOptionPills } from "../molecules/VariantOptionPills";
+import { Select } from "../atoms/Select";
+import { GST_SLAB_OPTIONS } from "../../lib/gst-slabs";
 
 export type VariantOptionRowDraft = {
   id: string;
@@ -14,11 +16,13 @@ export type VariantOptionRowDraft = {
 export type ItemVariantDraft = {
   id: string;
   name: string;
+  nameManuallyEdited?: boolean;
   sku: string;
   skuManuallyEdited?: boolean;
   barcode: string;
   salesPrice?: string;
   purchasePrice?: string;
+  gstSlab?: string;
   optionRows: VariantOptionRowDraft[];
   isActive?: boolean;
   isLocked?: boolean;
@@ -28,15 +32,18 @@ export type ItemVariantDraft = {
 type ItemVariantCardsEditorProps = {
   variants: ItemVariantDraft[];
   onVariantsChange: (next: ItemVariantDraft[]) => void;
+  onVariantPurge?: (variantId: string) => void;
+  onVariantNameChange?: (variantId: string, name: string) => void;
   onVariantSkuChange?: (variantId: string, sku: string) => void;
   onAddVariant: () => void;
-  onOpenOptionModal: (variantId: string) => void;
+  showAddVariantAction?: boolean;
   addVariantLabel?: string;
   removeVariantLabel?: string;
   denseInputClassName?: string;
   showActiveToggle?: boolean;
   showPricingFields?: boolean;
   showPurchasePrice?: boolean;
+  showGstSlabField?: boolean;
   disabled?: boolean;
 };
 
@@ -47,35 +54,74 @@ const updateVariant = (
 ) =>
   variants.map((entry) => (entry.id === variantId ? updater(entry) : entry));
 
+const normalizeOptionKey = (value: string) => value.trim().toLowerCase();
+
 export function ItemVariantCardsEditor({
   variants,
   onVariantsChange,
+  onVariantPurge,
+  onVariantNameChange,
   onVariantSkuChange,
   onAddVariant,
-  onOpenOptionModal,
+  showAddVariantAction = true,
   addVariantLabel = "Add Variant",
   removeVariantLabel = "Remove variant",
   denseInputClassName = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]",
   showActiveToggle = false,
   showPricingFields = false,
   showPurchasePrice = true,
+  showGstSlabField = false,
   disabled = false,
 }: ItemVariantCardsEditorProps) {
-  const desktopGridClass = showPricingFields
-    ? showPurchasePrice
-      ? "lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,2.4fr)_4.25rem_3.5rem]"
-      : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.8fr)_minmax(0,1.8fr)_minmax(0,1.4fr)_minmax(0,2.5fr)_4.25rem_3.5rem]"
-    : "lg:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_4.25rem_3.5rem]";
+  const optionColumns = variants.reduce<Array<{ id: string; label: string }>>((columns, variant) => {
+    for (const option of variant.optionRows) {
+      const trimmed = option.key.trim();
+      if (!trimmed) continue;
+      const normalized = normalizeOptionKey(trimmed);
+      if (columns.some((column) => column.id === normalized)) continue;
+      columns.push({ id: normalized, label: trimmed });
+    }
+    return columns;
+  }, []);
+
+  const desktopGridTemplate = (() => {
+    const columnsAfterName = showPricingFields
+      ? showPurchasePrice
+        ? [
+            "minmax(0, 1.6fr)",
+            "minmax(0, 1.3fr)",
+            "minmax(0, 1.6fr)",
+            "minmax(0, 1.1fr)",
+            "minmax(0, 1.3fr)",
+          ]
+        : [
+            "minmax(0, 1.8fr)",
+            "minmax(0, 1.2fr)",
+            "minmax(0, 1.8fr)",
+            "minmax(0, 1.4fr)",
+          ]
+      : showGstSlabField
+        ? ["minmax(0, 2fr)", "minmax(0, 2fr)", "minmax(0, 1.25fr)"]
+      : ["minmax(0, 2fr)", "minmax(0, 2fr)"];
+    const optionColumnWidths = optionColumns.map(() => "minmax(0, 1.3fr)");
+    return [
+      "minmax(0, 1.8fr)",
+      ...optionColumnWidths,
+      ...columnsAfterName,
+      "4.25rem",
+      "4.5rem",
+    ].join(" ");
+  })();
 
   return (
-    <div className="grid gap-1.5 lg:self-start lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
+    <div className="grid w-full gap-1.5 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
       <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
         <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="hidden h-7 px-2 lg:inline-flex"
+          className={`hidden h-7 px-2 lg:inline-flex ${showAddVariantAction ? "" : "lg:hidden"}`}
           onClick={onAddVariant}
           disabled={disabled}
         >
@@ -84,19 +130,38 @@ export function ItemVariantCardsEditor({
       </div>
 
       <div className="grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0">
-        <div className={`hidden bg-slate-50/95 lg:grid lg:items-center lg:gap-1 lg:border-b lg:border-border/70 lg:px-2 lg:py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground ${desktopGridClass}`}>
+        <div
+          className="hidden bg-slate-50/95 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:gap-1 lg:border-b lg:border-border/70 lg:px-2 lg:py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground"
+          style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
+        >
           <span>Name</span>
+          {optionColumns.map((column) => (
+            <span key={column.id}>{column.label}</span>
+          ))}
           <span>SKU</span>
           <span>Barcode</span>
           {showPricingFields ? <span>Sales</span> : null}
           {showPricingFields && showPurchasePrice ? <span>Purchase</span> : null}
-          <span>Options</span>
+          {showPricingFields || showGstSlabField ? <span>GST Slab</span> : null}
           <span className="text-center">{showActiveToggle ? "Active" : ""}</span>
           <span className="text-center">Actions</span>
         </div>
         {variants.map((variant) => {
           const isLocked = Boolean(variant.isLocked);
           const isReadOnly = disabled || isLocked;
+          const canTriggerPersistedDelete = Boolean(onVariantPurge) && !variant.id.startsWith("temp-");
+          const removeDisabled =
+            disabled || isLocked || (!canTriggerPersistedDelete && variants.length <= 1);
+          const onRemoveVariant = () => {
+            if (canTriggerPersistedDelete) {
+              onVariantPurge?.(variant.id);
+              return;
+            }
+            onVariantsChange(variants.filter((entry) => entry.id !== variant.id));
+          };
+          const optionByColumn = new Map(
+            variant.optionRows.map((option) => [normalizeOptionKey(option.key), option] as const),
+          );
           return (
             <div
               key={variant.id}
@@ -109,7 +174,10 @@ export function ItemVariantCardsEditor({
                   and delete are locked.
                 </p>
               ) : null}
-              <div className={`grid gap-1.5 lg:items-center lg:gap-1 ${desktopGridClass}`}>
+              <div
+                className="grid gap-1.5 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:gap-1"
+                style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
+              >
                 <div className="grid gap-1">
                   <Label className="lg:hidden">Name</Label>
                   <Input
@@ -117,16 +185,32 @@ export function ItemVariantCardsEditor({
                     value={variant.name}
                     disabled={isReadOnly}
                     onChange={(event) =>
-                      onVariantsChange(
-                        updateVariant(variants, variant.id, (entry) => ({
-                          ...entry,
-                          name: event.target.value,
-                        })),
-                      )
+                      onVariantNameChange
+                        ? onVariantNameChange(variant.id, event.target.value)
+                        : onVariantsChange(
+                            updateVariant(variants, variant.id, (entry) => ({
+                              ...entry,
+                              name: event.target.value,
+                            })),
+                          )
                     }
                     placeholder="Variant name"
                   />
                 </div>
+                {optionColumns.map((column) => {
+                  const option = optionByColumn.get(column.id);
+                  return (
+                    <div
+                      key={`${variant.id}:${column.id}`}
+                      className="grid gap-1 lg:flex lg:min-h-7 lg:items-center"
+                    >
+                      <Label className="lg:hidden">{column.label}</Label>
+                      <span className="text-[11px] text-foreground lg:text-[10px]">
+                        {option?.value?.trim() ? option.value.toUpperCase() : "-"}
+                      </span>
+                    </div>
+                  );
+                })}
                 <div className="grid gap-1">
                   <Label className="lg:hidden">SKU</Label>
                   <Input
@@ -203,36 +287,33 @@ export function ItemVariantCardsEditor({
                     />
                   </div>
                 ) : null}
-                <div className="grid gap-1 lg:content-center">
-                  <Label className="lg:hidden">Options</Label>
-                  <div className="flex min-h-8 flex-wrap content-center items-center gap-1 rounded-md border border-border/70 bg-background/60 px-1.5 py-1 lg:min-h-7">
-                    <VariantOptionPills
-                      options={variant.optionRows}
-                      emptyLabel="No options"
-                      onRemoveOption={(option) =>
+                {showPricingFields || showGstSlabField ? (
+                  <div className="grid gap-1">
+                    <Label className="lg:hidden">GST Slab</Label>
+                    <Select
+                      className={denseInputClassName}
+                      value={variant.gstSlab ?? ""}
+                      disabled={isReadOnly}
+                      onChange={(event) =>
                         onVariantsChange(
                           updateVariant(variants, variant.id, (entry) => ({
                             ...entry,
-                            optionRows: entry.optionRows.filter(
-                              (optionRow) => optionRow.id !== option.id,
-                            ),
+                            gstSlab: event.target.value,
                           })),
                         )
                       }
-                      removeDisabled={isReadOnly}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2"
-                      disabled={isReadOnly}
-                      onClick={() => onOpenOptionModal(variant.id)}
                     >
-                      + Option
-                    </Button>
+                      <option value="" disabled>
+                        Select GST slab
+                      </option>
+                      {GST_SLAB_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
-                </div>
+                ) : null}
                 <div className="grid gap-1 lg:justify-items-center">
                   <Label className="lg:hidden">Active</Label>
                   {showActiveToggle ? (
@@ -258,15 +339,24 @@ export function ItemVariantCardsEditor({
                   )}
                 </div>
                 <div className="grid gap-1 lg:justify-items-center">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={removeDisabled}
+                    onClick={onRemoveVariant}
+                    className="h-7 justify-self-start gap-1.5 px-2 text-[11px] text-[#8a2b2b] hover:bg-[#fff5f5] hover:text-[#7a1f1f] lg:hidden"
+                  >
+                    <Trash2 aria-hidden="true" />
+                    <span>{removeVariantLabel}</span>
+                  </Button>
                   <IconButton
                     type="button"
                     icon={Trash2}
                     variant="ghost"
-                    disabled={disabled || variants.length <= 1 || isLocked}
-                    onClick={() =>
-                      onVariantsChange(variants.filter((entry) => entry.id !== variant.id))
-                    }
-                    className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                    disabled={removeDisabled}
+                    onClick={onRemoveVariant}
+                    className="hidden h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
                     aria-label={removeVariantLabel}
                     title={removeVariantLabel}
                   />
@@ -276,16 +366,18 @@ export function ItemVariantCardsEditor({
           );
         })}
         <div className="pt-0.5 lg:hidden">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 w-full"
-            onClick={onAddVariant}
-            disabled={disabled}
-          >
-            {addVariantLabel}
-          </Button>
+          {showAddVariantAction ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-full"
+              onClick={onAddVariant}
+              disabled={disabled}
+            >
+              {addVariantLabel}
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

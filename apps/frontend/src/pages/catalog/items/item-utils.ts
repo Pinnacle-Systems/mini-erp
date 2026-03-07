@@ -40,6 +40,19 @@ export const toUserItemErrorMessage = (error: unknown) => {
     return rejection.message;
   }
 
+  if (
+    rejection?.reasonCode === "ENTITY_IN_USE" &&
+    (
+      rejection.entity === "item" ||
+      rejection.entity === "item_variant" ||
+      rejection.entity === "item_category" ||
+      rejection.entity === "item_collection" ||
+      rejection.entity === "item_collection_item"
+    )
+  ) {
+    return rejection.message;
+  }
+
   if (!(error instanceof Error)) {
     return "Unable to save items right now.";
   }

@@ -16,11 +16,11 @@ import {
 } from "../../../design-system/molecules/Card";
 import { LookupDropdownInput } from "../../../design-system/molecules/LookupDropdownInput";
 import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
+import { TokenizerInput } from "../../../design-system/molecules/TokenizerInput";
 import {
   ItemVariantCardsEditor,
   type ItemVariantDraft,
 } from "../../../design-system/organisms/ItemVariantCardsEditor";
-import { VariantOptionModal } from "../../../design-system/organisms/VariantOptionModal";
 import { useSessionStore } from "../../../features/auth/session-business";
 import {
   getLocalItemCategoriesForStore,
@@ -34,7 +34,9 @@ import {
   type OptionDiscovery,
   type VariantInput,
 } from "../../../features/sync/engine";
+import { useToast } from "../../../features/toast/useToast";
 import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-utils";
+import { GST_SLAB_OPTIONS, normalizeGstSlab } from "../../../lib/gst-slabs";
 
 const UNIT_GROUPS = [
   {
@@ -74,6 +76,7 @@ const getOrderedUnitGroups = (itemType: "PRODUCT" | "SERVICE") => {
 };
 const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
 const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
+const BULK_OPTION_INPUT_CLASS = "h-6 rounded-md px-2 text-[10px]";
 const QUICK_ENTRY_INPUT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
 const QUICK_ENTRY_SELECT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
 const OPTION_DISCOVERY_STORAGE_KEY = "mini-erp-option-discovery";
@@ -100,6 +103,11 @@ const normalizeHsnSac = (value: string) => {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
 };
+const normalizeGstSlabDraft = (value: string) => normalizeGstSlab(value) ?? undefined;
+const normalizeBaseSku = (value: string) => {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+};
 const parsePriceDraft = (value: string) => {
   const normalized = value.trim();
   if (!normalized) return { amount: undefined as number | undefined, error: null as string | null };
@@ -112,23 +120,55 @@ const parsePriceDraft = (value: string) => {
 
 const sanitizeSkuChunk = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-const abbreviateSkuChunk = (value: string) => {
+const toCondensedSkuChunk = (value: string) => {
   const sanitized = sanitizeSkuChunk(value);
   if (!sanitized) return "";
-  const disemvoweled = `${sanitized[0]}${sanitized
-    .slice(1)
-    .replace(/[AEIOU]/g, "")}`.replace(/CK/g, "K");
-  const preferred = disemvoweled.length > 0 ? disemvoweled : sanitized;
-  const monthHeuristic = preferred.replace(/^MNTH/, "MTH");
-  if (monthHeuristic.length >= 4) return monthHeuristic.slice(0, 4);
-  if (monthHeuristic.length >= 3) return monthHeuristic.slice(0, 3);
-  return sanitized.slice(0, Math.min(4, sanitized.length));
+  const disemvoweled = `${sanitized[0]}${sanitized.slice(1).replace(/[AEIOU]/g, "")}`.replace(
+    /CK/g,
+    "K",
+  );
+  return disemvoweled.length > 0 ? disemvoweled.replace(/^MNTH/, "MTH") : sanitized;
+};
+
+const abbreviateSkuChunk = (value: string) => {
+  const condensed = toCondensedSkuChunk(value);
+  if (!condensed) return "";
+  if (condensed.length >= 4) return condensed.slice(0, 4);
+  if (condensed.length >= 3) return condensed.slice(0, 3);
+  return condensed.slice(0, Math.min(4, condensed.length));
 };
 
 const buildSkuBaseIdentifier = (itemName: string) => {
-  const normalized = sanitizeSkuChunk(itemName);
-  if (!normalized) return "ITEM";
-  return normalized.slice(0, 10);
+  const condensed = toCondensedSkuChunk(itemName);
+  if (!condensed) return "ITEM";
+  return condensed.slice(0, 10);
+};
+
+const deriveBaseSkuFromItemName = (itemName: string) => {
+  const trimmed = itemName.trim();
+  return trimmed ? buildSkuBaseIdentifier(trimmed) : "";
+};
+
+const ensureUniqueSku = (value: string, usedSkus: Set<string>) => {
+  const normalizedBase = toComparableSku(value) || "ITEM";
+  let candidate = normalizedBase;
+  let suffix = 0;
+  while (usedSkus.has(candidate)) {
+    suffix += 1;
+    candidate = `${normalizedBase}-${suffix}`;
+  }
+  return candidate;
+};
+
+const buildAutoVariantName = (
+  itemName: string,
+  optionRows: Array<{ key: string; value: string }>,
+) => {
+  const baseName = itemName.trim() || "Item";
+  const optionValues = optionRows
+    .map((entry) => entry.value.trim())
+    .filter((value) => value.length > 0);
+  return optionValues.length > 0 ? `${baseName} / ${optionValues.join(" / ")}` : baseName;
 };
 
 const toComparableSku = (value: string) => value.trim().toUpperCase();
@@ -194,7 +234,9 @@ type QuickItemDraft = {
   id: string;
   name: string;
   sku: string;
+  skuManuallyEdited: boolean;
   hsnSac: string;
+  gstSlab: string;
   salesPrice: string;
   purchasePrice: string;
   category: string;
@@ -218,10 +260,12 @@ type BulkOptionDraft = {
 const EMPTY_VARIANT = (): ItemVariantDraft => ({
   id: crypto.randomUUID(),
   name: "",
+  nameManuallyEdited: false,
   sku: "",
   barcode: "",
   salesPrice: "",
   purchasePrice: "",
+  gstSlab: "",
   skuManuallyEdited: false,
   optionRows: [],
 });
@@ -230,7 +274,9 @@ const EMPTY_QUICK_ROW = (): QuickItemDraft => ({
   id: crypto.randomUUID(),
   name: "",
   sku: "",
+  skuManuallyEdited: false,
   hsnSac: "",
+  gstSlab: "",
   salesPrice: "",
   purchasePrice: "",
   category: "",
@@ -291,9 +337,12 @@ export function AddItemPage({
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
+  const { showToast } = useToast();
 
   const [hasVariants, setHasVariants] = useState(false);
   const [name, setName] = useState("");
+  const [baseSku, setBaseSku] = useState("");
+  const [baseSkuManuallyEdited, setBaseSkuManuallyEdited] = useState(false);
   const [category, setCategory] = useState("");
   const [unit, setUnit] = useState<UnitOption>("PCS");
   const [variants, setVariants] = useState<ItemVariantDraft[]>([EMPTY_VARIANT()]);
@@ -301,28 +350,32 @@ export function AddItemPage({
   const [quickRows, setQuickRows] = useState<QuickItemDraft[]>(() =>
     buildInitialRows(),
   );
-  const [optionModalVariantId, setOptionModalVariantId] = useState<string | null>(null);
-  const [optionKeyDraft, setOptionKeyDraft] = useState("");
-  const [optionValueDraft, setOptionValueDraft] = useState("");
   const [savedOptionKeys, setSavedOptionKeys] = useState<string[]>([]);
   const [savedOptionValuesByKey, setSavedOptionValuesByKey] = useState<
     Record<string, string[]>
   >({});
   const [savedCategories, setSavedCategories] = useState<string[]>([]);
   const [reservedSkus, setReservedSkus] = useState<Set<string>>(new Set());
-  const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const showPurchasePrice = forcedItemType !== "SERVICE";
   const taxCodeLabel = forcedItemType === "SERVICE" ? "SAC" : "HSN";
   const taxCodePlaceholder =
     forcedItemType === "SERVICE" ? "SAC (6 digits)" : "HSN (4-8 digits)";
   const quickEntryDesktopGridClass = showPurchasePrice
-    ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_92px_minmax(0,1.6fr)_56px]"
-    : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_92px_minmax(0,1.6fr)_56px]";
+    ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,1fr)_92px_minmax(0,1.6fr)_56px]"
+    : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1fr)_92px_minmax(0,1.6fr)_56px]";
   const orderedUnitGroups = useMemo(
     () => getOrderedUnitGroups(forcedItemType),
     [forcedItemType],
   );
+  const reportError = (message: string) => {
+    showToast({
+      title: "Unable to save",
+      description: message,
+      tone: "error",
+      dedupeKey: `add-item-error:${message}`,
+    });
+  };
 
   const optionKeySuggestions = useMemo(() => {
     const fromVariants = variants
@@ -343,35 +396,72 @@ export function AddItemPage({
     [bulkOptions, optionKeySuggestions],
   );
 
-  const optionValueSuggestions = useMemo(() => {
-    const normalizedKey = normalizeOptionKey(optionKeyDraft);
-    if (!normalizedKey) return [];
+  const commitBulkOptionValue = (optionId: string, rawValue: string) => {
+    const value = rawValue.trim();
+    if (!value) return;
+    setBulkOptions((current) =>
+      current.map((entry) =>
+        entry.id === optionId
+          ? {
+              ...entry,
+              values: sortUnique([...entry.values, value]),
+              valueDraft: "",
+            }
+          : entry,
+      ),
+    );
+  };
+  const removeLastBulkOptionValue = (optionId: string) => {
+    setBulkOptions((current) =>
+      current.map((entry) =>
+        entry.id === optionId
+          ? {
+              ...entry,
+              values: entry.values.slice(0, Math.max(0, entry.values.length - 1)),
+            }
+          : entry,
+      ),
+    );
+  };
 
-    const fromSaved = Object.entries(savedOptionValuesByKey)
-      .filter(([key]) => normalizeOptionKey(key) === normalizedKey)
-      .flatMap(([, values]) => values);
-    const fromVariants = variants
-      .flatMap((variant) => variant.optionRows)
-      .filter((row) => normalizeOptionKey(row.key) === normalizedKey)
-      .map((row) => row.value.trim())
-      .filter(Boolean);
+  const confirmOptionValueRemoval = (optionKey: string, optionValue: string) => {
+    const affectedVariants = variants.filter((variant) =>
+      variant.optionRows.some(
+        (entry) =>
+          normalizeOptionKey(entry.key) === normalizeOptionKey(optionKey) &&
+          entry.value.trim().toLowerCase() === optionValue.trim().toLowerCase(),
+      ),
+    );
+    if (affectedVariants.length === 0) {
+      return true;
+    }
 
-    return sortUnique([...fromSaved, ...fromVariants]);
-  }, [optionKeyDraft, savedOptionValuesByKey, variants]);
+    return window.confirm(
+      [
+        `Delete "${optionValue}"?`,
+        `You are about to delete the "${optionValue}" option value from "${optionKey}".`,
+        `${affectedVariants.length} generated ${affectedVariants.length === 1 ? "variant" : "variants"} will be permanently deleted.`,
+      ].join("\n\n"),
+    );
+  };
 
-  const getBulkValueSuggestions = (key: string) => {
-    const normalizedKey = normalizeOptionKey(key);
-    if (!normalizedKey) return [];
-    return sortUnique([
-      ...Object.entries(savedOptionValuesByKey)
-        .filter(([optionKey]) => normalizeOptionKey(optionKey) === normalizedKey)
-        .flatMap(([, values]) => values),
-      ...variants
-        .flatMap((variant) => variant.optionRows)
-        .filter((row) => normalizeOptionKey(row.key) === normalizedKey)
-        .map((row) => row.value.trim())
-        .filter(Boolean),
-    ]);
+  const confirmOptionKeyRemoval = (optionKey: string) => {
+    const affectedVariants = variants.filter((variant) =>
+      variant.optionRows.some(
+        (entry) => normalizeOptionKey(entry.key) === normalizeOptionKey(optionKey),
+      ),
+    );
+    if (affectedVariants.length === 0) {
+      return true;
+    }
+
+    return window.confirm(
+      [
+        `Delete option "${optionKey}"?`,
+        `You are about to delete the "${optionKey}" option and all variants that depend on it.`,
+        `${affectedVariants.length} generated ${affectedVariants.length === 1 ? "variant" : "variants"} will be permanently deleted.`,
+      ].join("\n\n"),
+    );
   };
 
   const categorySuggestions = useMemo(
@@ -406,7 +496,9 @@ export function AddItemPage({
           (row) =>
             row.name.trim().length === 0 &&
             row.sku.trim().length === 0 &&
+            !row.skuManuallyEdited &&
             row.hsnSac.trim().length === 0 &&
+            row.gstSlab.trim().length === 0 &&
             row.salesPrice.trim().length === 0 &&
             row.purchasePrice.trim().length === 0 &&
             row.category.trim().length === 0 &&
@@ -525,6 +617,66 @@ export function AddItemPage({
   }, [activeStore]);
 
   useEffect(() => {
+    if (hasVariants) return;
+    if (quickRows.length === 0) return;
+
+    const used = new Set(reservedSkus);
+    for (const row of quickRows) {
+      if (!row.skuManuallyEdited) continue;
+      const normalized = toComparableSku(row.sku);
+      if (normalized) used.add(normalized);
+    }
+
+    let changed = false;
+    const nextRows = quickRows.map((row) => {
+      if (row.skuManuallyEdited) return row;
+
+      const baseIdentifier = deriveBaseSkuFromItemName(row.name);
+      if (!baseIdentifier) {
+        if (row.sku === "") return row;
+        changed = true;
+        return {
+          ...row,
+          sku: "",
+        };
+      }
+
+      const normalizedBase = toComparableSku(baseIdentifier);
+      let candidate = normalizedBase || "ITEM";
+      let suffix = 0;
+      while (used.has(candidate)) {
+        suffix += 1;
+        candidate = `${normalizedBase || "ITEM"}-${suffix}`;
+      }
+      used.add(candidate);
+
+      if (row.sku === candidate) return row;
+      changed = true;
+      return {
+        ...row,
+        sku: candidate,
+      };
+    });
+
+    if (changed) {
+      setQuickRows(nextRows);
+    }
+  }, [hasVariants, quickRows, reservedSkus]);
+
+  useEffect(() => {
+    if (!hasVariants) return;
+    if (baseSkuManuallyEdited) return;
+
+    const generatedBaseSku = ensureUniqueSku(
+      deriveBaseSkuFromItemName(name),
+      reservedSkus,
+    );
+    if (baseSku !== generatedBaseSku) {
+      setBaseSku(generatedBaseSku);
+    }
+  }, [baseSku, baseSkuManuallyEdited, hasVariants, name, reservedSkus]);
+
+  useEffect(() => {
     if (!hasVariants) return;
     if (variants.length === 0) return;
 
@@ -535,7 +687,8 @@ export function AddItemPage({
       if (normalized) used.add(normalized);
     }
 
-    const baseIdentifier = buildSkuBaseIdentifier(name);
+    const normalizedBaseSku = normalizeBaseSku(baseSku);
+    const baseIdentifier = normalizedBaseSku || "ITEM";
     let changed = false;
 
     const next = variants.map((variant) => {
@@ -544,8 +697,8 @@ export function AddItemPage({
       const optionParts = variant.optionRows
         .map((entry) => abbreviateSkuChunk(entry.value))
         .filter((entry) => entry.length > 0);
-      const baseSku = [baseIdentifier, ...optionParts].join("-");
-      const normalizedBase = toComparableSku(baseSku || "ITEM");
+      const variantSku = [baseIdentifier, ...optionParts].join("-");
+      const normalizedBase = toComparableSku(variantSku || "ITEM");
       let candidate = normalizedBase || "ITEM";
       let suffix = 0;
       while (used.has(candidate)) {
@@ -567,7 +720,31 @@ export function AddItemPage({
     if (changed) {
       setVariants(next);
     }
-  }, [hasVariants, name, reservedSkus, variants]);
+  }, [baseSku, hasVariants, name, reservedSkus, variants]);
+
+  useEffect(() => {
+    if (!hasVariants) return;
+    if (variants.length === 0) return;
+
+    let changed = false;
+    const next = variants.map((variant) => {
+      if (variant.nameManuallyEdited) return variant;
+
+      const generatedName = buildAutoVariantName(name, variant.optionRows);
+      if (variant.name !== generatedName) {
+        changed = true;
+        return {
+          ...variant,
+          name: generatedName,
+        };
+      }
+      return variant;
+    });
+
+    if (changed) {
+      setVariants(next);
+    }
+  }, [hasVariants, name, variants]);
 
   useEffect(() => {
     let cancelled = false;
@@ -595,59 +772,6 @@ export function AddItemPage({
     };
   }, [activeStore]);
 
-  const closeOptionModal = () => {
-    setOptionModalVariantId(null);
-    setOptionKeyDraft("");
-    setOptionValueDraft("");
-  };
-
-  const saveOptionChip = () => {
-    if (!optionModalVariantId) return;
-    const key = optionKeyDraft.trim();
-    const value = optionValueDraft.trim();
-    if (!key || !value) {
-      setFormError("Option key and value are required.");
-      return;
-    }
-    const normalizedKey = normalizeOptionKey(key);
-    const canonicalKey =
-      optionKeySuggestions.find(
-        (optionKey) => normalizeOptionKey(optionKey) === normalizedKey,
-      ) ?? key;
-
-    setVariants((current) =>
-      current.map((entry) =>
-        entry.id === optionModalVariantId
-          ? {
-              ...entry,
-              optionRows: [
-                ...entry.optionRows,
-                { id: crypto.randomUUID(), key: canonicalKey, value },
-              ],
-            }
-          : entry,
-      ),
-    );
-    setSavedOptionKeys((current) => sortUnique([...current, canonicalKey]));
-    setSavedOptionValuesByKey((current) => {
-      const mergedValues = sortUnique([
-        ...Object.entries(current)
-          .filter(([optionKey]) => normalizeOptionKey(optionKey) === normalizedKey)
-          .flatMap(([, values]) => values),
-        value,
-      ]);
-      return {
-        ...Object.fromEntries(
-          Object.entries(current).filter(
-            ([optionKey]) => normalizeOptionKey(optionKey) !== normalizedKey,
-          ),
-        ),
-        [canonicalKey]: mergedValues,
-      };
-    });
-    closeOptionModal();
-  };
-
   const applyBulkOptionsToVariants = () => {
     const normalizedOptions = bulkOptions
       .map((option) => {
@@ -664,17 +788,17 @@ export function AddItemPage({
       .filter((option) => option.key.length > 0 && option.values.length > 0);
 
     if (normalizedOptions.length === 0) {
-      setFormError("Add at least one option key with values before applying.");
+      reportError("Add at least one option key with values before applying.");
       return;
     }
     if (normalizedOptions.some((option) => option.values.length === 0)) {
-      setFormError("Each option key must include at least one value.");
+      reportError("Each option key must include at least one value.");
       return;
     }
 
     const combinations = buildOptionCombinations(normalizedOptions);
     if (combinations.length === 0) {
-      setFormError("No option combinations generated.");
+      reportError("No option combinations generated.");
       return;
     }
 
@@ -727,14 +851,12 @@ export function AddItemPage({
       }
       return next;
     });
-    setFormError(null);
   };
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!identityId || !activeStore || !isBusinessSelected) return;
 
-    setFormError(null);
     setLoading(true);
     try {
       if (!hasVariants) {
@@ -744,6 +866,7 @@ export function AddItemPage({
             name: row.name.trim(),
             sku: row.sku.trim(),
             hsnSac: row.hsnSac.trim(),
+            gstSlab: normalizeGstSlab(row.gstSlab) ?? "",
             salesPrice: row.salesPrice.trim(),
             purchasePrice: row.purchasePrice.trim(),
             category: normalizeCategory(row.category),
@@ -751,7 +874,7 @@ export function AddItemPage({
           .filter((row) => row.name.length > 0);
 
         if (rowsToCreate.length === 0) {
-          setFormError("Add at least one item name to save.");
+          reportError("Add at least one item name to save.");
           return;
         }
 
@@ -767,7 +890,7 @@ export function AddItemPage({
           })),
         );
         if (quickEntryPreflightError) {
-          setFormError(quickEntryPreflightError);
+          reportError(quickEntryPreflightError);
           return;
         }
 
@@ -775,14 +898,14 @@ export function AddItemPage({
           const row = rowsToCreate[index];
           const salesPrice = parsePriceDraft(row.salesPrice);
           if (salesPrice.error) {
-            setFormError(`Row ${index + 1}: Sales price must be a non-negative number.`);
+            reportError(`Row ${index + 1}: Sales price must be a non-negative number.`);
             return;
           }
           const purchasePrice = showPurchasePrice
             ? parsePriceDraft(row.purchasePrice)
             : { amount: undefined, error: null };
           if (showPurchasePrice && purchasePrice.error) {
-            setFormError(`Row ${index + 1}: Purchase price must be a non-negative number.`);
+            reportError(`Row ${index + 1}: Purchase price must be a non-negative number.`);
             return;
           }
         }
@@ -792,6 +915,7 @@ export function AddItemPage({
           const purchasePrice = showPurchasePrice
             ? parsePriceDraft(row.purchasePrice).amount
             : undefined;
+          const gstSlab = normalizeGstSlabDraft(row.gstSlab);
           const variantId = crypto.randomUUID();
           await queueItemCreate(activeStore, identityId, {
             itemType: forcedItemType,
@@ -806,15 +930,17 @@ export function AddItemPage({
               },
             ],
           });
-          if (typeof salesPrice === "number") {
+          if (typeof salesPrice === "number" || gstSlab) {
             await queueItemPriceUpsert(
               activeStore,
               identityId,
               variantId,
-              salesPrice,
+              salesPrice ?? null,
               "INR",
               undefined,
               "SALES",
+              "EXCLUSIVE",
+              gstSlab,
             );
           }
           if (showPurchasePrice && typeof purchasePrice === "number") {
@@ -839,11 +965,11 @@ export function AddItemPage({
       }
 
       if (!name.trim()) {
-        setFormError("Item name is required.");
+        reportError("Item name is required.");
         return;
       }
       if (variants.length === 0) {
-        setFormError("Add at least one variant.");
+        reportError("Add at least one variant.");
         return;
       }
 
@@ -861,6 +987,7 @@ export function AddItemPage({
           optionValues: Object.keys(optionValues).length > 0 ? optionValues : undefined,
         };
       });
+      const normalizedBaseSku = normalizeBaseSku(baseSku);
 
       const preflightError = await runLocalItemPreflightChecks(activeStore, [
         {
@@ -871,7 +998,7 @@ export function AddItemPage({
         },
       ]);
       if (preflightError) {
-        setFormError(preflightError);
+        reportError(preflightError);
         return;
       }
 
@@ -879,14 +1006,14 @@ export function AddItemPage({
         const variant = variants[index];
         const salesPrice = parsePriceDraft(variant.salesPrice ?? "");
         if (salesPrice.error) {
-          setFormError(`Variant ${index + 1}: Sales price must be a non-negative number.`);
+          reportError(`Variant ${index + 1}: Sales price must be a non-negative number.`);
           return;
         }
         const purchasePrice = showPurchasePrice
           ? parsePriceDraft(variant.purchasePrice ?? "")
           : { amount: undefined, error: null };
         if (showPurchasePrice && purchasePrice.error) {
-          setFormError(`Variant ${index + 1}: Purchase price must be a non-negative number.`);
+          reportError(`Variant ${index + 1}: Purchase price must be a non-negative number.`);
           return;
         }
       }
@@ -896,6 +1023,13 @@ export function AddItemPage({
         name: name.trim(),
         category: normalizeCategory(category) || undefined,
         unit,
+        metadata: normalizedBaseSku
+          ? {
+              custom: {
+                base_sku: normalizedBaseSku,
+              },
+            }
+          : undefined,
         variants: variantPayload,
       });
       for (const variant of variants) {
@@ -903,15 +1037,18 @@ export function AddItemPage({
         const purchasePrice = showPurchasePrice
           ? parsePriceDraft(variant.purchasePrice ?? "").amount
           : undefined;
-        if (typeof salesPrice === "number") {
+        const gstSlab = normalizeGstSlabDraft(variant.gstSlab ?? "");
+        if (typeof salesPrice === "number" || gstSlab) {
           await queueItemPriceUpsert(
             activeStore,
             identityId,
             variant.id,
-            salesPrice,
+            salesPrice ?? null,
             "INR",
             undefined,
             "SALES",
+            "EXCLUSIVE",
+            gstSlab,
           );
         }
         if (showPurchasePrice && typeof purchasePrice === "number") {
@@ -933,7 +1070,7 @@ export function AddItemPage({
       navigate(routeBasePath);
     } catch (error) {
       console.error(error);
-      setFormError(toUserItemErrorMessage(error));
+      reportError(toUserItemErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -979,15 +1116,35 @@ export function AddItemPage({
             <div className="rounded-lg border border-border/80 bg-white p-1.5">
               <div className="grid gap-1.5 lg:flex lg:items-end lg:justify-between lg:gap-2">
                 {hasVariants ? (
-                  <div className="grid gap-1.5 lg:min-w-0 lg:flex-1 lg:grid-cols-[minmax(0,2.2fr)_92px_minmax(0,1.7fr)]">
+                  <div className="grid gap-1.5 lg:min-w-0 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_92px_minmax(0,1.6fr)]">
                     <div className="grid gap-1">
                       <Label htmlFor="name">Name</Label>
                       <Input
                         id="name"
                         className={DENSE_INPUT_CLASS}
                         value={name}
-                        onChange={(event) => setName(event.target.value)}
+                        onChange={(event) => {
+                          setName(event.target.value);
+                        }}
                         required={hasVariants}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <Label htmlFor="base-sku">Base SKU</Label>
+                      <Input
+                        id="base-sku"
+                        className={DENSE_INPUT_CLASS}
+                        value={baseSku}
+                        onChange={(event) => {
+                          const nextBaseSku = event.target.value;
+                          setBaseSku(nextBaseSku);
+                          setBaseSkuManuallyEdited(
+                            nextBaseSku.trim().length > 0 &&
+                              nextBaseSku.trim().toUpperCase() !==
+                                ensureUniqueSku(deriveBaseSkuFromItemName(name), reservedSkus),
+                          );
+                        }}
+                        placeholder="Auto-generated from item name"
                       />
                     </div>
                     <div className="grid gap-1">
@@ -1039,7 +1196,6 @@ export function AddItemPage({
                     aria-label="Variant mode"
                     onCheckedChange={(checked) => {
                       setHasVariants(checked);
-                      setFormError(null);
                     }}
                     className="h-6 w-11 border"
                     checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
@@ -1060,6 +1216,7 @@ export function AddItemPage({
                     <span>{taxCodeLabel}</span>
                     <span>Sales</span>
                     {showPurchasePrice ? <span>Purchase</span> : null}
+                    <span>GST Slab</span>
                     <span>Unit</span>
                     <span>Category</span>
                     <span className="text-right">Actions</span>
@@ -1092,7 +1249,14 @@ export function AddItemPage({
                             setQuickRows((current) =>
                               current.map((entry) =>
                                 entry.id === row.id
-                                  ? { ...entry, sku: event.target.value }
+                                  ? {
+                                      ...entry,
+                                      sku: event.target.value,
+                                      skuManuallyEdited:
+                                        event.target.value.trim().length > 0 &&
+                                        event.target.value.trim().toUpperCase() !==
+                                          deriveBaseSkuFromItemName(entry.name),
+                                    }
                                   : entry,
                               ),
                             )
@@ -1145,6 +1309,28 @@ export function AddItemPage({
                             inputMode="decimal"
                           />
                         ) : null}
+                        <Select
+                          className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
+                          value={row.gstSlab}
+                          onChange={(event) =>
+                            setQuickRows((current) =>
+                              current.map((entry) =>
+                                entry.id === row.id
+                                  ? { ...entry, gstSlab: event.target.value }
+                                  : entry,
+                              ),
+                            )
+                          }
+                        >
+                          <option value="" disabled>
+                            Select GST slab
+                          </option>
+                          {GST_SLAB_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
                         <Select
                           className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
                           value={row.unit}
@@ -1203,13 +1389,30 @@ export function AddItemPage({
                           optionClassName="text-[10px]"
                         />
                         <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label="Delete item row"
+                            title="Delete row"
+                            className="h-8 gap-1.5 px-2 text-[#8a2b2b] hover:bg-[#fff5f5] hover:text-[#7a1f1f] lg:hidden"
+                            disabled={quickRows.length <= 1}
+                            onClick={() =>
+                              setQuickRows((current) =>
+                                current.filter((entry) => entry.id !== row.id),
+                              )
+                            }
+                          >
+                            <Trash2 aria-hidden="true" />
+                            <span>Delete row</span>
+                          </Button>
                           <IconButton
                             type="button"
                             icon={Trash2}
                             variant="ghost"
                             aria-label="Delete item row"
                             title="Delete row"
-                            className="h-8 w-8 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                            className="hidden h-8 w-8 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
                             disabled={quickRows.length <= 1}
                             onClick={() =>
                               setQuickRows((current) =>
@@ -1259,160 +1462,133 @@ export function AddItemPage({
                 <div className="rounded-lg border border-border/80 bg-white p-1.5">
                   <p className="text-[11px] font-semibold text-foreground lg:text-[10px]">Options</p>
                   <div className="mt-1.5 space-y-1.5">
-                    {bulkOptions.map((option) => (
-                      <div
-                        key={option.id}
-                        className="grid gap-1.5 rounded-md border border-border/70 bg-slate-50/60 p-1.5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_auto]"
-                      >
-                        <div className="grid gap-1">
-                          <Label className="text-[10px]">Option Name</Label>
-                          <LookupDropdownInput
-                            value={option.key}
-                            onValueChange={(value) =>
-                              setBulkOptions((current) =>
-                                current.map((entry) =>
-                                  entry.id === option.id ? { ...entry, key: value } : entry,
-                                ),
-                              )
-                            }
-                            placeholder="Size"
-                            options={bulkOptionKeySuggestions}
-                            getOptionKey={(value) => value}
-                            getOptionSearchText={(value) => value}
-                            onOptionSelect={(value) =>
-                              setBulkOptions((current) =>
-                                current.map((entry) =>
-                                  entry.id === option.id ? { ...entry, key: value } : entry,
-                                ),
-                              )
-                            }
-                            renderOption={(value) => <div className="truncate font-medium">{value}</div>}
-                            inputClassName={DENSE_INPUT_CLASS}
-                            optionClassName="text-[10px]"
-                          />
-                        </div>
-                        <div className="grid gap-1">
-                          <Label className="text-[10px]">Values</Label>
-                          <LookupDropdownInput
-                            value={option.valueDraft}
-                            onValueChange={(value) =>
-                              setBulkOptions((current) =>
-                                current.map((entry) =>
-                                  entry.id === option.id ? { ...entry, valueDraft: value } : entry,
-                                ),
-                              )
-                            }
-                            placeholder="Small"
-                            options={getBulkValueSuggestions(option.key)}
-                            getOptionKey={(value) => value}
-                            getOptionSearchText={(value) => value}
-                            onOptionSelect={(value) =>
-                              setBulkOptions((current) =>
-                                current.map((entry) =>
-                                  entry.id === option.id ? { ...entry, valueDraft: value } : entry,
-                                ),
-                              )
-                            }
-                            inputProps={{
-                              onKeyDown: (event) => {
-                                if (event.key !== "Enter") return;
-                                event.preventDefault();
-                                const value = option.valueDraft.trim();
-                                if (!value) return;
+                    <div className="space-y-1 lg:rounded-md lg:border lg:border-border/70 lg:bg-slate-50/50 lg:p-1.5">
+                      <div className="hidden items-center gap-1.5 px-1 text-[10px] font-semibold text-muted-foreground lg:grid lg:grid-cols-[220px_minmax(0,1fr)_auto]">
+                        <span>Option Name</span>
+                        <span>Values</span>
+                        <span className="sr-only">Actions</span>
+                      </div>
+                      {bulkOptions.map((option) => (
+                        <div
+                          key={option.id}
+                          className="grid gap-1.5 rounded-md border border-border/70 bg-slate-50/60 p-1.5 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:grid-cols-[220px_minmax(0,1fr)_auto]"
+                        >
+                          <div className="grid gap-1">
+                            <LookupDropdownInput
+                              value={option.key}
+                              onValueChange={(value) =>
                                 setBulkOptions((current) =>
                                   current.map((entry) =>
-                                    entry.id === option.id
-                                      ? {
-                                          ...entry,
-                                          values: sortUnique([...entry.values, value]),
-                                          valueDraft: "",
-                                        }
-                                      : entry,
+                                    entry.id === option.id ? { ...entry, key: value } : entry,
                                   ),
-                                );
-                              },
-                            }}
-                            renderOption={(value) => <div className="truncate font-medium">{value}</div>}
-                            inputClassName={DENSE_INPUT_CLASS}
-                            optionClassName="text-[10px]"
-                          />
-                          <div className="flex flex-wrap gap-1">
-                            {option.values.map((value) => (
-                              <span
-                                key={`${option.id}:${value}`}
-                                className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-white px-2 py-0.5 text-[10px]"
-                              >
-                                {value}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-4 px-1 text-muted-foreground hover:text-foreground"
-                                  onClick={() =>
-                                    setBulkOptions((current) =>
+                                )
+                              }
+                              placeholder="Size"
+                              options={bulkOptionKeySuggestions}
+                              getOptionKey={(value) => value}
+                              getOptionSearchText={(value) => value}
+                              onOptionSelect={(value) =>
+                                setBulkOptions((current) =>
+                                  current.map((entry) =>
+                                    entry.id === option.id ? { ...entry, key: value } : entry,
+                                  ),
+                                )
+                              }
+                              renderOption={(value) => <div className="truncate font-medium">{value}</div>}
+                              inputClassName={BULK_OPTION_INPUT_CLASS}
+                              optionClassName="text-[10px]"
+                            />
+                          </div>
+                          <div className="grid gap-1">
+                            <TokenizerInput
+                              values={option.values}
+                              draftValue={option.valueDraft}
+                              onDraftChange={(value) =>
+                                setBulkOptions((current) =>
+                                  current.map((entry) =>
+                                    entry.id === option.id ? { ...entry, valueDraft: value } : entry,
+                                  ),
+                                )
+                              }
+                              onCommitValue={(value) => commitBulkOptionValue(option.id, value)}
+                              onRemoveValue={(value) =>
+                                confirmOptionValueRemoval(option.key, value)
+                                  ? setBulkOptions((current) =>
                                       current.map((entry) =>
                                         entry.id === option.id
                                           ? {
                                               ...entry,
-                                              values: entry.values.filter((entryValue) => entryValue !== value),
+                                              values: entry.values.filter(
+                                                (entryValue) => entryValue !== value,
+                                              ),
                                             }
                                           : entry,
                                       ),
                                     )
-                                  }
-                                  aria-label={`Remove ${value}`}
-                                >
-                                  x
-                                </Button>
-                              </span>
-                            ))}
-                            {option.values.length === 0 ? (
-                              <span className="text-[10px] text-muted-foreground">No values added</span>
-                            ) : null}
-                          </div>
+                                  : undefined
+                              }
+                              onRemoveLastValue={() =>
+                                option.values.length > 0 &&
+                                confirmOptionValueRemoval(
+                                  option.key,
+                                  option.values[option.values.length - 1],
+                                )
+                                  ? removeLastBulkOptionValue(option.id)
+                                  : undefined
+                              }
+                            placeholder="Type and press Enter"
+                            mobilePlaceholder="Add value"
+                            inputAriaLabel="Option values"
+                          />
                         </div>
-                        <div className="flex items-start justify-end gap-1">
+                        <div className="flex items-start justify-end gap-1 lg:items-center">
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-7 px-2"
-                            onClick={() => {
-                              const value = option.valueDraft.trim();
-                              if (!value) return;
-                              setBulkOptions((current) =>
-                                current.map((entry) =>
-                                  entry.id === option.id
-                                    ? {
-                                        ...entry,
-                                        values: sortUnique([...entry.values, value]),
-                                        valueDraft: "",
-                                      }
-                                    : entry,
-                                ),
-                              );
-                            }}
+                            className="h-7 px-2 lg:hidden"
+                            disabled={option.valueDraft.trim().length === 0}
+                            onClick={() => commitBulkOptionValue(option.id, option.valueDraft)}
                           >
-                            Add Value
+                            Add value
                           </Button>
-                          <IconButton
+                          <Button
                             type="button"
-                            icon={Trash2}
-                            variant="ghost"
-                            aria-label="Remove option key"
-                            title="Remove option key"
-                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 lg:hidden"
                             disabled={bulkOptions.length <= 1}
                             onClick={() =>
-                              setBulkOptions((current) =>
-                                current.filter((entry) => entry.id !== option.id),
-                              )
+                              confirmOptionKeyRemoval(option.key)
+                                ? setBulkOptions((current) =>
+                                    current.filter((entry) => entry.id !== option.id),
+                                  )
+                                : undefined
                             }
-                            iconSize={14}
-                          />
+                          >
+                            Remove option
+                          </Button>
+                            <IconButton
+                              type="button"
+                              icon={Trash2}
+                              variant="ghost"
+                              aria-label="Remove option key"
+                              title="Remove option key"
+                              className="hidden h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
+                              disabled={bulkOptions.length <= 1}
+                              onClick={() =>
+                                confirmOptionKeyRemoval(option.key)
+                                  ? setBulkOptions((current) =>
+                                      current.filter((entry) => entry.id !== option.id),
+                                    )
+                                  : undefined
+                              }
+                              iconSize={14}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                     <div className="flex flex-wrap items-center justify-between gap-1">
                       <Button
                         type="button"
@@ -1441,6 +1617,19 @@ export function AddItemPage({
                 <ItemVariantCardsEditor
                   variants={variants}
                   onVariantsChange={setVariants}
+                  onVariantNameChange={(variantId, variantName) => {
+                    setVariants((current) =>
+                      current.map((variant) =>
+                        variant.id === variantId
+                          ? {
+                              ...variant,
+                              name: variantName,
+                              nameManuallyEdited: variantName.trim().length > 0,
+                            }
+                          : variant,
+                      ),
+                    );
+                  }}
                   onVariantSkuChange={(variantId, sku) => {
                     setVariants((current) =>
                       current.map((variant) =>
@@ -1455,10 +1644,6 @@ export function AddItemPage({
                     );
                   }}
                   onAddVariant={() => setVariants((current) => [...current, EMPTY_VARIANT()])}
-                  onOpenOptionModal={(variantId) => {
-                    setFormError(null);
-                    setOptionModalVariantId(variantId);
-                  }}
                   addVariantLabel="Add Row"
                   denseInputClassName={DENSE_INPUT_CLASS}
                   showPricingFields
@@ -1468,27 +1653,9 @@ export function AddItemPage({
               )}
             </div>
 
-            {formError ? (
-              <p className="text-[11px] text-red-600 lg:shrink-0 lg:text-[10px]">{formError}</p>
-            ) : null}
-
           </form>
         </CardContent>
       </Card>
-
-      <VariantOptionModal
-        open={Boolean(optionModalVariantId)}
-        idPrefix="add-item"
-        keyDraft={optionKeyDraft}
-        valueDraft={optionValueDraft}
-        keySuggestions={optionKeySuggestions}
-        valueSuggestions={optionValueSuggestions}
-        inputClassName={DENSE_INPUT_CLASS}
-        onKeyDraftChange={setOptionKeyDraft}
-        onValueDraftChange={setOptionValueDraft}
-        onClose={closeOptionModal}
-        onConfirm={saveOptionChip}
-      />
     </section>
   );
 }

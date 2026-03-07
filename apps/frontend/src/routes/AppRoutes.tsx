@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
-import { X } from "lucide-react";
-import { IconButton } from "../design-system/atoms/IconButton";
 import {
   hasAssignedStoreCapability,
   useSessionStore,
 } from "../features/auth/session-business";
 import { useLogoutFlow } from "../features/auth/useLogoutFlow";
-import { useSyncActions } from "../features/sync/SyncProvider";
 import { LoginPage } from "../pages/auth";
 import { AppHomePage } from "../pages/shell";
 import { AdminLayout } from "../pages/admin/layout";
@@ -64,7 +61,6 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
   const location = useLocation();
   const identityId = useSessionStore((state) => state.identityId);
   const role = useSessionStore((state) => state.role);
-  const { lastSyncError, clearSyncError } = useSyncActions();
 
   const isAuthenticated = Boolean(identityId);
   const isPlatformAdmin = role === "PLATFORM_ADMIN";
@@ -151,26 +147,10 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
               onLogout={isPlatformAdmin ? onLogout : undefined}
             />
           </div>
-          {lastSyncError ? (
-            <div className="border-t border-red-200 bg-red-50/95 px-2 py-1.5 sm:px-3 md:px-4">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[11px] text-red-700">{lastSyncError}</p>
-                <IconButton
-                  type="button"
-                  icon={X}
-                  onClick={clearSyncError}
-                  className="h-5 w-5 shrink-0 rounded-full border-none bg-transparent p-0 text-red-700 shadow-none hover:bg-red-100"
-                  aria-label="Dismiss sync error"
-                  title="Dismiss sync error"
-                  iconSize={14}
-                />
-              </div>
-            </div>
-          ) : null}
         </div>
       ) : null}
       <div
-        className={`overflow-visible overflow-x-hidden lg:h-full lg:min-h-0 lg:overflow-hidden ${isAuthenticated ? (lastSyncError ? "pt-24 sm:pt-[6.5rem]" : "pt-14 sm:pt-16") : ""}`}
+        className={`overflow-visible overflow-x-hidden lg:h-full lg:min-h-0 lg:overflow-hidden ${isAuthenticated ? "pt-14 sm:pt-16" : ""}`}
       >
         <Outlet />
       </div>

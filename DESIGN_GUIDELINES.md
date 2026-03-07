@@ -200,9 +200,11 @@ Keep those sections focused on stable rules that should apply to future work in 
 
 - Catalog authoring should separate identity definition from commercial configuration:
   item and variant structure are created in catalog flows, while prices are managed in pricing flows.
+- When a catalog screen supports both archive and purge, those actions must be surfaced as separate intents. Use `Delete`/inactive state for reversible lifecycle changes and `Purge` for permanent corrective removal.
 - Desktop variant authoring should use a dense, spreadsheet-like table as the primary editing surface once variants are generated.
 - Variant generation should support key-value option entry that can expand to cartesian combinations before save.
 - When option-based variants are shown in a table, option keys should be rendered as explicit columns for readability, with a default cap of 3 option columns before fallback behavior is applied.
+- For single-item variant authoring, do not support row-level option editing. Define options once in the top option builder, generate combinations, and treat per-row option values as labels. If a generated combination is not needed, remove the entire row.
 - Variant workflows should support two editing depths:
   dense inline fields for common attributes (name, SKU, barcode, active state, base price where applicable) and a secondary side-surface for advanced attributes.
 - Bulk operations should be scoped and explicit:

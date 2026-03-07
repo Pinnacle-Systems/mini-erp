@@ -90,7 +90,7 @@ export function DenseTableCell({
   ...props
 }: TdHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <td className={cn("px-2.5 py-2 align-middle", className)} {...props}>
+    <td className={cn("px-2.5 py-0 align-middle", className)} {...props}>
       {children}
     </td>
   );

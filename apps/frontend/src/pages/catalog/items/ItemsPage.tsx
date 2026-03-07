@@ -103,6 +103,7 @@ export function ItemsPage({
 
   const isLoading = activeStore ? loading : false;
   const visibleLoadError = activeStore ? loadError : null;
+  const hasVisibleInactiveRows = includeInactive && filteredItems.some((item) => !item.isActive);
 
   return (
     <section className="h-auto w-full lg:h-full lg:min-h-0">
@@ -175,6 +176,12 @@ export function ItemsPage({
           </fieldset>
 
           <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1">
+            {hasVisibleInactiveRows ? (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-100 px-2 py-1.5 text-[11px] text-amber-950 lg:shrink-0 lg:text-[10px]">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300" aria-hidden="true" />
+                <span>Tinted rows are inactive items included by the current filter.</span>
+              </div>
+            ) : null}
             {isLoading ? (
               <div className="card text-sm text-muted-foreground">Loading items...</div>
             ) : visibleLoadError ? (
@@ -195,6 +202,8 @@ export function ItemsPage({
                 taxCodeLabel={itemType === "SERVICE" ? "SAC" : "HSN"}
                 showCommercialFields
                 showPurchasePrice={itemType !== "SERVICE"}
+                showStatus={false}
+                highlightInactiveRows={includeInactive}
                 actionLabel="View"
                 onOpenItem={(itemId) => navigate(`${routeBasePath}/${itemId}`)}
               />

@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { SyncDelta, SyncMutation, SyncRejection } from "./types";
+import type { SyncDelta, SyncMutation, SyncRejection, SyncResultRecord } from "./types";
 
 export type OutboxItem = SyncMutation & {
   tenantId: string;
@@ -26,10 +26,16 @@ export type EntityRecord = {
   deletedAt?: string;
 };
 
+export type LocalSyncResultRecord = SyncResultRecord & {
+  tenantId: string;
+  source: "local" | "server";
+};
+
 class SyncDatabase extends Dexie {
   outbox!: Table<OutboxItem, string>;
   syncMeta!: Table<SyncMeta, [string, SyncMeta["key"]]>;
   entities!: Table<EntityRecord, [string, string, string]>;
+  syncResults!: Table<LocalSyncResultRecord, string>;
 
   constructor() {
     super("mini_erp_sync_vite");
@@ -37,6 +43,12 @@ class SyncDatabase extends Dexie {
       outbox: "&mutationId, [tenantId+status], tenantId, status, entity, createdAt",
       syncMeta: "[tenantId+key], tenantId, key",
       entities: "[tenantId+entity+entityId], tenantId, entity, updatedAt"
+    });
+    this.version(2).stores({
+      outbox: "&mutationId, [tenantId+status], tenantId, status, entity, createdAt",
+      syncMeta: "[tenantId+key], tenantId, key",
+      entities: "[tenantId+entity+entityId], tenantId, entity, updatedAt",
+      syncResults: "&mutationId, [tenantId+processedAt], tenantId, processedAt, resultStatus, entity"
     });
   }
 }
@@ -93,9 +105,16 @@ export const applyDeltas = async (tenantId: string, deltas: SyncDelta[]) => {
           : "SALES";
       const normalizedEntityId =
         delta.entity === "item_price"
-          ? `${itemPriceVariantId}:${itemPriceType}`
+          ? typeof deltaData.variantId === "string" && deltaData.variantId.trim().length > 0
+            ? `${itemPriceVariantId}:${itemPriceType}`
+            : delta.entityId
           : delta.entityId;
       const key: [string, string, string] = [tenantId, delta.entity, normalizedEntityId];
+
+      if (delta.op === "purge") {
+        await syncDb.entities.delete(key);
+        continue;
+      }
 
       if (delta.op === "delete") {
         const existing = await syncDb.entities.get(key);
@@ -127,5 +146,19 @@ export const listEntities = async (tenantId: string, entity: string) => {
   return syncDb.entities
     .where("[tenantId+entity+entityId]")
     .between([tenantId, entity, Dexie.minKey], [tenantId, entity, Dexie.maxKey])
+    .toArray();
+};
+
+export const upsertSyncResults = async (results: LocalSyncResultRecord[]) => {
+  if (results.length === 0) return;
+  await syncDb.syncResults.bulkPut(results);
+};
+
+export const listSyncResults = async (tenantId: string, limit = 25) => {
+  return syncDb.syncResults
+    .where("[tenantId+processedAt]")
+    .between([tenantId, Dexie.minKey], [tenantId, Dexie.maxKey])
+    .reverse()
+    .limit(limit)
     .toArray();
 };

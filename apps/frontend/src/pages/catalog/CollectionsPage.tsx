@@ -5,6 +5,7 @@ import { Checkbox } from "../../design-system/atoms/Checkbox";
 import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
+import { Switch } from "../../design-system/atoms/Switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../design-system/molecules/Card";
 import { ItemVariantFlatTable } from "../../design-system/organisms/ItemVariantFlatTable";
 import type { ItemVariantFlatRow } from "../../design-system/organisms/ItemVariantFlatTable";
@@ -28,6 +29,7 @@ import {
   type ItemDetailDisplay,
   type ItemDisplay,
 } from "../../features/sync/engine";
+import { useToast } from "../../features/toast/useToast";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 type CollectionVariantLink = {
@@ -51,6 +53,7 @@ export function CollectionsPage() {
   const businesses = useSessionStore((state) => state.businesses);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const activeStore = useSessionStore((state) => state.activeStore);
+  const { showToast } = useToast();
   const [items, setItems] = useState<ItemDisplay[]>([]);
   const [collections, setCollections] = useState<ItemCollectionEntry[]>([]);
   const [memberships, setMemberships] = useState<ItemCollectionMembership[]>([]);
@@ -59,13 +62,12 @@ export function CollectionsPage() {
   const [isEditingCollectionName, setIsEditingCollectionName] = useState(false);
   const [collectionNameDraft, setCollectionNameDraft] = useState("");
   const [itemSearchDraft, setItemSearchDraft] = useState("");
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [itemDetailsById, setItemDetailsById] = useState<Record<string, ItemDetailDisplay>>({});
   const [loadingDetailsById, setLoadingDetailsById] = useState<Record<string, boolean>>({});
   const [variantSelectionsByItemId, setVariantSelectionsByItemId] = useState<Record<string, string[]>>({});
   const [initialLoading, setInitialLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const activeBusiness = useMemo(
     () => businesses.find((business) => business.id === activeStore) ?? null,
     [activeStore, businesses],
@@ -84,6 +86,14 @@ export function CollectionsPage() {
   const appliedItemSearch = (itemSearchDraft.trim().length === 0 ? "" : debouncedItemSearch)
     .trim()
     .toLowerCase();
+  const reportError = useCallback((message: string) => {
+    showToast({
+      title: "Collection update failed",
+      description: message,
+      tone: "error",
+      dedupeKey: `collections-error:${message}`,
+    });
+  }, [showToast]);
 
   const refresh = async () => {
     if (!activeStore) return;
@@ -104,13 +114,11 @@ export function CollectionsPage() {
       setMemberships([]);
       setSelectedCollectionId(null);
       setInitialLoading(false);
-      setLoadError(null);
       return;
     }
 
     let cancelled = false;
     setInitialLoading(true);
-    setLoadError(null);
     void Promise.all([
       getLocalItemsForDisplay(activeStore),
       getLocalItemCollectionEntriesForStore(activeStore),
@@ -122,7 +130,6 @@ export function CollectionsPage() {
         setCollections(nextCollections);
         setMemberships(nextMemberships);
         setInitialLoading(false);
-        setLoadError(null);
       })
       .catch(() => {
         if (cancelled) return;
@@ -130,7 +137,7 @@ export function CollectionsPage() {
         setCollections([]);
         setMemberships([]);
         setInitialLoading(false);
-        setLoadError("Unable to load collections right now.");
+        reportError("Unable to load collections right now.");
       });
 
     void syncOnce(activeStore)
@@ -150,7 +157,7 @@ export function CollectionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeStore]);
+  }, [activeStore, reportError]);
 
   const buckets = useMemo<CollectionBucket[]>(() => {
     const itemById = new Map(filteredItems.map((item) => [item.entityId, item]));
@@ -261,7 +268,6 @@ export function CollectionsPage() {
     if (!name) return;
 
     setLoading(true);
-    setError(null);
     try {
       await queueItemCollectionCreate(activeStore, identityId, name);
       await syncOnce(activeStore);
@@ -271,7 +277,7 @@ export function CollectionsPage() {
       if (created) setSelectedCollectionId(created.id);
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to create collection right now.");
+      reportError("Unable to create collection right now.");
     } finally {
       setLoading(false);
     }
@@ -281,7 +287,7 @@ export function CollectionsPage() {
     if (!activeStore || !identityId || !isBusinessSelected || !activeBucket) return;
     const nextName = collectionNameDraft.trim();
     if (!nextName) {
-      setError("Collection name is required.");
+      reportError("Collection name is required.");
       return;
     }
     if (nextName === activeBucket.name) {
@@ -295,12 +301,11 @@ export function CollectionsPage() {
         bucket.id !== activeBucket.id,
     );
     if (duplicateExists) {
-      setError("A collection with that name already exists.");
+      reportError("A collection with that name already exists.");
       return;
     }
 
     setLoading(true);
-    setError(null);
     try {
       await queueItemCollectionUpdate(activeStore, identityId, activeBucket.id, nextName);
       await syncOnce(activeStore);
@@ -308,7 +313,7 @@ export function CollectionsPage() {
       setIsEditingCollectionName(false);
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to rename collection right now.");
+      reportError("Unable to rename collection right now.");
     } finally {
       setLoading(false);
     }
@@ -325,14 +330,13 @@ export function CollectionsPage() {
     if (!confirmed) return;
 
     setLoading(true);
-    setError(null);
     try {
       await queueItemCollectionDelete(activeStore, identityId, bucket.id);
       await syncOnce(activeStore);
       await refresh();
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to delete collection right now.");
+      reportError("Unable to delete collection right now.");
     } finally {
       setLoading(false);
     }
@@ -342,7 +346,7 @@ export function CollectionsPage() {
     if (!activeStore || !identityId || !isBusinessSelected || !activeBucket) return;
     const detail = (await ensureItemDetailsLoaded(itemId)) ?? itemDetailsById[itemId];
     if (!detail) {
-      setError("Unable to load variants for this item.");
+      reportError("Unable to load variants for this item.");
       return;
     }
 
@@ -353,12 +357,11 @@ export function CollectionsPage() {
       .filter((variantId) => !existingVariantIds.has(variantId));
 
     if (targetVariantIds.length === 0) {
-      setError("All selected variants are already in this collection.");
+      reportError("All selected variants are already in this collection.");
       return;
     }
 
     setLoading(true);
-    setError(null);
     try {
       for (const variantId of targetVariantIds) {
         await queueItemCollectionMembershipCreate(
@@ -376,7 +379,7 @@ export function CollectionsPage() {
       setItemSearchDraft("");
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to add variants to collection right now.");
+      reportError("Unable to add variants to collection right now.");
     } finally {
       setLoading(false);
     }
@@ -385,14 +388,13 @@ export function CollectionsPage() {
   const onRemoveVariantFromCollection = async (membershipId: string) => {
     if (!activeStore || !identityId || !isBusinessSelected) return;
     setLoading(true);
-    setError(null);
     try {
       await queueItemCollectionMembershipDelete(activeStore, identityId, membershipId);
       await syncOnce(activeStore);
       await refresh();
     } catch (nextError) {
       console.error(nextError);
-      setError("Unable to remove variant from collection right now.");
+      reportError("Unable to remove variant from collection right now.");
     } finally {
       setLoading(false);
     }
@@ -500,6 +502,17 @@ export function CollectionsPage() {
     });
   }, [activeBucket, itemDetailsById, memberships]);
 
+  const visibleCollectionVariantRows = useMemo(
+    () =>
+      includeInactive
+        ? activeCollectionVariantRows
+        : activeCollectionVariantRows.filter((row) => row.isActive),
+    [activeCollectionVariantRows, includeInactive],
+  );
+
+  const hasVisibleInactiveCollectionRows =
+    includeInactive && visibleCollectionVariantRows.some((row) => !row.isActive);
+
   return (
     <section className="grid gap-2 lg:h-full lg:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch lg:overflow-hidden">
       <Card className="p-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
@@ -540,8 +553,6 @@ export function CollectionsPage() {
                 Add
               </Button>
             </div>
-            {loadError ? <p className="text-[11px] text-red-600">{loadError}</p> : null}
-            {error ? <p className="text-[11px] text-red-600">{error}</p> : null}
           </div>
 
           <div className="space-y-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
@@ -570,18 +581,20 @@ export function CollectionsPage() {
                       {bucket.items.reduce((count, itemGroup) => count + itemGroup.links.length, 0)}
                     </span>
                   </Button>
-                  <IconButton
+                  <Button
                     type="button"
                     variant="ghost"
-                    icon={Trash2}
-                    iconSize={14}
-                    className="h-6 w-6 rounded-full text-[#8a2d2d] hover:bg-[#ffecec]"
+                    size="sm"
+                    className="h-6 gap-1 px-1.5 text-[11px] text-[#8a2d2d] hover:bg-[#fff1f1]"
                     onClick={() => {
                       void onDeleteCollection(bucket);
                     }}
                     disabled={loading}
                     aria-label={`Delete collection ${bucket.name}`}
-                  />
+                  >
+                    <Trash2 aria-hidden="true" />
+                    <span>Delete</span>
+                  </Button>
                 </div>
               ))
             )}
@@ -591,8 +604,9 @@ export function CollectionsPage() {
 
       <Card className="p-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
         <CardHeader className="space-y-1 p-0 pb-1.5 lg:shrink-0">
-          {isEditingCollectionName ? (
-            <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            {isEditingCollectionName ? (
+              <div className="flex min-w-0 flex-1 items-center gap-1">
               <Input
                 value={collectionNameDraft}
                 onChange={(event) => setCollectionNameDraft(event.target.value)}
@@ -611,6 +625,37 @@ export function CollectionsPage() {
                 disabled={loading}
                 autoFocus
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void onRenameCollection();
+                }}
+                disabled={loading}
+                className="h-8 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-[#166534] hover:bg-[#ecfdf3] lg:hidden"
+              >
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <Check aria-hidden="true" />
+                  <span>Save</span>
+                </span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setIsEditingCollectionName(false);
+                  setCollectionNameDraft(activeBucket?.name ?? "");
+                }}
+                disabled={loading}
+                className="h-8 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-foreground/70 hover:bg-white/80 lg:hidden"
+              >
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <X aria-hidden="true" />
+                  <span>Cancel</span>
+                </span>
+              </Button>
               <IconButton
                 type="button"
                 variant="ghost"
@@ -620,7 +665,7 @@ export function CollectionsPage() {
                 }}
                 disabled={loading}
                 aria-label="Save collection name"
-                className="rounded-full text-[#166534] hover:bg-[#ecfdf3]"
+                className="hidden rounded-full text-[#166534] hover:bg-[#ecfdf3] lg:inline-flex"
               />
               <IconButton
                 type="button"
@@ -632,28 +677,58 @@ export function CollectionsPage() {
                 }}
                 disabled={loading}
                 aria-label="Cancel collection rename"
-                className="rounded-full text-foreground/70 hover:bg-white/80"
+                className="hidden rounded-full text-foreground/70 hover:bg-white/80 lg:inline-flex"
               />
-            </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <CardTitle className="text-sm">{activeBucket?.name ?? "Collection"}</CardTitle>
+              </div>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-1">
+                <CardTitle className="truncate text-sm">{activeBucket?.name ?? "Collection"}</CardTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-[#2f6fb7] hover:bg-[#e9f2ff] lg:hidden"
+                onClick={() => {
+                  setIsEditingCollectionName(true);
+                  setCollectionNameDraft(activeBucket?.name ?? "");
+                }}
+                disabled={loading || !activeBucket}
+              >
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <Pencil aria-hidden="true" />
+                  <span>Edit</span>
+                </span>
+              </Button>
               <IconButton
                 type="button"
                 variant="ghost"
                 icon={Pencil}
                 iconSize={14}
-                className="h-7 w-7 rounded-full text-[#2f6fb7] hover:bg-[#e9f2ff]"
+                className="hidden h-7 w-7 rounded-full text-[#2f6fb7] hover:bg-[#e9f2ff] lg:inline-flex"
                 onClick={() => {
                   setIsEditingCollectionName(true);
                   setCollectionNameDraft(activeBucket?.name ?? "");
-                  setError(null);
                 }}
                 disabled={loading || !activeBucket}
                 aria-label="Edit collection name"
               />
+              </div>
+            )}
+            <div className="inline-flex min-h-8 items-center gap-2.5">
+              <Switch
+                id="include-inactive-collection-items"
+                aria-label="Include inactive items in collection"
+                checked={includeInactive}
+                onCheckedChange={setIncludeInactive}
+                className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
+                checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+              />
+              <Label htmlFor="include-inactive-collection-items" className="shrink-0 leading-none">
+                Include inactive
+              </Label>
             </div>
-          )}
+          </div>
 
           <div className="grid gap-1">
             <Label htmlFor="collection-item-search" className="text-[11px] font-medium lg:text-[10px]">
@@ -811,8 +886,14 @@ export function CollectionsPage() {
         </CardHeader>
 
         <CardContent className="space-y-2 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+          {hasVisibleInactiveCollectionRows ? (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-100 px-2 py-1.5 text-[11px] text-amber-950 lg:shrink-0 lg:text-[10px]">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300" aria-hidden="true" />
+              <span>Tinted rows are inactive items included by the current filter.</span>
+            </div>
+          ) : null}
           <div
-            className={`lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1 ${
+            className={`lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1 ${
               itemSearchDraft.trim().length > 0 ? "opacity-75 transition-opacity" : ""
             }`}
           >
@@ -820,18 +901,22 @@ export function CollectionsPage() {
               <div className="rounded-lg border border-border/70 bg-card px-2 py-2 text-xs text-muted-foreground">
                 Loading collection items...
               </div>
-            ) : !activeBucket || activeCollectionVariantRows.length === 0 ? (
+            ) : !activeBucket || visibleCollectionVariantRows.length === 0 ? (
               <div
                 className={`rounded-lg border border-border/70 px-2 py-2 text-xs text-muted-foreground ${
                   itemSearchDraft.trim().length > 0 ? "bg-background/70" : "bg-card"
                 }`}
               >
-                No variants mapped to this collection.
+                {activeCollectionVariantRows.length === 0
+                  ? "No variants mapped to this collection."
+                  : "No active variants are mapped to this collection."}
               </div>
             ) : (
               <ItemVariantFlatTable
-                rows={activeCollectionVariantRows}
+                rows={visibleCollectionVariantRows}
                 activeStore={activeStore}
+                showStatus={false}
+                highlightInactiveRows={includeInactive}
                 actionLabel="Remove"
                 actionIcon={Trash2}
                 actionClassName="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2d2d] hover:bg-[#ffecec]"
