@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Eye, Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
+import { Switch } from "../../design-system/atoms/Switch";
+import { Textarea } from "../../design-system/atoms/Textarea";
+import { LookupDropdownInput } from "../../design-system/molecules/LookupDropdownInput";
 import {
   DenseTable,
   DenseTableBody,
@@ -13,47 +17,107 @@ import {
   DenseTableRow,
 } from "../../design-system/molecules/DenseTable";
 import { useSessionStore } from "../../features/auth/session-business";
+import {
+  getLocalCustomers,
+  getLocalItemPricingRowsForDisplay,
+  getLocalStockLevels,
+  getLocalStockVariantOptions,
+  queueCustomerCreate,
+  syncOnce,
+  type CustomerRow,
+  type ItemPricingRow,
+  type StockLevelRow,
+  type StockVariantOption,
+} from "../../features/sync/engine";
+import { formatGstSlabLabel } from "../../lib/gst-slabs";
 
 type BillLine = {
   id: string;
+  variantId: string;
   description: string;
   quantity: string;
   unitPrice: string;
   taxRate: string;
+  taxMode: "EXCLUSIVE" | "INCLUSIVE";
+  unit: string;
+  stockOnHand: number | null;
 };
 
 type SavedBillDraft = {
   id: string;
   billNumber: string;
+  transactionType: "CASH" | "CREDIT";
+  customerId: string | null;
   customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  customerGstNo: string;
   notes: string;
   savedAt: string;
   lines: BillLine[];
 };
 
-const STORAGE_KEY_PREFIX = "mini_erp_sales_bill_drafts_v1";
+type SalesItemOption = StockVariantOption & {
+  description: string;
+  priceAmount: number | null;
+  currency: string;
+  gstLabel: string;
+  taxRate: number;
+  taxMode: "EXCLUSIVE" | "INCLUSIVE";
+  quantityOnHand: number | null;
+};
+
+const STORAGE_KEY_PREFIX = "mini_erp_sales_invoice_drafts_v2";
+
+type BillingRouteState = {
+  returnTo?: string;
+  invoiceDraft?: Partial<SavedBillDraft>;
+  createdCustomer?: Partial<CustomerRow>;
+  customerMessage?: string;
+  customerPrefill?: {
+    name?: string;
+    phone?: string;
+  };
+};
 
 const createLine = (): BillLine => ({
   id: crypto.randomUUID(),
+  variantId: "",
   description: "",
   quantity: "1",
   unitPrice: "",
   taxRate: "0",
+  taxMode: "EXCLUSIVE",
+  unit: "PCS",
+  stockOnHand: null,
 });
 
-const createBillNumber = (count: number) =>
-  `SB-${String(count + 1).padStart(4, "0")}`;
+const createBillNumber = (count: number) => `INV-${String(count + 1).padStart(4, "0")}`;
 
 const toNumber = (value: string) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const getLineTotals = (line: BillLine) => {
+const toTaxRateNumber = (value: string) => Math.max(0, toNumber(value));
+
+const getLineTotals = (line: Pick<BillLine, "quantity" | "unitPrice" | "taxRate" | "taxMode">) => {
   const quantity = Math.max(0, toNumber(line.quantity));
   const unitPrice = Math.max(0, toNumber(line.unitPrice));
-  const taxRate = Math.max(0, toNumber(line.taxRate));
-  const subTotal = quantity * unitPrice;
+  const taxRate = toTaxRateNumber(line.taxRate);
+  const grossAmount = quantity * unitPrice;
+
+  if (line.taxMode === "INCLUSIVE" && taxRate > 0) {
+    const subTotal = grossAmount / (1 + taxRate / 100);
+    const taxTotal = grossAmount - subTotal;
+    return {
+      subTotal,
+      taxTotal,
+      total: grossAmount,
+    };
+  }
+
+  const subTotal = grossAmount;
   const taxTotal = subTotal * (taxRate / 100);
   return {
     subTotal,
@@ -62,6 +126,9 @@ const getLineTotals = (line: BillLine) => {
   };
 };
 
+const getDraftGrandTotal = (lines: BillLine[]) =>
+  lines.reduce((sum, line) => sum + getLineTotals(line).total, 0);
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -69,10 +136,36 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
+const formatDateTime = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
+};
+
+const sortCustomers = (rows: CustomerRow[]) =>
+  [...rows].sort((left, right) => {
+    const nameOrder = left.name.localeCompare(right.name);
+    if (nameOrder !== 0) return nameOrder;
+    return left.entityId.localeCompare(right.entityId);
+  });
+
+const normalizePhoneCandidate = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const normalized = trimmed.replace(/[^\d+]/g, "");
+  return normalized.replace(/\D/g, "").length >= 7 ? normalized : "";
+};
+
+const parseGstRate = (value: string | null | undefined) => {
+  if (!value || value === "EXEMPT") return 0;
+  const parsed = Number(value.replace("%", ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const hasLineContent = (line: BillLine) =>
   Boolean(
     line.description.trim() ||
       line.unitPrice.trim() ||
+      line.variantId.trim() ||
       (line.quantity.trim() && line.quantity.trim() !== "0"),
   );
 
@@ -85,8 +178,29 @@ const normalizeLines = (lines: BillLine[]) => {
         quantity: line.quantity.trim() || "1",
         unitPrice: line.unitPrice.trim() || "0",
         taxRate: line.taxRate.trim() || "0",
+        unit: line.unit.trim() || "PCS",
       }))
     : [];
+};
+
+const normalizeStoredLine = (rawLine: unknown): BillLine => {
+  const line =
+    rawLine && typeof rawLine === "object" ? (rawLine as Record<string, unknown>) : {};
+
+  return {
+    id: typeof line.id === "string" && line.id.trim() ? line.id : crypto.randomUUID(),
+    variantId: typeof line.variantId === "string" ? line.variantId : "",
+    description: typeof line.description === "string" ? line.description : "",
+    quantity: typeof line.quantity === "string" ? line.quantity : "1",
+    unitPrice: typeof line.unitPrice === "string" ? line.unitPrice : "",
+    taxRate: typeof line.taxRate === "string" ? line.taxRate : "0",
+    taxMode: line.taxMode === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
+    unit: typeof line.unit === "string" && line.unit.trim() ? line.unit : "PCS",
+    stockOnHand:
+      typeof line.stockOnHand === "number" && Number.isFinite(line.stockOnHand)
+        ? line.stockOnHand
+        : null,
+  };
 };
 
 const loadStoredDrafts = (activeStore: string | null) => {
@@ -96,7 +210,35 @@ const loadStoredDrafts = (activeStore: string | null) => {
 
   try {
     const storedValue = window.localStorage.getItem(`${STORAGE_KEY_PREFIX}:${activeStore}`);
-    return storedValue ? ((JSON.parse(storedValue) as SavedBillDraft[]) ?? []) : [];
+    const parsed = storedValue ? (JSON.parse(storedValue) as unknown) : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map((entry, index) => {
+      const draft =
+        entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+      const lines = Array.isArray(draft.lines) ? draft.lines.map(normalizeStoredLine) : [];
+      return {
+        id: typeof draft.id === "string" && draft.id.trim() ? draft.id : `draft-${index + 1}`,
+        billNumber:
+          typeof draft.billNumber === "string" && draft.billNumber.trim()
+            ? draft.billNumber
+            : createBillNumber(index),
+        transactionType: draft.transactionType === "CREDIT" ? "CREDIT" : "CASH",
+        customerId: typeof draft.customerId === "string" ? draft.customerId : null,
+        customerName: typeof draft.customerName === "string" ? draft.customerName : "",
+        customerPhone: typeof draft.customerPhone === "string" ? draft.customerPhone : "",
+        customerAddress: typeof draft.customerAddress === "string" ? draft.customerAddress : "",
+        customerGstNo: typeof draft.customerGstNo === "string" ? draft.customerGstNo : "",
+        notes: typeof draft.notes === "string" ? draft.notes : "",
+        savedAt:
+          typeof draft.savedAt === "string" && draft.savedAt.trim()
+            ? draft.savedAt
+            : new Date().toISOString(),
+        lines: lines.length > 0 ? lines : [createLine()],
+      } satisfies SavedBillDraft;
+    });
   } catch {
     return [];
   }
@@ -123,19 +265,188 @@ function BillsWorkspace({
   activeStore: string | null;
   activeBusinessName: string;
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const identityId = useSessionStore((state) => state.identityId);
   const [initialDrafts] = useState<SavedBillDraft[]>(() => loadStoredDrafts(activeStore));
   const [drafts, setDrafts] = useState<SavedBillDraft[]>(initialDrafts);
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [billNumber, setBillNumber] = useState(() => createBillNumber(initialDrafts.length));
+  const [transactionType, setTransactionType] = useState<"CASH" | "CREDIT">("CASH");
+  const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerGstNo, setCustomerGstNo] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<BillLine[]>([createLine()]);
   const [saveMessage, setSaveMessage] = useState<string | null>(
-    activeStore ? null : "Select a business to start a bill.",
+    activeStore ? null : "Select a business to start a sales invoice.",
   );
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [itemOptions, setItemOptions] = useState<SalesItemOption[]>([]);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [customerActionLoading, setCustomerActionLoading] = useState(false);
 
   const storageKey = activeStore ? `${STORAGE_KEY_PREFIX}:${activeStore}` : null;
+
+  useEffect(() => {
+    if (!activeStore) {
+      return;
+    }
+
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLookupLoading(true);
+      setLookupError(null);
+    });
+
+    void Promise.all([
+      getLocalCustomers(activeStore),
+      getLocalStockVariantOptions(activeStore),
+      getLocalItemPricingRowsForDisplay(activeStore, undefined, false, "SALES"),
+      getLocalStockLevels(activeStore),
+    ])
+      .then(([nextCustomers, stockOptions, pricingRows, stockLevels]) => {
+        if (cancelled) return;
+
+        const pricingByVariantId = new Map(
+          pricingRows.map((row) => [row.variantId, row] as const),
+        );
+        const stockLevelByVariantId = new Map(
+          stockLevels.map((row) => [row.variantId, row] as const),
+        );
+
+        setCustomers(sortCustomers(nextCustomers.filter((customer) => customer.isActive)));
+        setItemOptions(
+          buildSalesItemOptions(stockOptions, pricingByVariantId, stockLevelByVariantId),
+        );
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+        if (cancelled) return;
+        setCustomers([]);
+        setItemOptions([]);
+        setLookupError("Unable to load customers or item lookups right now.");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLookupLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore]);
+
+  const activeCustomer = useMemo(() => {
+    if (customerId) {
+      return customers.find((customer) => customer.entityId === customerId) ?? null;
+    }
+    const normalizedName = customerName.trim().toLowerCase();
+    const normalizedPhone = normalizePhoneCandidate(customerName);
+    if (!normalizedName && !normalizedPhone) return null;
+    return (
+      customers.find((customer) => {
+        const nameMatches =
+          normalizedName.length > 0 && customer.name.trim().toLowerCase() === normalizedName;
+        const phoneMatches =
+          normalizedPhone.length > 0 &&
+          normalizePhoneCandidate(customer.phone) === normalizedPhone;
+        return nameMatches || phoneMatches;
+      }) ?? null
+    );
+  }, [customerId, customerName, customers]);
+
+  const routeState =
+    location.state && typeof location.state === "object"
+      ? (location.state as BillingRouteState)
+      : null;
+
+  useEffect(() => {
+    if (!routeState) {
+      return;
+    }
+
+    const draft = routeState.invoiceDraft;
+    if (draft) {
+      setViewMode("editor");
+      setActiveDraftId(typeof draft.id === "string" ? draft.id : null);
+      setBillNumber(
+        typeof draft.billNumber === "string" && draft.billNumber.trim()
+          ? draft.billNumber
+          : createBillNumber(drafts.length),
+      );
+      setTransactionType(draft.transactionType === "CREDIT" ? "CREDIT" : "CASH");
+      setCustomerId(typeof draft.customerId === "string" ? draft.customerId : null);
+      setCustomerName(typeof draft.customerName === "string" ? draft.customerName : "");
+      setCustomerPhone(typeof draft.customerPhone === "string" ? draft.customerPhone : "");
+      setCustomerAddress(typeof draft.customerAddress === "string" ? draft.customerAddress : "");
+      setCustomerGstNo(typeof draft.customerGstNo === "string" ? draft.customerGstNo : "");
+      setNotes(typeof draft.notes === "string" ? draft.notes : "");
+      setLines(
+        Array.isArray(draft.lines) && draft.lines.length > 0
+          ? draft.lines.map(normalizeStoredLine)
+          : [createLine()],
+      );
+      if (!routeState.createdCustomer && !routeState.customerMessage) {
+        setSaveMessage("Returned to billing. The invoice draft was restored.");
+      }
+    }
+
+    const createdCustomer = routeState.createdCustomer;
+    if (createdCustomer) {
+      const hydratedCustomer: CustomerRow = {
+        entityId:
+          typeof createdCustomer.entityId === "string" && createdCustomer.entityId.trim()
+            ? createdCustomer.entityId
+            : crypto.randomUUID(),
+        name: typeof createdCustomer.name === "string" ? createdCustomer.name : "",
+        phone: typeof createdCustomer.phone === "string" ? createdCustomer.phone : "",
+        email: typeof createdCustomer.email === "string" ? createdCustomer.email : "",
+        address: typeof createdCustomer.address === "string" ? createdCustomer.address : "",
+        gstNo: typeof createdCustomer.gstNo === "string" ? createdCustomer.gstNo : "",
+        isActive: true,
+        deletedAt: null,
+        serverVersion:
+          typeof createdCustomer.serverVersion === "number"
+            ? createdCustomer.serverVersion
+            : 0,
+        pending: Boolean(createdCustomer.pending),
+      };
+      setCustomers((current) =>
+        sortCustomers([
+          ...current.filter((customer) => customer.entityId !== hydratedCustomer.entityId),
+          hydratedCustomer,
+        ]),
+      );
+      applyCustomerSnapshot(
+        hydratedCustomer,
+        setCustomerId,
+        setCustomerName,
+        setCustomerPhone,
+        setCustomerAddress,
+        setCustomerGstNo,
+      );
+    }
+
+    if (routeState.customerMessage) {
+      setSaveMessage(routeState.customerMessage);
+    }
+
+    navigate(location.pathname, { replace: true, state: null });
+  }, [drafts.length, location.pathname, navigate, routeState]);
+
+  const phoneCandidate = useMemo(() => normalizePhoneCandidate(customerName), [customerName]);
+  const canQuickCreateFromPhone =
+    transactionType === "CASH" &&
+    phoneCandidate.length > 0 &&
+    !activeCustomer &&
+    Boolean(activeStore) &&
+    Boolean(identityId);
 
   const totals = lines.reduce(
     (summary, line) => {
@@ -158,25 +469,30 @@ function BillsWorkspace({
   const resetEditor = (nextDraftCount: number) => {
     setActiveDraftId(null);
     setBillNumber(createBillNumber(nextDraftCount));
+    setTransactionType("CASH");
+    setCustomerId(null);
     setCustomerName("");
+    setCustomerPhone("");
+    setCustomerAddress("");
+    setCustomerGstNo("");
     setNotes("");
     setLines([createLine()]);
   };
 
   const openNewDraft = () => {
     resetEditor(drafts.length);
-    setSaveMessage(activeStore ? null : "Select a business to start a bill.");
+    setSaveMessage(activeStore ? null : "Select a business to start a sales invoice.");
     setViewMode("editor");
   };
 
   const saveDraft = () => {
     if (!storageKey) {
-      setSaveMessage("Select a business before saving a bill.");
+      setSaveMessage("Select a business before saving an invoice draft.");
       return;
     }
 
-    if (!customerName.trim()) {
-      setSaveMessage("Add a customer name before saving the bill draft.");
+    if (transactionType === "CREDIT" && !activeCustomer) {
+      setSaveMessage("Credit invoices require an existing customer. Create or select one first.");
       return;
     }
 
@@ -189,7 +505,12 @@ function BillsWorkspace({
     const nextDraft: SavedBillDraft = {
       id: activeDraftId ?? crypto.randomUUID(),
       billNumber: billNumber.trim() || createBillNumber(drafts.length),
+      transactionType,
+      customerId,
       customerName: customerName.trim(),
+      customerPhone: customerPhone.trim(),
+      customerAddress: customerAddress.trim(),
+      customerGstNo: customerGstNo.trim(),
       notes: notes.trim(),
       savedAt: new Date().toISOString(),
       lines: normalizedLines,
@@ -203,13 +524,18 @@ function BillsWorkspace({
     setActiveDraftId(nextDraft.id);
     setBillNumber(nextDraft.billNumber);
     setLines(nextDraft.lines);
-    setSaveMessage("Draft saved locally on this device.");
+    setSaveMessage("Invoice draft saved locally on this device. Posting is not wired yet.");
   };
 
   const loadDraft = (draft: SavedBillDraft) => {
     setActiveDraftId(draft.id);
     setBillNumber(draft.billNumber);
+    setTransactionType(draft.transactionType);
+    setCustomerId(draft.customerId);
     setCustomerName(draft.customerName);
+    setCustomerPhone(draft.customerPhone);
+    setCustomerAddress(draft.customerAddress);
+    setCustomerGstNo(draft.customerGstNo);
     setNotes(draft.notes);
     setLines(draft.lines.map((line) => ({ ...line })));
     setSaveMessage(null);
@@ -229,7 +555,39 @@ function BillsWorkspace({
   const updateLine = (lineId: string, field: keyof BillLine, value: string) => {
     setLines((currentLines) =>
       currentLines.map((line) =>
-        line.id === lineId ? { ...line, [field]: value } : line,
+        line.id === lineId ? { ...line, [field]: value, ...(field === "description" ? { variantId: "" } : {}) } : line,
+      ),
+    );
+  };
+
+  const applyCustomer = (customer: CustomerRow) =>
+    applyCustomerSnapshot(
+      customer,
+      setCustomerId,
+      setCustomerName,
+      setCustomerPhone,
+      setCustomerAddress,
+      setCustomerGstNo,
+    );
+
+  const applyLineItem = (lineId: string, option: SalesItemOption) => {
+    setLines((currentLines) =>
+      currentLines.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              variantId: option.variantId,
+              description: option.description,
+              unitPrice:
+                option.priceAmount !== null && Number.isFinite(option.priceAmount)
+                  ? String(option.priceAmount)
+                  : line.unitPrice,
+              taxRate: String(option.taxRate),
+              taxMode: option.taxMode,
+              unit: option.unit,
+              stockOnHand: option.quantityOnHand,
+            }
+          : line,
       ),
     );
   };
@@ -243,26 +601,98 @@ function BillsWorkspace({
     });
   };
 
+  const buildRouteInvoiceDraft = (): SavedBillDraft => ({
+    id: activeDraftId ?? crypto.randomUUID(),
+    billNumber,
+    transactionType,
+    customerId,
+    customerName,
+    customerPhone,
+    customerAddress,
+    customerGstNo,
+    notes,
+    savedAt: new Date().toISOString(),
+    lines,
+  });
+
+  const openCustomerCreate = () => {
+    navigate("/app/customers/new", {
+      state: {
+        returnTo: "/app/sales-bills",
+        invoiceDraft: buildRouteInvoiceDraft(),
+        customerPrefill: {
+          name: phoneCandidate ? "" : customerName.trim(),
+          phone: phoneCandidate,
+        },
+      } satisfies BillingRouteState,
+    });
+  };
+
+  const quickCreateCustomerFromPhone = async () => {
+    if (!activeStore || !identityId || !phoneCandidate || customerActionLoading) {
+      return;
+    }
+
+    setCustomerActionLoading(true);
+    setSaveMessage(null);
+    try {
+      const entityId = crypto.randomUUID();
+      await queueCustomerCreate(
+        activeStore,
+        identityId,
+        {
+          name: phoneCandidate,
+          phone: phoneCandidate,
+          email: "",
+          address: "",
+          gstNo: "",
+        },
+        entityId,
+      );
+      await syncOnce(activeStore);
+      const nextCustomer: CustomerRow = {
+        entityId,
+        name: phoneCandidate,
+        phone: phoneCandidate,
+        email: "",
+        address: "",
+        gstNo: "",
+        isActive: true,
+        deletedAt: null,
+        serverVersion: 0,
+        pending: false,
+      };
+      setCustomers((current) => sortCustomers([...current, nextCustomer]));
+      applyCustomer(nextCustomer);
+      setSaveMessage("Customer created from phone for this cash invoice.");
+    } catch (error) {
+      console.error(error);
+      setSaveMessage("Unable to create a customer from this phone number right now.");
+    } finally {
+      setCustomerActionLoading(false);
+    }
+  };
+
   if (viewMode === "list") {
     return (
       <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
         <div className="flex flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:min-h-0 lg:flex-1">
           <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
-              <h1 className="text-sm font-semibold text-foreground">Sales Bills</h1>
+              <h1 className="text-sm font-semibold text-foreground">Sales Bills / Invoices</h1>
               <p className="text-xs text-muted-foreground">
-                Recent bill drafts stay local until the backend posting flow is wired.
+                Recent invoice drafts stay local until the backend sales posting flow is wired.
               </p>
             </div>
             <Button type="button" size="sm" onClick={openNewDraft}>
-              Create Bill
+              Create Invoice
             </Button>
           </div>
 
           <div className="space-y-2 pt-2 lg:hidden">
             {drafts.length === 0 ? (
               <div className="rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
-                No recent bills yet. Create a bill to start this transaction flow.
+                No recent invoices yet. Create an invoice to start this transaction flow.
               </div>
             ) : (
               drafts.map((draft) => (
@@ -282,11 +712,11 @@ function BillsWorkspace({
                       </div>
                     </div>
                     <span className="shrink-0 text-[10px] text-muted-foreground">
-                      {draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}
+                      {formatCurrency(getDraftGrandTotal(draft.lines))}
                     </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                    <span>{new Date(draft.savedAt).toLocaleString()}</span>
+                    <span>{formatDateTime(draft.savedAt)}</span>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -316,17 +746,18 @@ function BillsWorkspace({
           <div className="hidden lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {drafts.length === 0 ? (
               <div className="mt-2 rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
-                No recent bills yet. Create a bill to start this transaction flow.
+                No recent invoices yet. Create an invoice to start this transaction flow.
               </div>
             ) : (
               <DenseTable className="mt-2 rounded-xl border-border/80">
                 <DenseTableHead>
                   <tr>
-                    <DenseTableHeaderCell className="w-[18%]">Bill</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[26%]">Customer</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[14%]">Lines</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[24%]">Saved</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[18%] text-right">Actions</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[14%]">Invoice</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[24%]">Customer</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[12%]">Lines</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[16%]">Total</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[20%]">Saved</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[14%] text-right">Actions</DenseTableHeaderCell>
                   </tr>
                 </DenseTableHead>
                 <DenseTableBody>
@@ -339,9 +770,10 @@ function BillsWorkspace({
                       <DenseTableCell>
                         {draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}
                       </DenseTableCell>
-                      <DenseTableCell>
-                        {new Date(draft.savedAt).toLocaleString()}
+                      <DenseTableCell className="font-semibold text-foreground">
+                        {formatCurrency(getDraftGrandTotal(draft.lines))}
                       </DenseTableCell>
+                      <DenseTableCell>{formatDateTime(draft.savedAt)}</DenseTableCell>
                       <DenseTableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <IconButton
@@ -381,10 +813,10 @@ function BillsWorkspace({
         <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-1">
             <h1 className="text-sm font-semibold text-foreground">
-              {activeDraftId ? "Edit Bill" : "Create Bill"}
+              {activeDraftId ? "Edit Sales Invoice" : "Create Sales Invoice"}
             </h1>
             <p className="text-xs text-muted-foreground">
-              Enter bill details, then review the summary directly below the line items.
+              Select a customer, add bill lines, and review the invoice totals before saving.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -397,39 +829,146 @@ function BillsWorkspace({
           </div>
         </div>
 
-        <div className="grid gap-2 py-2 lg:grid-cols-[repeat(3,minmax(0,1fr))]">
-          <div className="space-y-1">
-            <Label htmlFor="sales-bill-number">Bill number</Label>
+        <div className="grid gap-2 py-2 md:grid-cols-12 md:items-start">
+          <div className="space-y-1 md:col-span-2">
+            <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
+            <div className="flex h-8 items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-2 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
+              <span className={transactionType === "CASH" ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                Cash
+              </span>
+              <Switch
+                id="sales-bill-transaction-switch"
+                checked={transactionType === "CREDIT"}
+                onCheckedChange={(checked) => setTransactionType(checked ? "CREDIT" : "CASH")}
+                aria-label="Toggle cash or credit transaction"
+                className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
+                checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+              />
+              <span className={transactionType === "CREDIT" ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                Credit
+              </span>
+            </div>
+          </div>
+          <div className="space-y-1 md:col-span-2">
+            <Label htmlFor="sales-bill-number">Invoice number</Label>
             <Input
               id="sales-bill-number"
               value={billNumber}
               onChange={(event) => setBillNumber(event.target.value)}
             />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 md:col-span-5">
             <Label htmlFor="sales-bill-customer">Customer</Label>
-            <Input
+            <LookupDropdownInput
               id="sales-bill-customer"
               value={customerName}
-              onChange={(event) => setCustomerName(event.target.value)}
-              placeholder="Customer name"
+              onValueChange={(value) => {
+                setCustomerName(value);
+                setCustomerId(null);
+                if (!value.trim()) {
+                  setCustomerPhone("");
+                  setCustomerAddress("");
+                  setCustomerGstNo("");
+                }
+              }}
+              options={customers}
+              loading={lookupLoading}
+              loadingLabel="Loading customers"
+              placeholder="Search or enter customer"
+              onOptionSelect={applyCustomer}
+              getOptionKey={(customer) => customer.entityId}
+              getOptionSearchText={(customer) =>
+                `${customer.name} ${customer.phone} ${customer.email} ${customer.gstNo}`
+              }
+              renderOption={(customer) => (
+                <div className="space-y-0.5">
+                  <div className="font-medium text-foreground">{customer.name}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {[customer.phone, customer.gstNo].filter(Boolean).join("  |  ") || "No phone or GST"}
+                  </div>
+                </div>
+              )}
             />
+            {transactionType === "CREDIT" && !activeCustomer ? (
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="text-amber-700">Credit invoices require an existing customer.</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                  onClick={openCustomerCreate}
+                >
+                  Create customer
+                </Button>
+              </div>
+            ) : null}
+            {transactionType === "CASH" && !activeCustomer ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <span className="text-muted-foreground">
+                  Customer is optional for cash invoices.
+                </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  {canQuickCreateFromPhone ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                      onClick={() => {
+                        void quickCreateCustomerFromPhone();
+                      }}
+                      disabled={customerActionLoading}
+                    >
+                      {customerActionLoading ? "Creating..." : "Quick create from phone"}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                    onClick={openCustomerCreate}
+                  >
+                    Create customer
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 md:col-span-3">
             <Label htmlFor="sales-bill-notes">Notes</Label>
-            <Input
+            <Textarea
               id="sales-bill-notes"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               placeholder="Optional internal note"
+              rows={3}
+              className="min-h-[5.5rem] w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:h-[4.5rem] md:min-h-[4.5rem] md:px-2.5 md:py-1.5 md:text-[11px]"
             />
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:overflow-y-auto">
-          <div className="flex items-center justify-between">
+        <div className="grid gap-2 pb-2 md:grid-cols-[repeat(3,minmax(0,1fr))]">
+          <InfoField label="Phone" value={activeCustomer?.phone || customerPhone || "Not provided"} />
+          <InfoField label="GST" value={activeCustomer?.gstNo || customerGstNo || "Not provided"} />
+          <InfoField
+            label="Bill to"
+            value={activeCustomer?.address || customerAddress || "No billing address"}
+          />
+        </div>
+
+        {lookupError ? (
+          <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
+            {lookupError}
+          </div>
+        ) : null}
+
+        <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2 md:overflow-hidden">
+          <div className="flex items-center justify-between md:shrink-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-              Line Items
+              Invoice Lines
             </div>
             <Button
               type="button"
@@ -441,7 +980,7 @@ function BillsWorkspace({
             </Button>
           </div>
 
-          <div className="space-y-2 lg:hidden">
+          <div className="space-y-2 md:hidden">
             {lines.map((line, index) => {
               const lineTotals = getLineTotals(line);
               return (
@@ -460,16 +999,21 @@ function BillsWorkspace({
                   </div>
                   <div className="grid gap-2">
                     <div className="space-y-1">
-                      <Label htmlFor={`sales-line-mobile-description-${line.id}`}>
-                        Description
-                      </Label>
-                      <Input
+                      <Label htmlFor={`sales-line-mobile-description-${line.id}`}>Item</Label>
+                      <LookupDropdownInput
                         id={`sales-line-mobile-description-${line.id}`}
                         value={line.description}
-                        onChange={(event) =>
-                          updateLine(line.id, "description", event.target.value)
+                        onValueChange={(value) => updateLine(line.id, "description", value)}
+                        options={itemOptions}
+                        loading={lookupLoading}
+                        loadingLabel="Loading items"
+                        placeholder="Search item or service"
+                        onOptionSelect={(option) => applyLineItem(line.id, option)}
+                        getOptionKey={(option) => option.variantId}
+                        getOptionSearchText={(option) =>
+                          `${option.label} ${option.sku} ${option.gstLabel}`
                         }
-                        placeholder="Item or service"
+                        renderOption={(option) => <ItemOptionContent option={option} />}
                       />
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -478,9 +1022,7 @@ function BillsWorkspace({
                         <Input
                           id={`sales-line-mobile-qty-${line.id}`}
                           value={line.quantity}
-                          onChange={(event) =>
-                            updateLine(line.id, "quantity", event.target.value)
-                          }
+                          onChange={(event) => updateLine(line.id, "quantity", event.target.value)}
                           inputMode="decimal"
                         />
                       </div>
@@ -489,9 +1031,7 @@ function BillsWorkspace({
                         <Input
                           id={`sales-line-mobile-rate-${line.id}`}
                           value={line.unitPrice}
-                          onChange={(event) =>
-                            updateLine(line.id, "unitPrice", event.target.value)
-                          }
+                          onChange={(event) => updateLine(line.id, "unitPrice", event.target.value)}
                           inputMode="decimal"
                         />
                       </div>
@@ -500,15 +1040,33 @@ function BillsWorkspace({
                         <Input
                           id={`sales-line-mobile-tax-${line.id}`}
                           value={line.taxRate}
-                          onChange={(event) =>
-                            updateLine(line.id, "taxRate", event.target.value)
-                          }
+                          onChange={(event) => updateLine(line.id, "taxRate", event.target.value)}
                           inputMode="decimal"
                         />
                       </div>
                     </div>
-                    <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 text-xs text-muted-foreground">
-                      Line total: {formatCurrency(lineTotals.total)}
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
+                        Unit: <span className="font-medium text-foreground">{line.unit || "PCS"}</span>
+                      </div>
+                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
+                        Tax mode:{" "}
+                        <span className="font-medium text-foreground">
+                          {line.taxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
+                        </span>
+                      </div>
+                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
+                        On hand:{" "}
+                        <span className="font-medium text-foreground">
+                          {line.stockOnHand === null ? "N/A" : line.stockOnHand}
+                        </span>
+                      </div>
+                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
+                        Line total:{" "}
+                        <span className="font-medium text-foreground">
+                          {formatCurrency(lineTotals.total)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -516,84 +1074,112 @@ function BillsWorkspace({
             })}
           </div>
 
-          <DenseTable className="rounded-xl border-border/80">
-            <DenseTableHead>
-              <tr>
-                <DenseTableHeaderCell className="w-[42%]">Description</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-[12%]">Qty</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-[16%]">Rate</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-[12%]">Tax %</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-[13%] text-right">Total</DenseTableHeaderCell>
-                <DenseTableHeaderCell className="w-[5%] text-right"> </DenseTableHeaderCell>
-              </tr>
-            </DenseTableHead>
-            <DenseTableBody>
-              {lines.map((line) => {
-                const lineTotals = getLineTotals(line);
-                return (
-                  <DenseTableRow key={line.id}>
-                    <DenseTableCell>
-                      <Input
-                        value={line.description}
-                        onChange={(event) =>
-                          updateLine(line.id, "description", event.target.value)
-                        }
-                        placeholder="Item or service"
-                      />
-                    </DenseTableCell>
-                    <DenseTableCell>
-                      <Input
-                        value={line.quantity}
-                        onChange={(event) =>
-                          updateLine(line.id, "quantity", event.target.value)
-                        }
-                        inputMode="decimal"
-                      />
-                    </DenseTableCell>
-                    <DenseTableCell>
-                      <Input
-                        value={line.unitPrice}
-                        onChange={(event) =>
-                          updateLine(line.id, "unitPrice", event.target.value)
-                        }
-                        inputMode="decimal"
-                      />
-                    </DenseTableCell>
-                    <DenseTableCell>
-                      <Input
-                        value={line.taxRate}
-                        onChange={(event) =>
-                          updateLine(line.id, "taxRate", event.target.value)
-                        }
-                        inputMode="decimal"
-                      />
-                    </DenseTableCell>
-                    <DenseTableCell className="text-right font-semibold text-foreground">
-                      {formatCurrency(lineTotals.total)}
-                    </DenseTableCell>
-                    <DenseTableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto px-0 py-0 text-[11px] font-semibold text-[#8a2b2b] hover:bg-transparent"
-                        onClick={() => removeLine(line.id)}
-                      >
-                        Remove
-                      </Button>
-                    </DenseTableCell>
-                  </DenseTableRow>
-                );
-              })}
-            </DenseTableBody>
-          </DenseTable>
+          <div className="hidden min-h-0 flex-1 overflow-hidden md:block">
+            <div className="h-full overflow-auto rounded-xl border border-border/80">
+              <DenseTable className="rounded-none border-0">
+                <DenseTableHead>
+                  <tr>
+                    <DenseTableHeaderCell className="w-[38%]">Item</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%]">Qty</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[14%]">Rate</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%]">Tax %</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%]">Mode</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[13%] text-right">Total</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[5%] text-right"> </DenseTableHeaderCell>
+                  </tr>
+                </DenseTableHead>
+                <DenseTableBody>
+                  {lines.map((line) => {
+                    const lineTotals = getLineTotals(line);
+                    return (
+                      <DenseTableRow key={line.id}>
+                        <DenseTableCell>
+                          <div className="space-y-1">
+                            <LookupDropdownInput
+                              value={line.description}
+                              onValueChange={(value) => updateLine(line.id, "description", value)}
+                              options={itemOptions}
+                              loading={lookupLoading}
+                              loadingLabel="Loading items"
+                              placeholder="Search item or service"
+                              onOptionSelect={(option) => applyLineItem(line.id, option)}
+                              getOptionKey={(option) => option.variantId}
+                              getOptionSearchText={(option) =>
+                                `${option.label} ${option.sku} ${option.gstLabel}`
+                              }
+                              renderOption={(option) => <ItemOptionContent option={option} />}
+                            />
+                            <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                              <span>Unit: {line.unit || "PCS"}</span>
+                              <span>
+                                On hand: {line.stockOnHand === null ? "N/A" : line.stockOnHand}
+                              </span>
+                            </div>
+                          </div>
+                        </DenseTableCell>
+                        <DenseTableCell>
+                          <Input
+                            value={line.quantity}
+                            onChange={(event) => updateLine(line.id, "quantity", event.target.value)}
+                            inputMode="decimal"
+                          />
+                        </DenseTableCell>
+                        <DenseTableCell>
+                          <Input
+                            value={line.unitPrice}
+                            onChange={(event) => updateLine(line.id, "unitPrice", event.target.value)}
+                            inputMode="decimal"
+                          />
+                        </DenseTableCell>
+                        <DenseTableCell>
+                          <Input
+                            value={line.taxRate}
+                            onChange={(event) => updateLine(line.id, "taxRate", event.target.value)}
+                            inputMode="decimal"
+                          />
+                        </DenseTableCell>
+                        <DenseTableCell className="text-[11px] text-muted-foreground">
+                          {line.taxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
+                        </DenseTableCell>
+                        <DenseTableCell className="text-right font-semibold text-foreground">
+                          {formatCurrency(lineTotals.total)}
+                        </DenseTableCell>
+                        <DenseTableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto px-0 py-0 text-[11px] font-semibold text-[#8a2b2b] hover:bg-transparent"
+                            onClick={() => removeLine(line.id)}
+                          >
+                            Remove
+                          </Button>
+                        </DenseTableCell>
+                      </DenseTableRow>
+                    );
+                  })}
+                </DenseTableBody>
+              </DenseTable>
+            </div>
+          </div>
 
-          <div className="rounded-xl border border-border/85 bg-white p-2">
-            <div className="flex items-center justify-between border-b border-border/70 pb-2">
-              <div>
-                <h2 className="text-xs font-semibold text-foreground">Bill Summary</h2>
-                <p className="text-[11px] text-muted-foreground">{activeBusinessName}</p>
-              </div>
+          <div className="rounded-xl border border-border/85 bg-white p-2 md:shrink-0">
+            <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
+              <span className="shrink-0 font-semibold text-foreground">Invoice Summary</span>
+              <span className="shrink-0 text-muted-foreground">•</span>
+              <span className="truncate text-muted-foreground">{activeBusinessName}</span>
+              <span className="shrink-0 text-muted-foreground">•</span>
+              <span className="shrink-0 text-muted-foreground">
+                {transactionType === "CREDIT" ? "Credit" : "Cash"} invoice
+              </span>
+              <span className="shrink-0 text-muted-foreground">•</span>
+              <span className="truncate text-muted-foreground">
+                {customerName.trim() || "No customer selected"}
+              </span>
+              <span className="shrink-0 text-muted-foreground">•</span>
+              <span className="shrink-0 text-muted-foreground">
+                {billNumber.trim() || "Draft invoice"}
+              </span>
             </div>
             <div className="space-y-2 pt-2">
               <div className="flex items-center justify-between text-xs">
@@ -606,6 +1192,12 @@ function BillsWorkspace({
                 <span className="text-muted-foreground">Tax</span>
                 <span className="font-semibold text-foreground">
                   {formatCurrency(totals.taxTotal)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Lines</span>
+                <span className="font-semibold text-foreground">
+                  {normalizeLines(lines).length || 1}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
@@ -624,5 +1216,68 @@ function BillsWorkspace({
         </div>
       </div>
     </section>
+  );
+}
+
+function buildSalesItemOptions(
+  stockOptions: StockVariantOption[],
+  pricingByVariantId: Map<string, ItemPricingRow>,
+  stockLevelByVariantId: Map<string, StockLevelRow>,
+): SalesItemOption[] {
+  return stockOptions.map((option) => {
+    const pricing = pricingByVariantId.get(option.variantId);
+    const stockLevel = stockLevelByVariantId.get(option.variantId);
+    const gstLabel = formatGstSlabLabel(pricing?.gstSlab);
+    return {
+      ...option,
+      description: option.label,
+      priceAmount: pricing?.amount ?? null,
+      currency: pricing?.currency ?? "INR",
+      gstLabel,
+      taxRate: parseGstRate(gstLabel),
+      taxMode: pricing?.taxMode ?? "EXCLUSIVE",
+      quantityOnHand: stockLevel?.quantityOnHand ?? null,
+    };
+  });
+}
+
+function applyCustomerSnapshot(
+  customer: Pick<CustomerRow, "entityId" | "name" | "phone" | "address" | "gstNo">,
+  setCustomerId: (value: string | null) => void,
+  setCustomerName: (value: string) => void,
+  setCustomerPhone: (value: string) => void,
+  setCustomerAddress: (value: string) => void,
+  setCustomerGstNo: (value: string) => void,
+) {
+  setCustomerId(customer.entityId);
+  setCustomerName(customer.name);
+  setCustomerPhone(customer.phone);
+  setCustomerAddress(customer.address);
+  setCustomerGstNo(customer.gstNo);
+}
+
+function InfoField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-[0.05em] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-xs text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function ItemOptionContent({ option }: { option: SalesItemOption }) {
+  return (
+    <div className="space-y-0.5">
+      <div className="font-medium text-foreground">{option.label}</div>
+      <div className="text-[10px] text-muted-foreground">
+        {[
+          option.unit,
+          option.gstLabel ? `GST ${option.gstLabel}` : null,
+          option.priceAmount !== null ? formatCurrency(option.priceAmount) : "No sales price",
+        ]
+          .filter(Boolean)
+          .join("  |  ")}
+      </div>
+    </div>
   );
 }

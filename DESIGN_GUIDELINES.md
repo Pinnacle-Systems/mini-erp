@@ -51,8 +51,7 @@ Design should support long-term workflows in a small-business operations tool.
 - In desktop mode, divide the screen into independent panes using grid or flex layouts.
 - If content in a specific desktop pane exceeds the available height, only that pane should scroll internally (for example with `overflow-y: auto`) while the rest of the shell remains fixed.
 - In desktop mode, design for high data density.
-- On desktop, prefer tables or grid-based layouts for operational entry and review screens.
-- On desktop, treat batch entry as the default for operational create and edit flows. New screens should assume a dense multi-row or tabular entry surface unless this document explicitly defines a different pattern.
+- On desktop, prefer tables or grid-based layouts for operational entry and review screens, with batch entry as the default for operational create and edit flows unless this document explicitly defines an exception.
 - On desktop, a split-pane master-detail layout is also valid when the left pane is a dense list or table for selection and the right pane is a selection-driven detail context for the active record. In that pattern, the right pane may use a single-record detail form because it is supporting record inspection or focused per-record editing, not acting as the primary batch-entry surface.
 - On desktop, prefer multi-line editing patterns inside dense layouts over long stacks of single-line field rows.
 - In mobile mode, use a flowing layout that grows naturally with content.
@@ -85,7 +84,6 @@ Design should support long-term workflows in a small-business operations tool.
 - Related fields should appear together in the order users think about them.
 - Avoid unnecessary required fields in first-pass business workflows.
 - For multi-entity create flows, default quick-entry forms to 1 entity on mobile and 5 entities on desktop.
-- Unless a feature-specific rule says otherwise, desktop operational forms should default to batch entry with multiple editable rows, and mobile forms should default to a single active entry at a time.
 - For desktop-heavy operational forms, prefer compact multi-column or grid editing over tall single-column forms.
 - Use single-entry full-page forms when the record requires enough fields, sections, or explanatory context that a dense tabular row would be cramped, unclear, or unstable. Treat screens like business setup and similar large-record entry flows as the model for this exception.
 - If a new screen intentionally uses a single-entry desktop form for a workflow that could fit a dense row layout, document that exception in this file instead of relying on the implementation alone.
@@ -127,9 +125,7 @@ Design should support long-term workflows in a small-business operations tool.
 
 ## Reuse And Consistency
 
-- Reuse existing design-system atoms and patterns before introducing new ones.
-- Use the atomic design system as the default UI implementation path.
-- Prefer design-system primitives and composed design-system components over direct low-level UI imports or ad hoc markup.
+- Use the atomic design system as the default UI implementation path. Reuse existing atoms, composed components, and established patterns before introducing new primitives or ad hoc markup.
 - Reuse the shared filter-panel pattern (`app-filter-panel`, `app-filter-legend`, `app-filter-row`) for page-level search and filter controls on operational list screens instead of bespoke control stacks.
 - Use labeled plain inputs for page-level search and filter fields. Reserve leading-icon search inputs for lookup dialogs or dedicated search widgets, and apply that pattern consistently when used.
 - Remove unused design-system primitives and stale alternate patterns once they are no longer referenced.
@@ -149,15 +145,13 @@ The current frontend does not fully conform to this document. Until those gaps a
 
 Current known non-conformance, ordered by impact:
 
-- Some small-record operational screens still use single-entry desktop forms even though desktop batch entry is now the default. These flows should move toward dense multi-row editing unless they are explicitly documented as exceptions.
-  Affected frontend areas: `apps/frontend/src/pages/stock/AdjustmentsPage.tsx`, which is still a single stock-adjustment form instead of a batch quick-entry grid. This item does not apply to intentionally large, high-field business setup and business detail flows such as `apps/frontend/src/pages/admin/businesses/AdminBusinessesPage.tsx`, `apps/frontend/src/pages/admin/businesses/AdminBusinessDetailsPage.tsx`, and related business management organisms, and it also does not apply to valid split-pane master-detail workflows such as `apps/frontend/src/pages/catalog/CategoriesPage.tsx` and `apps/frontend/src/pages/catalog/CollectionsPage.tsx`.
 - `apps/frontend/src/pages/admin/users/AdminUserDetailsPage.tsx` currently remains a temporary single-entry desktop exception while the user-management workflow is still undefined. Do not treat its current layout as a reusable pattern for other small-record screens. Revisit this exception once the page requirements are stable.
 - Shared design-system primitives are now much closer to the intended baseline, but a smaller set of legacy primitives, utility styles, and decorative secondary components still remain out of line.
   Affected frontend areas: remaining legacy utility styles and decorative secondary components, especially older local wrappers and secondary surfaces that still use translucent fills, heavy blur, oversized radii, or stronger shadows than the dense operational baseline. The core `Card`, `Button`, `Input`, and `Select` primitives are no longer the main source of this gap.
 - Some shell-level sections still use placeholder content and reserved layout blocks. Placeholder structure is acceptable temporarily, but it must remain clearly non-authoritative and must not imply live system state.
   Affected frontend areas: the app shell landing experience, especially `apps/frontend/src/pages/shell/AppHomePage.tsx`, including the Search + Sync placeholder block and dashboard sections that are still scaffolds for future real data.
 - Some async screens still do not distinguish loading, empty, and error states clearly enough. Do not treat a pre-load empty array as a true empty state.
-  Affected frontend areas: data-backed list and management screens beyond `apps/frontend/src/pages/catalog/items/ItemsPage.tsx` and `apps/frontend/src/pages/catalog/CollectionsPage.tsx`, which now have explicit loading and error handling. Similar review is still required for other pages that fetch data after mount.
+  Affected frontend areas: data-backed list and management screens that fetch after mount beyond `apps/frontend/src/pages/catalog/items/ItemsPage.tsx` and `apps/frontend/src/pages/catalog/CollectionsPage.tsx`, which now have explicit loading and error handling.
 - Some screens bypass existing design-system primitives with ad hoc controls or markup. Reuse the existing atomic design system before introducing custom variants.
   Affected frontend areas: catalog, admin, and other session UI where raw buttons, inputs, switches, or selects are still used directly instead of shared atoms. The collections page has been normalized, but similar ad hoc controls still remain in other feature screens and supporting panes.
 - Some inputs still rely on placeholders without explicit labels. This remains non-conformant even when the screen is compact.
@@ -217,4 +211,4 @@ When requesting design changes, reference this file and specify:
 
 - Which feature area is being changed
 - Whether the work should preserve or intentionally revise current patterns
-- Any feature-specific additions that should be recorded here after the change
+- Any stable feature-specific additions that should be recorded here after the change
