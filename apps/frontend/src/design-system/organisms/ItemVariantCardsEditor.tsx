@@ -4,8 +4,7 @@ import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
-import { Select } from "../atoms/Select";
-import { GST_SLAB_OPTIONS } from "../../lib/gst-slabs";
+import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
 
 export type VariantOptionRowDraft = {
   id: string;
@@ -142,7 +141,7 @@ export function ItemVariantCardsEditor({
           <span>Barcode</span>
           {showPricingFields ? <span>Sales</span> : null}
           {showPricingFields && showPurchasePrice ? <span>Purchase</span> : null}
-          {showPricingFields || showGstSlabField ? <span>GST Slab</span> : null}
+          {showPricingFields || showGstSlabField ? <span>GST %</span> : null}
           <span className="text-center">{showActiveToggle ? "Active" : ""}</span>
           <span className="text-center">Actions</span>
         </div>
@@ -289,8 +288,8 @@ export function ItemVariantCardsEditor({
                 ) : null}
                 {showPricingFields || showGstSlabField ? (
                   <div className="grid gap-1">
-                    <Label className="lg:hidden">GST Slab</Label>
-                    <Select
+                    <Label className="lg:hidden">GST %</Label>
+                    <GstSlabSelect
                       className={denseInputClassName}
                       value={variant.gstSlab ?? ""}
                       disabled={isReadOnly}
@@ -302,16 +301,7 @@ export function ItemVariantCardsEditor({
                           })),
                         )
                       }
-                    >
-                      <option value="" disabled>
-                        Select GST slab
-                      </option>
-                      {GST_SLAB_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
+                    />
                   </div>
                 ) : null}
                 <div className="grid gap-1 lg:justify-items-center">

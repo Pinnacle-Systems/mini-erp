@@ -46,8 +46,9 @@ import {
   runLocalItemPreflightChecks,
   toUserItemErrorMessage,
 } from "./item-utils";
-import { GST_SLAB_OPTIONS, normalizeGstSlab } from "../../../lib/gst-slabs";
+import { normalizeGstSlab } from "../../../lib/gst-slabs";
 import { Button } from "../../../design-system/atoms/Button";
+import { GstSlabSelect } from "../../../design-system/molecules/GstSlabSelect";
 
 const UNIT_GROUPS = [
   {
@@ -1638,7 +1639,7 @@ export function ItemDetailsPage({
                     {showPurchasePrice ? (
                       <span style={{ fontSize: "10px", lineHeight: "12px" }}>Purchase</span>
                     ) : null}
-                    <span style={{ fontSize: "10px", lineHeight: "12px" }}>GST Slab</span>
+                    <span style={{ fontSize: "10px", lineHeight: "12px" }}>GST %</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Unit</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Category</span>
                   </div>
@@ -1723,7 +1724,7 @@ export function ItemDetailsPage({
                         inputMode="decimal"
                       />
                     ) : null}
-                    <Select
+                    <GstSlabSelect
                       className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}
                       value={primaryVariant.gstSlab ?? ""}
                       disabled={!isEditing || loading}
@@ -1737,16 +1738,8 @@ export function ItemDetailsPage({
                           ),
                         })
                       }
-                    >
-                      <option value="" disabled>
-                        Select GST slab
-                      </option>
-                      {GST_SLAB_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
+                      placeholderOption="GST %"
+                    />
                     <Select
                       className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}
                       value={item.unit}

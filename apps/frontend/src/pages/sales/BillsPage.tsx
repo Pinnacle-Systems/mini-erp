@@ -8,6 +8,7 @@ import { Label } from "../../design-system/atoms/Label";
 import { Switch } from "../../design-system/atoms/Switch";
 import { Textarea } from "../../design-system/atoms/Textarea";
 import { LookupDropdownInput } from "../../design-system/molecules/LookupDropdownInput";
+import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
 import {
   DenseTable,
   DenseTableBody,
@@ -29,7 +30,7 @@ import {
   type StockLevelRow,
   type StockVariantOption,
 } from "../../features/sync/engine";
-import { formatGstSlabLabel } from "../../lib/gst-slabs";
+import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
 
 type BillLine = {
   id: string;
@@ -86,7 +87,7 @@ const createLine = (): BillLine => ({
   description: "",
   quantity: "1",
   unitPrice: "",
-  taxRate: "0",
+  taxRate: "0%",
   taxMode: "EXCLUSIVE",
   unit: "PCS",
   stockOnHand: null,
@@ -99,7 +100,11 @@ const toNumber = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const toTaxRateNumber = (value: string) => Math.max(0, toNumber(value));
+const toTaxRateNumber = (value: string) => {
+  if (!value || value === "EXEMPT") return 0;
+  const parsed = Number(value.replace("%", ""));
+  return Math.max(0, Number.isFinite(parsed) ? parsed : 0);
+};
 
 const getLineTotals = (line: Pick<BillLine, "quantity" | "unitPrice" | "taxRate" | "taxMode">) => {
   const quantity = Math.max(0, toNumber(line.quantity));
@@ -141,6 +146,12 @@ const formatDateTime = (value: string) => {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
 };
 
+const formatQuantity = (value: number) => {
+  if (!Number.isFinite(value)) return "1";
+  const normalized = Math.max(0, value);
+  return Number.isInteger(normalized) ? String(normalized) : String(Number(normalized.toFixed(3)));
+};
+
 const sortCustomers = (rows: CustomerRow[]) =>
   [...rows].sort((left, right) => {
     const nameOrder = left.name.localeCompare(right.name);
@@ -153,6 +164,29 @@ const normalizePhoneCandidate = (value: string) => {
   if (!trimmed) return "";
   const normalized = trimmed.replace(/[^\d+]/g, "");
   return normalized.replace(/\D/g, "").length >= 7 ? normalized : "";
+};
+
+const getScrollContainer = (element: HTMLElement) => {
+  let current = element.parentElement;
+  while (current) {
+    const overflowY = window.getComputedStyle(current).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll") {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+};
+
+const isElementVisible = (element: HTMLElement) => {
+  const container = getScrollContainer(element);
+  const elementRect = element.getBoundingClientRect();
+  if (!container) {
+    return elementRect.top >= 0 && elementRect.bottom <= window.innerHeight;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  return elementRect.top >= containerRect.top && elementRect.bottom <= containerRect.bottom;
 };
 
 const parseGstRate = (value: string | null | undefined) => {
@@ -177,7 +211,7 @@ const normalizeLines = (lines: BillLine[]) => {
         description: line.description.trim(),
         quantity: line.quantity.trim() || "1",
         unitPrice: line.unitPrice.trim() || "0",
-        taxRate: line.taxRate.trim() || "0",
+        taxRate: normalizeGstSlab(line.taxRate) ?? "0%",
         unit: line.unit.trim() || "PCS",
       }))
     : [];
@@ -193,7 +227,8 @@ const normalizeStoredLine = (rawLine: unknown): BillLine => {
     description: typeof line.description === "string" ? line.description : "",
     quantity: typeof line.quantity === "string" ? line.quantity : "1",
     unitPrice: typeof line.unitPrice === "string" ? line.unitPrice : "",
-    taxRate: typeof line.taxRate === "string" ? line.taxRate : "0",
+    taxRate:
+      typeof line.taxRate === "string" ? normalizeGstSlab(line.taxRate) ?? "0%" : "0%",
     taxMode: line.taxMode === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
     unit: typeof line.unit === "string" && line.unit.trim() ? line.unit : "PCS",
     stockOnHand:
@@ -284,6 +319,10 @@ function BillsWorkspace({
   const [saveMessage, setSaveMessage] = useState<string | null>(
     activeStore ? null : "Select a business to start a sales invoice.",
   );
+  const [lineHighlightRequest, setLineHighlightRequest] = useState<{
+    lineId: string;
+    nonce: number;
+  } | null>(null);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [itemOptions, setItemOptions] = useState<SalesItemOption[]>([]);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -440,6 +479,33 @@ function BillsWorkspace({
     navigate(location.pathname, { replace: true, state: null });
   }, [drafts.length, location.pathname, navigate, routeState]);
 
+  useEffect(() => {
+    if (!lineHighlightRequest || typeof document === "undefined") {
+      return;
+    }
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-bill-line-id="${lineHighlightRequest.lineId}"]`,
+      );
+      if (!target) {
+        return;
+      }
+
+      if (!isElementVisible(target)) {
+        target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      target.classList.remove("row-flash");
+      void target.getBoundingClientRect();
+      target.classList.add("row-flash");
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [lineHighlightRequest]);
+
   const phoneCandidate = useMemo(() => normalizePhoneCandidate(customerName), [customerName]);
   const canQuickCreateFromPhone =
     transactionType === "CASH" &&
@@ -571,8 +637,35 @@ function BillsWorkspace({
     );
 
   const applyLineItem = (lineId: string, option: SalesItemOption) => {
-    setLines((currentLines) =>
-      currentLines.map((line) =>
+    let highlightedLineId: string | null = null;
+
+    setLines((currentLines) => {
+      const currentLine = currentLines.find((line) => line.id === lineId);
+      if (!currentLine) {
+        return currentLines;
+      }
+
+      const existingLine = currentLines.find(
+        (line) => line.variantId === option.variantId && line.id !== lineId,
+      );
+
+      if (existingLine) {
+        highlightedLineId = existingLine.id;
+        const incrementBy = Math.max(toNumber(currentLine.quantity), 1);
+
+        return currentLines
+          .map((line) =>
+            line.id === existingLine.id
+              ? {
+                  ...line,
+                  quantity: formatQuantity(toNumber(line.quantity) + incrementBy),
+                }
+              : line,
+          )
+          .filter((line) => line.id !== lineId);
+      }
+
+      return currentLines.map((line) =>
         line.id === lineId
           ? {
               ...line,
@@ -582,14 +675,21 @@ function BillsWorkspace({
                 option.priceAmount !== null && Number.isFinite(option.priceAmount)
                   ? String(option.priceAmount)
                   : line.unitPrice,
-              taxRate: String(option.taxRate),
+              taxRate: option.gstLabel || "0%",
               taxMode: option.taxMode,
               unit: option.unit,
               stockOnHand: option.quantityOnHand,
             }
           : line,
-      ),
-    );
+      );
+    });
+
+    if (highlightedLineId) {
+      setLineHighlightRequest((current) => ({
+        lineId: highlightedLineId,
+        nonce: (current?.nonce ?? 0) + 1,
+      }));
+    }
   };
 
   const removeLine = (lineId: string) => {
@@ -829,10 +929,10 @@ function BillsWorkspace({
           </div>
         </div>
 
-        <div className="grid gap-2 py-2 md:grid-cols-12 md:items-start">
-          <div className="space-y-1 md:col-span-2">
+        <div className="flex flex-col gap-3 pb-2 pt-1 md:flex-row md:items-start">
+          <div className="space-y-1">
             <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
-            <div className="flex h-8 items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-2 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
+            <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
               <span className={transactionType === "CASH" ? "font-semibold text-foreground" : "text-muted-foreground"}>
                 Cash
               </span>
@@ -850,7 +950,7 @@ function BillsWorkspace({
               </span>
             </div>
           </div>
-          <div className="space-y-1 md:col-span-2">
+          <div className="space-y-1 md:w-48">
             <Label htmlFor="sales-bill-number">Invoice number</Label>
             <Input
               id="sales-bill-number"
@@ -858,7 +958,7 @@ function BillsWorkspace({
               onChange={(event) => setBillNumber(event.target.value)}
             />
           </div>
-          <div className="space-y-1 md:col-span-5">
+          <div className="space-y-1 md:w-96 md:max-w-[400px]">
             <Label htmlFor="sales-bill-customer">Customer</Label>
             <LookupDropdownInput
               id="sales-bill-customer"
@@ -936,27 +1036,14 @@ function BillsWorkspace({
                 </div>
               </div>
             ) : null}
+            {activeCustomer || customerId || customerPhone || customerGstNo || customerAddress ? (
+              <div className="px-1 pt-1 text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">Phone:</span> {activeCustomer?.phone || customerPhone || "Not provided"} •{" "}
+                <span className="font-medium text-foreground">GST:</span> {activeCustomer?.gstNo || customerGstNo || "Not provided"} •{" "}
+                <span className="font-medium text-foreground">Address:</span> {activeCustomer?.address || customerAddress || "No billing address"}
+              </div>
+            ) : null}
           </div>
-          <div className="space-y-1 md:col-span-3">
-            <Label htmlFor="sales-bill-notes">Notes</Label>
-            <Textarea
-              id="sales-bill-notes"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Optional internal note"
-              rows={3}
-              className="min-h-[5.5rem] w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:h-[4.5rem] md:min-h-[4.5rem] md:px-2.5 md:py-1.5 md:text-[11px]"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-2 pb-2 md:grid-cols-[repeat(3,minmax(0,1fr))]">
-          <InfoField label="Phone" value={activeCustomer?.phone || customerPhone || "Not provided"} />
-          <InfoField label="GST" value={activeCustomer?.gstNo || customerGstNo || "Not provided"} />
-          <InfoField
-            label="Bill to"
-            value={activeCustomer?.address || customerAddress || "No billing address"}
-          />
         </div>
 
         {lookupError ? (
@@ -984,16 +1071,21 @@ function BillsWorkspace({
             {lines.map((line, index) => {
               const lineTotals = getLineTotals(line);
               return (
-                <div key={line.id} className="rounded-lg border border-border/80 bg-slate-50 p-2">
+                <div
+                  key={line.id}
+                  data-bill-line-id={line.id}
+                  className="rounded-lg border border-border/80 bg-slate-50 p-2"
+                >
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-xs font-semibold text-foreground">Line {index + 1}</div>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-auto px-0 py-0 text-[11px] font-semibold text-[#8a2b2b] hover:bg-transparent"
+                      className="h-auto p-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"
                       onClick={() => removeLine(line.id)}
                     >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
                       Remove
                     </Button>
                   </div>
@@ -1036,40 +1128,73 @@ function BillsWorkspace({
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label htmlFor={`sales-line-mobile-tax-${line.id}`}>Tax %</Label>
-                        <Input
+                        <Label>GST %</Label>
+                        <GstSlabSelect
                           id={`sales-line-mobile-tax-${line.id}`}
-                          value={line.taxRate}
-                          onChange={(event) => updateLine(line.id, "taxRate", event.target.value)}
-                          inputMode="decimal"
+                          className="h-[38px] text-xs text-left"
+                          value={normalizeGstSlab(line.taxRate) || ""}
+                          onChange={(e) => updateLine(line.id, "taxRate", e.target.value)}
+                          placeholderOption="GST %"
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
-                        Unit: <span className="font-medium text-foreground">{line.unit || "PCS"}</span>
-                      </div>
-                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
-                        Tax mode:{" "}
-                        <span className="font-medium text-foreground">
-                          {line.taxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
-                        </span>
-                      </div>
-                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
-                        On hand:{" "}
-                        <span className="font-medium text-foreground">
-                          {line.stockOnHand === null ? "N/A" : line.stockOnHand}
-                        </span>
-                      </div>
-                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5">
-                        Line total:{" "}
-                        <span className="font-medium text-foreground">
-                          {formatCurrency(lineTotals.total)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                       <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 flex items-center">
+                         <span className="mr-1">Unit:</span>
+                         <span className="font-medium text-foreground">{line.unit || "PCS"}</span>
+                       </div>
+                       <Button
+                         type="button"
+                         variant="outline"
+                         size="sm"
+                         className="h-auto w-full justify-between border-border/70 px-2 py-1.5 text-[11px] font-normal text-muted-foreground bg-white"
+                         onClick={() =>
+                           updateLine(
+                             line.id,
+                             "taxMode",
+                             line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
+                           )
+                         }
+                       >
+                         Tax mode:
+                         <span className="font-medium text-foreground">
+                           {line.taxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
+                         </span>
+                       </Button>
+                       <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 col-span-2 space-y-0.5">
+                         {toTaxRateNumber(line.taxRate) > 0 ? (
+                           line.taxMode === "INCLUSIVE" ? (
+                             <>
+                               <div className="flex justify-between">
+                                 <span>Base (excl. GST)</span>
+                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.subTotal)}</span>
+                               </div>
+                               <div className="flex justify-between">
+                                 <span>GST ({line.taxRate})</span>
+                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.taxTotal)}</span>
+                               </div>
+                             </>
+                           ) : (
+                             <>
+                               <div className="flex justify-between">
+                                 <span>Base</span>
+                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.subTotal)}</span>
+                               </div>
+                               <div className="flex justify-between">
+                                 <span>+GST ({line.taxRate})</span>
+                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.taxTotal)}</span>
+                               </div>
+                             </>
+                           )
+                         ) : null}
+                         <div className="flex justify-between border-t border-border/50 pt-0.5">
+                           <span className="font-semibold text-foreground">Line total</span>
+                           <span className="font-semibold text-foreground">{formatCurrency(lineTotals.total)}</span>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
               );
             })}
           </div>
@@ -1079,21 +1204,25 @@ function BillsWorkspace({
               <DenseTable className="rounded-none border-0">
                 <DenseTableHead>
                   <tr>
-                    <DenseTableHeaderCell className="w-[38%]">Item</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[10%]">Qty</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[14%]">Rate</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[10%]">Tax %</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[10%]">Mode</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[13%] text-right">Total</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[5%] text-right"> </DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[40%]">Item</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[12%]">Qty</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%]">Rate</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%]">GST %</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[8%]">Mode</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[16%] text-right">Total</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[4%] text-right"> </DenseTableHeaderCell>
                   </tr>
                 </DenseTableHead>
                 <DenseTableBody>
                   {lines.map((line) => {
                     const lineTotals = getLineTotals(line);
                     return (
-                      <DenseTableRow key={line.id}>
-                        <DenseTableCell>
+                      <DenseTableRow
+                        key={line.id}
+                        data-bill-line-id={line.id}
+                        className="align-middle"
+                      >
+                        <DenseTableCell className="py-1.5">
                           <div className="space-y-1">
                             <LookupDropdownInput
                               value={line.description}
@@ -1109,50 +1238,74 @@ function BillsWorkspace({
                               }
                               renderOption={(option) => <ItemOptionContent option={option} />}
                             />
-                            <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
-                              <span>Unit: {line.unit || "PCS"}</span>
-                              <span>
-                                On hand: {line.stockOnHand === null ? "N/A" : line.stockOnHand}
-                              </span>
-                            </div>
                           </div>
                         </DenseTableCell>
-                        <DenseTableCell>
-                          <Input
-                            value={line.quantity}
-                            onChange={(event) => updateLine(line.id, "quantity", event.target.value)}
-                            inputMode="decimal"
-                          />
+                        <DenseTableCell className="py-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              className="w-16 min-w-0 px-2 text-right"
+                              value={line.quantity}
+                              onChange={(event) => updateLine(line.id, "quantity", event.target.value)}
+                              inputMode="decimal"
+                            />
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                              {line.unit || "PCS"}
+                            </span>
+                          </div>
                         </DenseTableCell>
-                        <DenseTableCell>
+                        <DenseTableCell className="py-1.5">
                           <Input
+                            className="min-w-0 px-2 text-right"
                             value={line.unitPrice}
                             onChange={(event) => updateLine(line.id, "unitPrice", event.target.value)}
                             inputMode="decimal"
                           />
                         </DenseTableCell>
-                        <DenseTableCell>
-                          <Input
-                            value={line.taxRate}
-                            onChange={(event) => updateLine(line.id, "taxRate", event.target.value)}
-                            inputMode="decimal"
+                        <DenseTableCell className="py-1.5">
+                          <GstSlabSelect
+                            className="h-8 min-w-0 px-2 text-left text-xs"
+                            value={normalizeGstSlab(line.taxRate) || ""}
+                            onChange={(e) => updateLine(line.id, "taxRate", e.target.value)}
+                            placeholderOption="GST %"
                           />
                         </DenseTableCell>
-                        <DenseTableCell className="text-[11px] text-muted-foreground">
-                          {line.taxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
+                        <DenseTableCell className="py-1.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-full min-w-0 border-border/70 px-0 text-xs text-muted-foreground"
+                            onClick={() =>
+                              updateLine(
+                                line.id,
+                                "taxMode",
+                                line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
+                              )
+                            }
+                          >
+                            {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
+                          </Button>
                         </DenseTableCell>
-                        <DenseTableCell className="text-right font-semibold text-foreground">
-                          {formatCurrency(lineTotals.total)}
+                        <DenseTableCell className="py-1.5 text-right">
+                          <div className="flex h-8 items-center justify-end text-[11px] font-semibold text-foreground whitespace-nowrap">
+                            {toTaxRateNumber(line.taxRate) > 0 ? (
+                              line.taxMode === "INCLUSIVE"
+                                ? `${formatCurrency(lineTotals.total)} (incl. GST ${formatCurrency(lineTotals.taxTotal)})`
+                                : `${formatCurrency(lineTotals.subTotal)} + ${formatCurrency(lineTotals.taxTotal)} = ${formatCurrency(lineTotals.total)}`
+                            ) : formatCurrency(lineTotals.total)}
+                          </div>
                         </DenseTableCell>
-                        <DenseTableCell className="text-right">
+                        <DenseTableCell className="py-1.5 text-right">
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-auto px-0 py-0 text-[11px] font-semibold text-[#8a2b2b] hover:bg-transparent"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600"
                             onClick={() => removeLine(line.id)}
+                            title="Remove line"
                           >
-                            Remove
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Remove</span>
                           </Button>
                         </DenseTableCell>
                       </DenseTableRow>
@@ -1163,54 +1316,55 @@ function BillsWorkspace({
             </div>
           </div>
 
-          <div className="rounded-xl border border-border/85 bg-white p-2 md:shrink-0">
-            <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
-              <span className="shrink-0 font-semibold text-foreground">Invoice Summary</span>
-              <span className="shrink-0 text-muted-foreground">•</span>
-              <span className="truncate text-muted-foreground">{activeBusinessName}</span>
-              <span className="shrink-0 text-muted-foreground">•</span>
-              <span className="shrink-0 text-muted-foreground">
-                {transactionType === "CREDIT" ? "Credit" : "Cash"} invoice
-              </span>
-              <span className="shrink-0 text-muted-foreground">•</span>
-              <span className="truncate text-muted-foreground">
-                {customerName.trim() || "No customer selected"}
-              </span>
-              <span className="shrink-0 text-muted-foreground">•</span>
-              <span className="shrink-0 text-muted-foreground">
-                {billNumber.trim() || "Draft invoice"}
-              </span>
+          <div className="flex flex-col gap-4 rounded-xl border border-border/85 bg-white p-2 md:flex-row md:shrink-0">
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="sales-bill-notes">Notes</Label>
+              <Textarea
+                id="sales-bill-notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Optional internal note"
+                rows={2}
+                className="w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:h-[4.5rem] md:px-2.5 md:py-1.5 md:text-[11px]"
+              />
             </div>
-            <div className="space-y-2 pt-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-semibold text-foreground">
-                  {formatCurrency(totals.subTotal)}
-                </span>
+            <div className="w-full border-t border-border/70 pt-2 md:w-[320px] md:border-l md:border-t-0 md:pl-4 md:pt-0">
+              <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
+                <span className="shrink-0 font-semibold text-foreground">Invoice Summary</span>
+                <span className="shrink-0 text-muted-foreground">•</span>
+                <span className="truncate text-muted-foreground">{activeBusinessName}</span>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Tax</span>
-                <span className="font-semibold text-foreground">
-                  {formatCurrency(totals.taxTotal)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Lines</span>
-                <span className="font-semibold text-foreground">
-                  {normalizeLines(lines).length || 1}
-                </span>
-              </div>
-              <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
-                <span className="font-semibold text-foreground">Grand total</span>
-                <span className="font-semibold text-foreground">
-                  {formatCurrency(totals.grandTotal)}
-                </span>
-              </div>
-              {saveMessage ? (
-                <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-[11px] text-muted-foreground">
-                  {saveMessage}
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(totals.subTotal)}
+                  </span>
                 </div>
-              ) : null}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Tax</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(totals.taxTotal)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Lines</span>
+                  <span className="font-semibold text-foreground">
+                    {normalizeLines(lines).length || 1}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
+                  <span className="font-semibold text-foreground">Grand total</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(totals.grandTotal)}
+                  </span>
+                </div>
+                {saveMessage ? (
+                  <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-[11px] text-muted-foreground">
+                    {saveMessage}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -1254,15 +1408,6 @@ function applyCustomerSnapshot(
   setCustomerPhone(customer.phone);
   setCustomerAddress(customer.address);
   setCustomerGstNo(customer.gstNo);
-}
-
-function InfoField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1.5">
-      <div className="text-[10px] uppercase tracking-[0.05em] text-muted-foreground">{label}</div>
-      <div className="mt-0.5 text-xs text-foreground">{value}</div>
-    </div>
-  );
 }
 
 function ItemOptionContent({ option }: { option: SalesItemOption }) {

@@ -322,7 +322,7 @@ export function ItemVariantFlatTable({
                           </p>
                         ) : null}
                         <p className="text-[11px] text-muted-foreground">
-                          GST Slab: {getGstSlabDisplay(row.gstSlab)}
+                          GST %: {getGstSlabDisplay(row.gstSlab)}
                         </p>
                       </>
                     ) : null}
@@ -373,7 +373,7 @@ export function ItemVariantFlatTable({
                           </p>
                         ) : null}
                         <p className="text-[11px] text-muted-foreground">
-                          GST Slab: {getGstSlabDisplay(row.gstSlab)}
+                          GST %: {getGstSlabDisplay(row.gstSlab)}
                         </p>
                       </>
                     ) : null}
@@ -435,7 +435,7 @@ export function ItemVariantFlatTable({
               <DenseTableHeaderCell className={ITEMS_LIST_PRICE_COLUMN_WIDTH}>Purchase</DenseTableHeaderCell>
             ) : null}
             {showCommercialFields ? (
-              <DenseTableHeaderCell className="w-24 px-2">GST Slab</DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-24 px-2">GST %</DenseTableHeaderCell>
             ) : null}
             {showStatus ? (
               <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.status} px-2`}>Status</DenseTableHeaderCell>

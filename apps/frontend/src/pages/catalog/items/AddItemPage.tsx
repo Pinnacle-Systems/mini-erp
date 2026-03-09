@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../../../design-system/molecules/Card";
+import { GstSlabSelect } from "../../../design-system/molecules/GstSlabSelect";
 import { LookupDropdownInput } from "../../../design-system/molecules/LookupDropdownInput";
 import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
 import { TokenizerInput } from "../../../design-system/molecules/TokenizerInput";
@@ -36,7 +37,7 @@ import {
 } from "../../../features/sync/engine";
 import { useToast } from "../../../features/toast/useToast";
 import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-utils";
-import { GST_SLAB_OPTIONS, normalizeGstSlab } from "../../../lib/gst-slabs";
+import { normalizeGstSlab } from "../../../lib/gst-slabs";
 
 const UNIT_GROUPS = [
   {
@@ -1216,7 +1217,7 @@ export function AddItemPage({
                     <span>{taxCodeLabel}</span>
                     <span>Sales</span>
                     {showPurchasePrice ? <span>Purchase</span> : null}
-                    <span>GST Slab</span>
+                    <span>GST %</span>
                     <span>Unit</span>
                     <span>Category</span>
                     <span className="text-right">Actions</span>
@@ -1309,7 +1310,7 @@ export function AddItemPage({
                             inputMode="decimal"
                           />
                         ) : null}
-                        <Select
+                        <GstSlabSelect
                           className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
                           value={row.gstSlab}
                           onChange={(event) =>
@@ -1321,16 +1322,8 @@ export function AddItemPage({
                               ),
                             )
                           }
-                        >
-                          <option value="" disabled>
-                            Select GST slab
-                          </option>
-                          {GST_SLAB_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </Select>
+                          placeholderOption="GST %"
+                        />
                         <Select
                           className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
                           value={row.unit}
