@@ -6,14 +6,6 @@ Current decision: build business modules first, and defer the full server-driven
 
 This keeps the current sync model moving while preserving a clean upgrade path later.
 
-## Current Status
-
-- [x] Keep all sync conflict detection on the backend.
-- [x] Replace string-matched sync failures with structured rejection codes.
-- [x] Make `/api/sync/push` return machine-readable rejection metadata for every rejected mutation.
-- [x] Keep the frontend responsible for local queueing, sync attempts, and rendering current sync status only.
-- [ ] Avoid adding Web Push, SSE, WebSockets, or a broad event bus until inventory, sales, and similar flows are implemented.
-
 ## API Contract Rule
 
 Rejected mutations must return structured data, not only a human-readable message string.
@@ -83,13 +75,6 @@ Example rejected acknowledgement:
 }
 ```
 
-Implemented in:
-
-- `apps/backend/src/modules/sync/sync.service.ts`
-- `apps/frontend/src/features/sync/engine.ts`
-- `apps/frontend/src/features/sync/SyncProvider.tsx`
-- `apps/frontend/src/pages/catalog/PricingPage.tsx`
-
 Durable sync outcome rule:
 
 1. Applied and rejected mutation results may be persisted in `sync.mutation_log` as a narrow extension of sync logging.
@@ -126,16 +111,6 @@ Rules:
 3. Name page files for the local screen, not by repeating the parent module name. For example, prefer `catalog/PricingPage.tsx` over `catalog/CatalogPricingPage.tsx`.
 4. Reserve non-module page folders for cross-cutting surfaces only, such as `auth`, `shell`, `system`, and platform-admin areas under `admin`.
 
-## Backend Rule
-
-The backend remains the authority for sync outcomes.
-
-In `apps/backend/src/modules/sync/sync.service.ts`:
-
-1. Continue performing version checks and conflict detection on the server.
-2. Return structured rejection data at the exact point where the mutation is rejected.
-3. Do not require the frontend to infer business meaning from freeform text.
-
 ## Backend Response Mapping
 
 Public backend JSON responses should be shaped at the controller or service boundary through explicit response mappers.
@@ -152,24 +127,20 @@ Current shared helper:
 
 - `apps/backend/src/shared/http/response-mappers.ts`
 
-Current module-level mapper usage includes:
+## Sync Ownership
 
-- `apps/backend/src/modules/admin/admin.controller.ts`
-- `apps/backend/src/modules/auth/auth.controller.ts`
-- `apps/backend/src/modules/sync/sync.controller.ts`
-- `apps/backend/src/modules/tenant/tenant.service.ts`
+1. The backend remains the authority for sync outcomes.
+2. Continue performing version checks and conflict detection on the server.
+3. Return structured rejection data at the exact point where a mutation is rejected.
+4. The frontend must consume `reasonCode`, not infer business meaning from freeform text.
+5. Treat sync failures as display concerns in the UI, not as client-authored business logic.
+6. Keep UI wording separate from server error semantics.
 
-## Frontend Rule
+## Deferred Event System
 
-In `apps/frontend/src/features/sync/engine.ts` and `apps/frontend/src/features/sync/SyncProvider.tsx`:
+Design for a future event system only by making sync outcomes structured and server-authored.
 
-1. Consume `reasonCode`, not `message.includes(...)`.
-2. Treat sync failures as display concerns, not business logic.
-3. Keep UI wording separate from server error semantics.
-
-## What To Avoid For Now
-
-Do not build these yet:
+Do not build the event system itself yet. Avoid:
 
 1. A full `sync_event` schema.
 2. Web Push infrastructure.
@@ -177,25 +148,11 @@ Do not build these yet:
 4. Unread/read notification state.
 5. A broad cross-domain event taxonomy before core modules exist.
 
-## When To Revisit
-
-Revisit the server-driven async event model after:
+Revisit this after:
 
 1. Inventory flows are implemented.
 2. Sales flows are implemented.
 3. At least two or three conflict types are real and recurring.
-
-At that point, define:
-
-1. Durable `sync_event` records.
-2. SSE or WebSocket delivery for live sessions.
-3. Web Push for background alerts.
-
-## Decision Principle
-
-Design for a future event system now only by making sync outcomes structured and server-authored.
-
-Do not build the event system itself yet.
 
 ## Inventory
 
@@ -212,76 +169,21 @@ Implication for current screens:
 3. Internal transfers and location management are intentionally out of scope for the current product flow, and the inventory persistence model is now business-scoped as well.
 4. Stock adjustment history should remain bounded in the default sync dataset. For now, sync only the most recent 10 `stock_adjustment` records per variant to devices, while the full audit ledger remains on the server.
 
-## Catalog And Billing Checklist
+## Stable Catalog And Billing Rules
 
-Status legend:
-
-- `[x]` implemented
-- `[~]` partial
-- `[ ]` not implemented
-
-Sequence rule: complete each phase in order unless an explicit exception is agreed.
-
-### Phase 1: Data Contract And Integrity
-
-1. `[x]` Keep catalog definition and billing operations decoupled:
+1. Keep catalog definition and billing operations decoupled:
    - item/variant identity in `catalog.*`
-   - regulatory item classification (`hsn_sac`) on `catalog.items` with type-aware validation (HSN for products, SAC for services)
+   - regulatory item classification (`hsn_sac`) on `catalog.items` with type-aware validation
    - price state and history in `pricing.*`
-2. `[x]` Keep inventory as append-oriented ledger events in `inventory.stock_ledger`, with `stock_level` treated as a derived snapshot.
-3. `[x]` Enforce at least one variant per item and exactly one default variant for active items.
-4. `[x]` Add extensible `metadata` JSON fields to `catalog.items` and `catalog.item_variants` with ownership and validation rules:
-   - metadata writes are accepted only through backend item and item-variant mutation handlers
-   - `sys.*` and `billing.*` namespaces are reserved and rejected for client-authored writes
-   - client-authored metadata keys must live under `custom.*`
-   - metadata values must be JSON objects (or `null` to clear), with bounded depth, key count, string length, and payload size
-5. `[~]` Preserve immutable sales snapshots:
-   - `documents.line_items` already stores `description` and `unit_price`
-   - sales/invoice generation must explicitly guarantee item/variant display data is copied at posting time
-
-### Phase 2: Variant Authoring Model
-
-1. `[ ]` Add key-value variant generator input that produces cartesian combinations in-memory.
-2. `[ ]` Add dynamic option columns in the variant editor table (desktop), with a documented cap of 3 option dimensions for default rendering.
-3. `[x]` Do not support asymmetric row-level option editing for a single item:
-   - option keys/values are defined once at the top-level variant option builder
-   - clicking apply generates cartesian variant rows from those definitions
-   - row-level option add/remove controls are intentionally not available
-   - users can remove unwanted combinations by deleting whole rows before save
-4. `[ ]` Add SKU assist tools:
-   - deterministic SKU batch generator
-   - duplicate prevention feedback before save
-5. `[ ]` Add default variant display-name generation from options with manual override support.
-
-### Phase 3: Pricing Operations
-
-1. `[x]` Keep price write-path versioned through `item_price_events` (`SET`/`CLEARED`) when base price changes, including base dimensions:
-   - `priceType` (`SALES`/`PURCHASE`)
-   - `taxMode` (`EXCLUSIVE`/`INCLUSIVE`)
-   - `gstSlab` (optional)
-2. `[~]` Maintain dense bulk price editing as primary:
-   - inline editing and `Save All (n)` exist
-   - select-and-apply scoped bulk action is not yet present
-3. `[ ]` Add advanced pricing editor surface (drawer or side sheet) for recurring rules, multi-currency policy, tax attributes, and advanced metadata.
-4. `[ ]` Define and implement invoice description composition rules from item + option values for posted documents.
-
-### Phase 4: Inventory UX Boundaries
-
-1. `[x]` Keep ongoing stock changes in dedicated stock adjustment flow; do not couple them to pricing pages.
-2. `[~]` Keep stock adjustments as dense desktop-first batch entry:
-   - current flow supports multiple rows
-   - continue reducing remaining non-conformance noted in `DESIGN_GUIDELINES.md`
-3. `[ ]` Add explicit reason-code policy documentation for all stock movement entry points and reporting joins.
-
-### Validation And Rollout Gates
-
-1. `[ ]` Add migration and backfill plan for metadata fields and any new pricing attributes.
-2. `[ ]` Add tests for:
-   - default-variant invariants
-   - variant immutability after usage
-   - price event history continuity
-   - stock negative-prevention and ledger pruning behavior
-3. `[ ]` Add end-to-end flow checks for:
-   - variant generation + manual overrides
-   - bulk price operations
-   - invoice snapshot correctness
+2. Keep inventory as append-oriented ledger events in `inventory.stock_ledger`, with `stock_level` treated as a derived snapshot.
+3. Enforce at least one variant per item and exactly one default variant for active items.
+4. Metadata writes for catalog entities are accepted only through backend mutation handlers.
+5. Reserve `sys.*` and `billing.*` metadata namespaces and reject them for client-authored writes.
+6. Client-authored metadata keys must live under `custom.*`.
+7. Metadata values must be JSON objects (or `null` to clear), with bounded depth, key count, string length, and payload size.
+8. Keep the price write-path versioned through `item_price_events`, including `priceType`, `taxMode`, and applicable tax attributes.
+9. Keep pricing UI in dedicated pricing flows rather than folding it into general catalog list editing.
+10. Do not support asymmetric row-level option editing for a single item; define options once, generate combinations, and remove unwanted rows as whole combinations.
+11. Keep ongoing stock changes in dedicated stock adjustment flows; do not couple them to pricing pages.
+12. Keep destructive lifecycle actions (`archive`) distinct from corrective permanent removal (`purge`) in both API and UI.
+13. Preserve immutable sales snapshots when sales posting is implemented; do not reconstruct posted documents from live catalog or price records.
