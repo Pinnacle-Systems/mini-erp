@@ -1494,6 +1494,16 @@ export type StockVariantOption = {
   unit: string;
 };
 
+const buildStockVariantOptionLabel = (itemName: string, variantName: string) => {
+  const normalizedVariantName = variantName.trim();
+  if (normalizedVariantName.length > 0) {
+    return normalizedVariantName;
+  }
+
+  const normalizedItemName = itemName.trim();
+  return normalizedItemName || "Untitled Item";
+};
+
 export type StockAdjustmentReason =
   | "OPENING_BALANCE"
   | "ADJUSTMENT_INCREASE"
@@ -1857,15 +1867,10 @@ export const getLocalStockVariantOptions = async (
       return resolveItemVariants(baseVariants, overlayVariants)
         .filter((variant) => variant.isActive)
         .map((variant) => {
-          const suffix = variant.sku
-            ? ` (${variant.sku})`
-            : variant.name
-              ? ` (${variant.name})`
-              : "";
           return {
             variantId: variant.id,
             itemId: variant.itemId,
-            label: `${itemName || "Untitled Item"}${suffix}`,
+            label: buildStockVariantOptionLabel(itemName, variant.name),
             sku: variant.sku,
             unit: String(record.data.unit ?? "PCS"),
           } satisfies StockVariantOption;

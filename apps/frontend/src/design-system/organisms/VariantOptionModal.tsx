@@ -48,12 +48,6 @@ export function VariantOptionModal({
               value={keyDraft}
               onValueChange={onKeyDraftChange}
               placeholder="Size"
-              inputProps={{
-                autoComplete: "off",
-                autoCorrect: "off",
-                autoCapitalize: "off",
-                spellCheck: false,
-              }}
               options={keySuggestions}
               getOptionKey={(key) => key}
               getOptionSearchText={(key) => key}
@@ -70,12 +64,6 @@ export function VariantOptionModal({
               value={valueDraft}
               onValueChange={onValueDraftChange}
               placeholder="M"
-              inputProps={{
-                autoComplete: "off",
-                autoCorrect: "off",
-                autoCapitalize: "off",
-                spellCheck: false,
-              }}
               options={valueSuggestions}
               getOptionKey={(value) => value}
               getOptionSearchText={(value) => value}

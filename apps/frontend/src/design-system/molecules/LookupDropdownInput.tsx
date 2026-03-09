@@ -61,6 +61,13 @@ export function LookupDropdownInput<T>({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const mergedInputProps = {
+    autoComplete: "off",
+    autoCorrect: "off",
+    autoCapitalize: "off",
+    spellCheck: false,
+    ...inputProps,
+  };
 
   const filteredOptions = useMemo(() => {
     const q = value.trim().toLowerCase();
@@ -151,7 +158,7 @@ export function LookupDropdownInput<T>({
   return (
     <div ref={containerRef} className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
       <Input
-        {...inputProps}
+        {...mergedInputProps}
         id={id}
         value={value}
         placeholder={placeholder}
@@ -166,12 +173,12 @@ export function LookupDropdownInput<T>({
             : undefined
         }
         onFocus={(event) => {
-          inputProps?.onFocus?.(event);
+          mergedInputProps.onFocus?.(event);
           setIsFocused(true);
           setActiveOptionIndex(-1);
         }}
         onBlur={(event) => {
-          inputProps?.onBlur?.(event);
+          mergedInputProps.onBlur?.(event);
           window.setTimeout(() => {
             setIsFocused(false);
             setActiveOptionIndex(-1);
@@ -180,7 +187,7 @@ export function LookupDropdownInput<T>({
         }}
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={(event) => {
-          inputProps?.onKeyDown?.(event);
+          mergedInputProps.onKeyDown?.(event);
           if (event.defaultPrevented || disabled || filteredOptions.length === 0) {
             return;
           }

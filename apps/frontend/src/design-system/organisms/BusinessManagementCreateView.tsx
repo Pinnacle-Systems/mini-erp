@@ -177,12 +177,6 @@ export function BusinessManagementCreateView({
               onValueChange={onOwnerLookupQueryChange}
               placeholder="Search owner by name, phone or email"
               disabled={loading}
-              inputProps={{
-                autoComplete: "off",
-                autoCorrect: "off",
-                autoCapitalize: "off",
-                spellCheck: false,
-              }}
               loading={ownerLookupLoading}
               loadingLabel="Searching owners..."
               options={ownerLookupResults}
