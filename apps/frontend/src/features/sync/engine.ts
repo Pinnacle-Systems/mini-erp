@@ -270,7 +270,7 @@ export const queueCustomerCreate = async (
   tenantId: string,
   userId: string,
   payload: CustomerInput,
-  entityId = crypto.randomUUID(),
+  entityId: string = crypto.randomUUID(),
 ) => {
   await queueMutation(tenantId, {
     mutationId: crypto.randomUUID(),
@@ -326,7 +326,7 @@ export const queueSupplierCreate = async (
   tenantId: string,
   userId: string,
   payload: CustomerInput,
-  entityId = crypto.randomUUID(),
+  entityId: string = crypto.randomUUID(),
 ) => {
   await queueMutation(tenantId, {
     mutationId: crypto.randomUUID(),
@@ -381,10 +381,8 @@ export const queueSupplierDelete = async (
 export const queueItemCreate = async (
   tenantId: string,
   userId: string,
-  payload: {
+  payload: ItemInput & {
     name: string;
-    hsnSac?: string | null;
-    category?: string;
     unit:
       | "PCS"
       | "UNIT"
@@ -413,7 +411,6 @@ export const queueItemCreate = async (
       | "FEET"
       | "INCH";
     itemType: "PRODUCT" | "SERVICE";
-    variants?: VariantInput[];
   }
 ) => {
   const entityId = crypto.randomUUID();
@@ -824,6 +821,7 @@ export type ItemVariantDisplay = {
 export type ItemDetailDisplay = {
   id: string;
   name: string;
+  hsnSac: string;
   category: string;
   baseSku: string;
   unit:
@@ -1022,6 +1020,7 @@ export const getLocalItemsForDisplay = async (
         hsnSac?: unknown;
         category?: unknown;
         unit?: unknown;
+        itemType?: unknown;
         variants?: unknown;
       };
       const variants = Array.isArray(payload.variants)
@@ -1070,6 +1069,8 @@ export const getLocalItemsForDisplay = async (
         hsnSac: String(payload.hsnSac ?? ""),
         category: String(payload.category ?? ""),
         unit: String(payload.unit ?? "PCS"),
+        itemType:
+          String(payload.itemType ?? "PRODUCT") === "SERVICE" ? "SERVICE" : "PRODUCT",
         isActive,
         variantSkus,
         variantCount: Math.max(variants.length, 1),
@@ -1156,6 +1157,7 @@ export const getLocalItemDetailForDisplay = async (
   return {
     id: item.entityId,
     name: String(item.data.name ?? "Untitled Item"),
+    hsnSac: String(item.data.hsnSac ?? ""),
     category: String(item.data.category ?? ""),
     baseSku:
       item.data.metadata &&

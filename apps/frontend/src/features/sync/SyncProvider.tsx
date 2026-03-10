@@ -9,8 +9,8 @@ import {
 import { useSessionStore } from "../auth/session-business";
 import { useToast } from "../toast/useToast";
 import { useUserAppStore } from "./user-app-business";
+import type { SyncResultRecord } from "./types";
 import {
-  type SyncResultRecord,
   getLocalItemLabels,
   getSyncRejectionFromError,
   queueItemCreate,

@@ -4,7 +4,7 @@ import {
   type CustomerRow,
 } from "../../features/sync/engine";
 
-export type CustomerDraft = CustomerInput;
+export type CustomerDraft = Required<CustomerInput>;
 
 export const EMPTY_CUSTOMER_DRAFT: CustomerDraft = {
   name: "",

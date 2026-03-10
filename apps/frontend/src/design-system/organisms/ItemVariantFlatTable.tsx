@@ -104,6 +104,7 @@ export function ItemVariantFlatTable({
   onAction,
   onOpenItem,
 }: ItemVariantFlatTableProps) {
+  const ActionIcon = actionIcon;
   const [detailsByItemId, setDetailsByItemId] = useState<Record<string, ItemDetailDisplay | null>>({});
   const [salesPriceByVariantId, setSalesPriceByVariantId] = useState<
     Record<string, { amount: number | null; currency: string; gstSlab: string | null }>
@@ -403,7 +404,7 @@ export function ItemVariantFlatTable({
                       }
                       onClick={() => handleAction(row)}
                     >
-                      {actionIcon ? <actionIcon aria-hidden="true" /> : null}
+                      <ActionIcon aria-hidden="true" />
                       <span>{actionLabel}</span>
                     </Button>
                   </div>

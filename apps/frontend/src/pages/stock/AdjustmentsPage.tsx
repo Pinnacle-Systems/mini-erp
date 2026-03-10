@@ -43,6 +43,10 @@ type AdjustmentDraftRow = {
   quantity: string;
 };
 
+type ReadyAdjustmentDraftRow = AdjustmentDraftRow & {
+  reason: StockAdjustmentReason;
+};
+
 const buildEmptyRow = (variantId = ""): AdjustmentDraftRow => ({
   id: crypto.randomUUID(),
   variantId,
@@ -245,12 +249,14 @@ export function AdjustmentsPage() {
       }
     }
 
+    const readyRows = enteredRows as Array<{ row: ReadyAdjustmentDraftRow; index: number }>;
+
     setIsSubmitting(true);
     setError(null);
     setMessage(null);
 
     try {
-      for (const { row } of enteredRows) {
+      for (const { row } of readyRows) {
         await queueStockAdjustmentCreate(activeStore, identityId, {
           variantId: row.variantId,
           quantity: Number(row.quantity.trim()),
@@ -259,7 +265,7 @@ export function AdjustmentsPage() {
       }
       await syncOnce(activeStore);
 
-      const submittedRowIds = new Set(enteredRows.map(({ row }) => row.id));
+      const submittedRowIds = new Set(readyRows.map(({ row }) => row.id));
       setRows((current) =>
         current.map((row) =>
           submittedRowIds.has(row.id)
@@ -269,12 +275,12 @@ export function AdjustmentsPage() {
       );
       setMessage(
         navigator.onLine
-          ? enteredRows.length === 1
+          ? readyRows.length === 1
             ? "1 stock adjustment recorded."
-            : `${enteredRows.length} stock adjustments recorded.`
-          : enteredRows.length === 1
+            : `${readyRows.length} stock adjustments recorded.`
+          : readyRows.length === 1
             ? "1 stock adjustment queued offline and will sync automatically."
-            : `${enteredRows.length} stock adjustments queued offline and will sync automatically.`,
+            : `${readyRows.length} stock adjustments queued offline and will sync automatically.`,
       );
     } catch (nextError) {
       console.error(nextError);

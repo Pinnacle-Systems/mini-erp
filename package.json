@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "build": "turbo build",
     "dev": "turbo dev",
     "backend:dev": "turbo dev --filter=backend",
     "frontend:dev": "turbo dev --filter=frontend",

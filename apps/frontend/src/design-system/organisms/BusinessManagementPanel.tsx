@@ -24,6 +24,7 @@ type BusinessManagementPanelProps = {
   loading: boolean;
   error: string | null;
   newBusinessName: string;
+  newOwnerId?: string | null;
   newOwnerPhone: string;
   ownerLookupResults: AdminOwnerLookupResult[];
   ownerLookupLoading: boolean;
@@ -90,6 +91,7 @@ export function BusinessManagementPanel({
   loading,
   error,
   newBusinessName,
+  newOwnerId: _newOwnerId,
   newOwnerPhone,
   ownerLookupResults,
   ownerLookupLoading,
