@@ -23,7 +23,7 @@ jobs:
           cache: pnpm
 
       - name: Application build
-        run: pnpm install --frozen-lockfile && pnpm build
+        run: pnpm install --frozen-lockfile && pnpm --filter backend prisma:generate && pnpm build
 
       - name: Deploy workspace metadata to VPS
         uses: easingthemes/ssh-deploy@v5.1.0
