@@ -31,6 +31,11 @@ import {
   type StockVariantOption,
 } from "../../features/sync/engine";
 import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
+import {
+  createSalesInvoiceDraft,
+  postSalesInvoiceDraft,
+  type SalesInvoiceDraft,
+} from "./sales-invoices-api";
 
 type BillLine = {
   id: string;
@@ -44,17 +49,7 @@ type BillLine = {
   stockOnHand: number | null;
 };
 
-type SavedBillDraft = {
-  id: string;
-  billNumber: string;
-  transactionType: "CASH" | "CREDIT";
-  customerId: string | null;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  customerGstNo: string;
-  notes: string;
-  savedAt: string;
+type SavedBillDraft = Omit<SalesInvoiceDraft, "lines"> & {
   lines: BillLine[];
 };
 
@@ -281,28 +276,16 @@ const loadStoredDrafts = (activeStore: string | null) => {
 
 export function BillsPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
-  const businesses = useSessionStore((state) => state.businesses);
-  const activeBusiness = businesses.find((business) => business.id === activeStore) ?? null;
-
-  return (
-    <BillsWorkspace
-      key={activeStore ?? "no-store"}
-      activeStore={activeStore}
-      activeBusinessName={activeBusiness?.name ?? "No business selected"}
-    />
-  );
+  return <BillsWorkspace key={activeStore ?? "no-store"} activeStore={activeStore} />;
 }
 
-function BillsWorkspace({
-  activeStore,
-  activeBusinessName,
-}: {
-  activeStore: string | null;
-  activeBusinessName: string;
-}) {
+function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
   const location = useLocation();
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
+  const businesses = useSessionStore((state) => state.businesses);
+  const activeBusinessName =
+    businesses.find((business) => business.id === activeStore)?.name ?? "No business selected";
   const [initialDrafts] = useState<SavedBillDraft[]>(() => loadStoredDrafts(activeStore));
   const [drafts, setDrafts] = useState<SavedBillDraft[]>(initialDrafts);
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
@@ -328,8 +311,24 @@ function BillsWorkspace({
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [customerActionLoading, setCustomerActionLoading] = useState(false);
-
+  const [draftMutationLoading, setDraftMutationLoading] = useState(false);
+  const [isOnline, setIsOnline] = useState(
+    () => (typeof navigator === "undefined" ? true : navigator.onLine),
+  );
   const storageKey = activeStore ? `${STORAGE_KEY_PREFIX}:${activeStore}` : null;
+
+  useEffect(() => {
+    const setOnline = () => setIsOnline(true);
+    const setOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", setOnline);
+    window.addEventListener("offline", setOffline);
+
+    return () => {
+      window.removeEventListener("online", setOnline);
+      window.removeEventListener("offline", setOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeStore) {
@@ -551,24 +550,17 @@ function BillsWorkspace({
     setViewMode("editor");
   };
 
-  const saveDraft = () => {
-    if (!storageKey) {
-      setSaveMessage("Select a business before saving an invoice draft.");
-      return;
-    }
-
+  const buildNormalizedDraft = () => {
     if (transactionType === "CREDIT" && !activeCustomer) {
-      setSaveMessage("Credit invoices require an existing customer. Create or select one first.");
-      return;
+      throw new Error("Credit invoices require an existing customer. Create or select one first.");
     }
 
     const normalizedLines = normalizeLines(lines);
     if (normalizedLines.length === 0) {
-      setSaveMessage("Add at least one line with an item or amount before saving.");
-      return;
+      throw new Error("Add at least one line with an item or amount before saving.");
     }
 
-    const nextDraft: SavedBillDraft = {
+    return {
       id: activeDraftId ?? crypto.randomUUID(),
       billNumber: billNumber.trim() || createBillNumber(drafts.length),
       transactionType,
@@ -581,16 +573,28 @@ function BillsWorkspace({
       savedAt: new Date().toISOString(),
       lines: normalizedLines,
     };
+  };
 
-    const nextDrafts = activeDraftId
-      ? drafts.map((draft) => (draft.id === activeDraftId ? nextDraft : draft))
-      : [nextDraft, ...drafts];
+  const saveDraft = async () => {
+    try {
+      if (!storageKey) {
+        throw new Error("Select a business before saving an invoice draft.");
+      }
 
-    persistDrafts(nextDrafts);
-    setActiveDraftId(nextDraft.id);
-    setBillNumber(nextDraft.billNumber);
-    setLines(nextDraft.lines);
-    setSaveMessage("Invoice draft saved locally on this device. Posting is not wired yet.");
+      const nextDraft = buildNormalizedDraft();
+      const nextDrafts = activeDraftId
+        ? drafts.map((draft) => (draft.id === activeDraftId ? nextDraft : draft))
+        : [nextDraft, ...drafts];
+
+      persistDrafts(nextDrafts);
+      setActiveDraftId(nextDraft.id);
+      setBillNumber(nextDraft.billNumber);
+      setLines(nextDraft.lines);
+      setSaveMessage("Invoice draft saved locally on this device.");
+    } catch (error) {
+      console.error(error);
+      setSaveMessage(error instanceof Error ? error.message : "Unable to save invoice draft.");
+    }
   };
 
   const loadDraft = (draft: SavedBillDraft) => {
@@ -608,13 +612,21 @@ function BillsWorkspace({
     setViewMode("editor");
   };
 
-  const removeDraft = (draftId: string) => {
-    const nextDrafts = drafts.filter((draft) => draft.id !== draftId);
-    persistDrafts(nextDrafts);
+  const removeDraft = async (draftId: string) => {
+    if (draftMutationLoading) {
+      return;
+    }
 
-    if (draftId === activeDraftId) {
-      resetEditor(nextDrafts.length);
+    try {
+      const nextDrafts = drafts.filter((draft) => draft.id !== draftId);
+      persistDrafts(nextDrafts);
+      if (draftId === activeDraftId) {
+        resetEditor(nextDrafts.length);
+      }
       setSaveMessage("Draft removed.");
+    } catch (error) {
+      console.error(error);
+      setSaveMessage(error instanceof Error ? error.message : "Unable to remove draft.");
     }
   };
 
@@ -684,11 +696,11 @@ function BillsWorkspace({
       );
     });
 
-    if (highlightedLineId) {
-      setLineHighlightRequest((current) => ({
+    if (typeof highlightedLineId === "string") {
+      setLineHighlightRequest({
         lineId: highlightedLineId,
-        nonce: (current?.nonce ?? 0) + 1,
-      }));
+        nonce: (lineHighlightRequest?.nonce ?? 0) + 1,
+      });
     }
   };
 
@@ -714,6 +726,46 @@ function BillsWorkspace({
     savedAt: new Date().toISOString(),
     lines,
   });
+
+  const postDraft = async () => {
+    if (!activeStore) {
+      setSaveMessage("Select a business before posting an invoice.");
+      return;
+    }
+    if (!isOnline) {
+      setSaveMessage("You are offline. Drafts still save locally. Reconnect to post this invoice.");
+      return;
+    }
+
+    setDraftMutationLoading(true);
+    setSaveMessage(null);
+    try {
+      const localDraft = buildNormalizedDraft();
+      const serverDraft = await createSalesInvoiceDraft({
+        tenantId: activeStore,
+        billNumber: localDraft.billNumber,
+        transactionType: localDraft.transactionType,
+        customerId: localDraft.customerId,
+        customerName: localDraft.customerName,
+        customerPhone: localDraft.customerPhone,
+        customerAddress: localDraft.customerAddress,
+        customerGstNo: localDraft.customerGstNo,
+        notes: localDraft.notes,
+        lines: localDraft.lines,
+      });
+      await postSalesInvoiceDraft(serverDraft.id, activeStore);
+      const nextDrafts = drafts.filter((draft) => draft.id !== localDraft.id);
+      persistDrafts(nextDrafts);
+      resetEditor(nextDrafts.length);
+      setViewMode("list");
+      setSaveMessage(`Invoice ${serverDraft.billNumber} posted.`);
+    } catch (error) {
+      console.error(error);
+      setSaveMessage(error instanceof Error ? error.message : "Unable to post invoice.");
+    } finally {
+      setDraftMutationLoading(false);
+    }
+  };
 
   const openCustomerCreate = () => {
     navigate("/app/customers/new", {
@@ -781,7 +833,7 @@ function BillsWorkspace({
             <div className="space-y-1">
               <h1 className="text-sm font-semibold text-foreground">Sales Bills / Invoices</h1>
               <p className="text-xs text-muted-foreground">
-                Recent invoice drafts stay local until the backend sales posting flow is wired.
+                Recent draft invoices stay on this device until you post them to the server.
               </p>
             </div>
             <Button type="button" size="sm" onClick={openNewDraft}>
@@ -790,6 +842,11 @@ function BillsWorkspace({
           </div>
 
           <div className="space-y-2 pt-2 lg:hidden">
+            {saveMessage ? (
+              <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-[11px] text-muted-foreground">
+                {saveMessage}
+              </div>
+            ) : null}
             {drafts.length === 0 ? (
               <div className="rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
                 No recent invoices yet. Create an invoice to start this transaction flow.
@@ -832,7 +889,10 @@ function BillsWorkspace({
                         variant="ghost"
                         size="sm"
                         className="h-auto px-0 py-0 font-semibold text-[#8a2b2b] hover:bg-transparent"
-                        onClick={() => removeDraft(draft.id)}
+                        onClick={() => {
+                          void removeDraft(draft.id);
+                        }}
+                        disabled={draftMutationLoading}
                       >
                         Delete
                       </Button>
@@ -844,6 +904,11 @@ function BillsWorkspace({
           </div>
 
           <div className="hidden lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {saveMessage ? (
+              <div className="mt-2 rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-[11px] text-muted-foreground">
+                {saveMessage}
+              </div>
+            ) : null}
             {drafts.length === 0 ? (
               <div className="mt-2 rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
                 No recent invoices yet. Create an invoice to start this transaction flow.
@@ -890,9 +955,12 @@ function BillsWorkspace({
                             icon={Trash2}
                             variant="ghost"
                             className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-white/55"
-                            onClick={() => removeDraft(draft.id)}
+                            onClick={() => {
+                              void removeDraft(draft.id);
+                            }}
                             aria-label={`Delete ${draft.billNumber}`}
                             title="Delete"
+                            disabled={draftMutationLoading}
                           />
                         </div>
                       </DenseTableCell>
@@ -916,15 +984,47 @@ function BillsWorkspace({
               {activeDraftId ? "Edit Sales Invoice" : "Create Sales Invoice"}
             </h1>
             <p className="text-xs text-muted-foreground">
-              Select a customer, add bill lines, and review the invoice totals before saving.
+              Select a customer, add bill lines, save the local draft, then post when it is ready.
             </p>
+            {!isOnline ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                You are offline. Drafts still save locally. Reconnect to post this invoice.
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setViewMode("list")}>
               Back to Recent
             </Button>
-            <Button type="button" size="sm" onClick={saveDraft}>
-              Save Draft ({normalizeLines(lines).length || 1})
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void saveDraft();
+              }}
+              disabled={draftMutationLoading}
+            >
+              {draftMutationLoading ? "Saving..." : `Save Draft (${normalizeLines(lines).length || 1})`}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                void postDraft();
+              }}
+              disabled={draftMutationLoading || !isOnline}
+              title={
+                isOnline
+                  ? "Post invoice"
+                  : "You are offline. Reconnect to post this invoice."
+              }
+            >
+              {draftMutationLoading
+                ? "Working..."
+                : isOnline
+                  ? "Post Invoice"
+                  : "Offline: Cannot Post"}
             </Button>
           </div>
         </div>
@@ -1204,12 +1304,13 @@ function BillsWorkspace({
               <DenseTable className="rounded-none border-0">
                 <DenseTableHead>
                   <tr>
-                    <DenseTableHeaderCell className="w-[40%]">Item</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[36%]">Item</DenseTableHeaderCell>
                     <DenseTableHeaderCell className="w-[12%]">Qty</DenseTableHeaderCell>
                     <DenseTableHeaderCell className="w-[10%]">Rate</DenseTableHeaderCell>
                     <DenseTableHeaderCell className="w-[10%]">GST %</DenseTableHeaderCell>
                     <DenseTableHeaderCell className="w-[8%]">Mode</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[16%] text-right">Total</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%] text-right">Tax</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%] text-right">Total</DenseTableHeaderCell>
                     <DenseTableHeaderCell className="w-[4%] text-right"> </DenseTableHeaderCell>
                   </tr>
                 </DenseTableHead>
@@ -1287,12 +1388,13 @@ function BillsWorkspace({
                           </Button>
                         </DenseTableCell>
                         <DenseTableCell className="py-1.5 text-right">
+                          <div className="flex h-8 items-center justify-end text-[11px] font-medium text-foreground whitespace-nowrap">
+                            {formatCurrency(lineTotals.taxTotal)}
+                          </div>
+                        </DenseTableCell>
+                        <DenseTableCell className="py-1.5 text-right">
                           <div className="flex h-8 items-center justify-end text-[11px] font-semibold text-foreground whitespace-nowrap">
-                            {toTaxRateNumber(line.taxRate) > 0 ? (
-                              line.taxMode === "INCLUSIVE"
-                                ? `${formatCurrency(lineTotals.total)} (incl. GST ${formatCurrency(lineTotals.taxTotal)})`
-                                : `${formatCurrency(lineTotals.subTotal)} + ${formatCurrency(lineTotals.taxTotal)} = ${formatCurrency(lineTotals.total)}`
-                            ) : formatCurrency(lineTotals.total)}
+                            {formatCurrency(lineTotals.total)}
                           </div>
                         </DenseTableCell>
                         <DenseTableCell className="py-1.5 text-right">
