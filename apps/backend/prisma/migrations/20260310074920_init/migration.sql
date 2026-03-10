@@ -47,6 +47,9 @@ CREATE TYPE "documents"."DocumentType" AS ENUM ('SALES_ESTIMATE', 'PROFORMA_INVO
 CREATE TYPE "documents"."DocumentStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'COMPLETED', 'CANCELLED');
 
 -- CreateEnum
+CREATE TYPE "documents"."SalesTransactionType" AS ENUM ('CASH', 'CREDIT');
+
+-- CreateEnum
 CREATE TYPE "parties"."PartyType" AS ENUM ('CUSTOMER', 'SUPPLIER', 'BOTH');
 
 -- CreateEnum
@@ -260,12 +263,19 @@ CREATE TABLE "documents"."documents" (
     "business_id" UUID NOT NULL,
     "type" "documents"."DocumentType" NOT NULL,
     "status" "documents"."DocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "transaction_type" "documents"."SalesTransactionType",
     "doc_number" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
-    "deleted_at" TIMESTAMP(3) NOT NULL,
-    "party_id" UUID NOT NULL,
+    "posted_at" TIMESTAMP(3),
+    "deleted_at" TIMESTAMP(3),
+    "party_id" UUID,
     "parent_id" UUID,
+    "customer_name_snapshot" TEXT,
+    "customer_phone_snapshot" TEXT,
+    "customer_address_snapshot" TEXT,
+    "customer_tax_id_snapshot" TEXT,
+    "currency" VARCHAR(3),
     "sub_total" DECIMAL(12,2) NOT NULL,
     "tax_total" DECIMAL(12,2) NOT NULL,
     "grand_total" DECIMAL(12,2) NOT NULL,
@@ -280,10 +290,23 @@ CREATE TABLE "documents"."line_items" (
     "id" UUID NOT NULL,
     "document_id" UUID NOT NULL,
     "item_id" UUID NOT NULL,
+    "variant_id" UUID,
     "description" TEXT NOT NULL,
+    "description_snapshot" TEXT,
+    "item_name_snapshot" TEXT,
+    "variant_name_snapshot" TEXT,
+    "sku_snapshot" TEXT,
+    "barcode_snapshot" TEXT,
+    "unit_snapshot" TEXT,
+    "hsn_sac_snapshot" TEXT,
+    "tax_mode_snapshot" TEXT,
+    "option_values_snapshot" JSONB,
     "quantity" DECIMAL(12,3) NOT NULL,
     "unit_price" DECIMAL(12,2) NOT NULL,
     "tax_rate" DECIMAL(5,2) NOT NULL,
+    "net_amount" DECIMAL(12,2),
+    "tax_amount" DECIMAL(12,2),
+    "gross_amount" DECIMAL(12,2),
     "total" DECIMAL(12,2) NOT NULL,
 
     CONSTRAINT "line_items_pkey" PRIMARY KEY ("id")

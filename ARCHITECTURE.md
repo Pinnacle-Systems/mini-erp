@@ -127,6 +127,39 @@ Current shared helper:
 
 - `apps/backend/src/shared/http/response-mappers.ts`
 
+## Module Isolation
+
+Business modules should remain isolated at the persistence boundary by default.
+
+Purpose:
+
+1. Support capability-based licensing so business modules can be enabled or disabled without cross-schema foreign keys making another module's tables a hard dependency.
+2. Preserve a true plug-and-play direction for business modules at the ownership boundary, even while the product still ships as one application and one database.
+3. Keep module ownership explicit so catalog, pricing, inventory, documents, parties, and accounts can evolve independently without silently depending on each other's live rows.
+4. Accept some additional service-layer validation complexity where that tradeoff protects module boundaries and immutable business snapshots.
+
+Rules:
+
+1. Use separate database schemas to represent module ownership, for example `catalog`, `pricing`, `inventory`, `documents`, `parties`, and `accounts`.
+2. Allow normal foreign keys and Prisma relations within a single module schema.
+3. Do not add cross-module Prisma relations or database foreign keys between business modules by default.
+4. Cross-module references should normally be stored as scalar IDs plus backend-authored validation at the write boundary.
+5. When a module needs data owned by another module, copy the required business snapshot into the owning record instead of relying on live reconstruction from another module's current rows.
+6. Projection and diagnostics schemas such as `reporting` and `sync` may store cross-module identifiers for read-model and transport purposes, but should not become the source of truth for the owning business workflow.
+7. If a cross-module foreign key is introduced intentionally, document it here as a narrow exception and explain why scalar-ID validation is insufficient.
+8. Apply this isolation rule primarily to business modules. Cross-cutting infrastructure such as auth, tenant/session selection, and platform administration may use narrow exceptions when the coupling is operational rather than domain ownership.
+
+Current intended result:
+
+1. `documents.*` may store `party_id`, `item_id`, and `variant_id` as scalar references without cross-schema foreign keys.
+2. `pricing.*` may store `variant_id`, `item_id`, and `customer_group_id` as scalar references without cross-schema foreign keys.
+3. `inventory.*` may store `variant_id` and document references as scalar references without cross-schema foreign keys.
+4. `accounts.*` may store `party_id` and business references as scalar references without cross-schema foreign keys.
+
+Current exception to reduce over time:
+
+1. `auth.Session.selected_business` currently uses a Prisma relation to `tenants.Business`, which crosses module ownership boundaries for session convenience rather than domain ownership. Treat this as legacy coupling to revisit, not as a general pattern to copy elsewhere.
+
 ## Sync Ownership
 
 1. The backend remains the authority for sync outcomes.
@@ -187,3 +220,6 @@ Implication for current screens:
 11. Keep ongoing stock changes in dedicated stock adjustment flows; do not couple them to pricing pages.
 12. Keep destructive lifecycle actions (`archive`) distinct from corrective permanent removal (`purge`) in both API and UI.
 13. Preserve immutable sales snapshots when sales posting is implemented; do not reconstruct posted documents from live catalog or price records.
+14. Sales invoice create, update, and posting paths are server-authoritative real-time operations, not synced entity mutations.
+15. Offline support for sales should be limited to local draft capture unless and until a dedicated server-coordinated posting workflow is designed explicitly for offline sales.
+16. Do not model posted sales invoices as ordinary sync entities while inventory, receivables, numbering, and immutable snapshot guarantees still depend on immediate backend validation and side effects.
