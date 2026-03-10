@@ -34,6 +34,9 @@ jobs:
           REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
           REMOTE_USER: ${{ secrets.REMOTE_USER }}
           TARGET: ${{ secrets.REMOTE_TARGET }}/
+          SCRIPT_BEFORE: |
+            mkdir -p ${{ secrets.REMOTE_TARGET }}/apps/backend
+            mkdir -p ${{ secrets.REMOTE_TARGET }}/apps/frontend
 
       - name: Deploy backend to VPS
         uses: easingthemes/ssh-deploy@v5.1.0
@@ -69,4 +72,4 @@ jobs:
           SOURCE: apps/frontend/dist/
           REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
           REMOTE_USER: ${{ secrets.REMOTE_USER }}
-          TARGET: ${{ secrets.REMOTE_TARGET }}/frontend/
+          TARGET: ${{ secrets.REMOTE_TARGET }}/apps/frontend/
