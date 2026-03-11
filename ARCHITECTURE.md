@@ -215,7 +215,10 @@ Implication for current screens:
 6. Client-authored metadata keys must live under `custom.*`.
 7. Metadata values must be JSON objects (or `null` to clear), with bounded depth, key count, string length, and payload size.
 8. Keep the price write-path versioned through `item_price_events`, including `priceType`, `taxMode`, and applicable tax attributes.
-9. Keep pricing UI in dedicated pricing flows rather than folding it into general catalog list editing.
+9. Treat pricing as part of item and variant authoring for the current product baseline:
+   - allow sales and purchase price editing during item create and item update flows
+   - keep `pricing.*` as the persistence and history owner for price state
+   - optional dedicated pricing screens may exist as secondary maintenance tools, but they are not the canonical or required price-entry path
 10. Do not support asymmetric row-level option editing for a single item; define options once, generate combinations, and remove unwanted rows as whole combinations.
 11. Keep ongoing stock changes in dedicated stock adjustment flows; do not couple them to pricing pages.
 12. Keep destructive lifecycle actions (`archive`) distinct from corrective permanent removal (`purge`) in both API and UI.

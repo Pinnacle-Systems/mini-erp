@@ -16,7 +16,6 @@ import {
   ScanBarcode,
   ShieldCheck,
   ShoppingBag,
-  TicketPercent,
   TrendingUp,
   Undo2,
   Users,
@@ -58,13 +57,14 @@ type UserFolderId =
   | "reports"
   | "admin";
 type UserAppId =
+  | "sales-estimates"
+  | "sales-pos"
   | "sales-bills"
   | "sales-orders"
+  | "delivery-challans"
   | "sales-returns"
   | "catalog-products"
   | "catalog-services"
-  | "catalog-product-pricing"
-  | "catalog-service-pricing"
   | "catalog-categories"
   | "catalog-collections"
   | "stock-levels"
@@ -92,13 +92,14 @@ type UserFolderApp = {
 };
 
 const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
+  "sales-estimates": "sales-estimates",
+  "sales-pos": "sales-pos",
   "sales-bills": "sales-bills",
   "sales-orders": "sales-orders",
+  "delivery-challans": "delivery-challans",
   "sales-returns": "sales-returns",
   "catalog-products": "products",
   "catalog-services": "services",
-  "catalog-product-pricing": "product-pricing",
-  "catalog-service-pricing": "service-pricing",
   "catalog-categories": "item-categories",
   "catalog-collections": "item-collections",
   "stock-levels": "stock-levels",
@@ -136,8 +137,20 @@ const folders: Array<{
     requiredModule: "sales",
     apps: [
       {
+        id: "sales-estimates",
+        label: "Estimates",
+        Icon: ClipboardList,
+        requiredAnyCapability: ["TXN_SALE_CREATE"],
+      },
+      {
+        id: "sales-pos",
+        label: "POS",
+        Icon: ScanBarcode,
+        requiredAnyCapability: ["TXN_SALE_CREATE"],
+      },
+      {
         id: "sales-bills",
-        label: "Bills",
+        label: "Invoices",
         Icon: HandCoins,
         requiredAnyCapability: ["TXN_SALE_CREATE"],
       },
@@ -145,6 +158,12 @@ const folders: Array<{
         id: "sales-orders",
         label: "Orders",
         Icon: FileText,
+        requiredAnyCapability: ["TXN_SALE_CREATE"],
+      },
+      {
+        id: "delivery-challans",
+        label: "Delivery Challans",
+        Icon: ReceiptText,
         requiredAnyCapability: ["TXN_SALE_CREATE"],
       },
       {
@@ -171,18 +190,6 @@ const folders: Array<{
         id: "catalog-services",
         label: "Services",
         Icon: Package,
-        requiredAnyCapability: ["ITEM_SERVICES"],
-      },
-      {
-        id: "catalog-product-pricing",
-        label: "Product Pricing",
-        Icon: TicketPercent,
-        requiredAnyCapability: ["ITEM_PRODUCTS"],
-      },
-      {
-        id: "catalog-service-pricing",
-        label: "Service Pricing",
-        Icon: TicketPercent,
         requiredAnyCapability: ["ITEM_SERVICES"],
       },
       {
@@ -381,8 +388,8 @@ const landingRecentActivity = [
 
 const landingBusinessPulse = [
   { label: "Today sales", value: "₹42,860" },
-  { label: "Bills", value: "87" },
-  { label: "Avg bill value", value: "₹493" },
+  { label: "Invoices", value: "87" },
+  { label: "Avg invoice value", value: "₹493" },
 ];
 
 const MOBILE_NAV_BUTTON_WIDTH_PX = 76;
@@ -411,6 +418,14 @@ export function AppHomePage() {
   const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   const [mobileVisibleFolderCount, setMobileVisibleFolderCount] = useState(1);
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia("(max-width: 1023px)").matches,
+  );
   const appTabsScrollRef = useRef<HTMLDivElement | null>(null);
   const [showAppTabsLeftFade, setShowAppTabsLeftFade] = useState(false);
   const [showAppTabsRightFade, setShowAppTabsRightFade] = useState(false);
@@ -424,6 +439,32 @@ export function AppHomePage() {
       },
     [activeBusinessModules],
   );
+
+  useEffect(() => {
+    const setOnline = () => setIsOnline(true);
+    const setOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", setOnline);
+    window.addEventListener("offline", setOffline);
+
+    return () => {
+      window.removeEventListener("online", setOnline);
+      window.removeEventListener("offline", setOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+
+    updateViewport();
+    mediaQuery.addEventListener("change", updateViewport);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updateViewport);
+    };
+  }, []);
+
   const visibleFolders = useMemo(
     () =>
       folders
@@ -434,15 +475,22 @@ export function AppHomePage() {
         .map((folder) => ({
           ...folder,
           apps: folder.apps.filter(
-            (app) =>
-              !app.requiredAnyCapability?.length ||
-              app.requiredAnyCapability.some((capability) =>
-                hasAssignedStoreCapability(activeBusiness, capability),
-              ),
+            (app) => {
+              if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
+                return false;
+              }
+
+              return (
+                !app.requiredAnyCapability?.length ||
+                app.requiredAnyCapability.some((capability) =>
+                  hasAssignedStoreCapability(activeBusiness, capability),
+                )
+              );
+            },
           ),
         }))
         .filter((folder) => folder.apps.length > 0),
-    [activeBusiness, enabledModules],
+    [activeBusiness, enabledModules, isMobileViewport, isOnline],
   );
   const visibleAppIds = useMemo(
     () => new Set(visibleFolders.flatMap((folder) => folder.apps.map((app) => app.id))),

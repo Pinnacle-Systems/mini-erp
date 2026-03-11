@@ -1,64 +1,94 @@
 import { z } from "zod";
 
-const salesTransactionTypeSchema = z.enum(["CASH", "CREDIT"]);
-const salesInvoiceTaxModeSchema = z.enum(["EXCLUSIVE", "INCLUSIVE"]);
+export const salesDocumentTypeSchema = z.enum([
+  "SALES_ESTIMATE",
+  "SALES_ORDER",
+  "DELIVERY_CHALLAN",
+  "SALES_INVOICE",
+  "SALES_RETURN",
+]);
 
-const salesInvoiceLineSchema = z.object({
+const salesDocumentActionSchema = z.enum(["CANCEL", "VOID", "REOPEN"]);
+
+const salesTransactionTypeSchema = z.enum(["CASH", "CREDIT"]);
+const salesDocumentTaxModeSchema = z.enum(["EXCLUSIVE", "INCLUSIVE"]);
+
+const salesDocumentLineSchema = z.object({
   id: z.uuid(),
   variantId: z.uuid(),
   description: z.string().trim().min(1).max(240),
   quantity: z.string().trim().min(1).max(32),
   unitPrice: z.string().trim().min(1).max(32),
   taxRate: z.string().trim().min(1).max(16),
-  taxMode: salesInvoiceTaxModeSchema,
+  taxMode: salesDocumentTaxModeSchema,
   unit: z.string().trim().min(1).max(16),
 });
 
-const salesInvoiceBodySchema = z.object({
+const salesDocumentBodySchema = z.object({
   tenantId: z.uuid(),
+  documentType: salesDocumentTypeSchema,
+  parentId: z.uuid().nullable().optional(),
   billNumber: z.string().trim().min(1).max(64),
-  transactionType: salesTransactionTypeSchema,
+  transactionType: salesTransactionTypeSchema.nullable().optional(),
   customerId: z.uuid().nullable().optional(),
   customerName: z.string().trim().max(160).default(""),
   customerPhone: z.string().trim().max(40).default(""),
   customerAddress: z.string().trim().max(500).default(""),
   customerGstNo: z.string().trim().max(32).default(""),
+  validUntil: z.string().trim().max(10).default(""),
+  dispatchDate: z.string().trim().max(10).default(""),
+  dispatchCarrier: z.string().trim().max(120).default(""),
+  dispatchReference: z.string().trim().max(120).default(""),
   notes: z.string().trim().max(2000).default(""),
-  lines: z.array(salesInvoiceLineSchema).min(1).max(200),
+  lines: z.array(salesDocumentLineSchema).min(1).max(200),
 });
 
-export const listSalesInvoicesSchema = z.object({
+export const listSalesDocumentsSchema = z.object({
   query: z.object({
     tenantId: z.uuid(),
+    documentType: salesDocumentTypeSchema,
     limit: z.coerce.number().int().min(1).max(100).default(50),
   }),
 });
 
-export const createSalesInvoiceSchema = z.object({
-  body: salesInvoiceBodySchema,
+export const createSalesDocumentSchema = z.object({
+  body: salesDocumentBodySchema,
 });
 
-export const updateSalesInvoiceSchema = z.object({
+export const updateSalesDocumentSchema = z.object({
   params: z.object({
-    invoiceId: z.uuid(),
+    documentId: z.uuid(),
   }),
-  body: salesInvoiceBodySchema,
+  body: salesDocumentBodySchema,
 });
 
-export const deleteSalesInvoiceSchema = z.object({
+export const deleteSalesDocumentSchema = z.object({
   params: z.object({
-    invoiceId: z.uuid(),
+    documentId: z.uuid(),
   }),
   body: z.object({
     tenantId: z.uuid(),
+    documentType: salesDocumentTypeSchema,
   }),
 });
 
-export const postSalesInvoiceSchema = z.object({
+export const postSalesDocumentSchema = z.object({
   params: z.object({
-    invoiceId: z.uuid(),
+    documentId: z.uuid(),
   }),
   body: z.object({
     tenantId: z.uuid(),
+    documentType: salesDocumentTypeSchema,
+  }),
+});
+
+export const transitionSalesDocumentSchema = z.object({
+  params: z.object({
+    documentId: z.uuid(),
+  }),
+  body: z.object({
+    tenantId: z.uuid(),
+    documentType: salesDocumentTypeSchema,
+    action: salesDocumentActionSchema,
   }),
 });

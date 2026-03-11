@@ -1,1 +1,7 @@
-export { BillsPage } from "./BillsPage";
+export {
+  BillsPage,
+  DeliveryChallansPage,
+  EstimatesPage,
+  OrdersPage,
+  ReturnsPage,
+} from "./BillsPage";

@@ -1,6 +1,15 @@
 import { apiFetch } from "../../lib/api";
 
-export type SalesInvoiceLineDraft = {
+export type SalesDocumentType =
+  | "SALES_ESTIMATE"
+  | "SALES_ORDER"
+  | "DELIVERY_CHALLAN"
+  | "SALES_INVOICE"
+  | "SALES_RETURN";
+
+export type SalesDocumentAction = "CANCEL" | "VOID" | "REOPEN";
+
+export type SalesDocumentLineDraft = {
   id: string;
   variantId: string;
   description: string;
@@ -12,9 +21,12 @@ export type SalesInvoiceLineDraft = {
   stockOnHand?: number | null;
 };
 
-export type SalesInvoiceDraft = {
+export type SalesDocumentDraft = {
   id: string;
-  status?: "DRAFT" | "OPEN" | "PARTIAL" | "COMPLETED" | "CANCELLED";
+  documentType: SalesDocumentType;
+  parentId?: string | null;
+  childIds?: string[];
+  status?: "DRAFT" | "OPEN" | "PARTIAL" | "COMPLETED" | "CANCELLED" | "VOID";
   postedAt?: string | null;
   billNumber: string;
   transactionType: "CASH" | "CREDIT";
@@ -23,13 +35,45 @@ export type SalesInvoiceDraft = {
   customerPhone: string;
   customerAddress: string;
   customerGstNo: string;
+  validUntil: string;
+  dispatchDate: string;
+  dispatchCarrier: string;
+  dispatchReference: string;
   notes: string;
   savedAt: string;
-  lines: SalesInvoiceLineDraft[];
+  lines: SalesDocumentLineDraft[];
 };
 
-type SalesInvoiceDraftInput = {
+export type SalesDocumentApiErrorDetails = {
+  requested?: string;
+  suggested?: string;
+};
+
+export class SalesDocumentApiError extends Error {
+  status: number;
+  reasonCode?: string;
+  details?: SalesDocumentApiErrorDetails;
+
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      reasonCode?: string;
+      details?: SalesDocumentApiErrorDetails;
+    },
+  ) {
+    super(message);
+    this.name = "SalesDocumentApiError";
+    this.status = options.status;
+    this.reasonCode = options.reasonCode;
+    this.details = options.details;
+  }
+}
+
+type SalesDocumentDraftInput = {
   tenantId: string;
+  documentType: SalesDocumentType;
+  parentId?: string | null;
   billNumber: string;
   transactionType: "CASH" | "CREDIT";
   customerId: string | null;
@@ -37,102 +81,138 @@ type SalesInvoiceDraftInput = {
   customerPhone: string;
   customerAddress: string;
   customerGstNo: string;
+  validUntil: string;
+  dispatchDate: string;
+  dispatchCarrier: string;
+  dispatchReference: string;
   notes: string;
-  lines: SalesInvoiceLineDraft[];
+  lines: SalesDocumentLineDraft[];
 };
 
 const parseError = async (response: Response, fallback: string) => {
-  const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-  return payload?.message ?? fallback;
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        message?: string;
+        reasonCode?: string;
+        details?: SalesDocumentApiErrorDetails;
+      }
+    | null;
+
+  return new SalesDocumentApiError(payload?.message ?? fallback, {
+    status: response.status,
+    reasonCode: payload?.reasonCode,
+    details: payload?.details,
+  });
 };
 
-export const listSalesInvoiceDrafts = async (
+export const listSalesDocuments = async (
   tenantId: string,
+  documentType: SalesDocumentType,
   limit = 50,
-): Promise<SalesInvoiceDraft[]> => {
+): Promise<SalesDocumentDraft[]> => {
   const query = new URLSearchParams({
     tenantId,
+    documentType,
     limit: String(limit),
   });
-  const response = await apiFetch(`/api/sales/invoices?${query.toString()}`, {
+  const response = await apiFetch(`/api/sales/documents?${query.toString()}`, {
     method: "GET",
   });
 
   if (!response.ok) {
-    throw new Error(await parseError(response, "Unable to load invoice drafts"));
+    throw await parseError(response, "Unable to load documents");
   }
 
-  const payload = (await response.json()) as { invoices?: SalesInvoiceDraft[] };
-  return payload.invoices ?? [];
+  const payload = (await response.json()) as { documents?: SalesDocumentDraft[] };
+  return payload.documents ?? [];
 };
 
-export const createSalesInvoiceDraft = async (
-  input: SalesInvoiceDraftInput,
-): Promise<SalesInvoiceDraft> => {
-  const response = await apiFetch("/api/sales/invoices", {
+export const createSalesDocumentDraft = async (
+  input: SalesDocumentDraftInput,
+): Promise<SalesDocumentDraft> => {
+  const response = await apiFetch("/api/sales/documents", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 
   if (!response.ok) {
-    throw new Error(await parseError(response, "Unable to save invoice draft"));
+    throw await parseError(response, "Unable to save document draft");
   }
 
-  const payload = (await response.json()) as { invoice: SalesInvoiceDraft };
-  return payload.invoice;
+  const payload = (await response.json()) as { document: SalesDocumentDraft };
+  return payload.document;
 };
 
-export const updateSalesInvoiceDraft = async (
-  invoiceId: string,
-  input: SalesInvoiceDraftInput,
-): Promise<SalesInvoiceDraft> => {
-  const response = await apiFetch(`/api/sales/invoices/${encodeURIComponent(invoiceId)}`, {
+export const updateSalesDocumentDraft = async (
+  documentId: string,
+  input: SalesDocumentDraftInput,
+): Promise<SalesDocumentDraft> => {
+  const response = await apiFetch(`/api/sales/documents/${encodeURIComponent(documentId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 
   if (!response.ok) {
-    throw new Error(await parseError(response, "Unable to update invoice draft"));
+    throw await parseError(response, "Unable to update document draft");
   }
 
-  const payload = (await response.json()) as { invoice: SalesInvoiceDraft };
-  return payload.invoice;
+  const payload = (await response.json()) as { document: SalesDocumentDraft };
+  return payload.document;
 };
 
-export const postSalesInvoiceDraft = async (
-  invoiceId: string,
+export const postSalesDocumentDraft = async (
+  documentId: string,
   tenantId: string,
-): Promise<SalesInvoiceDraft> => {
-  const response = await apiFetch(
-    `/api/sales/invoices/${encodeURIComponent(invoiceId)}/post`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId }),
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(await parseError(response, "Unable to post invoice"));
-  }
-
-  const payload = (await response.json()) as { invoice: SalesInvoiceDraft };
-  return payload.invoice;
-};
-
-export const deleteSalesInvoiceDraft = async (
-  invoiceId: string,
-  tenantId: string,
-): Promise<void> => {
-  const response = await apiFetch(`/api/sales/invoices/${encodeURIComponent(invoiceId)}`, {
-    method: "DELETE",
+  documentType: SalesDocumentType,
+): Promise<SalesDocumentDraft> => {
+  const response = await apiFetch(`/api/sales/documents/${encodeURIComponent(documentId)}/post`, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenantId }),
+    body: JSON.stringify({ tenantId, documentType }),
   });
 
   if (!response.ok) {
-    throw new Error(await parseError(response, "Unable to delete invoice draft"));
+    throw await parseError(response, "Unable to post document");
   }
+
+  const payload = (await response.json()) as { document: SalesDocumentDraft };
+  return payload.document;
+};
+
+export const deleteSalesDocumentDraft = async (
+  documentId: string,
+  tenantId: string,
+  documentType: SalesDocumentType,
+): Promise<void> => {
+  const response = await apiFetch(`/api/sales/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenantId, documentType }),
+  });
+
+  if (!response.ok) {
+    throw await parseError(response, "Unable to delete document draft");
+  }
+};
+
+export const transitionSalesDocument = async (
+  documentId: string,
+  tenantId: string,
+  documentType: SalesDocumentType,
+  action: SalesDocumentAction,
+): Promise<SalesDocumentDraft> => {
+  const response = await apiFetch(`/api/sales/documents/${encodeURIComponent(documentId)}/action`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenantId, documentType, action }),
+  });
+
+  if (!response.ok) {
+    throw await parseError(response, "Unable to update document status");
+  }
+
+  const payload = (await response.json()) as { document: SalesDocumentDraft };
+  return payload.document;
 };

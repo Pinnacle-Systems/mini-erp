@@ -10,7 +10,16 @@ import {
 } from "../../shared/utils/errors.js";
 import { getBusinessCapabilitiesFromLicense } from "../license/license.service.js";
 
-type SalesInvoiceLineInput = {
+type SalesDocumentType =
+  | "SALES_ESTIMATE"
+  | "SALES_ORDER"
+  | "DELIVERY_CHALLAN"
+  | "SALES_INVOICE"
+  | "SALES_RETURN";
+
+type SalesDocumentAction = "CANCEL" | "VOID" | "REOPEN";
+
+type SalesLineInput = {
   id: string;
   variantId: string;
   description: string;
@@ -21,17 +30,23 @@ type SalesInvoiceLineInput = {
   unit: string;
 };
 
-type SalesInvoiceInput = {
+type SalesDocumentInput = {
   tenantId: string;
+  documentType: SalesDocumentType;
+  parentId?: string | null;
   billNumber: string;
-  transactionType: "CASH" | "CREDIT";
+  transactionType?: "CASH" | "CREDIT" | null;
   customerId?: string | null;
   customerName: string;
   customerPhone: string;
   customerAddress: string;
   customerGstNo: string;
+  validUntil: string;
+  dispatchDate: string;
+  dispatchCarrier: string;
+  dispatchReference: string;
   notes: string;
-  lines: SalesInvoiceLineInput[];
+  lines: SalesLineInput[];
 };
 
 type SalesTransactionClient = Parameters<typeof prisma.$transaction>[0] extends (
@@ -40,7 +55,67 @@ type SalesTransactionClient = Parameters<typeof prisma.$transaction>[0] extends 
   ? T
   : never;
 
-type InvoiceRecord = Awaited<ReturnType<typeof getInvoiceOrThrow>>;
+type SalesDocumentRecord = Awaited<ReturnType<typeof getDocumentOrThrow>>;
+
+const SALES_DOCUMENT_META: Record<
+  SalesDocumentType,
+  {
+    prefix: string;
+    singularLabel: string;
+    pluralLabel: string;
+    notFoundLabel: string;
+    duplicateLabel: string;
+  }
+> = {
+  SALES_ESTIMATE: {
+    prefix: "EST-",
+    singularLabel: "estimate",
+    pluralLabel: "estimates",
+    notFoundLabel: "Sales estimate not found",
+    duplicateLabel: "Estimate number already exists",
+  },
+  SALES_ORDER: {
+    prefix: "SO-",
+    singularLabel: "sales order",
+    pluralLabel: "sales orders",
+    notFoundLabel: "Sales order not found",
+    duplicateLabel: "Sales order number already exists",
+  },
+  DELIVERY_CHALLAN: {
+    prefix: "DC-",
+    singularLabel: "delivery challan",
+    pluralLabel: "delivery challans",
+    notFoundLabel: "Delivery challan not found",
+    duplicateLabel: "Delivery challan number already exists",
+  },
+  SALES_INVOICE: {
+    prefix: "INV-",
+    singularLabel: "invoice",
+    pluralLabel: "invoices",
+    notFoundLabel: "Sales invoice not found",
+    duplicateLabel: "Invoice number already exists",
+  },
+  SALES_RETURN: {
+    prefix: "SRN-",
+    singularLabel: "sales return",
+    pluralLabel: "sales returns",
+    notFoundLabel: "Sales return not found",
+    duplicateLabel: "Sales return number already exists",
+  },
+};
+
+const SALES_DOCUMENT_CONVERSION_RULES: Partial<
+  Record<SalesDocumentType, SalesDocumentType[]>
+> = {
+  SALES_ESTIMATE: ["SALES_ORDER"],
+  SALES_ORDER: ["SALES_INVOICE"],
+};
+
+const usesTransactionType = (documentType: SalesDocumentType) =>
+  documentType === "SALES_INVOICE";
+
+const requiresCustomerDetails = (documentType: SalesDocumentType) =>
+  documentType !== "SALES_INVOICE";
 
 const toRounded = (value: number, fractionDigits: number) => {
   const factor = 10 ** fractionDigits;
@@ -67,7 +142,7 @@ const parseTaxRate = (value: string) => {
 const formatDecimalString = (value: number) =>
   Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
 
-const buildLineAmounts = (line: SalesInvoiceLineInput) => {
+const buildLineAmounts = (line: SalesLineInput) => {
   const quantity = toRounded(parsePositiveNumber(line.quantity, "Quantity"), 3);
   const unitPrice = toRounded(parsePositiveNumber(line.unitPrice, "Unit price"), 2);
   const taxRate = toRounded(parseTaxRate(line.taxRate), 2);
@@ -98,34 +173,127 @@ const buildLineAmounts = (line: SalesInvoiceLineInput) => {
   };
 };
 
-const assertSalesAccess = async (userId: string, tenantId: string) => {
+const parseDocumentNumberSequence = (value: string, prefix: string) => {
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`^${escapedPrefix}(\\d+)$`).exec(value.trim().toUpperCase());
+  if (!match) {
+    return null;
+  }
+
+  return Number(match[1]);
+};
+
+const formatDocumentNumber = (documentType: SalesDocumentType, sequence: number) => {
+  const meta = SALES_DOCUMENT_META[documentType];
+  return `${meta.prefix}${String(sequence).padStart(4, "0")}`;
+};
+
+const parseOptionalDateInput = (value: string, field: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new BadRequestError(`${field} must be a valid date`);
+  }
+
+  const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.valueOf())) {
+    throw new BadRequestError(`${field} must be a valid date`);
+  }
+
+  return parsed;
+};
+
+const formatOptionalDateOutput = (value: Date | null | undefined) =>
+  value ? value.toISOString().slice(0, 10) : "";
+
+const getDocumentMetadata = (input: SalesDocumentInput) => ({
+  validUntil:
+    input.documentType === "SALES_ESTIMATE"
+      ? parseOptionalDateInput(input.validUntil, "Validity date")
+      : null,
+  dispatchDate:
+    input.documentType === "DELIVERY_CHALLAN"
+      ? parseOptionalDateInput(input.dispatchDate, "Dispatch date")
+      : null,
+  dispatchCarrier:
+    input.documentType === "DELIVERY_CHALLAN" ? input.dispatchCarrier.trim() || null : null,
+  dispatchReference:
+    input.documentType === "DELIVERY_CHALLAN" ? input.dispatchReference.trim() || null : null,
+});
+
+const getSalesCapabilityRequired = (documentType: SalesDocumentType) =>
+  documentType === "SALES_RETURN" ? "TXN_SALE_RETURN" : "TXN_SALE_CREATE";
+
+const assertSalesAccess = async (
+  userId: string,
+  tenantId: string,
+  documentType: SalesDocumentType,
+) => {
   const member = await tenantService.validateMembership(userId, tenantId);
   if (!member) {
     throw new ForbiddenError("Access denied");
   }
 
   const capabilities = await getBusinessCapabilitiesFromLicense(tenantId);
-  if (!capabilities.includes("TXN_SALE_CREATE")) {
+  const requiredCapability = getSalesCapabilityRequired(documentType);
+  if (!capabilities.includes(requiredCapability)) {
     throw new ForbiddenError("Sales module is not enabled for this store license");
   }
+};
+
+const getSuggestedDocumentNumber = async (
+  tx: Pick<typeof prisma, "document">,
+  tenantId: string,
+  documentType: SalesDocumentType,
+  excludedDocumentId?: string,
+) => {
+  const meta = SALES_DOCUMENT_META[documentType];
+  const existing = await tx.document.findMany({
+    where: {
+      business_id: tenantId,
+      type: documentType,
+      deleted_at: null,
+      ...(excludedDocumentId
+        ? {
+            id: {
+              not: excludedDocumentId,
+            },
+          }
+        : {}),
+    },
+    select: {
+      doc_number: true,
+    },
+  });
+
+  const maxSequence = existing.reduce((max, row) => {
+    const parsed = parseDocumentNumberSequence(row.doc_number, meta.prefix);
+    return parsed && parsed > max ? parsed : max;
+  }, 0);
+
+  return formatDocumentNumber(documentType, maxSequence + 1);
 };
 
 const assertUniqueBillNumber = async (
   tx: Pick<typeof prisma, "document">,
   tenantId: string,
+  documentType: SalesDocumentType,
   billNumber: string,
-  excludedInvoiceId?: string,
+  excludedDocumentId?: string,
 ) => {
   const existing = await tx.document.findFirst({
     where: {
       business_id: tenantId,
-      type: "SALES_INVOICE",
+      type: documentType,
       doc_number: billNumber,
       deleted_at: null,
-      ...(excludedInvoiceId
+      ...(excludedDocumentId
         ? {
             id: {
-              not: excludedInvoiceId,
+              not: excludedDocumentId,
             },
           }
         : {}),
@@ -136,7 +304,19 @@ const assertUniqueBillNumber = async (
   });
 
   if (existing) {
-    throw new ConflictError("Invoice number already exists");
+    const suggested = await getSuggestedDocumentNumber(
+      tx,
+      tenantId,
+      documentType,
+      excludedDocumentId,
+    );
+    throw new ConflictError(SALES_DOCUMENT_META[documentType].duplicateLabel, {
+      reasonCode: "DOCUMENT_NUMBER_CONFLICT",
+      details: {
+        requested: billNumber,
+        suggested,
+      },
+    });
   }
 };
 
@@ -144,14 +324,30 @@ const getCustomerReference = async (
   tx: Pick<typeof prisma, "party">,
   tenantId: string,
   input: Pick<
-    SalesInvoiceInput,
-    "customerId" | "customerName" | "customerPhone" | "customerAddress" | "customerGstNo" | "transactionType"
+    SalesDocumentInput,
+    | "customerId"
+    | "customerName"
+    | "customerPhone"
+    | "customerAddress"
+    | "customerGstNo"
+    | "transactionType"
+    | "documentType"
   >,
 ) => {
+  const normalizedTransactionType = usesTransactionType(input.documentType)
+    ? input.transactionType ?? "CASH"
+    : null;
   const customerId = input.customerId ?? null;
   if (!customerId) {
-    if (input.transactionType === "CREDIT") {
-      throw new BadRequestError("Credit invoices require an existing customer");
+    if (normalizedTransactionType === "CREDIT") {
+      throw new BadRequestError(
+        `${SALES_DOCUMENT_META[input.documentType].singularLabel} requires an existing customer for credit transactions`,
+      );
+    }
+    if (requiresCustomerDetails(input.documentType) && !input.customerName.trim()) {
+      throw new BadRequestError(
+        `${SALES_DOCUMENT_META[input.documentType].singularLabel} requires customer details`,
+      );
     }
 
     return {
@@ -183,7 +379,9 @@ const getCustomerReference = async (
   });
 
   if (!party) {
-    throw new BadRequestError("Selected customer is not available for this invoice");
+    throw new BadRequestError(
+      `Selected customer is not available for this ${SALES_DOCUMENT_META[input.documentType].singularLabel}`,
+    );
   }
 
   return {
@@ -198,7 +396,7 @@ const getCustomerReference = async (
 const getVariantSnapshotMap = async (
   tx: Pick<typeof prisma, "itemVariant">,
   tenantId: string,
-  lines: Array<Pick<SalesInvoiceLineInput, "variantId">>,
+  lines: Array<Pick<SalesLineInput, "variantId">>,
 ) => {
   const uniqueVariantIds = [...new Set(lines.map((line) => line.variantId))];
   const variants = await tx.itemVariant.findMany({
@@ -265,19 +463,31 @@ const buildOptionSnapshot = (variant: {
     value: entry.option_value.value,
   }));
 
-const getInvoiceOrThrow = async (
+const getDocumentOrThrow = async (
   tx: Pick<typeof prisma, "document">,
   tenantId: string,
-  invoiceId: string,
+  documentType: SalesDocumentType,
+  documentId: string,
 ) => {
-  const invoice = await tx.document.findFirst({
+  const document = await tx.document.findFirst({
     where: {
-      id: invoiceId,
+      id: documentId,
       business_id: tenantId,
-      type: "SALES_INVOICE",
+      type: documentType,
       deleted_at: null,
     },
     include: {
+      children: {
+        where: {
+          deleted_at: null,
+        },
+        orderBy: {
+          created_at: "asc",
+        },
+        select: {
+          id: true,
+        },
+      },
       lineItems: {
         orderBy: {
           id: "asc",
@@ -286,28 +496,158 @@ const getInvoiceOrThrow = async (
     },
   });
 
-  if (!invoice) {
-    throw new NotFoundError("Sales invoice not found");
+  if (!document) {
+    throw new NotFoundError(SALES_DOCUMENT_META[documentType].notFoundLabel);
   }
 
-  return invoice;
+  return document;
 };
 
-const mapSalesInvoices = (invoices: InvoiceRecord[]) =>
-  invoices.map((invoice) => ({
-    id: invoice.id,
-    status: invoice.status,
-    postedAt: invoice.posted_at?.toISOString() ?? null,
-    billNumber: invoice.doc_number,
-    transactionType: invoice.transaction_type ?? "CASH",
-    customerId: invoice.party_id ?? null,
-    customerName: invoice.customer_name_snapshot ?? "",
-    customerPhone: invoice.customer_phone_snapshot ?? "",
-    customerAddress: invoice.customer_address_snapshot ?? "",
-    customerGstNo: invoice.customer_tax_id_snapshot ?? "",
-    notes: invoice.notes ?? "",
-    savedAt: invoice.updated_at.toISOString(),
-    lines: invoice.lineItems.map((line) => ({
+const getParentDocumentReference = async (
+  tx: Pick<typeof prisma, "document">,
+  tenantId: string,
+  documentType: SalesDocumentType,
+  parentId?: string | null,
+) => {
+  if (!parentId) {
+    return null;
+  }
+
+  const parent = await tx.document.findFirst({
+    where: {
+      id: parentId,
+      business_id: tenantId,
+      deleted_at: null,
+    },
+    select: {
+      id: true,
+      type: true,
+    },
+  });
+
+  if (!parent) {
+    throw new BadRequestError("Selected source document is no longer available");
+  }
+
+  const allowedChildren = SALES_DOCUMENT_CONVERSION_RULES[
+    parent.type as SalesDocumentType
+  ];
+  if (!allowedChildren?.includes(documentType)) {
+    throw new BadRequestError(
+      `${SALES_DOCUMENT_META[documentType].singularLabel} cannot be converted from this source document`,
+    );
+  }
+
+  return parent;
+};
+
+const syncParentConversionStatus = async (
+  tx: SalesTransactionClient,
+  tenantId: string,
+  parentId?: string | null,
+) => {
+  if (!parentId) {
+    return;
+  }
+
+  const parent = await tx.document.findFirst({
+    where: {
+      id: parentId,
+      business_id: tenantId,
+      deleted_at: null,
+    },
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      posted_at: true,
+      grand_total: true,
+    },
+  });
+
+  if (!parent || parent.status === "CANCELLED" || parent.status === "VOID") {
+    return;
+  }
+  if (!parent.posted_at) {
+    return;
+  }
+
+  const eligibleChildTypes =
+    SALES_DOCUMENT_CONVERSION_RULES[parent.type as SalesDocumentType];
+  if (!eligibleChildTypes?.length) {
+    return;
+  }
+
+  const convertedChildren = await tx.document.findMany({
+    where: {
+      business_id: tenantId,
+      parent_id: parent.id,
+      type: {
+        in: eligibleChildTypes,
+      },
+      deleted_at: null,
+      posted_at: {
+        not: null,
+      },
+      status: {
+        notIn: ["CANCELLED", "VOID"],
+      },
+    },
+    select: {
+      grand_total: true,
+    },
+  });
+
+  const convertedTotal = convertedChildren.reduce(
+    (sum, child) => sum + Number(child.grand_total),
+    0,
+  );
+  const parentTotal = Number(parent.grand_total);
+  const nextStatus =
+    convertedTotal <= 0
+      ? parent.posted_at
+        ? "OPEN"
+        : "DRAFT"
+      : convertedTotal >= parentTotal
+        ? "COMPLETED"
+        : "PARTIAL";
+
+  if (nextStatus === parent.status) {
+    return;
+  }
+
+  await tx.document.update({
+    where: {
+      id: parent.id,
+    },
+    data: {
+      status: nextStatus,
+    },
+  });
+};
+
+const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
+  documents.map((document) => ({
+    id: document.id,
+    documentType: document.type as SalesDocumentType,
+    parentId: document.parent_id ?? null,
+    childIds: document.children.map((child) => child.id),
+    status: document.status,
+    postedAt: document.posted_at?.toISOString() ?? null,
+    billNumber: document.doc_number,
+    transactionType: document.transaction_type ?? "CASH",
+    customerId: document.party_id ?? null,
+    customerName: document.customer_name_snapshot ?? "",
+    customerPhone: document.customer_phone_snapshot ?? "",
+    customerAddress: document.customer_address_snapshot ?? "",
+    customerGstNo: document.customer_tax_id_snapshot ?? "",
+    validUntil: formatOptionalDateOutput(document.valid_until),
+    dispatchDate: formatOptionalDateOutput(document.dispatch_date),
+    dispatchCarrier: document.dispatch_carrier ?? "",
+    dispatchReference: document.dispatch_reference ?? "",
+    notes: document.notes ?? "",
+    savedAt: document.updated_at.toISOString(),
+    lines: document.lineItems.map((line) => ({
       id: line.id,
       variantId: line.variant_id ?? "",
       description: line.description_snapshot ?? line.description,
@@ -320,33 +660,46 @@ const mapSalesInvoices = (invoices: InvoiceRecord[]) =>
     })),
   }));
 
-const toSalesInvoiceListView = (invoices: ReturnType<typeof mapSalesInvoices>) =>
+const toSalesDocumentListView = (documents: ReturnType<typeof mapSalesDocuments>) =>
   successResponse({
-    invoices,
+    documents,
   });
 
-const toSalesInvoicePayload = (invoice: ReturnType<typeof mapSalesInvoices>[number]) =>
+const toSalesDocumentPayload = (document: ReturnType<typeof mapSalesDocuments>[number]) =>
   successResponse({
-    invoice,
+    document,
   });
 
-const saveDraftInvoice = async (
+const saveDraftDocument = async (
   tx: SalesTransactionClient,
-  invoiceId: string | null,
-  input: SalesInvoiceInput,
+  documentId: string | null,
+  input: SalesDocumentInput,
 ) => {
   const trimmedBillNumber = input.billNumber.trim();
   const uniqueLineIds = new Set(input.lines.map((line) => line.id));
   if (uniqueLineIds.size !== input.lines.length) {
-    throw new BadRequestError("Invoice lines must have unique ids");
+    throw new BadRequestError("Document lines must have unique ids");
   }
 
-  await assertUniqueBillNumber(tx, input.tenantId, trimmedBillNumber, invoiceId ?? undefined);
+  await assertUniqueBillNumber(
+    tx,
+    input.tenantId,
+    input.documentType,
+    trimmedBillNumber,
+    documentId ?? undefined,
+  );
 
   const [customerRef, variantMap] = await Promise.all([
     getCustomerReference(tx, input.tenantId, input),
     getVariantSnapshotMap(tx, input.tenantId, input.lines),
   ]);
+  const parentRef = await getParentDocumentReference(
+    tx,
+    input.tenantId,
+    input.documentType,
+    input.parentId,
+  );
+  const metadata = getDocumentMetadata(input);
 
   const normalizedLines = input.lines.map((line) => {
     const variant = variantMap.get(line.variantId);
@@ -388,22 +741,32 @@ const saveDraftInvoice = async (
     { subTotal: 0, taxTotal: 0, grandTotal: 0 },
   );
 
-  if (invoiceId) {
-    const existing = await getInvoiceOrThrow(tx, input.tenantId, invoiceId);
+  if (documentId) {
+    const existing = await getDocumentOrThrow(tx, input.tenantId, input.documentType, documentId);
     if (existing.status !== "DRAFT") {
-      throw new BadRequestError("Only draft invoices can be edited");
+      throw new BadRequestError(`Only draft ${SALES_DOCUMENT_META[input.documentType].singularLabel}s can be edited`);
+    }
+    if (parentRef?.id === documentId) {
+      throw new BadRequestError("Document cannot reference itself as its source");
     }
 
     await tx.document.update({
-      where: { id: invoiceId },
+      where: { id: documentId },
       data: {
-        transaction_type: input.transactionType,
+        transaction_type: usesTransactionType(input.documentType)
+          ? (input.transactionType ?? "CASH")
+          : null,
         doc_number: trimmedBillNumber,
+        parent_id: parentRef?.id ?? null,
         party_id: customerRef.partyId,
         customer_name_snapshot: customerRef.customerName || null,
         customer_phone_snapshot: customerRef.customerPhone || null,
         customer_address_snapshot: customerRef.customerAddress || null,
         customer_tax_id_snapshot: customerRef.customerGstNo || null,
+        valid_until: metadata.validUntil,
+        dispatch_date: metadata.dispatchDate,
+        dispatch_carrier: metadata.dispatchCarrier,
+        dispatch_reference: metadata.dispatchReference,
         currency: "INR",
         notes: input.notes.trim() || null,
         shipping_addr: customerRef.customerAddress || null,
@@ -415,14 +778,14 @@ const saveDraftInvoice = async (
 
     await tx.lineItem.deleteMany({
       where: {
-        document_id: invoiceId,
+        document_id: documentId,
       },
     });
 
     await tx.lineItem.createMany({
       data: normalizedLines.map((line) => ({
         id: line.id,
-        document_id: invoiceId,
+        document_id: documentId,
         item_id: line.itemId,
         variant_id: line.variantId,
         description: line.description,
@@ -445,21 +808,28 @@ const saveDraftInvoice = async (
       })),
     });
 
-    return getInvoiceOrThrow(tx, input.tenantId, invoiceId);
+    return getDocumentOrThrow(tx, input.tenantId, input.documentType, documentId);
   }
 
   const created = await tx.document.create({
     data: {
       business_id: input.tenantId,
-      type: "SALES_INVOICE",
+      type: input.documentType,
       status: "DRAFT",
-      transaction_type: input.transactionType,
+      transaction_type: usesTransactionType(input.documentType)
+        ? (input.transactionType ?? "CASH")
+        : null,
       doc_number: trimmedBillNumber,
+      parent_id: parentRef?.id ?? null,
       party_id: customerRef.partyId,
       customer_name_snapshot: customerRef.customerName || null,
       customer_phone_snapshot: customerRef.customerPhone || null,
       customer_address_snapshot: customerRef.customerAddress || null,
       customer_tax_id_snapshot: customerRef.customerGstNo || null,
+      valid_until: metadata.validUntil,
+      dispatch_date: metadata.dispatchDate,
+      dispatch_carrier: metadata.dispatchCarrier,
+      dispatch_reference: metadata.dispatchReference,
       currency: "INR",
       notes: input.notes.trim() || null,
       shipping_addr: customerRef.customerAddress || null,
@@ -496,49 +866,147 @@ const saveDraftInvoice = async (
     })),
   });
 
-  return getInvoiceOrThrow(tx, input.tenantId, created.id);
+  return getDocumentOrThrow(tx, input.tenantId, input.documentType, created.id);
 };
 
-const postDraftInvoice = async (
+const postDraftDocument = async (
   tx: SalesTransactionClient,
   tenantId: string,
-  invoiceId: string,
+  documentType: SalesDocumentType,
+  documentId: string,
 ) => {
-  const invoice = await getInvoiceOrThrow(tx, tenantId, invoiceId);
-  if (invoice.status !== "DRAFT") {
-    throw new BadRequestError("Only draft invoices can be posted");
+  const document = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  if (document.status !== "DRAFT") {
+    throw new BadRequestError(
+      `Only draft ${SALES_DOCUMENT_META[documentType].singularLabel}s can be posted`,
+    );
   }
-  if (invoice.lineItems.length === 0) {
-    throw new BadRequestError("Add at least one invoice line before posting");
+  if (document.lineItems.length === 0) {
+    throw new BadRequestError(
+      `Add at least one ${SALES_DOCUMENT_META[documentType].singularLabel} line before posting`,
+    );
   }
-  if (invoice.transaction_type === "CREDIT" && !invoice.party_id) {
-    throw new BadRequestError("Credit invoices require an existing customer");
+  if (document.type !== "SALES_INVOICE" && !document.customer_name_snapshot?.trim()) {
+    throw new BadRequestError(
+      `${SALES_DOCUMENT_META[documentType].singularLabel} requires customer details`,
+    );
+  }
+  if (document.transaction_type === "CREDIT" && !document.party_id) {
+    throw new BadRequestError(
+      `${SALES_DOCUMENT_META[documentType].singularLabel} requires an existing customer for credit transactions`,
+    );
   }
 
   await tx.document.update({
-    where: { id: invoiceId },
+    where: { id: documentId },
     data: {
       status: "OPEN",
       posted_at: new Date(),
     },
   });
 
-  return getInvoiceOrThrow(tx, tenantId, invoiceId);
+  await syncParentConversionStatus(tx, tenantId, document.parent_id);
+
+  return getDocumentOrThrow(tx, tenantId, documentType, documentId);
 };
 
-export const listSalesInvoices = catchAsync(async (req, res) => {
-  const { tenantId, limit = 50 } = req.query as { tenantId: string; limit?: number };
+const transitionDocumentState = async (
+  tx: SalesTransactionClient,
+  tenantId: string,
+  documentType: SalesDocumentType,
+  documentId: string,
+  action: SalesDocumentAction,
+) => {
+  const document = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
 
-  await assertSalesAccess(req.user.id, tenantId);
+  if (action === "CANCEL") {
+    if (!["OPEN", "PARTIAL"].includes(document.status)) {
+      throw new BadRequestError(
+        `Only open ${SALES_DOCUMENT_META[documentType].pluralLabel} can be cancelled`,
+      );
+    }
 
-  const invoices = await prisma.document.findMany({
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        status: "CANCELLED",
+      },
+    });
+
+    await syncParentConversionStatus(tx, tenantId, document.parent_id);
+
+    return getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  }
+
+  if (action === "VOID") {
+    if (!["OPEN", "PARTIAL"].includes(document.status)) {
+      throw new BadRequestError(
+        `Only open ${SALES_DOCUMENT_META[documentType].pluralLabel} can be voided`,
+      );
+    }
+
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        status: "VOID",
+      },
+    });
+
+    await syncParentConversionStatus(tx, tenantId, document.parent_id);
+
+    return getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  }
+
+  if (document.status !== "CANCELLED") {
+    throw new BadRequestError(
+      `Only cancelled ${SALES_DOCUMENT_META[documentType].singularLabel}s can be reopened`,
+    );
+  }
+  if (!document.posted_at) {
+    throw new BadRequestError(
+      `Only posted ${SALES_DOCUMENT_META[documentType].singularLabel}s can be reopened`,
+    );
+  }
+
+  await tx.document.update({
+    where: { id: documentId },
+    data: {
+      status: "OPEN",
+    },
+  });
+
+  await syncParentConversionStatus(tx, tenantId, document.parent_id);
+
+  return getDocumentOrThrow(tx, tenantId, documentType, documentId);
+};
+
+export const listSalesDocuments = catchAsync(async (req, res) => {
+  const { tenantId, documentType, limit = 50 } = req.query as {
+    tenantId: string;
+    documentType: SalesDocumentType;
+    limit?: number;
+  };
+
+  await assertSalesAccess(req.user.id, tenantId, documentType);
+
+  const documents = await prisma.document.findMany({
     where: {
       business_id: tenantId,
-      type: "SALES_INVOICE",
-      status: "DRAFT",
+      type: documentType,
       deleted_at: null,
     },
     include: {
+      children: {
+        where: {
+          deleted_at: null,
+        },
+        orderBy: {
+          created_at: "asc",
+        },
+        select: {
+          id: true,
+        },
+      },
       lineItems: {
         orderBy: {
           id: "asc",
@@ -551,62 +1019,89 @@ export const listSalesInvoices = catchAsync(async (req, res) => {
     take: Number(limit),
   });
 
-  res.json(toSalesInvoiceListView(mapSalesInvoices(invoices)));
+  res.json(toSalesDocumentListView(mapSalesDocuments(documents)));
 });
 
-export const createSalesInvoice = catchAsync(async (req, res) => {
-  const input = req.body as SalesInvoiceInput;
+export const createSalesDocument = catchAsync(async (req, res) => {
+  const input = req.body as SalesDocumentInput;
 
-  await assertSalesAccess(req.user.id, input.tenantId);
+  await assertSalesAccess(req.user.id, input.tenantId, input.documentType);
 
-  const invoice = await prisma.$transaction((tx) => saveDraftInvoice(tx, null, input));
+  const document = await prisma.$transaction((tx) => saveDraftDocument(tx, null, input));
 
-  res.json(toSalesInvoicePayload(mapSalesInvoices([invoice])[0]));
+  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
 });
 
-export const updateSalesInvoice = catchAsync(async (req, res) => {
-  const { invoiceId } = req.params as { invoiceId: string };
-  const input = req.body as SalesInvoiceInput;
+export const updateSalesDocument = catchAsync(async (req, res) => {
+  const { documentId } = req.params as { documentId: string };
+  const input = req.body as SalesDocumentInput;
 
-  await assertSalesAccess(req.user.id, input.tenantId);
+  await assertSalesAccess(req.user.id, input.tenantId, input.documentType);
 
-  const invoice = await prisma.$transaction((tx) => saveDraftInvoice(tx, invoiceId, input));
+  const document = await prisma.$transaction((tx) => saveDraftDocument(tx, documentId, input));
 
-  res.json(toSalesInvoicePayload(mapSalesInvoices([invoice])[0]));
+  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
 });
 
-export const postSalesInvoice = catchAsync(async (req, res) => {
-  const { invoiceId } = req.params as { invoiceId: string };
-  const { tenantId } = req.body as { tenantId: string };
+export const postSalesDocument = catchAsync(async (req, res) => {
+  const { documentId } = req.params as { documentId: string };
+  const { tenantId, documentType } = req.body as {
+    tenantId: string;
+    documentType: SalesDocumentType;
+  };
 
-  await assertSalesAccess(req.user.id, tenantId);
+  await assertSalesAccess(req.user.id, tenantId, documentType);
 
-  const invoice = await prisma.$transaction((tx) => postDraftInvoice(tx, tenantId, invoiceId));
+  const document = await prisma.$transaction((tx) =>
+    postDraftDocument(tx, tenantId, documentType, documentId),
+  );
 
-  res.json(toSalesInvoicePayload(mapSalesInvoices([invoice])[0]));
+  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
 });
 
-export const deleteSalesInvoice = catchAsync(async (req, res) => {
-  const { invoiceId } = req.params as { invoiceId: string };
-  const { tenantId } = req.body as { tenantId: string };
+export const transitionSalesDocument = catchAsync(async (req, res) => {
+  const { documentId } = req.params as { documentId: string };
+  const { tenantId, documentType, action } = req.body as {
+    tenantId: string;
+    documentType: SalesDocumentType;
+    action: SalesDocumentAction;
+  };
 
-  await assertSalesAccess(req.user.id, tenantId);
+  await assertSalesAccess(req.user.id, tenantId, documentType);
+
+  const document = await prisma.$transaction((tx) =>
+    transitionDocumentState(tx, tenantId, documentType, documentId, action),
+  );
+
+  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
+});
+
+export const deleteSalesDocument = catchAsync(async (req, res) => {
+  const { documentId } = req.params as { documentId: string };
+  const { tenantId, documentType } = req.body as {
+    tenantId: string;
+    documentType: SalesDocumentType;
+  };
+
+  await assertSalesAccess(req.user.id, tenantId, documentType);
 
   await prisma.$transaction(async (tx) => {
-    const invoice = await getInvoiceOrThrow(tx, tenantId, invoiceId);
-    if (invoice.status !== "DRAFT") {
-      throw new BadRequestError("Only draft invoices can be deleted");
+    const document = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
+    if (document.status !== "DRAFT") {
+      throw new BadRequestError(
+        `Only draft ${SALES_DOCUMENT_META[documentType].singularLabel}s can be deleted`,
+      );
     }
 
     await tx.lineItem.deleteMany({
       where: {
-        document_id: invoiceId,
+        document_id: documentId,
       },
     });
 
     await tx.document.delete({
       where: {
-        id: invoiceId,
+        id: documentId,
       },
     });
   });

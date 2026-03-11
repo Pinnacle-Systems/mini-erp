@@ -190,10 +190,21 @@ Keep those sections focused on stable rules that should apply to future work in 
 - Stock review screens should summarize the business-wide quantity users are currently filtering, not split the same product into internal location rows.
 - Keep inventory filters compact and labeled, with dense desktop tables as the primary review pattern.
 
+## Sales
+
+- Sales quotations/estimates, sales orders, delivery challans, sales invoices, and sales returns should reuse one dense document workspace pattern instead of diverging into unrelated screen families.
+- The primary browse surface for these sales documents should be a dense combined table on desktop, with status distinguishing draft and posted records.
+- Draft and posted records for the same sales document type may appear together in one list when that improves review continuity, but actions must still reflect the real document state.
+- When online, `Save Draft` should persist a backend draft for the active sales document type. Offline draft save may remain device-local as a fallback, but the UI should treat backend drafts as first-class editable records once available.
+- Draft-only actions such as open/edit or delete must remain unavailable for posted records.
+- When a posted sales document supports a post-state workflow such as cancel, void, or reopen, expose that as an explicit labeled action in the list instead of overloading draft actions or hiding the transition behind status text.
+- Shared customer, item lookup, line-entry, totals, and posting patterns should stay aligned across sales document types unless a feature-specific rule documents a justified exception.
+- Type-specific metadata required for downstream sales conversions should live inside the shared sales workspace instead of being deferred to hidden follow-up steps. At minimum, estimates should surface validity and delivery challans should surface dispatch details in the main form.
+
 ## Catalog
 
-- Catalog authoring should separate identity definition from commercial configuration:
-  item and variant structure are created in catalog flows, while prices are managed in pricing flows.
+- Catalog authoring should treat pricing as part of the main item workflow for the current product baseline. Item create and item edit screens may include sales and purchase pricing fields alongside item and variant details.
+- If a separate pricing screen exists, treat it as a secondary maintenance surface for bulk review or correction, not the only place users can set prices.
 - When a catalog screen supports both archive and purge, those actions must be surfaced as separate intents. Use `Delete`/inactive state for reversible lifecycle changes and `Purge` for permanent corrective removal.
 - Desktop variant authoring should use a dense, spreadsheet-like table as the primary editing surface once variants are generated.
 - Variant generation should support key-value option entry that can expand to cartesian combinations before save.

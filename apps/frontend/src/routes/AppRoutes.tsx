@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
-import {
-  hasAssignedStoreCapability,
-  useSessionStore,
-} from "../features/auth/session-business";
+import { useSessionStore } from "../features/auth/session-business";
 import { useLogoutFlow } from "../features/auth/useLogoutFlow";
 import { LoginPage } from "../pages/auth";
 import { AppHomePage } from "../pages/shell";
 import { AdminLayout } from "../pages/admin/layout";
 import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/businesses";
 import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
-import { CategoriesPage, CollectionsPage, PricingPage } from "../pages/catalog";
+import { CategoriesPage, CollectionsPage } from "../pages/catalog";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
 import {
   AddCustomerPage,
@@ -24,7 +21,13 @@ import {
 import { AppFeaturePlaceholderPage, DataSyncAppPage, ItemSyncAppPage } from "../pages/shell/UserAppPages";
 import { AdjustmentsPage, HistoryPage, LevelsPage } from "../pages/stock";
 import { OfflinePage } from "../pages/system";
-import { BillsPage } from "../pages/sales";
+import {
+  BillsPage,
+  DeliveryChallansPage,
+  EstimatesPage,
+  OrdersPage,
+  ReturnsPage,
+} from "../pages/sales";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import {
   RequireAuth,
@@ -42,19 +45,38 @@ function AppEntryRoute() {
   return <AppHomePage />;
 }
 
-function PricingEntryRoute() {
-  const activeStore = useSessionStore((state) => state.activeStore);
-  const businesses = useSessionStore((state) => state.businesses);
-  const activeBusiness =
-    businesses.find((business) => business.id === activeStore) ?? null;
+function SalesPosRoute() {
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia("(max-width: 1023px)").matches,
+  );
 
-  if (hasAssignedStoreCapability(activeBusiness, "ITEM_PRODUCTS")) {
-    return <Navigate to="/app/product-pricing" replace />;
+  useEffect(() => {
+    const setOnline = () => setIsOnline(true);
+    const setOffline = () => setIsOnline(false);
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+
+    window.addEventListener("online", setOnline);
+    window.addEventListener("offline", setOffline);
+    mediaQuery.addEventListener("change", updateViewport);
+
+    return () => {
+      window.removeEventListener("online", setOnline);
+      window.removeEventListener("offline", setOffline);
+      mediaQuery.removeEventListener("change", updateViewport);
+    };
+  }, []);
+
+  if (!isOnline || isMobileViewport) {
+    return <Navigate to="/app/sales-bills" replace />;
   }
-  if (hasAssignedStoreCapability(activeBusiness, "ITEM_SERVICES")) {
-    return <Navigate to="/app/service-pricing" replace />;
-  }
-  return <Navigate to="/app" replace />;
+
+  return <AppFeaturePlaceholderPage sectionTitle="Sales" appLabel="POS" />;
 }
 
 function AppLayout({ onLogout }: { onLogout: () => void }) {
@@ -211,60 +233,20 @@ export function AppRoutes() {
                       />
                     }
                   >
-                    <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
+                      <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
                       <Route element={<RequireCapability capability="TXN_SALE_CREATE" />}>
+                        <Route path="sales-estimates" element={<EstimatesPage />} />
+                        <Route path="sales-pos" element={<SalesPosRoute />} />
                         <Route path="sales-bills" element={<BillsPage />} />
-                        <Route
-                          path="sales-orders"
-                          element={
-                            <AppFeaturePlaceholderPage
-                              sectionTitle="Sell"
-                              appLabel="Orders"
-                            />
-                          }
-                        />
+                        <Route path="sales-orders" element={<OrdersPage />} />
+                        <Route path="delivery-challans" element={<DeliveryChallansPage />} />
                       </Route>
                     </Route>
                   </Route>
                   <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
                     <Route element={<RequireCapability capability="TXN_SALE_RETURN" />}>
-                      <Route
-                        path="sales-returns"
-                        element={
-                          <AppFeaturePlaceholderPage
-                            sectionTitle="Sell"
-                            appLabel="Returns"
-                          />
-                        }
-                      />
+                      <Route path="sales-returns" element={<ReturnsPage />} />
                     </Route>
-                  </Route>
-                </Route>
-                <Route element={<RequireModule moduleKey="pricing" />}>
-                  <Route path="item-pricing" element={<PricingEntryRoute />} />
-                  <Route element={<RequireCapability capability="ITEM_PRODUCTS" />}>
-                    <Route
-                      path="product-pricing"
-                      element={
-                        <PricingPage
-                          itemType="PRODUCT"
-                          title="Product Pricing"
-                          singularLabel="product"
-                        />
-                      }
-                    />
-                  </Route>
-                  <Route element={<RequireCapability capability="ITEM_SERVICES" />}>
-                    <Route
-                      path="service-pricing"
-                      element={
-                        <PricingPage
-                          itemType="SERVICE"
-                          title="Service Pricing"
-                          singularLabel="service"
-                        />
-                      }
-                    />
                   </Route>
                 </Route>
                 <Route element={<RequireCapability capability="ITEM_PRODUCTS" />}>

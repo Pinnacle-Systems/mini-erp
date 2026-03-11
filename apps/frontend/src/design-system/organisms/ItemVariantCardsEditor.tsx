@@ -1,7 +1,7 @@
-import { Trash2 } from "lucide-react";
-import type { CSSProperties } from "react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Button } from "../atoms/Button";
-import { IconButton } from "../atoms/IconButton";
+import { Checkbox } from "../atoms/Checkbox";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
 import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
@@ -32,12 +32,12 @@ type ItemVariantCardsEditorProps = {
   variants: ItemVariantDraft[];
   onVariantsChange: (next: ItemVariantDraft[]) => void;
   onVariantPurge?: (variantId: string) => void;
+  onBulkVariantPurge?: (variantIds: string[]) => void;
   onVariantNameChange?: (variantId: string, name: string) => void;
   onVariantSkuChange?: (variantId: string, sku: string) => void;
   onAddVariant: () => void;
   showAddVariantAction?: boolean;
   addVariantLabel?: string;
-  removeVariantLabel?: string;
   denseInputClassName?: string;
   showActiveToggle?: boolean;
   showPricingFields?: boolean;
@@ -59,12 +59,12 @@ export function ItemVariantCardsEditor({
   variants,
   onVariantsChange,
   onVariantPurge,
+  onBulkVariantPurge,
   onVariantNameChange,
   onVariantSkuChange,
   onAddVariant,
   showAddVariantAction = true,
   addVariantLabel = "Add Variant",
-  removeVariantLabel = "Remove variant",
   denseInputClassName = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]",
   showActiveToggle = false,
   showPricingFields = false,
@@ -72,6 +72,8 @@ export function ItemVariantCardsEditor({
   showGstSlabField = false,
   disabled = false,
 }: ItemVariantCardsEditorProps) {
+  const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([]);
+  const [showBulkMenu, setShowBulkMenu] = useState(false);
   const optionColumns = variants.reduce<Array<{ id: string; label: string }>>((columns, variant) => {
     for (const option of variant.optionRows) {
       const trimmed = option.key.trim();
@@ -82,6 +84,100 @@ export function ItemVariantCardsEditor({
     }
     return columns;
   }, []);
+
+  const selectableVariantIds = useMemo(
+    () =>
+      variants
+        .filter((variant) => !disabled && !variant.isLocked)
+        .map((variant) => variant.id),
+    [disabled, variants],
+  );
+  const selectedEditableVariantIds = useMemo(
+    () => selectedVariantIds.filter((id) => selectableVariantIds.includes(id)),
+    [selectedVariantIds, selectableVariantIds],
+  );
+  const allSelectableSelected =
+    selectableVariantIds.length > 0 &&
+    selectedEditableVariantIds.length === selectableVariantIds.length;
+  const hasSelectedVariants = selectedEditableVariantIds.length > 0;
+  const canBulkDelete =
+    hasSelectedVariants &&
+    selectedEditableVariantIds.length < variants.length &&
+    selectedEditableVariantIds.every(
+      (variantId) =>
+        variantId.startsWith("temp-") || Boolean(onBulkVariantPurge || onVariantPurge),
+    );
+  const bulkDeleteDisabledReason = !hasSelectedVariants
+    ? "Select one or more variants first."
+    : selectedEditableVariantIds.length === variants.length
+      ? "At least one variant must remain."
+      : !selectedEditableVariantIds.every(
+            (variantId) =>
+              variantId.startsWith("temp-") || Boolean(onBulkVariantPurge || onVariantPurge),
+          )
+        ? "One or more selected variants cannot be deleted."
+        : null;
+
+  useEffect(() => {
+    if (!showBulkMenu) {
+      return;
+    }
+
+    const handlePointerDown = () => setShowBulkMenu(false);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [showBulkMenu]);
+
+  const handleToggleSelection = (variantId: string, checked: boolean) => {
+    setSelectedVariantIds((current) =>
+      checked ? [...current.filter((id) => id !== variantId), variantId] : current.filter((id) => id !== variantId),
+    );
+  };
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    setSelectedVariantIds(checked ? selectableVariantIds : []);
+  };
+
+  const handleBulkSetActive = (nextIsActive: boolean) => {
+    if (!hasSelectedVariants) {
+      return;
+    }
+
+    const selectedSet = new Set(selectedEditableVariantIds);
+    onVariantsChange(
+      variants.map((variant) =>
+        selectedSet.has(variant.id) ? { ...variant, isActive: nextIsActive } : variant,
+      ),
+    );
+    setShowBulkMenu(false);
+  };
+
+  const handleBulkDelete = () => {
+    if (!canBulkDelete) {
+      return;
+    }
+
+    const selectedSet = new Set(selectedEditableVariantIds);
+    const tempVariantIds = selectedEditableVariantIds.filter((variantId) => variantId.startsWith("temp-"));
+    const persistedVariantIds = selectedEditableVariantIds.filter((variantId) => !variantId.startsWith("temp-"));
+
+    if (tempVariantIds.length > 0) {
+      onVariantsChange(variants.filter((variant) => !selectedSet.has(variant.id)));
+    }
+
+    if (persistedVariantIds.length > 0) {
+      if (onBulkVariantPurge) {
+        onBulkVariantPurge(persistedVariantIds);
+      } else {
+        persistedVariantIds.forEach((variantId) => onVariantPurge?.(variantId));
+      }
+    }
+
+    setSelectedVariantIds([]);
+    setShowBulkMenu(false);
+  };
 
   const desktopGridTemplate = (() => {
     const columnsAfterName = showPricingFields
@@ -104,28 +200,92 @@ export function ItemVariantCardsEditor({
       : ["minmax(0, 2fr)", "minmax(0, 2fr)"];
     const optionColumnWidths = optionColumns.map(() => "minmax(0, 1.3fr)");
     return [
+      "2rem",
       "minmax(0, 1.8fr)",
       ...optionColumnWidths,
       ...columnsAfterName,
       "4.25rem",
-      "4.5rem",
     ].join(" ");
   })();
 
   return (
     <div className="grid w-full gap-1.5 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
       <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
-        <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={`hidden h-7 px-2 lg:inline-flex ${showAddVariantAction ? "" : "lg:hidden"}`}
-          onClick={onAddVariant}
-          disabled={disabled}
-        >
-          {addVariantLabel}
-        </Button>
+        <div className="flex items-center gap-2">
+          <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
+          {selectedEditableVariantIds.length > 0 ? (
+            <span className="text-[10px] text-muted-foreground">
+              {selectedEditableVariantIds.length} selected
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div
+            className="relative"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 px-2"
+              disabled={!hasSelectedVariants || disabled}
+              onClick={() => setShowBulkMenu((current) => !current)}
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+              Bulk Actions
+            </Button>
+            {showBulkMenu ? (
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[10.5rem] rounded-lg border border-border/80 bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
+                <div className="grid gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] text-[#15314e]"
+                    onClick={() => handleBulkSetActive(true)}
+                  >
+                    Mark active
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] text-[#15314e]"
+                    onClick={() => handleBulkSetActive(false)}
+                  >
+                    Mark inactive
+                  </Button>
+                  <div
+                    title={!canBulkDelete ? bulkDeleteDisabledReason ?? undefined : undefined}
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                      disabled={!canBulkDelete}
+                      onClick={handleBulkDelete}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Delete selected
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={`hidden h-7 px-2 lg:inline-flex ${showAddVariantAction ? "" : "lg:hidden"}`}
+            onClick={onAddVariant}
+            disabled={disabled}
+          >
+            {addVariantLabel}
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0">
@@ -133,6 +293,14 @@ export function ItemVariantCardsEditor({
           className="hidden bg-slate-50/95 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:gap-1 lg:border-b lg:border-border/70 lg:px-2 lg:py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground"
           style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
         >
+          <span className="flex justify-center">
+            <Checkbox
+              checked={allSelectableSelected}
+              disabled={selectableVariantIds.length === 0}
+              aria-label="Select all variants"
+              onChange={(event) => handleToggleSelectAll(event.target.checked)}
+            />
+          </span>
           <span>Name</span>
           {optionColumns.map((column) => (
             <span key={column.id}>{column.label}</span>
@@ -143,21 +311,10 @@ export function ItemVariantCardsEditor({
           {showPricingFields && showPurchasePrice ? <span>Purchase</span> : null}
           {showPricingFields || showGstSlabField ? <span>GST %</span> : null}
           <span className="text-center">{showActiveToggle ? "Active" : ""}</span>
-          <span className="text-center">Actions</span>
         </div>
         {variants.map((variant) => {
           const isLocked = Boolean(variant.isLocked);
           const isReadOnly = disabled || isLocked;
-          const canTriggerPersistedDelete = Boolean(onVariantPurge) && !variant.id.startsWith("temp-");
-          const removeDisabled =
-            disabled || isLocked || (!canTriggerPersistedDelete && variants.length <= 1);
-          const onRemoveVariant = () => {
-            if (canTriggerPersistedDelete) {
-              onVariantPurge?.(variant.id);
-              return;
-            }
-            onVariantsChange(variants.filter((entry) => entry.id !== variant.id));
-          };
           const optionByColumn = new Map(
             variant.optionRows.map((option) => [normalizeOptionKey(option.key), option] as const),
           );
@@ -177,6 +334,17 @@ export function ItemVariantCardsEditor({
                 className="grid gap-1.5 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:gap-1"
                 style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
               >
+                <div className="grid gap-1 lg:justify-items-center">
+                  <Label className="lg:hidden">Select</Label>
+                  <Checkbox
+                    checked={selectedVariantIds.includes(variant.id)}
+                    disabled={isReadOnly}
+                    aria-label={`Select ${variant.name || variant.sku || "variant"}`}
+                    onChange={(event) =>
+                      handleToggleSelection(variant.id, event.target.checked)
+                    }
+                  />
+                </div>
                 <div className="grid gap-1">
                   <Label className="lg:hidden">Name</Label>
                   <Input
@@ -327,29 +495,6 @@ export function ItemVariantCardsEditor({
                   ) : (
                     <span className="hidden lg:block" aria-hidden="true" />
                   )}
-                </div>
-                <div className="grid gap-1 lg:justify-items-center">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={removeDisabled}
-                    onClick={onRemoveVariant}
-                    className="h-7 justify-self-start gap-1.5 px-2 text-[11px] text-[#8a2b2b] hover:bg-[#fff5f5] hover:text-[#7a1f1f] lg:hidden"
-                  >
-                    <Trash2 aria-hidden="true" />
-                    <span>{removeVariantLabel}</span>
-                  </Button>
-                  <IconButton
-                    type="button"
-                    icon={Trash2}
-                    variant="ghost"
-                    disabled={removeDisabled}
-                    onClick={onRemoveVariant}
-                    className="hidden h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
-                    aria-label={removeVariantLabel}
-                    title={removeVariantLabel}
-                  />
                 </div>
               </div>
             </div>

@@ -1408,6 +1408,93 @@ export function ItemDetailsPage({
     }
   };
 
+  const onDeleteVariants = async (variantIds: string[]) => {
+    if (!item || !activeStore || !identityId || !isBusinessSelected || loading) return;
+
+    const persistedVariantIds = variantIds.filter((variantId) => !variantId.startsWith("temp-"));
+    const tempVariantIds = variantIds.filter((variantId) => variantId.startsWith("temp-"));
+
+    if (persistedVariantIds.length === 0) {
+      if (tempVariantIds.length === 0) return;
+      setItem({
+        ...item,
+        variants: item.variants.filter((variant) => !tempVariantIds.includes(variant.id)),
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${persistedVariantIds.length} selected variant${persistedVariantIds.length === 1 ? "" : "s"}? If the server finds no usage history they will be permanently deleted. Otherwise they will be archived to preserve history. Unsaved edits on this screen will be discarded.`,
+    );
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
+      await Promise.all(
+        persistedVariantIds.map((variantId) =>
+          queueItemVariantPurge(activeStore, identityId, variantId),
+        ),
+      );
+      await syncOnce(activeStore);
+      const [refreshedDetail, refreshedSalesPricingRows, refreshedPurchasePricingRows] =
+        await Promise.all([
+          getLocalItemDetailForDisplay(activeStore, item.id),
+          getLocalItemPricingRowsForDisplay(activeStore, undefined, true, "SALES"),
+          getLocalItemPricingRowsForDisplay(activeStore, undefined, true, "PURCHASE"),
+        ]);
+      if (!refreshedDetail) {
+        navigate(routeBasePath, { replace: true });
+        return;
+      }
+      const refreshedSalesPricingByVariantId = new Map(
+        refreshedSalesPricingRows
+          .filter((row) => row.itemId === refreshedDetail.id)
+          .map(
+            (row) =>
+              [
+                row.variantId,
+                {
+                  amount: row.amount,
+                  currency: row.currency,
+                  serverVersion: row.serverVersion,
+                  taxMode: row.taxMode,
+                  gstSlab: normalizeGstSlab(row.gstSlab) ?? "",
+                } satisfies PricingSnapshot,
+              ] as const,
+          ),
+      );
+      const refreshedPurchasePricingByVariantId = new Map(
+        refreshedPurchasePricingRows
+          .filter((row) => row.itemId === refreshedDetail.id)
+          .map(
+            (row) =>
+              [
+                row.variantId,
+                {
+                  amount: row.amount,
+                  currency: row.currency,
+                  serverVersion: row.serverVersion,
+                  taxMode: row.taxMode,
+                } satisfies PricingSnapshot,
+              ] as const,
+          ),
+      );
+      const nextDraft = toDraft(
+        refreshedDetail,
+        refreshedSalesPricingByVariantId,
+        refreshedPurchasePricingByVariantId,
+      );
+      setItem(nextDraft);
+      setInitialItem(nextDraft);
+      setIsEditing(false);
+    } catch (error) {
+      console.error(error);
+      reportError(toUserItemErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!item) {
     return (
       <main className="h-auto w-full p-2 pb-20 sm:p-3 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
@@ -2055,6 +2142,9 @@ export function ItemDetailsPage({
                   }}
                   onVariantPurge={(variantId) => {
                     void onDeleteVariant(variantId);
+                  }}
+                  onBulkVariantPurge={(variantIds) => {
+                    void onDeleteVariants(variantIds);
                   }}
                   addVariantLabel="Add Row"
                   denseInputClassName={DENSE_INPUT_CLASS}

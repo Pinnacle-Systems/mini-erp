@@ -20,6 +20,7 @@ enum DocumentStatus {
   PARTIAL
   COMPLETED
   CANCELLED
+  VOID
 
   @@schema("documents")
 }
@@ -42,6 +43,10 @@ model Document {
   updated_at                 DateTime              @updatedAt
   posted_at                  DateTime?
   deleted_at                 DateTime?
+  valid_until                DateTime?             @db.Date
+  dispatch_date              DateTime?             @db.Date
+  dispatch_carrier           String?
+  dispatch_reference         String?
   party_id                   String?               @db.Uuid
   parent_id                  String?               @db.Uuid
   parent                     Document?             @relation("DocHeirarchy", fields: [parent_id], references: [id])

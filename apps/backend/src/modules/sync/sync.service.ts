@@ -59,10 +59,10 @@ type SyncResultRecord = {
 type MutationLogResultStatus = "APPLIED" | "REJECTED";
 
 class SyncRejectionError extends AppError {
-  reasonCode: SyncRejectionReasonCode;
+  declare reasonCode: SyncRejectionReasonCode;
   entity: string;
   entityId: string;
-  details?: Record<string, unknown>;
+  declare details?: Record<string, unknown>;
 
   constructor({
     message,

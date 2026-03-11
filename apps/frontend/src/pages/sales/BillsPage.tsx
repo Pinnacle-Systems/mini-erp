@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Trash2 } from "lucide-react";
+import {
+  Eye,
+  FileOutput,
+  MoreHorizontal,
+  RotateCcw,
+  Trash2,
+  XCircle,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
@@ -32,9 +40,16 @@ import {
 } from "../../features/sync/engine";
 import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
 import {
-  createSalesInvoiceDraft,
-  postSalesInvoiceDraft,
-  type SalesInvoiceDraft,
+  createSalesDocumentDraft,
+  deleteSalesDocumentDraft,
+  transitionSalesDocument,
+  listSalesDocuments,
+  postSalesDocumentDraft,
+  SalesDocumentApiError,
+  type SalesDocumentDraft,
+  type SalesDocumentAction,
+  type SalesDocumentType,
+  updateSalesDocumentDraft,
 } from "./sales-invoices-api";
 
 type BillLine = {
@@ -49,7 +64,7 @@ type BillLine = {
   stockOnHand: number | null;
 };
 
-type SavedBillDraft = Omit<SalesInvoiceDraft, "lines"> & {
+type SavedBillDraft = Omit<SalesDocumentDraft, "lines"> & {
   lines: BillLine[];
 };
 
@@ -63,17 +78,79 @@ type SalesItemOption = StockVariantOption & {
   quantityOnHand: number | null;
 };
 
-const STORAGE_KEY_PREFIX = "mini_erp_sales_invoice_drafts_v2";
+type SalesDocumentPageConfig = {
+  documentType: SalesDocumentType;
+  routePath: string;
+  listTitle: string;
+  createTitle: string;
+  singularLabel: string;
+  pluralLabel: string;
+  listEmptyMessage: string;
+  createActionLabel: string;
+  postActionLabel: string;
+  routeAppDraftLabel: string;
+  numberPrefix: string;
+  storageKeyPrefix: string;
+};
+
+type SalesDocumentConversionConfig = {
+  targetDocumentType: SalesDocumentType;
+  targetRoutePath: string;
+  actionLabel: string;
+};
 
 type BillingRouteState = {
   returnTo?: string;
   invoiceDraft?: Partial<SavedBillDraft>;
+  draftSource?: "local" | "server";
   createdCustomer?: Partial<CustomerRow>;
   customerMessage?: string;
   customerPrefill?: {
     name?: string;
     phone?: string;
   };
+};
+
+type NumberConflictState = {
+  requested: string;
+  suggested: string;
+};
+
+type DraftSource = "local" | "server";
+
+type InvoiceListRow =
+  | {
+      source: "local";
+      id: string;
+      billNumber: string;
+      customerName: string;
+      status: "DRAFT";
+      lines: BillLine[];
+      total: number;
+      timestamp: string;
+      postedAt: string | null;
+      draft: SavedBillDraft;
+    }
+  | {
+      source: "server";
+      id: string;
+      billNumber: string;
+      customerName: string;
+      status: SalesDocumentDraft["status"];
+      lines: SalesDocumentDraft["lines"];
+      total: number;
+      timestamp: string;
+      postedAt: string | null;
+      invoice: SalesDocumentDraft;
+    };
+
+type RowMenuAction = {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  tone?: "default" | "danger";
+  disabled?: boolean;
+  onSelect: () => void;
 };
 
 const createLine = (): BillLine => ({
@@ -88,7 +165,46 @@ const createLine = (): BillLine => ({
   stockOnHand: null,
 });
 
-const createBillNumber = (count: number) => `INV-${String(count + 1).padStart(4, "0")}`;
+const INVOICE_NUMBER_DIGITS = 4;
+
+const formatInvoiceNumber = (prefix: string, sequence: number) =>
+  `${prefix}${String(sequence).padStart(INVOICE_NUMBER_DIGITS, "0")}`;
+
+const parseInvoiceNumberSequence = (
+  value: string | null | undefined,
+  prefix: string,
+) => {
+  if (!value) return null;
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`^${escapedPrefix}(\\d+)$`).exec(
+    value.trim().toUpperCase(),
+  );
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getNextBillNumber = (
+  prefix: string,
+  syncedInvoices: Array<Pick<SalesDocumentDraft, "billNumber">>,
+  localDrafts: Array<Pick<SavedBillDraft, "billNumber">>,
+) => {
+  const highestSequence = [...syncedInvoices, ...localDrafts].reduce(
+    (max, invoice) => {
+      const parsed = parseInvoiceNumberSequence(invoice.billNumber, prefix);
+      return parsed && parsed > max ? parsed : max;
+    },
+    0,
+  );
+
+  return formatInvoiceNumber(prefix, highestSequence + 1);
+};
+
+const usesTransactionType = (documentType: SalesDocumentType) =>
+  documentType === "SALES_INVOICE";
 
 const toNumber = (value: string) => {
   const parsed = Number(value);
@@ -101,7 +217,9 @@ const toTaxRateNumber = (value: string) => {
   return Math.max(0, Number.isFinite(parsed) ? parsed : 0);
 };
 
-const getLineTotals = (line: Pick<BillLine, "quantity" | "unitPrice" | "taxRate" | "taxMode">) => {
+const getLineTotals = (
+  line: Pick<BillLine, "quantity" | "unitPrice" | "taxRate" | "taxMode">,
+) => {
   const quantity = Math.max(0, toNumber(line.quantity));
   const unitPrice = Math.max(0, toNumber(line.unitPrice));
   const taxRate = toTaxRateNumber(line.taxRate);
@@ -126,8 +244,11 @@ const getLineTotals = (line: Pick<BillLine, "quantity" | "unitPrice" | "taxRate"
   };
 };
 
-const getDraftGrandTotal = (lines: BillLine[]) =>
-  lines.reduce((sum, line) => sum + getLineTotals(line).total, 0);
+const getDraftGrandTotal = (
+  lines: Array<
+    Pick<BillLine, "quantity" | "unitPrice" | "taxRate" | "taxMode">
+  >,
+) => lines.reduce((sum, line) => sum + getLineTotals(line).total, 0);
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -144,7 +265,9 @@ const formatDateTime = (value: string) => {
 const formatQuantity = (value: number) => {
   if (!Number.isFinite(value)) return "1";
   const normalized = Math.max(0, value);
-  return Number.isInteger(normalized) ? String(normalized) : String(Number(normalized.toFixed(3)));
+  return Number.isInteger(normalized)
+    ? String(normalized)
+    : String(Number(normalized.toFixed(3)));
 };
 
 const sortCustomers = (rows: CustomerRow[]) =>
@@ -181,7 +304,10 @@ const isElementVisible = (element: HTMLElement) => {
   }
 
   const containerRect = container.getBoundingClientRect();
-  return elementRect.top >= containerRect.top && elementRect.bottom <= containerRect.bottom;
+  return (
+    elementRect.top >= containerRect.top &&
+    elementRect.bottom <= containerRect.bottom
+  );
 };
 
 const parseGstRate = (value: string | null | undefined) => {
@@ -193,9 +319,9 @@ const parseGstRate = (value: string | null | undefined) => {
 const hasLineContent = (line: BillLine) =>
   Boolean(
     line.description.trim() ||
-      line.unitPrice.trim() ||
-      line.variantId.trim() ||
-      (line.quantity.trim() && line.quantity.trim() !== "0"),
+    line.unitPrice.trim() ||
+    line.variantId.trim() ||
+    (line.quantity.trim() && line.quantity.trim() !== "0"),
   );
 
 const normalizeLines = (lines: BillLine[]) => {
@@ -212,18 +338,81 @@ const normalizeLines = (lines: BillLine[]) => {
     : [];
 };
 
+const getPostValidationMessage = (input: {
+  documentType: SalesDocumentType;
+  activeStore: string | null;
+  isOnline: boolean;
+  billNumber: string;
+  transactionType: "CASH" | "CREDIT";
+  activeCustomer: CustomerRow | null;
+  customerName: string;
+  lines: BillLine[];
+  singularLabel: string;
+  pluralLabel: string;
+}) => {
+  if (!input.activeStore) {
+    return `Select a business before posting a ${input.singularLabel}.`;
+  }
+  if (!input.isOnline) {
+    return `You are offline. Reconnect to post this ${input.singularLabel}.`;
+  }
+  if (!input.billNumber.trim()) {
+    return `${input.singularLabel[0].toUpperCase()}${input.singularLabel.slice(1)} number is required before posting.`;
+  }
+  if (
+    usesTransactionType(input.documentType) &&
+    input.transactionType === "CREDIT" &&
+    !input.activeCustomer
+  ) {
+    return `Credit ${input.pluralLabel} require an existing customer.`;
+  }
+  if (!usesTransactionType(input.documentType) && !input.customerName.trim()) {
+    return `Customer details are required before posting this ${input.singularLabel}.`;
+  }
+
+  const normalizedLines = normalizeLines(input.lines);
+  if (normalizedLines.length === 0) {
+    return `Add at least one ${input.singularLabel} line before posting.`;
+  }
+
+  for (const [index, line] of normalizedLines.entries()) {
+    if (!line.variantId.trim()) {
+      return `Line ${index + 1}: Select an item before posting.`;
+    }
+
+    const quantity = Number(line.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return `Line ${index + 1}: Quantity must be greater than 0.`;
+    }
+
+    const unitPrice = Number(line.unitPrice);
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      return `Line ${index + 1}: Rate must be 0 or greater.`;
+    }
+  }
+
+  return null;
+};
+
 const normalizeStoredLine = (rawLine: unknown): BillLine => {
   const line =
-    rawLine && typeof rawLine === "object" ? (rawLine as Record<string, unknown>) : {};
+    rawLine && typeof rawLine === "object"
+      ? (rawLine as Record<string, unknown>)
+      : {};
 
   return {
-    id: typeof line.id === "string" && line.id.trim() ? line.id : crypto.randomUUID(),
+    id:
+      typeof line.id === "string" && line.id.trim()
+        ? line.id
+        : crypto.randomUUID(),
     variantId: typeof line.variantId === "string" ? line.variantId : "",
     description: typeof line.description === "string" ? line.description : "",
     quantity: typeof line.quantity === "string" ? line.quantity : "1",
     unitPrice: typeof line.unitPrice === "string" ? line.unitPrice : "",
     taxRate:
-      typeof line.taxRate === "string" ? normalizeGstSlab(line.taxRate) ?? "0%" : "0%",
+      typeof line.taxRate === "string"
+        ? (normalizeGstSlab(line.taxRate) ?? "0%")
+        : "0%",
     taxMode: line.taxMode === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
     unit: typeof line.unit === "string" && line.unit.trim() ? line.unit : "PCS",
     stockOnHand:
@@ -233,13 +422,114 @@ const normalizeStoredLine = (rawLine: unknown): BillLine => {
   };
 };
 
-const loadStoredDrafts = (activeStore: string | null) => {
+const SALES_DOCUMENT_PAGE_CONFIG: Record<
+  SalesDocumentType,
+  SalesDocumentPageConfig
+> = {
+  SALES_ESTIMATE: {
+    documentType: "SALES_ESTIMATE",
+    routePath: "/app/sales-estimates",
+    listTitle: "Sales Quotations / Estimates",
+    createTitle: "Create Sales Estimate",
+    singularLabel: "estimate",
+    pluralLabel: "estimates",
+    listEmptyMessage:
+      "No recent estimates yet. Create one to start this sales flow.",
+    createActionLabel: "Create Estimate",
+    postActionLabel: "Post Estimate",
+    routeAppDraftLabel: "estimate",
+    numberPrefix: "EST-",
+    storageKeyPrefix: "mini_erp_sales_estimate_drafts_v1",
+  },
+  SALES_ORDER: {
+    documentType: "SALES_ORDER",
+    routePath: "/app/sales-orders",
+    listTitle: "Sales Orders",
+    createTitle: "Create Sales Order",
+    singularLabel: "sales order",
+    pluralLabel: "sales orders",
+    listEmptyMessage:
+      "No recent sales orders yet. Create one to start this sales flow.",
+    createActionLabel: "Create Order",
+    postActionLabel: "Post Order",
+    routeAppDraftLabel: "sales order",
+    numberPrefix: "SO-",
+    storageKeyPrefix: "mini_erp_sales_order_drafts_v1",
+  },
+  DELIVERY_CHALLAN: {
+    documentType: "DELIVERY_CHALLAN",
+    routePath: "/app/delivery-challans",
+    listTitle: "Delivery Challans",
+    createTitle: "Create Delivery Challan",
+    singularLabel: "delivery challan",
+    pluralLabel: "delivery challans",
+    listEmptyMessage:
+      "No recent delivery challans yet. Create one to start this dispatch flow.",
+    createActionLabel: "Create Challan",
+    postActionLabel: "Post Challan",
+    routeAppDraftLabel: "delivery challan",
+    numberPrefix: "DC-",
+    storageKeyPrefix: "mini_erp_delivery_challan_drafts_v1",
+  },
+  SALES_INVOICE: {
+    documentType: "SALES_INVOICE",
+    routePath: "/app/sales-bills",
+    listTitle: "Sales Bills / Invoices",
+    createTitle: "Create Sales Invoice",
+    singularLabel: "invoice",
+    pluralLabel: "invoices",
+    listEmptyMessage:
+      "No recent invoices yet. Create one to start this transaction flow.",
+    createActionLabel: "Create Invoice",
+    postActionLabel: "Post Invoice",
+    routeAppDraftLabel: "invoice",
+    numberPrefix: "INV-",
+    storageKeyPrefix: "mini_erp_sales_invoice_drafts_v2",
+  },
+  SALES_RETURN: {
+    documentType: "SALES_RETURN",
+    routePath: "/app/sales-returns",
+    listTitle: "Sales Returns / Credit Notes",
+    createTitle: "Create Sales Return / Credit Note",
+    singularLabel: "sales return",
+    pluralLabel: "sales returns",
+    listEmptyMessage:
+      "No recent sales returns yet. Create one to start this return flow.",
+    createActionLabel: "Create Return",
+    postActionLabel: "Post Return",
+    routeAppDraftLabel: "sales return",
+    numberPrefix: "SRN-",
+    storageKeyPrefix: "mini_erp_sales_return_drafts_v1",
+  },
+};
+
+const SALES_DOCUMENT_CONVERSION_CONFIG: Partial<
+  Record<SalesDocumentType, SalesDocumentConversionConfig>
+> = {
+  SALES_ESTIMATE: {
+    targetDocumentType: "SALES_ORDER",
+    targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_ORDER.routePath,
+    actionLabel: "Convert to Order",
+  },
+  SALES_ORDER: {
+    targetDocumentType: "SALES_INVOICE",
+    targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
+    actionLabel: "Convert to Invoice",
+  },
+};
+
+const loadStoredDrafts = (
+  activeStore: string | null,
+  config: SalesDocumentPageConfig,
+) => {
   if (!activeStore || typeof window === "undefined") {
     return [] as SavedBillDraft[];
   }
 
   try {
-    const storedValue = window.localStorage.getItem(`${STORAGE_KEY_PREFIX}:${activeStore}`);
+    const storedValue = window.localStorage.getItem(
+      `${config.storageKeyPrefix}:${activeStore}`,
+    );
     const parsed = storedValue ? (JSON.parse(storedValue) as unknown) : [];
     if (!Array.isArray(parsed)) {
       return [];
@@ -247,20 +537,47 @@ const loadStoredDrafts = (activeStore: string | null) => {
 
     return parsed.map((entry, index) => {
       const draft =
-        entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
-      const lines = Array.isArray(draft.lines) ? draft.lines.map(normalizeStoredLine) : [];
+        entry && typeof entry === "object"
+          ? (entry as Record<string, unknown>)
+          : {};
+      const lines = Array.isArray(draft.lines)
+        ? draft.lines.map(normalizeStoredLine)
+        : [];
       return {
-        id: typeof draft.id === "string" && draft.id.trim() ? draft.id : `draft-${index + 1}`,
+        id:
+          typeof draft.id === "string" && draft.id.trim()
+            ? draft.id
+            : `draft-${index + 1}`,
         billNumber:
           typeof draft.billNumber === "string" && draft.billNumber.trim()
             ? draft.billNumber
-            : createBillNumber(index),
+            : formatInvoiceNumber(config.numberPrefix, index + 1),
+        documentType: config.documentType,
         transactionType: draft.transactionType === "CREDIT" ? "CREDIT" : "CASH",
-        customerId: typeof draft.customerId === "string" ? draft.customerId : null,
-        customerName: typeof draft.customerName === "string" ? draft.customerName : "",
-        customerPhone: typeof draft.customerPhone === "string" ? draft.customerPhone : "",
-        customerAddress: typeof draft.customerAddress === "string" ? draft.customerAddress : "",
-        customerGstNo: typeof draft.customerGstNo === "string" ? draft.customerGstNo : "",
+        customerId:
+          typeof draft.customerId === "string" ? draft.customerId : null,
+        customerName:
+          typeof draft.customerName === "string" ? draft.customerName : "",
+        customerPhone:
+          typeof draft.customerPhone === "string" ? draft.customerPhone : "",
+        customerAddress:
+          typeof draft.customerAddress === "string"
+            ? draft.customerAddress
+            : "",
+        customerGstNo:
+          typeof draft.customerGstNo === "string" ? draft.customerGstNo : "",
+        validUntil:
+          typeof draft.validUntil === "string" ? draft.validUntil : "",
+        dispatchDate:
+          typeof draft.dispatchDate === "string" ? draft.dispatchDate : "",
+        dispatchCarrier:
+          typeof draft.dispatchCarrier === "string"
+            ? draft.dispatchCarrier
+            : "",
+        dispatchReference:
+          typeof draft.dispatchReference === "string"
+            ? draft.dispatchReference
+            : "",
         notes: typeof draft.notes === "string" ? draft.notes : "",
         savedAt:
           typeof draft.savedAt === "string" && draft.savedAt.trim()
@@ -275,32 +592,82 @@ const loadStoredDrafts = (activeStore: string | null) => {
 };
 
 export function BillsPage() {
-  const activeStore = useSessionStore((state) => state.activeStore);
-  return <BillsWorkspace key={activeStore ?? "no-store"} activeStore={activeStore} />;
+  return (
+    <SalesDocumentPage config={SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE} />
+  );
+}
+export function EstimatesPage() {
+  return (
+    <SalesDocumentPage config={SALES_DOCUMENT_PAGE_CONFIG.SALES_ESTIMATE} />
+  );
+}
+export function OrdersPage() {
+  return <SalesDocumentPage config={SALES_DOCUMENT_PAGE_CONFIG.SALES_ORDER} />;
+}
+export function DeliveryChallansPage() {
+  return (
+    <SalesDocumentPage config={SALES_DOCUMENT_PAGE_CONFIG.DELIVERY_CHALLAN} />
+  );
+}
+export function ReturnsPage() {
+  return <SalesDocumentPage config={SALES_DOCUMENT_PAGE_CONFIG.SALES_RETURN} />;
 }
 
-function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
+function SalesDocumentPage({ config }: { config: SalesDocumentPageConfig }) {
+  const activeStore = useSessionStore((state) => state.activeStore);
+  return (
+    <SalesDocumentWorkspace
+      key={`${config.documentType}:${activeStore ?? "no-store"}`}
+      activeStore={activeStore}
+      config={config}
+    />
+  );
+}
+
+function SalesDocumentWorkspace({
+  activeStore,
+  config,
+}: {
+  activeStore: string | null;
+  config: SalesDocumentPageConfig;
+}) {
   const location = useLocation();
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const businesses = useSessionStore((state) => state.businesses);
   const activeBusinessName =
-    businesses.find((business) => business.id === activeStore)?.name ?? "No business selected";
-  const [initialDrafts] = useState<SavedBillDraft[]>(() => loadStoredDrafts(activeStore));
+    businesses.find((business) => business.id === activeStore)?.name ??
+    "No business selected";
+  const [initialDrafts] = useState<SavedBillDraft[]>(() =>
+    loadStoredDrafts(activeStore, config),
+  );
   const [drafts, setDrafts] = useState<SavedBillDraft[]>(initialDrafts);
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [billNumber, setBillNumber] = useState(() => createBillNumber(initialDrafts.length));
-  const [transactionType, setTransactionType] = useState<"CASH" | "CREDIT">("CASH");
+  const [activeDraftSource, setActiveDraftSource] =
+    useState<DraftSource | null>(null);
+  const [billNumber, setBillNumber] = useState(() =>
+    getNextBillNumber(config.numberPrefix, [], initialDrafts),
+  );
+  const [transactionType, setTransactionType] = useState<"CASH" | "CREDIT">(
+    "CREDIT",
+  );
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerGstNo, setCustomerGstNo] = useState("");
+  const [parentId, setParentId] = useState<string | null>(null);
+  const [validUntil, setValidUntil] = useState("");
+  const [dispatchDate, setDispatchDate] = useState("");
+  const [dispatchCarrier, setDispatchCarrier] = useState("");
+  const [dispatchReference, setDispatchReference] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<BillLine[]>([createLine()]);
   const [saveMessage, setSaveMessage] = useState<string | null>(
-    activeStore ? null : "Select a business to start a sales invoice.",
+    activeStore
+      ? null
+      : `Select a business to start a ${config.singularLabel}.`,
   );
   const [lineHighlightRequest, setLineHighlightRequest] = useState<{
     lineId: string;
@@ -312,10 +679,25 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [customerActionLoading, setCustomerActionLoading] = useState(false);
   const [draftMutationLoading, setDraftMutationLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(
-    () => (typeof navigator === "undefined" ? true : navigator.onLine),
+  const [serverActionDocumentId, setServerActionDocumentId] = useState<
+    string | null
+  >(null);
+  const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
+  const [numberConflict, setNumberConflict] =
+    useState<NumberConflictState | null>(null);
+  const [serverInvoices, setServerInvoices] = useState<SalesDocumentDraft[]>(
+    [],
   );
-  const storageKey = activeStore ? `${STORAGE_KEY_PREFIX}:${activeStore}` : null;
+  const [serverInvoicesLoading, setServerInvoicesLoading] = useState(false);
+  const [serverInvoicesError, setServerInvoicesError] = useState<string | null>(
+    null,
+  );
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const storageKey = activeStore
+    ? `${config.storageKeyPrefix}:${activeStore}`
+    : null;
 
   useEffect(() => {
     const setOnline = () => setIsOnline(true);
@@ -358,9 +740,15 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
           stockLevels.map((row) => [row.variantId, row] as const),
         );
 
-        setCustomers(sortCustomers(nextCustomers.filter((customer) => customer.isActive)));
+        setCustomers(
+          sortCustomers(nextCustomers.filter((customer) => customer.isActive)),
+        );
         setItemOptions(
-          buildSalesItemOptions(stockOptions, pricingByVariantId, stockLevelByVariantId),
+          buildSalesItemOptions(
+            stockOptions,
+            pricingByVariantId,
+            stockLevelByVariantId,
+          ),
         );
       })
       .catch((error: unknown) => {
@@ -380,9 +768,46 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     };
   }, [activeStore]);
 
+  useEffect(() => {
+    if (!activeStore || !isOnline) {
+      setServerInvoices([]);
+      setServerInvoicesLoading(false);
+      setServerInvoicesError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setServerInvoicesLoading(true);
+    setServerInvoicesError(null);
+
+    void listSalesDocuments(activeStore, config.documentType)
+      .then((invoices) => {
+        if (cancelled) return;
+        setServerInvoices(invoices);
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+        if (cancelled) return;
+        setServerInvoices([]);
+        setServerInvoicesError(
+          `Unable to load recent ${config.pluralLabel} right now.`,
+        );
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setServerInvoicesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, config.documentType, config.pluralLabel, isOnline]);
+
   const activeCustomer = useMemo(() => {
     if (customerId) {
-      return customers.find((customer) => customer.entityId === customerId) ?? null;
+      return (
+        customers.find((customer) => customer.entityId === customerId) ?? null
+      );
     }
     const normalizedName = customerName.trim().toLowerCase();
     const normalizedPhone = normalizePhoneCandidate(customerName);
@@ -390,7 +815,8 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     return (
       customers.find((customer) => {
         const nameMatches =
-          normalizedName.length > 0 && customer.name.trim().toLowerCase() === normalizedName;
+          normalizedName.length > 0 &&
+          customer.name.trim().toLowerCase() === normalizedName;
         const phoneMatches =
           normalizedPhone.length > 0 &&
           normalizePhoneCandidate(customer.phone) === normalizedPhone;
@@ -398,6 +824,173 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
       }) ?? null
     );
   }, [customerId, customerName, customers]);
+  const nextBillNumber = useMemo(
+    () => getNextBillNumber(config.numberPrefix, serverInvoices, drafts),
+    [config.numberPrefix, drafts, serverInvoices],
+  );
+  const invoiceRows = useMemo<InvoiceListRow[]>(() => {
+    const localRows: InvoiceListRow[] = drafts.map((draft) => ({
+      source: "local",
+      id: draft.id,
+      billNumber: draft.billNumber,
+      customerName: draft.customerName || "Walk-in customer",
+      status: "DRAFT",
+      lines: draft.lines,
+      total: getDraftGrandTotal(draft.lines),
+      timestamp: draft.savedAt,
+      postedAt: null,
+      draft,
+    }));
+    const serverRows: InvoiceListRow[] = serverInvoices.map((invoice) => ({
+      source: "server",
+      id: invoice.id,
+      billNumber: invoice.billNumber,
+      customerName: invoice.customerName || "Walk-in customer",
+      status: invoice.status ?? "OPEN",
+      lines: invoice.lines,
+      total: getDraftGrandTotal(invoice.lines),
+      timestamp: invoice.postedAt ?? invoice.savedAt,
+      postedAt: invoice.postedAt ?? null,
+      invoice,
+    }));
+
+    return [...localRows, ...serverRows].sort(
+      (left, right) =>
+        new Date(right.timestamp).valueOf() -
+        new Date(left.timestamp).valueOf(),
+    );
+  }, [drafts, serverInvoices]);
+
+  const getServerDocumentActions = (
+    document: SalesDocumentDraft,
+  ): SalesDocumentAction[] => {
+    if (document.status === "OPEN" || document.status === "PARTIAL") {
+      return ["CANCEL", "VOID"];
+    }
+    if (document.status === "CANCELLED") {
+      return ["REOPEN"];
+    }
+    return [];
+  };
+
+  const getServerDocumentConversion = (
+    document: SalesDocumentDraft,
+  ): SalesDocumentConversionConfig | null => {
+    if (!["OPEN", "PARTIAL"].includes(document.status ?? "OPEN")) {
+      return null;
+    }
+
+    return SALES_DOCUMENT_CONVERSION_CONFIG[document.documentType] ?? null;
+  };
+
+  const startDocumentConversion = (document: SalesDocumentDraft) => {
+    const conversion = getServerDocumentConversion(document);
+    if (!conversion) {
+      return;
+    }
+
+    navigate(conversion.targetRoutePath, {
+      state: {
+        returnTo: config.routePath,
+        draftSource: "local",
+        invoiceDraft: {
+          documentType: conversion.targetDocumentType,
+          parentId: document.id,
+          billNumber: "",
+          transactionType: document.transactionType,
+          customerId: document.customerId,
+          customerName: document.customerName,
+          customerPhone: document.customerPhone,
+          customerAddress: document.customerAddress,
+          customerGstNo: document.customerGstNo,
+          validUntil: document.validUntil,
+          dispatchDate: document.dispatchDate,
+          dispatchCarrier: document.dispatchCarrier,
+          dispatchReference: document.dispatchReference,
+          notes: document.notes,
+          lines: document.lines.map((line) => ({
+            ...line,
+            id: crypto.randomUUID(),
+            stockOnHand: line.stockOnHand ?? null,
+          })),
+        },
+      } satisfies BillingRouteState,
+    });
+  };
+
+  const getRowMenuActions = (row: InvoiceListRow): RowMenuAction[] => {
+    if (row.status === "DRAFT") {
+      return [
+        {
+          key: "open",
+          label: "Open",
+          icon: Eye,
+          onSelect: () => {
+            if (row.source === "local") {
+              loadDraft(row.draft);
+              return;
+            }
+            loadServerDraft(row.invoice);
+          },
+        },
+        {
+          key: "delete",
+          label: "Delete",
+          icon: Trash2,
+          tone: "danger",
+          disabled: draftMutationLoading,
+          onSelect: () => {
+            void removeDraft(row.id, row.source);
+          },
+        },
+      ];
+    }
+
+    if (row.source !== "server") {
+      return [];
+    }
+
+    const actions: RowMenuAction[] = [];
+    actions.push({
+      key: "open",
+      label: "Open",
+      icon: Eye,
+      onSelect: () => {
+        loadServerDraft(row.invoice);
+      },
+    });
+    const conversion = getServerDocumentConversion(row.invoice);
+    if (conversion) {
+      actions.push({
+        key: "convert",
+        label: conversion.actionLabel,
+        icon: FileOutput,
+        onSelect: () => {
+          startDocumentConversion(row.invoice);
+        },
+      });
+    }
+
+    for (const action of getServerDocumentActions(row.invoice)) {
+      actions.push({
+        key: action,
+        label:
+          action === "CANCEL"
+            ? "Cancel"
+            : action === "VOID"
+              ? "Void"
+              : "Reopen",
+        icon: action === "REOPEN" ? RotateCcw : XCircle,
+        tone: action === "VOID" ? "danger" : "default",
+        disabled: serverActionDocumentId === row.id,
+        onSelect: () => {
+          void applyServerDocumentAction(row.invoice, action);
+        },
+      });
+    }
+
+    return actions;
+  };
 
   const routeState =
     location.state && typeof location.state === "object"
@@ -413,17 +1006,48 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     if (draft) {
       setViewMode("editor");
       setActiveDraftId(typeof draft.id === "string" ? draft.id : null);
+      setActiveDraftSource(routeState.draftSource ?? "local");
+      setParentId(typeof draft.parentId === "string" ? draft.parentId : null);
       setBillNumber(
         typeof draft.billNumber === "string" && draft.billNumber.trim()
           ? draft.billNumber
-          : createBillNumber(drafts.length),
+          : nextBillNumber,
       );
-      setTransactionType(draft.transactionType === "CREDIT" ? "CREDIT" : "CASH");
-      setCustomerId(typeof draft.customerId === "string" ? draft.customerId : null);
-      setCustomerName(typeof draft.customerName === "string" ? draft.customerName : "");
-      setCustomerPhone(typeof draft.customerPhone === "string" ? draft.customerPhone : "");
-      setCustomerAddress(typeof draft.customerAddress === "string" ? draft.customerAddress : "");
-      setCustomerGstNo(typeof draft.customerGstNo === "string" ? draft.customerGstNo : "");
+      setTransactionType(
+        usesTransactionType(config.documentType) &&
+          draft.transactionType === "CREDIT"
+          ? "CREDIT"
+          : "CASH",
+      );
+      setCustomerId(
+        typeof draft.customerId === "string" ? draft.customerId : null,
+      );
+      setCustomerName(
+        typeof draft.customerName === "string" ? draft.customerName : "",
+      );
+      setCustomerPhone(
+        typeof draft.customerPhone === "string" ? draft.customerPhone : "",
+      );
+      setCustomerAddress(
+        typeof draft.customerAddress === "string" ? draft.customerAddress : "",
+      );
+      setCustomerGstNo(
+        typeof draft.customerGstNo === "string" ? draft.customerGstNo : "",
+      );
+      setValidUntil(
+        typeof draft.validUntil === "string" ? draft.validUntil : "",
+      );
+      setDispatchDate(
+        typeof draft.dispatchDate === "string" ? draft.dispatchDate : "",
+      );
+      setDispatchCarrier(
+        typeof draft.dispatchCarrier === "string" ? draft.dispatchCarrier : "",
+      );
+      setDispatchReference(
+        typeof draft.dispatchReference === "string"
+          ? draft.dispatchReference
+          : "",
+      );
       setNotes(typeof draft.notes === "string" ? draft.notes : "");
       setLines(
         Array.isArray(draft.lines) && draft.lines.length > 0
@@ -431,7 +1055,9 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
           : [createLine()],
       );
       if (!routeState.createdCustomer && !routeState.customerMessage) {
-        setSaveMessage("Returned to billing. The invoice draft was restored.");
+        setSaveMessage(
+          `Returned to ${config.routeAppDraftLabel}. The draft was restored.`,
+        );
       }
     }
 
@@ -439,14 +1065,28 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     if (createdCustomer) {
       const hydratedCustomer: CustomerRow = {
         entityId:
-          typeof createdCustomer.entityId === "string" && createdCustomer.entityId.trim()
+          typeof createdCustomer.entityId === "string" &&
+          createdCustomer.entityId.trim()
             ? createdCustomer.entityId
             : crypto.randomUUID(),
-        name: typeof createdCustomer.name === "string" ? createdCustomer.name : "",
-        phone: typeof createdCustomer.phone === "string" ? createdCustomer.phone : "",
-        email: typeof createdCustomer.email === "string" ? createdCustomer.email : "",
-        address: typeof createdCustomer.address === "string" ? createdCustomer.address : "",
-        gstNo: typeof createdCustomer.gstNo === "string" ? createdCustomer.gstNo : "",
+        name:
+          typeof createdCustomer.name === "string" ? createdCustomer.name : "",
+        phone:
+          typeof createdCustomer.phone === "string"
+            ? createdCustomer.phone
+            : "",
+        email:
+          typeof createdCustomer.email === "string"
+            ? createdCustomer.email
+            : "",
+        address:
+          typeof createdCustomer.address === "string"
+            ? createdCustomer.address
+            : "",
+        gstNo:
+          typeof createdCustomer.gstNo === "string"
+            ? createdCustomer.gstNo
+            : "",
         isActive: true,
         deletedAt: null,
         serverVersion:
@@ -457,7 +1097,9 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
       };
       setCustomers((current) =>
         sortCustomers([
-          ...current.filter((customer) => customer.entityId !== hydratedCustomer.entityId),
+          ...current.filter(
+            (customer) => customer.entityId !== hydratedCustomer.entityId,
+          ),
           hydratedCustomer,
         ]),
       );
@@ -476,7 +1118,29 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     }
 
     navigate(location.pathname, { replace: true, state: null });
-  }, [drafts.length, location.pathname, navigate, routeState]);
+  }, [
+    config.documentType,
+    location.pathname,
+    navigate,
+    nextBillNumber,
+    routeState,
+    config.routeAppDraftLabel,
+  ]);
+
+  useEffect(() => {
+    if (!openRowMenuId) {
+      return;
+    }
+
+    const handlePointerDown = () => {
+      setOpenRowMenuId(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [openRowMenuId]);
 
   useEffect(() => {
     if (!lineHighlightRequest || typeof document === "undefined") {
@@ -505,8 +1169,12 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     };
   }, [lineHighlightRequest]);
 
-  const phoneCandidate = useMemo(() => normalizePhoneCandidate(customerName), [customerName]);
+  const phoneCandidate = useMemo(
+    () => normalizePhoneCandidate(customerName),
+    [customerName],
+  );
   const canQuickCreateFromPhone =
+    usesTransactionType(config.documentType) &&
     transactionType === "CASH" &&
     phoneCandidate.length > 0 &&
     !activeCustomer &&
@@ -523,6 +1191,44 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     },
     { subTotal: 0, taxTotal: 0, grandTotal: 0 },
   );
+  const postValidationMessage = useMemo(
+    () =>
+      getPostValidationMessage({
+        documentType: config.documentType,
+        activeStore,
+        isOnline,
+        billNumber,
+        transactionType,
+        activeCustomer,
+        customerName,
+        lines,
+        singularLabel: config.singularLabel,
+        pluralLabel: config.pluralLabel,
+      }),
+    [
+      activeStore,
+      isOnline,
+      billNumber,
+      transactionType,
+      activeCustomer,
+      customerName,
+      lines,
+      config.documentType,
+      config.pluralLabel,
+      config.singularLabel,
+    ],
+  );
+  const activeServerDocument = useMemo(
+    () =>
+      activeDraftSource === "server" && activeDraftId
+        ? serverInvoices.find((document) => document.id === activeDraftId) ?? null
+        : null,
+    [activeDraftId, activeDraftSource, serverInvoices],
+  );
+  const isViewingPostedDocument =
+    activeDraftSource === "server" &&
+    activeServerDocument !== null &&
+    activeServerDocument.status !== "DRAFT";
 
   const persistDrafts = (nextDrafts: SavedBillDraft[]) => {
     setDrafts(nextDrafts);
@@ -531,44 +1237,74 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     }
   };
 
-  const resetEditor = (nextDraftCount: number) => {
+  const resetEditor = () => {
     setActiveDraftId(null);
-    setBillNumber(createBillNumber(nextDraftCount));
+    setActiveDraftSource(null);
+    setBillNumber(nextBillNumber);
     setTransactionType("CASH");
     setCustomerId(null);
     setCustomerName("");
     setCustomerPhone("");
     setCustomerAddress("");
     setCustomerGstNo("");
+    setParentId(null);
+    setValidUntil("");
+    setDispatchDate("");
+    setDispatchCarrier("");
+    setDispatchReference("");
     setNotes("");
     setLines([createLine()]);
+    setNumberConflict(null);
   };
 
   const openNewDraft = () => {
-    resetEditor(drafts.length);
-    setSaveMessage(activeStore ? null : "Select a business to start a sales invoice.");
+    resetEditor();
+    setSaveMessage(
+      activeStore
+        ? null
+        : `Select a business to start a ${config.singularLabel}.`,
+    );
     setViewMode("editor");
   };
 
   const buildNormalizedDraft = () => {
-    if (transactionType === "CREDIT" && !activeCustomer) {
-      throw new Error("Credit invoices require an existing customer. Create or select one first.");
+    if (
+      usesTransactionType(config.documentType) &&
+      transactionType === "CREDIT" &&
+      !activeCustomer
+    ) {
+      throw new Error(
+        `Credit ${config.pluralLabel} require an existing customer. Create or select one first.`,
+      );
+    }
+    if (!usesTransactionType(config.documentType) && !customerName.trim()) {
+      throw new Error(
+        `Customer details are required before saving this ${config.singularLabel}.`,
+      );
     }
 
     const normalizedLines = normalizeLines(lines);
     if (normalizedLines.length === 0) {
-      throw new Error("Add at least one line with an item or amount before saving.");
+      throw new Error(
+        `Add at least one line with an item or amount before saving this ${config.singularLabel}.`,
+      );
     }
 
     return {
       id: activeDraftId ?? crypto.randomUUID(),
-      billNumber: billNumber.trim() || createBillNumber(drafts.length),
+      documentType: config.documentType,
+      parentId,
+      billNumber: billNumber.trim() || nextBillNumber,
       transactionType,
       customerId,
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
       customerAddress: customerAddress.trim(),
       customerGstNo: customerGstNo.trim(),
+      validUntil: validUntil.trim(),
+      dispatchDate: dispatchDate.trim(),
+      dispatchCarrier: dispatchCarrier.trim(),
+      dispatchReference: dispatchReference.trim(),
       notes: notes.trim(),
       savedAt: new Date().toISOString(),
       lines: normalizedLines,
@@ -577,63 +1313,222 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
 
   const saveDraft = async () => {
     try {
-      if (!storageKey) {
-        throw new Error("Select a business before saving an invoice draft.");
+      if (!activeStore) {
+        throw new Error(
+          `Select a business before saving this ${config.singularLabel} draft.`,
+        );
       }
 
       const nextDraft = buildNormalizedDraft();
-      const nextDrafts = activeDraftId
-        ? drafts.map((draft) => (draft.id === activeDraftId ? nextDraft : draft))
-        : [nextDraft, ...drafts];
+      setNumberConflict(null);
 
-      persistDrafts(nextDrafts);
-      setActiveDraftId(nextDraft.id);
-      setBillNumber(nextDraft.billNumber);
-      setLines(nextDraft.lines);
-      setSaveMessage("Invoice draft saved locally on this device.");
+      if (isOnline) {
+        setDraftMutationLoading(true);
+        const savedServerDraft =
+          activeDraftSource === "server" && activeDraftId
+            ? await updateSalesDocumentDraft(activeDraftId, {
+                tenantId: activeStore,
+                documentType: config.documentType,
+                parentId: nextDraft.parentId,
+                billNumber: nextDraft.billNumber,
+                transactionType: nextDraft.transactionType,
+                customerId: nextDraft.customerId,
+                customerName: nextDraft.customerName,
+                customerPhone: nextDraft.customerPhone,
+                customerAddress: nextDraft.customerAddress,
+                customerGstNo: nextDraft.customerGstNo,
+                validUntil: nextDraft.validUntil,
+                dispatchDate: nextDraft.dispatchDate,
+                dispatchCarrier: nextDraft.dispatchCarrier,
+                dispatchReference: nextDraft.dispatchReference,
+                notes: nextDraft.notes,
+                lines: nextDraft.lines,
+              })
+            : await createSalesDocumentDraft({
+                tenantId: activeStore,
+                documentType: config.documentType,
+                parentId: nextDraft.parentId,
+                billNumber: nextDraft.billNumber,
+                transactionType: nextDraft.transactionType,
+                customerId: nextDraft.customerId,
+                customerName: nextDraft.customerName,
+                customerPhone: nextDraft.customerPhone,
+                customerAddress: nextDraft.customerAddress,
+                customerGstNo: nextDraft.customerGstNo,
+                validUntil: nextDraft.validUntil,
+                dispatchDate: nextDraft.dispatchDate,
+                dispatchCarrier: nextDraft.dispatchCarrier,
+                dispatchReference: nextDraft.dispatchReference,
+                notes: nextDraft.notes,
+                lines: nextDraft.lines,
+              });
+
+        if (activeDraftSource === "local" && activeDraftId) {
+          persistDrafts(drafts.filter((draft) => draft.id !== activeDraftId));
+        }
+
+        setServerInvoices((current) => {
+          const withoutSaved = current.filter(
+            (document) => document.id !== savedServerDraft.id,
+          );
+          return [savedServerDraft, ...withoutSaved];
+        });
+        setActiveDraftId(savedServerDraft.id);
+        setActiveDraftSource("server");
+        setBillNumber(savedServerDraft.billNumber);
+        setParentId(savedServerDraft.parentId ?? null);
+        setValidUntil(savedServerDraft.validUntil);
+        setDispatchDate(savedServerDraft.dispatchDate);
+        setDispatchCarrier(savedServerDraft.dispatchCarrier);
+        setDispatchReference(savedServerDraft.dispatchReference);
+        setLines(savedServerDraft.lines.map(normalizeStoredLine));
+        setSaveMessage(`${config.createTitle} draft saved to the server.`);
+      } else {
+        if (!storageKey) {
+          throw new Error(
+            `Select a business before saving this ${config.singularLabel} draft.`,
+          );
+        }
+
+        const nextDrafts =
+          activeDraftSource === "local" && activeDraftId
+            ? drafts.map((draft) =>
+                draft.id === activeDraftId ? nextDraft : draft,
+              )
+            : [nextDraft, ...drafts];
+
+        persistDrafts(nextDrafts);
+        setActiveDraftId(nextDraft.id);
+        setActiveDraftSource("local");
+        setBillNumber(nextDraft.billNumber);
+        setValidUntil(nextDraft.validUntil);
+        setDispatchDate(nextDraft.dispatchDate);
+        setDispatchCarrier(nextDraft.dispatchCarrier);
+        setDispatchReference(nextDraft.dispatchReference);
+        setLines(nextDraft.lines);
+        setSaveMessage(
+          `${config.createTitle} draft saved locally on this device.`,
+        );
+      }
     } catch (error) {
       console.error(error);
-      setSaveMessage(error instanceof Error ? error.message : "Unable to save invoice draft.");
+      setSaveMessage(
+        error instanceof Error
+          ? error.message
+          : `Unable to save ${config.singularLabel} draft.`,
+      );
+    } finally {
+      setDraftMutationLoading(false);
     }
   };
 
   const loadDraft = (draft: SavedBillDraft) => {
     setActiveDraftId(draft.id);
+    setActiveDraftSource("local");
     setBillNumber(draft.billNumber);
-    setTransactionType(draft.transactionType);
+    setTransactionType(
+      usesTransactionType(config.documentType) &&
+        draft.transactionType === "CREDIT"
+        ? "CREDIT"
+        : "CASH",
+    );
+    setParentId(draft.parentId ?? null);
     setCustomerId(draft.customerId);
     setCustomerName(draft.customerName);
     setCustomerPhone(draft.customerPhone);
     setCustomerAddress(draft.customerAddress);
     setCustomerGstNo(draft.customerGstNo);
+    setValidUntil(draft.validUntil);
+    setDispatchDate(draft.dispatchDate);
+    setDispatchCarrier(draft.dispatchCarrier);
+    setDispatchReference(draft.dispatchReference);
     setNotes(draft.notes);
     setLines(draft.lines.map((line) => ({ ...line })));
+    setNumberConflict(null);
     setSaveMessage(null);
     setViewMode("editor");
   };
 
-  const removeDraft = async (draftId: string) => {
+  const loadServerDraft = (draft: SalesDocumentDraft) => {
+    setActiveDraftId(draft.id);
+    setActiveDraftSource("server");
+    setBillNumber(draft.billNumber);
+    setTransactionType(
+      usesTransactionType(config.documentType) &&
+        draft.transactionType === "CREDIT"
+        ? "CREDIT"
+        : "CASH",
+    );
+    setParentId(draft.parentId ?? null);
+    setCustomerId(draft.customerId);
+    setCustomerName(draft.customerName);
+    setCustomerPhone(draft.customerPhone);
+    setCustomerAddress(draft.customerAddress);
+    setCustomerGstNo(draft.customerGstNo);
+    setValidUntil(draft.validUntil);
+    setDispatchDate(draft.dispatchDate);
+    setDispatchCarrier(draft.dispatchCarrier);
+    setDispatchReference(draft.dispatchReference);
+    setNotes(draft.notes);
+    setLines(draft.lines.map(normalizeStoredLine));
+    setNumberConflict(null);
+    setSaveMessage(null);
+    setViewMode("editor");
+  };
+
+  const removeDraft = async (draftId: string, source: DraftSource) => {
     if (draftMutationLoading) {
       return;
     }
 
     try {
-      const nextDrafts = drafts.filter((draft) => draft.id !== draftId);
-      persistDrafts(nextDrafts);
-      if (draftId === activeDraftId) {
-        resetEditor(nextDrafts.length);
+      setDraftMutationLoading(true);
+      if (source === "server") {
+        if (!activeStore) {
+          throw new Error(
+            `Select a business before deleting this ${config.singularLabel} draft.`,
+          );
+        }
+        await deleteSalesDocumentDraft(
+          draftId,
+          activeStore,
+          config.documentType,
+        );
+        setServerInvoices((current) =>
+          current.filter((document) => document.id !== draftId),
+        );
+      } else {
+        const nextDrafts = drafts.filter((draft) => draft.id !== draftId);
+        persistDrafts(nextDrafts);
       }
-      setSaveMessage("Draft removed.");
+      if (draftId === activeDraftId) {
+        resetEditor();
+      }
+      setSaveMessage(
+        `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} draft removed.`,
+      );
     } catch (error) {
       console.error(error);
-      setSaveMessage(error instanceof Error ? error.message : "Unable to remove draft.");
+      setSaveMessage(
+        error instanceof Error
+          ? error.message
+          : `Unable to remove ${config.singularLabel} draft.`,
+      );
+    } finally {
+      setDraftMutationLoading(false);
     }
   };
 
   const updateLine = (lineId: string, field: keyof BillLine, value: string) => {
     setLines((currentLines) =>
       currentLines.map((line) =>
-        line.id === lineId ? { ...line, [field]: value, ...(field === "description" ? { variantId: "" } : {}) } : line,
+        line.id === lineId
+          ? {
+              ...line,
+              [field]: value,
+              ...(field === "description" ? { variantId: "" } : {}),
+            }
+          : line,
       ),
     );
   };
@@ -670,7 +1565,9 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
             line.id === existingLine.id
               ? {
                   ...line,
-                  quantity: formatQuantity(toNumber(line.quantity) + incrementBy),
+                  quantity: formatQuantity(
+                    toNumber(line.quantity) + incrementBy,
+                  ),
                 }
               : line,
           )
@@ -684,7 +1581,8 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
               variantId: option.variantId,
               description: option.description,
               unitPrice:
-                option.priceAmount !== null && Number.isFinite(option.priceAmount)
+                option.priceAmount !== null &&
+                Number.isFinite(option.priceAmount)
                   ? String(option.priceAmount)
                   : line.unitPrice,
               taxRate: option.gstLabel || "0%",
@@ -715,6 +1613,8 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
 
   const buildRouteInvoiceDraft = (): SavedBillDraft => ({
     id: activeDraftId ?? crypto.randomUUID(),
+    documentType: config.documentType,
+    parentId,
     billNumber,
     transactionType,
     customerId,
@@ -722,56 +1622,212 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
     customerPhone,
     customerAddress,
     customerGstNo,
+    validUntil,
+    dispatchDate,
+    dispatchCarrier,
+    dispatchReference,
     notes,
     savedAt: new Date().toISOString(),
     lines,
   });
 
-  const postDraft = async () => {
-    if (!activeStore) {
-      setSaveMessage("Select a business before posting an invoice.");
-      return;
+  const submitPostedDraft = async (
+    localDraft: SavedBillDraft,
+    tenantId: string,
+  ) => {
+    const serverDraft =
+      activeDraftSource === "server" && activeDraftId
+        ? await updateSalesDocumentDraft(activeDraftId, {
+            tenantId,
+            documentType: config.documentType,
+            parentId: localDraft.parentId,
+            billNumber: localDraft.billNumber,
+            transactionType: localDraft.transactionType,
+            customerId: localDraft.customerId,
+            customerName: localDraft.customerName,
+            customerPhone: localDraft.customerPhone,
+            customerAddress: localDraft.customerAddress,
+            customerGstNo: localDraft.customerGstNo,
+            validUntil: localDraft.validUntil,
+            dispatchDate: localDraft.dispatchDate,
+            dispatchCarrier: localDraft.dispatchCarrier,
+            dispatchReference: localDraft.dispatchReference,
+            notes: localDraft.notes,
+            lines: localDraft.lines,
+          })
+        : await createSalesDocumentDraft({
+            tenantId,
+            documentType: config.documentType,
+            parentId: localDraft.parentId,
+            billNumber: localDraft.billNumber,
+            transactionType: localDraft.transactionType,
+            customerId: localDraft.customerId,
+            customerName: localDraft.customerName,
+            customerPhone: localDraft.customerPhone,
+            customerAddress: localDraft.customerAddress,
+            customerGstNo: localDraft.customerGstNo,
+            validUntil: localDraft.validUntil,
+            dispatchDate: localDraft.dispatchDate,
+            dispatchCarrier: localDraft.dispatchCarrier,
+            dispatchReference: localDraft.dispatchReference,
+            notes: localDraft.notes,
+            lines: localDraft.lines,
+          });
+    await postSalesDocumentDraft(serverDraft.id, tenantId, config.documentType);
+    setServerInvoices((current) => [
+      { ...serverDraft, status: "OPEN", postedAt: new Date().toISOString() },
+      ...current.filter((invoice) => invoice.id !== serverDraft.id),
+    ]);
+
+    if (activeDraftSource === "local") {
+      const nextDrafts = drafts.filter((draft) => draft.id !== localDraft.id);
+      persistDrafts(nextDrafts);
     }
-    if (!isOnline) {
-      setSaveMessage("You are offline. Drafts still save locally. Reconnect to post this invoice.");
+    resetEditor();
+    setViewMode("list");
+    setSaveMessage(
+      `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted.`,
+    );
+  };
+
+  const postDraft = async () => {
+    if (postValidationMessage) {
+      setSaveMessage(postValidationMessage);
       return;
     }
 
     setDraftMutationLoading(true);
     setSaveMessage(null);
+    setNumberConflict(null);
     try {
       const localDraft = buildNormalizedDraft();
-      const serverDraft = await createSalesInvoiceDraft({
-        tenantId: activeStore,
-        billNumber: localDraft.billNumber,
-        transactionType: localDraft.transactionType,
-        customerId: localDraft.customerId,
-        customerName: localDraft.customerName,
-        customerPhone: localDraft.customerPhone,
-        customerAddress: localDraft.customerAddress,
-        customerGstNo: localDraft.customerGstNo,
-        notes: localDraft.notes,
-        lines: localDraft.lines,
-      });
-      await postSalesInvoiceDraft(serverDraft.id, activeStore);
-      const nextDrafts = drafts.filter((draft) => draft.id !== localDraft.id);
-      persistDrafts(nextDrafts);
-      resetEditor(nextDrafts.length);
-      setViewMode("list");
-      setSaveMessage(`Invoice ${serverDraft.billNumber} posted.`);
+      await submitPostedDraft(localDraft, activeStore!);
     } catch (error) {
       console.error(error);
-      setSaveMessage(error instanceof Error ? error.message : "Unable to post invoice.");
+      if (
+        error instanceof SalesDocumentApiError &&
+        error.reasonCode === "DOCUMENT_NUMBER_CONFLICT" &&
+        typeof error.details?.suggested === "string" &&
+        error.details.suggested.trim()
+      ) {
+        setNumberConflict({
+          requested: error.details.requested?.trim() || billNumber.trim(),
+          suggested: error.details.suggested.trim(),
+        });
+        setSaveMessage(
+          `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`,
+        );
+      } else {
+        setSaveMessage(
+          error instanceof Error
+            ? error.message
+            : `Unable to post ${config.singularLabel}.`,
+        );
+      }
     } finally {
       setDraftMutationLoading(false);
+    }
+  };
+
+  const applySuggestedInvoiceNumber = async () => {
+    if (!numberConflict || draftMutationLoading) {
+      return;
+    }
+
+    if (!activeStore) {
+      setSaveMessage(
+        `Select a business before posting a ${config.singularLabel}.`,
+      );
+      return;
+    }
+
+    setDraftMutationLoading(true);
+    setBillNumber(numberConflict.suggested);
+    setNumberConflict(null);
+    setSaveMessage(
+      `Retrying with ${config.singularLabel} number ${numberConflict.suggested}.`,
+    );
+    try {
+      const localDraft = {
+        ...buildNormalizedDraft(),
+        billNumber: numberConflict.suggested,
+      };
+      await submitPostedDraft(localDraft, activeStore);
+    } catch (error) {
+      console.error(error);
+      if (
+        error instanceof SalesDocumentApiError &&
+        error.reasonCode === "DOCUMENT_NUMBER_CONFLICT" &&
+        typeof error.details?.suggested === "string" &&
+        error.details.suggested.trim()
+      ) {
+        setNumberConflict({
+          requested:
+            error.details.requested?.trim() || numberConflict.suggested,
+          suggested: error.details.suggested.trim(),
+        });
+        setSaveMessage(
+          `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || numberConflict.suggested} is already in use.`,
+        );
+      } else {
+        setSaveMessage(
+          error instanceof Error
+            ? error.message
+            : `Unable to post ${config.singularLabel}.`,
+        );
+      }
+    } finally {
+      setDraftMutationLoading(false);
+    }
+  };
+
+  const applyServerDocumentAction = async (
+    document: SalesDocumentDraft,
+    action: SalesDocumentAction,
+  ) => {
+    if (!activeStore || serverActionDocumentId) {
+      return;
+    }
+
+    setServerActionDocumentId(document.id);
+    setSaveMessage(null);
+    try {
+      const updatedDocument = await transitionSalesDocument(
+        document.id,
+        activeStore,
+        config.documentType,
+        action,
+      );
+      setServerInvoices((current) =>
+        current.map((entry) =>
+          entry.id === updatedDocument.id ? updatedDocument : entry,
+        ),
+      );
+      setSaveMessage(
+        action === "CANCEL"
+          ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} cancelled.`
+          : action === "VOID"
+            ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} voided.`
+            : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} reopened.`,
+      );
+    } catch (error) {
+      console.error(error);
+      setSaveMessage(
+        error instanceof Error
+          ? error.message
+          : `Unable to update ${config.singularLabel} status.`,
+      );
+    } finally {
+      setServerActionDocumentId(null);
     }
   };
 
   const openCustomerCreate = () => {
     navigate("/app/customers/new", {
       state: {
-        returnTo: "/app/sales-bills",
+        returnTo: config.routePath,
         invoiceDraft: buildRouteInvoiceDraft(),
+        draftSource: activeDraftSource ?? "local",
         customerPrefill: {
           name: phoneCandidate ? "" : customerName.trim(),
           phone: phoneCandidate,
@@ -781,7 +1837,12 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
   };
 
   const quickCreateCustomerFromPhone = async () => {
-    if (!activeStore || !identityId || !phoneCandidate || customerActionLoading) {
+    if (
+      !activeStore ||
+      !identityId ||
+      !phoneCandidate ||
+      customerActionLoading
+    ) {
       return;
     }
 
@@ -816,10 +1877,14 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
       };
       setCustomers((current) => sortCustomers([...current, nextCustomer]));
       applyCustomer(nextCustomer);
-      setSaveMessage("Customer created from phone for this cash invoice.");
+      setSaveMessage(
+        `Customer created from phone for this cash ${config.singularLabel}.`,
+      );
     } catch (error) {
       console.error(error);
-      setSaveMessage("Unable to create a customer from this phone number right now.");
+      setSaveMessage(
+        "Unable to create a customer from this phone number right now.",
+      );
     } finally {
       setCustomerActionLoading(false);
     }
@@ -831,13 +1896,17 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
         <div className="flex flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:min-h-0 lg:flex-1">
           <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
-              <h1 className="text-sm font-semibold text-foreground">Sales Bills / Invoices</h1>
+              <h1 className="text-sm font-semibold text-foreground">
+                {config.listTitle}
+              </h1>
               <p className="text-xs text-muted-foreground">
-                Recent draft invoices stay on this device until you post them to the server.
+                Draft and posted {config.pluralLabel} are shown together here.
+                Status indicates whether a document is still local or already
+                posted.
               </p>
             </div>
             <Button type="button" size="sm" onClick={openNewDraft}>
-              Create Invoice
+              {config.createActionLabel}
             </Button>
           </div>
 
@@ -847,56 +1916,111 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                 {saveMessage}
               </div>
             ) : null}
-            {drafts.length === 0 ? (
+            {serverInvoicesError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+                {serverInvoicesError}
+              </div>
+            ) : null}
+            {serverInvoicesLoading ? (
+              <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+                {`Loading ${config.pluralLabel}...`}
+              </div>
+            ) : null}
+            {invoiceRows.length === 0 ? (
               <div className="rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
-                No recent invoices yet. Create an invoice to start this transaction flow.
+                {config.listEmptyMessage}
               </div>
             ) : (
-              drafts.map((draft) => (
+              invoiceRows.map((row) => (
                 <div
-                  key={draft.id}
+                  key={`${row.source}:${row.id}`}
                   className={`rounded-lg border px-2 py-2 text-xs ${
-                    draft.id === activeDraftId
+                    row.source === "local" && row.id === activeDraftId
                       ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
                       : "border-border/70 bg-white text-foreground"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate font-semibold">{draft.billNumber}</div>
+                      <div className="truncate font-semibold">
+                        {row.billNumber}
+                      </div>
                       <div className="truncate text-[11px] text-muted-foreground">
-                        {draft.customerName}
+                        {row.customerName}
                       </div>
                     </div>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
-                      {formatCurrency(getDraftGrandTotal(draft.lines))}
+                    <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {row.status}
                     </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                    <span>{formatDateTime(draft.savedAt)}</span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto px-0 py-0 font-semibold text-[#1f4167] hover:bg-transparent"
-                        onClick={() => loadDraft(draft)}
-                      >
-                        Open
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto px-0 py-0 font-semibold text-[#8a2b2b] hover:bg-transparent"
-                        onClick={() => {
-                          void removeDraft(draft.id);
-                        }}
-                        disabled={draftMutationLoading}
-                      >
-                        Delete
-                      </Button>
-                    </div>
+                    <span>{formatDateTime(row.timestamp)}</span>
+                    <span>{formatCurrency(row.total)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                    <span>
+                      {row.lines.length} line{row.lines.length === 1 ? "" : "s"}
+                    </span>
+                    {(() => {
+                      const actions = getRowMenuActions(row);
+                      if (actions.length === 0) {
+                        return null;
+                      }
+
+                      return (
+                        <div
+                          className="relative"
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
+                          <IconButton
+                            type="button"
+                            icon={MoreHorizontal}
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                            aria-label={`Open actions for ${row.billNumber}`}
+                            title="More actions"
+                            aria-expanded={openRowMenuId === row.id}
+                            onClick={() =>
+                              setOpenRowMenuId((current) =>
+                                current === row.id ? null : row.id,
+                              )
+                            }
+                          />
+                          {openRowMenuId === row.id ? (
+                            <div className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-lg border border-border/80 bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
+                              <div className="grid gap-1">
+                                {actions.map((action) => (
+                                  <Button
+                                    key={action.key}
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className={`h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] ${
+                                      action.tone === "danger"
+                                        ? "text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                                        : "text-[#15314e]"
+                                    }`}
+                                    disabled={action.disabled}
+                                    onClick={() => {
+                                      setOpenRowMenuId(null);
+                                      action.onSelect();
+                                    }}
+                                  >
+                                    <action.icon
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    />
+                                    {action.disabled && action.key !== "delete"
+                                      ? "Working..."
+                                      : action.label}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))
@@ -909,60 +2033,131 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                 {saveMessage}
               </div>
             ) : null}
-            {drafts.length === 0 ? (
+            {serverInvoicesError ? (
+              <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+                {serverInvoicesError}
+              </div>
+            ) : null}
+            {serverInvoicesLoading ? (
+              <div className="mt-2 rounded-md border border-border/70 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+                {`Loading ${config.pluralLabel}...`}
+              </div>
+            ) : null}
+            {invoiceRows.length === 0 ? (
               <div className="mt-2 rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
-                No recent invoices yet. Create an invoice to start this transaction flow.
+                {config.listEmptyMessage}
               </div>
             ) : (
               <DenseTable className="mt-2 rounded-xl border-border/80">
                 <DenseTableHead>
                   <tr>
-                    <DenseTableHeaderCell className="w-[14%]">Invoice</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[24%]">Customer</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[12%]">Lines</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[16%]">Total</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[20%]">Saved</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[14%] text-right">Actions</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[14%]">
+                      Number
+                    </DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[22%]">
+                      Customer
+                    </DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%]">
+                      Status
+                    </DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[10%]">
+                      Lines
+                    </DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[14%]">
+                      Total
+                    </DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[18%]">
+                      Updated
+                    </DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[12%] text-right">
+                      Actions
+                    </DenseTableHeaderCell>
                   </tr>
                 </DenseTableHead>
                 <DenseTableBody>
-                  {drafts.map((draft) => (
-                    <DenseTableRow key={draft.id}>
+                  {invoiceRows.map((row) => (
+                    <DenseTableRow key={`${row.source}:${row.id}`}>
                       <DenseTableCell className="font-semibold text-foreground">
-                        {draft.billNumber}
+                        {row.billNumber}
                       </DenseTableCell>
-                      <DenseTableCell>{draft.customerName}</DenseTableCell>
+                      <DenseTableCell>{row.customerName}</DenseTableCell>
+                      <DenseTableCell>{row.status}</DenseTableCell>
                       <DenseTableCell>
-                        {draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}
+                        {row.lines.length} line
+                        {row.lines.length === 1 ? "" : "s"}
                       </DenseTableCell>
                       <DenseTableCell className="font-semibold text-foreground">
-                        {formatCurrency(getDraftGrandTotal(draft.lines))}
+                        {formatCurrency(row.total)}
                       </DenseTableCell>
-                      <DenseTableCell>{formatDateTime(draft.savedAt)}</DenseTableCell>
+                      <DenseTableCell>
+                        {formatDateTime(row.timestamp)}
+                      </DenseTableCell>
                       <DenseTableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <IconButton
-                            type="button"
-                            icon={Eye}
-                            variant="ghost"
-                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
-                            onClick={() => loadDraft(draft)}
-                            aria-label={`Open ${draft.billNumber}`}
-                            title="Open"
-                          />
-                          <IconButton
-                            type="button"
-                            icon={Trash2}
-                            variant="ghost"
-                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-white/55"
-                            onClick={() => {
-                              void removeDraft(draft.id);
-                            }}
-                            aria-label={`Delete ${draft.billNumber}`}
-                            title="Delete"
-                            disabled={draftMutationLoading}
-                          />
-                        </div>
+                        {(() => {
+                          const actions = getRowMenuActions(row);
+                          if (actions.length === 0) {
+                            return (
+                              <span className="text-[11px] text-muted-foreground">
+                                Posted
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <div
+                              className="relative inline-flex"
+                              onPointerDown={(event) => event.stopPropagation()}
+                            >
+                              <IconButton
+                                type="button"
+                                icon={MoreHorizontal}
+                                variant="ghost"
+                                className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                                onClick={() =>
+                                  setOpenRowMenuId((current) =>
+                                    current === row.id ? null : row.id,
+                                  )
+                                }
+                                aria-label={`Open actions for ${row.billNumber}`}
+                                title="More actions"
+                                aria-expanded={openRowMenuId === row.id}
+                              />
+                              {openRowMenuId === row.id ? (
+                                <div className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-lg border border-border/80 bg-white p-1 text-left shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
+                                  <div className="grid gap-1">
+                                    {actions.map((action) => (
+                                      <Button
+                                        key={action.key}
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] ${
+                                          action.tone === "danger"
+                                            ? "text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                                            : "text-[#15314e]"
+                                        }`}
+                                        disabled={action.disabled}
+                                        onClick={() => {
+                                          setOpenRowMenuId(null);
+                                          action.onSelect();
+                                        }}
+                                      >
+                                        <action.icon
+                                          className="h-3.5 w-3.5"
+                                          aria-hidden="true"
+                                        />
+                                        {action.disabled &&
+                                        action.key !== "delete"
+                                          ? "Working..."
+                                          : action.label}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                       </DenseTableCell>
                     </DenseTableRow>
                   ))}
@@ -981,88 +2176,160 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
         <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-1">
             <h1 className="text-sm font-semibold text-foreground">
-              {activeDraftId ? "Edit Sales Invoice" : "Create Sales Invoice"}
+              {isViewingPostedDocument
+                ? `View ${config.createTitle.replace("Create ", "")}`
+                : activeDraftId
+                ? `Edit ${config.createTitle.replace("Create ", "")}`
+                : config.createTitle}
             </h1>
             <p className="text-xs text-muted-foreground">
-              Select a customer, add bill lines, save the local draft, then post when it is ready.
+              {isViewingPostedDocument
+                ? "Posted documents open here in read-only mode for review."
+                : "Select a customer, add lines, save the draft, then post when it is ready."}
             </p>
+            {isViewingPostedDocument ? (
+              <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1 text-[11px] text-muted-foreground">
+                Status: {activeServerDocument?.status ?? "OPEN"}
+              </div>
+            ) : null}
             {!isOnline ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                You are offline. Drafts still save locally. Reconnect to post this invoice.
+                {`You are offline. Drafts still save locally. Reconnect to post this ${config.singularLabel}.`}
               </div>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setViewMode("list")}>
-              Back to Recent
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                void saveDraft();
-              }}
-              disabled={draftMutationLoading}
-            >
-              {draftMutationLoading ? "Saving..." : `Save Draft (${normalizeLines(lines).length || 1})`}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                void postDraft();
-              }}
-              disabled={draftMutationLoading || !isOnline}
-              title={
-                isOnline
-                  ? "Post invoice"
-                  : "You are offline. Reconnect to post this invoice."
-              }
-            >
-              {draftMutationLoading
-                ? "Working..."
-                : isOnline
-                  ? "Post Invoice"
-                  : "Offline: Cannot Post"}
-            </Button>
+          <div className="flex min-w-0 flex-col gap-1 lg:flex-row lg:items-center lg:justify-end lg:gap-2">
+            <div className="flex flex-wrap gap-2 lg:flex-nowrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setViewMode("list")}
+              >
+                Back to Recent
+              </Button>
+              {!isViewingPostedDocument ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void saveDraft();
+                    }}
+                    disabled={draftMutationLoading}
+                  >
+                    {draftMutationLoading
+                      ? "Saving..."
+                      : `Save Draft (${normalizeLines(lines).length || 1})`}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      void postDraft();
+                    }}
+                    disabled={
+                      draftMutationLoading || Boolean(postValidationMessage)
+                    }
+                    title={postValidationMessage ?? config.postActionLabel}
+                  >
+                    {draftMutationLoading
+                      ? "Working..."
+                      : !postValidationMessage
+                        ? config.postActionLabel
+                        : "Cannot Post Yet"}
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-3 pb-2 pt-1 md:flex-row md:items-start">
-          <div className="space-y-1">
-            <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
-            <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
-              <span className={transactionType === "CASH" ? "font-semibold text-foreground" : "text-muted-foreground"}>
-                Cash
-              </span>
-              <Switch
-                id="sales-bill-transaction-switch"
-                checked={transactionType === "CREDIT"}
-                onCheckedChange={(checked) => setTransactionType(checked ? "CREDIT" : "CASH")}
-                aria-label="Toggle cash or credit transaction"
-                className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
-                checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
-                uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
-              />
-              <span className={transactionType === "CREDIT" ? "font-semibold text-foreground" : "text-muted-foreground"}>
-                Credit
-              </span>
+          {usesTransactionType(config.documentType) ? (
+            <div className="space-y-1">
+              <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
+              <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
+                <span
+                  className={
+                    transactionType === "CASH"
+                      ? "font-semibold text-foreground"
+                      : "text-muted-foreground"
+                  }
+                >
+                  Cash
+                </span>
+                <Switch
+                  id="sales-bill-transaction-switch"
+                  checked={transactionType === "CREDIT"}
+                  disabled={isViewingPostedDocument}
+                  onCheckedChange={(checked) =>
+                    setTransactionType(checked ? "CREDIT" : "CASH")
+                  }
+                  aria-label="Toggle cash or credit transaction"
+                  className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
+                  checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+                  uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+                />
+                <span
+                  className={
+                    transactionType === "CREDIT"
+                      ? "font-semibold text-foreground"
+                      : "text-muted-foreground"
+                  }
+                >
+                  Credit
+                </span>
+              </div>
             </div>
-          </div>
+          ) : null}
           <div className="space-y-1 md:w-48">
-            <Label htmlFor="sales-bill-number">Invoice number</Label>
+            <Label htmlFor="sales-bill-number">
+              {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}
+            </Label>
             <Input
               id="sales-bill-number"
               value={billNumber}
-              onChange={(event) => setBillNumber(event.target.value)}
+              readOnly={isViewingPostedDocument}
+              disabled={isViewingPostedDocument}
+              onChange={(event) => {
+                setBillNumber(event.target.value);
+                setNumberConflict(null);
+              }}
             />
+            {numberConflict ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}{" "}
+                <span className="font-semibold">
+                  {numberConflict.requested}
+                </span>{" "}
+                is already used. Suggested:{" "}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] underline underline-offset-2 hover:bg-transparent"
+                  onClick={() => {
+                    void applySuggestedInvoiceNumber();
+                  }}
+                  disabled={draftMutationLoading}
+                >
+                  {numberConflict.suggested}
+                </Button>
+              </div>
+            ) : null}
           </div>
-          <div className="space-y-1 md:w-96 md:max-w-[400px]">
-            <Label htmlFor="sales-bill-customer">Customer</Label>
+          <div className="space-y-1 md:w-[28rem] md:max-w-[28rem]">
+            <Label htmlFor="sales-bill-customer">
+              {usesTransactionType(config.documentType)
+                ? "Customer"
+                : "Customer *"}
+            </Label>
             <LookupDropdownInput
               id="sales-bill-customer"
               value={customerName}
+              disabled={isViewingPostedDocument}
               onValueChange={(value) => {
                 setCustomerName(value);
                 setCustomerId(null);
@@ -1083,16 +2350,25 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
               }
               renderOption={(customer) => (
                 <div className="space-y-0.5">
-                  <div className="font-medium text-foreground">{customer.name}</div>
+                  <div className="font-medium text-foreground">
+                    {customer.name}
+                  </div>
                   <div className="text-[10px] text-muted-foreground">
-                    {[customer.phone, customer.gstNo].filter(Boolean).join("  |  ") || "No phone or GST"}
+                    {[customer.phone, customer.gstNo]
+                      .filter(Boolean)
+                      .join("  |  ") || "No phone or GST"}
                   </div>
                 </div>
               )}
             />
-            {transactionType === "CREDIT" && !activeCustomer ? (
+            {!isViewingPostedDocument &&
+            usesTransactionType(config.documentType) &&
+            transactionType === "CREDIT" &&
+            !activeCustomer ? (
               <div className="flex items-center justify-between gap-2 text-[11px]">
-                <span className="text-amber-700">Credit invoices require an existing customer.</span>
+                <span className="text-amber-700">
+                  {`Credit ${config.pluralLabel} require an existing customer.`}
+                </span>
                 <Button
                   type="button"
                   variant="ghost"
@@ -1104,10 +2380,13 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                 </Button>
               </div>
             ) : null}
-            {transactionType === "CASH" && !activeCustomer ? (
+            {!isViewingPostedDocument &&
+            usesTransactionType(config.documentType) &&
+            transactionType === "CASH" &&
+            !activeCustomer ? (
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
                 <span className="text-muted-foreground">
-                  Customer is optional for cash invoices.
+                  {`Customer is optional for cash ${config.pluralLabel}.`}
                 </span>
                 <div className="flex flex-wrap items-center gap-3">
                   {canQuickCreateFromPhone ? (
@@ -1121,7 +2400,9 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                       }}
                       disabled={customerActionLoading}
                     >
-                      {customerActionLoading ? "Creating..." : "Quick create from phone"}
+                      {customerActionLoading
+                        ? "Creating..."
+                        : "Quick create from phone"}
                     </Button>
                   ) : null}
                   <Button
@@ -1136,14 +2417,47 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                 </div>
               </div>
             ) : null}
-            {activeCustomer || customerId || customerPhone || customerGstNo || customerAddress ? (
+            {!isViewingPostedDocument &&
+            !usesTransactionType(config.documentType) &&
+            !customerName.trim() ? (
+              <div className="text-[11px] text-amber-700">
+                {`Customer details are required for this ${config.singularLabel}.`}
+              </div>
+            ) : null}
+            {activeCustomer ||
+            customerId ||
+            customerPhone ||
+            customerGstNo ||
+            customerAddress ? (
               <div className="px-1 pt-1 text-[11px] text-muted-foreground">
-                <span className="font-medium text-foreground">Phone:</span> {activeCustomer?.phone || customerPhone || "Not provided"} •{" "}
-                <span className="font-medium text-foreground">GST:</span> {activeCustomer?.gstNo || customerGstNo || "Not provided"} •{" "}
-                <span className="font-medium text-foreground">Address:</span> {activeCustomer?.address || customerAddress || "No billing address"}
+                <span className="font-medium text-foreground">Phone:</span>{" "}
+                {activeCustomer?.phone || customerPhone || "Not provided"} •{" "}
+                <span className="font-medium text-foreground">GST:</span>{" "}
+                {activeCustomer?.gstNo || customerGstNo || "Not provided"} •{" "}
+                <span className="font-medium text-foreground">Address:</span>{" "}
+                {activeCustomer?.address ||
+                  customerAddress ||
+                  "No billing address"}
               </div>
             ) : null}
           </div>
+          {config.documentType === "SALES_ESTIMATE" ? (
+            <div className="space-y-1 md:w-[17rem] md:min-w-[17rem]">
+              <Label htmlFor="sales-estimate-valid-until">Valid until</Label>
+              <Input
+                id="sales-estimate-valid-until"
+                type="date"
+                value={validUntil}
+                readOnly={isViewingPostedDocument}
+                disabled={isViewingPostedDocument}
+                onChange={(event) => setValidUntil(event.target.value)}
+              />
+              <div className="text-[11px] text-muted-foreground">
+                Validity stays with the estimate so later conversions can carry
+                the committed expiry.
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {lookupError ? (
@@ -1152,16 +2466,61 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
           </div>
         ) : null}
 
+        {config.documentType === "DELIVERY_CHALLAN" ? (
+          <div className="grid gap-2 rounded-xl border border-border/80 bg-slate-50 p-2 md:grid-cols-3">
+            <div className="space-y-1">
+              <Label htmlFor="delivery-challan-dispatch-date">
+                Dispatch date
+              </Label>
+              <Input
+                id="delivery-challan-dispatch-date"
+                type="date"
+                value={dispatchDate}
+                readOnly={isViewingPostedDocument}
+                disabled={isViewingPostedDocument}
+                onChange={(event) => setDispatchDate(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="delivery-challan-carrier">Carrier</Label>
+              <Input
+                id="delivery-challan-carrier"
+                value={dispatchCarrier}
+                readOnly={isViewingPostedDocument}
+                disabled={isViewingPostedDocument}
+                onChange={(event) => setDispatchCarrier(event.target.value)}
+                placeholder="Optional transporter or vehicle"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="delivery-challan-reference">
+                Dispatch reference
+              </Label>
+              <Input
+                id="delivery-challan-reference"
+                value={dispatchReference}
+                readOnly={isViewingPostedDocument}
+                disabled={isViewingPostedDocument}
+                onChange={(event) => setDispatchReference(event.target.value)}
+                placeholder="LR no. / trip / docket"
+              />
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2 md:overflow-hidden">
           <div className="flex items-center justify-between md:shrink-0">
             <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-              Invoice Lines
+              {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
             </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setLines((currentLines) => [...currentLines, createLine()])}
+              disabled={isViewingPostedDocument}
+              onClick={() =>
+                setLines((currentLines) => [...currentLines, createLine()])
+              }
             >
               Add Line
             </Button>
@@ -1177,13 +2536,16 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                   className="rounded-lg border border-border/80 bg-slate-50 p-2"
                 >
                   <div className="mb-2 flex items-center justify-between">
-                    <div className="text-xs font-semibold text-foreground">Line {index + 1}</div>
+                    <div className="text-xs font-semibold text-foreground">
+                      Line {index + 1}
+                    </div>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       className="h-auto p-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"
                       onClick={() => removeLine(line.id)}
+                      disabled={isViewingPostedDocument}
                     >
                       <Trash2 className="mr-1 h-3.5 w-3.5" />
                       Remove
@@ -1191,39 +2553,62 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                   </div>
                   <div className="grid gap-2">
                     <div className="space-y-1">
-                      <Label htmlFor={`sales-line-mobile-description-${line.id}`}>Item</Label>
+                      <Label
+                        htmlFor={`sales-line-mobile-description-${line.id}`}
+                      >
+                        Item
+                      </Label>
                       <LookupDropdownInput
                         id={`sales-line-mobile-description-${line.id}`}
                         value={line.description}
-                        onValueChange={(value) => updateLine(line.id, "description", value)}
+                        disabled={isViewingPostedDocument}
+                        onValueChange={(value) =>
+                          updateLine(line.id, "description", value)
+                        }
                         options={itemOptions}
                         loading={lookupLoading}
                         loadingLabel="Loading items"
                         placeholder="Search item or service"
-                        onOptionSelect={(option) => applyLineItem(line.id, option)}
+                        onOptionSelect={(option) =>
+                          applyLineItem(line.id, option)
+                        }
                         getOptionKey={(option) => option.variantId}
                         getOptionSearchText={(option) =>
                           `${option.label} ${option.sku} ${option.gstLabel}`
                         }
-                        renderOption={(option) => <ItemOptionContent option={option} />}
+                        renderOption={(option) => (
+                          <ItemOptionContent option={option} />
+                        )}
                       />
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
-                        <Label htmlFor={`sales-line-mobile-qty-${line.id}`}>Qty</Label>
+                        <Label htmlFor={`sales-line-mobile-qty-${line.id}`}>
+                          Qty
+                        </Label>
                         <Input
                           id={`sales-line-mobile-qty-${line.id}`}
                           value={line.quantity}
-                          onChange={(event) => updateLine(line.id, "quantity", event.target.value)}
+                          readOnly={isViewingPostedDocument}
+                          disabled={isViewingPostedDocument}
+                          onChange={(event) =>
+                            updateLine(line.id, "quantity", event.target.value)
+                          }
                           inputMode="decimal"
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label htmlFor={`sales-line-mobile-rate-${line.id}`}>Rate</Label>
+                        <Label htmlFor={`sales-line-mobile-rate-${line.id}`}>
+                          Rate
+                        </Label>
                         <Input
                           id={`sales-line-mobile-rate-${line.id}`}
                           value={line.unitPrice}
-                          onChange={(event) => updateLine(line.id, "unitPrice", event.target.value)}
+                          readOnly={isViewingPostedDocument}
+                          disabled={isViewingPostedDocument}
+                          onChange={(event) =>
+                            updateLine(line.id, "unitPrice", event.target.value)
+                          }
                           inputMode="decimal"
                         />
                       </div>
@@ -1233,208 +2618,309 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                           id={`sales-line-mobile-tax-${line.id}`}
                           className="h-[38px] text-xs text-left"
                           value={normalizeGstSlab(line.taxRate) || ""}
-                          onChange={(e) => updateLine(line.id, "taxRate", e.target.value)}
+                          disabled={isViewingPostedDocument}
+                          onChange={(e) =>
+                            updateLine(line.id, "taxRate", e.target.value)
+                          }
                           placeholderOption="GST %"
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                       <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 flex items-center">
-                         <span className="mr-1">Unit:</span>
-                         <span className="font-medium text-foreground">{line.unit || "PCS"}</span>
-                       </div>
-                       <Button
-                         type="button"
-                         variant="outline"
-                         size="sm"
-                         className="h-auto w-full justify-between border-border/70 px-2 py-1.5 text-[11px] font-normal text-muted-foreground bg-white"
-                         onClick={() =>
-                           updateLine(
-                             line.id,
-                             "taxMode",
-                             line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
-                           )
-                         }
-                       >
-                         Tax mode:
-                         <span className="font-medium text-foreground">
-                           {line.taxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
-                         </span>
-                       </Button>
-                       <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 col-span-2 space-y-0.5">
-                         {toTaxRateNumber(line.taxRate) > 0 ? (
-                           line.taxMode === "INCLUSIVE" ? (
-                             <>
-                               <div className="flex justify-between">
-                                 <span>Base (excl. GST)</span>
-                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.subTotal)}</span>
-                               </div>
-                               <div className="flex justify-between">
-                                 <span>GST ({line.taxRate})</span>
-                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.taxTotal)}</span>
-                               </div>
-                             </>
-                           ) : (
-                             <>
-                               <div className="flex justify-between">
-                                 <span>Base</span>
-                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.subTotal)}</span>
-                               </div>
-                               <div className="flex justify-between">
-                                 <span>+GST ({line.taxRate})</span>
-                                 <span className="font-medium text-foreground">{formatCurrency(lineTotals.taxTotal)}</span>
-                               </div>
-                             </>
-                           )
-                         ) : null}
-                         <div className="flex justify-between border-t border-border/50 pt-0.5">
-                           <span className="font-semibold text-foreground">Line total</span>
-                           <span className="font-semibold text-foreground">{formatCurrency(lineTotals.total)}</span>
-                         </div>
-                       </div>
-                     </div>
-                   </div>
-                 </div>
+                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 flex items-center">
+                        <span className="mr-1">Unit:</span>
+                        <span className="font-medium text-foreground">
+                          {line.unit || "PCS"}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-auto w-full justify-between border-border/70 px-2 py-1.5 text-[11px] font-normal text-muted-foreground bg-white"
+                        disabled={isViewingPostedDocument}
+                        onClick={() =>
+                          updateLine(
+                            line.id,
+                            "taxMode",
+                            line.taxMode === "INCLUSIVE"
+                              ? "EXCLUSIVE"
+                              : "INCLUSIVE",
+                          )
+                        }
+                      >
+                        Tax mode:
+                        <span className="font-medium text-foreground">
+                          {line.taxMode === "INCLUSIVE"
+                            ? "Inclusive"
+                            : "Exclusive"}
+                        </span>
+                      </Button>
+                      <div className="rounded-md border border-border/70 bg-white px-2 py-1.5 col-span-2 space-y-0.5">
+                        {toTaxRateNumber(line.taxRate) > 0 ? (
+                          line.taxMode === "INCLUSIVE" ? (
+                            <>
+                              <div className="flex justify-between">
+                                <span>Base (excl. GST)</span>
+                                <span className="font-medium text-foreground">
+                                  {formatCurrency(lineTotals.subTotal)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>GST ({line.taxRate})</span>
+                                <span className="font-medium text-foreground">
+                                  {formatCurrency(lineTotals.taxTotal)}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between">
+                                <span>Base</span>
+                                <span className="font-medium text-foreground">
+                                  {formatCurrency(lineTotals.subTotal)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>+GST ({line.taxRate})</span>
+                                <span className="font-medium text-foreground">
+                                  {formatCurrency(lineTotals.taxTotal)}
+                                </span>
+                              </div>
+                            </>
+                          )
+                        ) : null}
+                        <div className="flex justify-between border-t border-border/50 pt-0.5">
+                          <span className="font-semibold text-foreground">
+                            Line total
+                          </span>
+                          <span className="font-semibold text-foreground">
+                            {formatCurrency(lineTotals.total)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
 
           <div className="hidden min-h-0 flex-1 overflow-hidden md:block">
-            <div className="h-full overflow-auto rounded-xl border border-border/80">
-              <DenseTable className="rounded-none border-0">
-                <DenseTableHead>
-                  <tr>
-                    <DenseTableHeaderCell className="w-[36%]">Item</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[12%]">Qty</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[10%]">Rate</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[10%]">GST %</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[8%]">Mode</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[10%] text-right">Tax</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[10%] text-right">Total</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[4%] text-right"> </DenseTableHeaderCell>
-                  </tr>
-                </DenseTableHead>
-                <DenseTableBody>
-                  {lines.map((line) => {
-                    const lineTotals = getLineTotals(line);
-                    return (
-                      <DenseTableRow
-                        key={line.id}
-                        data-bill-line-id={line.id}
-                        className="align-middle"
-                      >
-                        <DenseTableCell className="py-1.5">
-                          <div className="space-y-1">
-                            <LookupDropdownInput
-                              value={line.description}
-                              onValueChange={(value) => updateLine(line.id, "description", value)}
-                              options={itemOptions}
-                              loading={lookupLoading}
-                              loadingLabel="Loading items"
-                              placeholder="Search item or service"
-                              onOptionSelect={(option) => applyLineItem(line.id, option)}
-                              getOptionKey={(option) => option.variantId}
-                              getOptionSearchText={(option) =>
-                                `${option.label} ${option.sku} ${option.gstLabel}`
-                              }
-                              renderOption={(option) => <ItemOptionContent option={option} />}
-                            />
-                          </div>
-                        </DenseTableCell>
-                        <DenseTableCell className="py-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <Input
-                              className="w-16 min-w-0 px-2 text-right"
-                              value={line.quantity}
-                              onChange={(event) => updateLine(line.id, "quantity", event.target.value)}
-                              inputMode="decimal"
-                            />
-                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                              {line.unit || "PCS"}
-                            </span>
-                          </div>
-                        </DenseTableCell>
-                        <DenseTableCell className="py-1.5">
+            <DenseTable className="rounded-xl border-border/80 [scrollbar-gutter:stable]">
+              <DenseTableHead>
+                <tr>
+                  <DenseTableHeaderCell className="w-[36%]">
+                    Item
+                  </DenseTableHeaderCell>
+                  <DenseTableHeaderCell className="w-[13%]">
+                    Qty
+                  </DenseTableHeaderCell>
+                  <DenseTableHeaderCell className="w-[10%]">
+                    Rate
+                  </DenseTableHeaderCell>
+                  <DenseTableHeaderCell className="w-[9%]">
+                    GST %
+                  </DenseTableHeaderCell>
+                  <DenseTableHeaderCell className="w-[7%]">
+                    Mode
+                  </DenseTableHeaderCell>
+                  <DenseTableHeaderCell className="w-[9%] text-right">
+                    Tax
+                  </DenseTableHeaderCell>
+                  <DenseTableHeaderCell className="w-[9%] text-right">
+                    Total
+                  </DenseTableHeaderCell>
+                  <DenseTableHeaderCell className="w-[4%] text-right">
+                    {" "}
+                  </DenseTableHeaderCell>
+                </tr>
+              </DenseTableHead>
+              <DenseTableBody>
+                {lines.map((line) => {
+                  const lineTotals = getLineTotals(line);
+                  return (
+                    <DenseTableRow
+                      key={line.id}
+                      data-bill-line-id={line.id}
+                      className="align-middle"
+                    >
+                      <DenseTableCell className="py-1.5">
+                        <div className="space-y-1">
+                          <LookupDropdownInput
+                            value={line.description}
+                            disabled={isViewingPostedDocument}
+                            onValueChange={(value) =>
+                              updateLine(line.id, "description", value)
+                            }
+                            options={itemOptions}
+                            loading={lookupLoading}
+                            loadingLabel="Loading items"
+                            placeholder="Search item or service"
+                            onOptionSelect={(option) =>
+                              applyLineItem(line.id, option)
+                            }
+                            getOptionKey={(option) => option.variantId}
+                            getOptionSearchText={(option) =>
+                              `${option.label} ${option.sku} ${option.gstLabel}`
+                            }
+                            renderOption={(option) => (
+                              <ItemOptionContent option={option} />
+                            )}
+                          />
+                        </div>
+                      </DenseTableCell>
+                      <DenseTableCell className="py-1.5">
+                        <div className="flex items-center gap-1.5">
                           <Input
-                            className="min-w-0 px-2 text-right"
-                            value={line.unitPrice}
-                            onChange={(event) => updateLine(line.id, "unitPrice", event.target.value)}
-                            inputMode="decimal"
-                          />
-                        </DenseTableCell>
-                        <DenseTableCell className="py-1.5">
-                          <GstSlabSelect
-                            className="h-8 min-w-0 px-2 text-left text-xs"
-                            value={normalizeGstSlab(line.taxRate) || ""}
-                            onChange={(e) => updateLine(line.id, "taxRate", e.target.value)}
-                            placeholderOption="GST %"
-                          />
-                        </DenseTableCell>
-                        <DenseTableCell className="py-1.5">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 w-full min-w-0 border-border/70 px-0 text-xs text-muted-foreground"
-                            onClick={() =>
+                            className="!w-[4.5rem] shrink-0 px-1 text-right"
+                            value={line.quantity}
+                            readOnly={isViewingPostedDocument}
+                            disabled={isViewingPostedDocument}
+                            onChange={(event) =>
                               updateLine(
                                 line.id,
-                                "taxMode",
-                                line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
+                                "quantity",
+                                event.target.value,
                               )
                             }
-                          >
-                            {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
-                          </Button>
-                        </DenseTableCell>
-                        <DenseTableCell className="py-1.5 text-right">
-                          <div className="flex h-8 items-center justify-end text-[11px] font-medium text-foreground whitespace-nowrap">
-                            {formatCurrency(lineTotals.taxTotal)}
-                          </div>
-                        </DenseTableCell>
-                        <DenseTableCell className="py-1.5 text-right">
-                          <div className="flex h-8 items-center justify-end text-[11px] font-semibold text-foreground whitespace-nowrap">
-                            {formatCurrency(lineTotals.total)}
-                          </div>
-                        </DenseTableCell>
-                        <DenseTableCell className="py-1.5 text-right">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                            onClick={() => removeLine(line.id)}
-                            title="Remove line"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Remove</span>
-                          </Button>
-                        </DenseTableCell>
-                      </DenseTableRow>
-                    );
-                  })}
-                </DenseTableBody>
-              </DenseTable>
-            </div>
+                            inputMode="decimal"
+                          />
+                          <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap">
+                            {line.unit || "PCS"}
+                          </span>
+                        </div>
+                      </DenseTableCell>
+                      <DenseTableCell className="py-1.5">
+                        <Input
+                          className="min-w-0 px-2 text-right"
+                          value={line.unitPrice}
+                          readOnly={isViewingPostedDocument}
+                          disabled={isViewingPostedDocument}
+                          onChange={(event) =>
+                            updateLine(line.id, "unitPrice", event.target.value)
+                          }
+                          inputMode="decimal"
+                        />
+                      </DenseTableCell>
+                      <DenseTableCell className="py-1.5">
+                        <GstSlabSelect
+                          className="h-8 min-w-0 px-2 text-left text-xs"
+                          value={normalizeGstSlab(line.taxRate) || ""}
+                          disabled={isViewingPostedDocument}
+                          onChange={(e) =>
+                            updateLine(line.id, "taxRate", e.target.value)
+                          }
+                          placeholderOption="GST %"
+                        />
+                      </DenseTableCell>
+                      <DenseTableCell className="py-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-full min-w-0 border-border/70 px-0 text-xs text-muted-foreground"
+                          disabled={isViewingPostedDocument}
+                          onClick={() =>
+                            updateLine(
+                              line.id,
+                              "taxMode",
+                              line.taxMode === "INCLUSIVE"
+                                ? "EXCLUSIVE"
+                                : "INCLUSIVE",
+                            )
+                          }
+                        >
+                          {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
+                        </Button>
+                      </DenseTableCell>
+                      <DenseTableCell className="py-1.5 text-right">
+                        <div className="flex h-8 items-center justify-end text-[11px] font-medium text-foreground whitespace-nowrap">
+                          {formatCurrency(lineTotals.taxTotal)}
+                        </div>
+                      </DenseTableCell>
+                      <DenseTableCell className="py-1.5 text-right">
+                        <div className="flex h-8 items-center justify-end text-[11px] font-semibold text-foreground whitespace-nowrap">
+                          {formatCurrency(lineTotals.total)}
+                        </div>
+                      </DenseTableCell>
+                      <DenseTableCell className="py-1.5 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                          onClick={() => removeLine(line.id)}
+                          title="Remove line"
+                          disabled={isViewingPostedDocument}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Remove</span>
+                        </Button>
+                      </DenseTableCell>
+                    </DenseTableRow>
+                  );
+                })}
+              </DenseTableBody>
+            </DenseTable>
           </div>
 
           <div className="flex flex-col gap-4 rounded-xl border border-border/85 bg-white p-2 md:flex-row md:shrink-0">
-            <div className="flex-1 space-y-1">
+            <div className="flex flex-1 flex-col gap-1 md:min-h-[6rem]">
               <Label htmlFor="sales-bill-notes">Notes</Label>
               <Textarea
                 id="sales-bill-notes"
                 value={notes}
+                readOnly={isViewingPostedDocument}
+                disabled={isViewingPostedDocument}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="Optional internal note"
                 rows={2}
-                className="w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:h-[4.5rem] md:px-2.5 md:py-1.5 md:text-[11px]"
+                className="w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:flex-1 md:px-2.5 md:py-1.5 md:text-[11px]"
               />
+              <div className="min-h-[1.75rem]">
+                {!isViewingPostedDocument && numberConflict ? (
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                    <span>
+                      Requested number{" "}
+                      <span className="font-semibold">
+                        {numberConflict.requested}
+                      </span>{" "}
+                      is unavailable.
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                      onClick={() => {
+                        void applySuggestedInvoiceNumber();
+                      }}
+                      disabled={draftMutationLoading}
+                    >
+                      Use {numberConflict.suggested}
+                    </Button>
+                  </div>
+                ) : !isViewingPostedDocument && postValidationMessage ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                    {postValidationMessage}
+                  </div>
+                ) : saveMessage ? (
+                  <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1 text-[11px] text-muted-foreground">
+                    {saveMessage}
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="w-full border-t border-border/70 pt-2 md:w-[320px] md:border-l md:border-t-0 md:pl-4 md:pt-0">
               <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
-                <span className="shrink-0 font-semibold text-foreground">Invoice Summary</span>
+                <span className="shrink-0 font-semibold text-foreground">
+                  {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Summary`}
+                </span>
                 <span className="shrink-0 text-muted-foreground">•</span>
-                <span className="truncate text-muted-foreground">{activeBusinessName}</span>
+                <span className="truncate text-muted-foreground">
+                  {activeBusinessName}
+                </span>
               </div>
               <div className="space-y-2 pt-2">
                 <div className="flex items-center justify-between text-xs">
@@ -1455,17 +2941,52 @@ function BillsWorkspace({ activeStore }: { activeStore: string | null }) {
                     {normalizeLines(lines).length || 1}
                   </span>
                 </div>
+                {config.documentType === "SALES_ESTIMATE" && validUntil ? (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Valid until</span>
+                    <span className="font-semibold text-foreground">
+                      {validUntil}
+                    </span>
+                  </div>
+                ) : null}
+                {config.documentType === "DELIVERY_CHALLAN" ? (
+                  <>
+                    {dispatchDate ? (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          Dispatch date
+                        </span>
+                        <span className="font-semibold text-foreground">
+                          {dispatchDate}
+                        </span>
+                      </div>
+                    ) : null}
+                    {dispatchReference ? (
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="text-muted-foreground">Reference</span>
+                        <span className="truncate font-semibold text-foreground">
+                          {dispatchReference}
+                        </span>
+                      </div>
+                    ) : null}
+                    {dispatchCarrier ? (
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="text-muted-foreground">Carrier</span>
+                        <span className="truncate font-semibold text-foreground">
+                          {dispatchCarrier}
+                        </span>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
-                  <span className="font-semibold text-foreground">Grand total</span>
+                  <span className="font-semibold text-foreground">
+                    Grand total
+                  </span>
                   <span className="font-semibold text-foreground">
                     {formatCurrency(totals.grandTotal)}
                   </span>
                 </div>
-                {saveMessage ? (
-                  <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-[11px] text-muted-foreground">
-                    {saveMessage}
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>
@@ -1498,7 +3019,10 @@ function buildSalesItemOptions(
 }
 
 function applyCustomerSnapshot(
-  customer: Pick<CustomerRow, "entityId" | "name" | "phone" | "address" | "gstNo">,
+  customer: Pick<
+    CustomerRow,
+    "entityId" | "name" | "phone" | "address" | "gstNo"
+  >,
   setCustomerId: (value: string | null) => void,
   setCustomerName: (value: string) => void,
   setCustomerPhone: (value: string) => void,
@@ -1520,7 +3044,9 @@ function ItemOptionContent({ option }: { option: SalesItemOption }) {
         {[
           option.unit,
           option.gstLabel ? `GST ${option.gstLabel}` : null,
-          option.priceAmount !== null ? formatCurrency(option.priceAmount) : "No sales price",
+          option.priceAmount !== null
+            ? formatCurrency(option.priceAmount)
+            : "No sales price",
         ]
           .filter(Boolean)
           .join("  |  ")}

@@ -44,7 +44,7 @@ CREATE TYPE "catalog"."ItemType" AS ENUM ('PRODUCT', 'SERVICE');
 CREATE TYPE "documents"."DocumentType" AS ENUM ('SALES_ESTIMATE', 'PROFORMA_INVOICE', 'SALES_ORDER', 'DELIVERY_CHALLAN', 'SALES_INVOICE', 'SALES_RETURN', 'PURCHASE_ORDER', 'GOODS_RECEIPT_NOTE', 'PURCHASE_INVOICE', 'PURCHASE_RETURN');
 
 -- CreateEnum
-CREATE TYPE "documents"."DocumentStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'COMPLETED', 'CANCELLED');
+CREATE TYPE "documents"."DocumentStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'COMPLETED', 'CANCELLED', 'VOID');
 
 -- CreateEnum
 CREATE TYPE "documents"."SalesTransactionType" AS ENUM ('CASH', 'CREDIT');
@@ -269,6 +269,10 @@ CREATE TABLE "documents"."documents" (
     "updated_at" TIMESTAMP(3) NOT NULL,
     "posted_at" TIMESTAMP(3),
     "deleted_at" TIMESTAMP(3),
+    "valid_until" DATE,
+    "dispatch_date" DATE,
+    "dispatch_carrier" TEXT,
+    "dispatch_reference" TEXT,
     "party_id" UUID,
     "parent_id" UUID,
     "customer_name_snapshot" TEXT,

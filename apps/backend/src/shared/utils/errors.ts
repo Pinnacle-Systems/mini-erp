@@ -2,13 +2,24 @@ export class AppError extends Error {
   statusCode: number;
   status: string;
   isOperational: boolean;
+  reasonCode?: string;
+  details?: Record<string, unknown>;
 
-  constructor(message, statusCode) {
+  constructor(
+    message,
+    statusCode,
+    options?: {
+      reasonCode?: string;
+      details?: Record<string, unknown>;
+    },
+  ) {
     super(message);
 
     this.statusCode = statusCode;
     this.status = `${statusCode}`.startsWith("4") ? "fail" : "error";
     this.isOperational = true;
+    this.reasonCode = options?.reasonCode;
+    this.details = options?.details;
 
     Error.captureStackTrace(this, this.constructor);
   }
@@ -39,7 +50,13 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message = "Resource already exists") {
-    super(message, 409);
+  constructor(
+    message = "Resource already exists",
+    options?: {
+      reasonCode?: string;
+      details?: Record<string, unknown>;
+    },
+  ) {
+    super(message, 409, options);
   }
 }

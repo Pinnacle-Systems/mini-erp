@@ -10,6 +10,8 @@ export const globalErrorHandler = (err, req, res, _next) => {
       status: err.status,
       error: err,
       message: err.message,
+      ...(typeof err.reasonCode === "string" ? { reasonCode: err.reasonCode } : {}),
+      ...(err.details && typeof err.details === "object" ? { details: err.details } : {}),
       stack: err.stack,
     });
   }
@@ -20,6 +22,8 @@ export const globalErrorHandler = (err, req, res, _next) => {
       success: false,
       status: err.status,
       message: err.message,
+      ...(typeof err.reasonCode === "string" ? { reasonCode: err.reasonCode } : {}),
+      ...(err.details && typeof err.details === "object" ? { details: err.details } : {}),
     });
   }
 

@@ -3,10 +3,14 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { useSessionStore } from "../auth/session-business";
+import { useNavigate } from "react-router-dom";
+import { setAccessToken } from "../../lib/api";
+import { useAdminBusinessesStore } from "../admin/admin-businesses-store";
+import { clearSessionBusinessContext, useSessionStore } from "../auth/session-business";
 import { useToast } from "../toast/useToast";
 import { useUserAppStore } from "./user-app-business";
 import type { SyncResultRecord } from "./types";
@@ -103,18 +107,58 @@ type SyncProviderProps = {
 };
 
 export function SyncProvider({ children }: SyncProviderProps) {
+  const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const role = useSessionStore((state) => state.role);
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const isHydratingSession = useSessionStore((state) => state.isHydratingSession);
+  const clearSession = useSessionStore((state) => state.clearSession);
   const sku = useUserAppStore((state) => state.sku);
   const name = useUserAppStore((state) => state.name);
   const setLocalItems = useUserAppStore((state) => state.setLocalItems);
   const clearDraft = useUserAppStore((state) => state.clearDraft);
+  const resetUserAppState = useUserAppStore((state) => state.resetUserAppState);
+  const resetAdminBusinessesState = useAdminBusinessesStore(
+    (state) => state.resetAdminBusinessesState,
+  );
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [lastSyncCompletedAt, setLastSyncCompletedAt] = useState<number | null>(null);
+  const authRedirectHandledRef = useRef(false);
+
+  useEffect(() => {
+    if (identityId) {
+      authRedirectHandledRef.current = false;
+    }
+  }, [identityId]);
+
+  const handleSyncAuthFailure = useCallback(() => {
+    if (authRedirectHandledRef.current || !navigator.onLine) {
+      return;
+    }
+
+    authRedirectHandledRef.current = true;
+    setAccessToken(null);
+    clearSessionBusinessContext();
+    clearSession();
+    resetUserAppState();
+    resetAdminBusinessesState();
+    showToast({
+      title: "Session expired",
+      description: "Sync could not refresh your session. Sign in again to continue.",
+      tone: "error",
+      dedupeKey: "sync-auth-redirect",
+      durationMs: 5000,
+    });
+    navigate("/login", { replace: true });
+  }, [
+    clearSession,
+    navigate,
+    resetAdminBusinessesState,
+    resetUserAppState,
+    showToast,
+  ]);
 
   const reportSyncError = useCallback(
     (error: unknown) => {
@@ -123,6 +167,11 @@ export function SyncProvider({ children }: SyncProviderProps) {
       }
 
       if (error instanceof SyncHttpError && error.status === 401 && !identityId) {
+        return;
+      }
+
+      if (error instanceof SyncHttpError && error.status === 401 && navigator.onLine) {
+        handleSyncAuthFailure();
         return;
       }
 
@@ -135,7 +184,7 @@ export function SyncProvider({ children }: SyncProviderProps) {
         durationMs: toast.durationMs,
       });
     },
-    [identityId, isHydratingSession, showToast],
+    [handleSyncAuthFailure, identityId, isHydratingSession, showToast],
   );
 
   const reportAppliedSyncResults = useCallback(
