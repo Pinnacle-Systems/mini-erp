@@ -9,6 +9,11 @@ export const salesDocumentTypeSchema = z.enum([
 ]);
 
 const salesDocumentActionSchema = z.enum(["CANCEL", "VOID", "REOPEN"]);
+const salesDocumentCancelReasonSchema = z.enum([
+  "CUSTOMER_DECLINED",
+  "INTERNAL_DROP",
+  "OTHER",
+]);
 
 const salesTransactionTypeSchema = z.enum(["CASH", "CREDIT"]);
 const salesDocumentTaxModeSchema = z.enum(["EXCLUSIVE", "INCLUSIVE"]);
@@ -28,6 +33,7 @@ const salesDocumentBodySchema = z.object({
   tenantId: z.uuid(),
   documentType: salesDocumentTypeSchema,
   parentId: z.uuid().nullable().optional(),
+  locationId: z.uuid().nullable().optional(),
   billNumber: z.string().trim().min(1).max(64),
   transactionType: salesTransactionTypeSchema.nullable().optional(),
   customerId: z.uuid().nullable().optional(),
@@ -48,6 +54,16 @@ export const listSalesDocumentsSchema = z.object({
     tenantId: z.uuid(),
     documentType: salesDocumentTypeSchema,
     limit: z.coerce.number().int().min(1).max(100).default(50),
+  }),
+});
+
+export const getSalesDocumentHistorySchema = z.object({
+  params: z.object({
+    documentId: z.uuid(),
+  }),
+  query: z.object({
+    tenantId: z.uuid(),
+    documentType: salesDocumentTypeSchema,
   }),
 });
 
@@ -90,5 +106,6 @@ export const transitionSalesDocumentSchema = z.object({
     tenantId: z.uuid(),
     documentType: salesDocumentTypeSchema,
     action: salesDocumentActionSchema,
+    cancelReason: salesDocumentCancelReasonSchema.nullable().optional(),
   }),
 });

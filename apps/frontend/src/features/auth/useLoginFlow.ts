@@ -20,6 +20,8 @@ export function useLoginFlow() {
   const setSessionActiveBusinessModules = useSessionStore(
     (state) => state.setActiveBusinessModules,
   );
+  const setSessionActiveLocation = useSessionStore((state) => state.setActiveLocation);
+  const setSessionActiveMemberRole = useSessionStore((state) => state.setActiveMemberRole);
   const setStoreNeedsOnlineLicenseValidation = useSessionStore(
     (state) => state.setStoreNeedsOnlineLicenseValidation,
   );
@@ -96,6 +98,8 @@ export function useLoginFlow() {
     try {
       const result = await selectStore(businessId);
       setSessionActiveStore(businessId);
+      setSessionActiveLocation(businessId, result.activeLocationId ?? null);
+      setSessionActiveMemberRole(result.memberRole ?? null);
       setSessionActiveBusinessModules(result.modules ?? null);
       setStoreNeedsOnlineLicenseValidation(businessId, false);
       setSessionBusinessSelected(true);
@@ -113,6 +117,7 @@ export function useLoginFlow() {
   const cancelPendingBusinessSelection = () => {
     setPendingBusinesses(null);
     setSessionActiveStore(null);
+    setSessionActiveMemberRole(null);
     setSessionBusinessSelected(false);
   };
 

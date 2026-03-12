@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Ban,
+  Copy,
   Eye,
   FileOutput,
+  History,
   MoreHorizontal,
   RotateCcw,
   Trash2,
@@ -17,6 +20,16 @@ import { Switch } from "../../design-system/atoms/Switch";
 import { Textarea } from "../../design-system/atoms/Textarea";
 import { LookupDropdownInput } from "../../design-system/molecules/LookupDropdownInput";
 import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
+import { ActionReasonDialog } from "../../design-system/organisms/ActionReasonDialog";
+import { DocumentHistoryDialog } from "../../design-system/organisms/DocumentHistoryDialog";
+import {
+  DraftReviewPanel,
+  type DraftReviewAlert,
+} from "../../design-system/organisms/DraftReviewPanel";
+import {
+  FloatingActionMenu,
+  type FloatingActionMenuItem,
+} from "../../design-system/organisms/FloatingActionMenu";
 import {
   DenseTable,
   DenseTableBody,
@@ -42,12 +55,15 @@ import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
 import {
   createSalesDocumentDraft,
   deleteSalesDocumentDraft,
+  getSalesDocumentHistory,
   transitionSalesDocument,
   listSalesDocuments,
   postSalesDocumentDraft,
   SalesDocumentApiError,
   type SalesDocumentDraft,
   type SalesDocumentAction,
+  type SalesDocumentCancelReason,
+  type SalesDocumentHistoryEntry,
   type SalesDocumentType,
   updateSalesDocumentDraft,
 } from "./sales-invoices-api";
@@ -66,6 +82,7 @@ type BillLine = {
 
 type SavedBillDraft = Omit<SalesDocumentDraft, "lines"> & {
   lines: BillLine[];
+  duplicateMeta?: EstimateDuplicateMeta | null;
 };
 
 type SalesItemOption = StockVariantOption & {
@@ -118,6 +135,24 @@ type NumberConflictState = {
 
 type DraftSource = "local" | "server";
 
+type EstimateDuplicateMeta = {
+  sourceBillNumber: string;
+  lineSourceVariantIds: Record<string, string>;
+};
+
+type EstimateDuplicateWarnings = {
+  missingItems: Array<{
+    lineId: string;
+    description: string;
+  }>;
+  priceDiscrepancies: Array<{
+    lineId: string;
+    description: string;
+    currentPrice: number;
+    draftPrice: number;
+  }>;
+};
+
 type InvoiceListRow =
   | {
       source: "local";
@@ -151,6 +186,12 @@ type RowMenuAction = {
   tone?: "default" | "danger";
   disabled?: boolean;
   onSelect: () => void;
+};
+
+const CANCEL_REASON_LABELS: Record<SalesDocumentCancelReason, string> = {
+  CUSTOMER_DECLINED: "Customer declined",
+  INTERNAL_DROP: "Internal drop",
+  OTHER: "Other",
 };
 
 const createLine = (): BillLine => ({
@@ -422,6 +463,95 @@ const normalizeStoredLine = (rawLine: unknown): BillLine => {
   };
 };
 
+const normalizeEstimateDuplicateMeta = (
+  rawValue: unknown,
+): EstimateDuplicateMeta | null => {
+  if (!rawValue || typeof rawValue !== "object") {
+    return null;
+  }
+
+  const value = rawValue as Record<string, unknown>;
+  const sourceBillNumber =
+    typeof value.sourceBillNumber === "string" ? value.sourceBillNumber.trim() : "";
+  const lineSourceVariantIds =
+    value.lineSourceVariantIds && typeof value.lineSourceVariantIds === "object"
+      ? Object.entries(value.lineSourceVariantIds as Record<string, unknown>).reduce<
+          Record<string, string>
+        >((accumulator, [lineId, variantId]) => {
+          if (
+            lineId.trim().length > 0 &&
+            typeof variantId === "string" &&
+            variantId.trim().length > 0
+          ) {
+            accumulator[lineId] = variantId;
+          }
+          return accumulator;
+        }, {})
+      : {};
+
+  if (!sourceBillNumber) {
+    return null;
+  }
+
+  return {
+    sourceBillNumber,
+    lineSourceVariantIds,
+  };
+};
+
+const formatPriceInput = (value: number) =>
+  Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
+
+const buildDuplicateEstimateWarnings = (
+  lines: BillLine[],
+  itemOptionsByVariantId: Map<string, SalesItemOption>,
+  duplicateMeta: EstimateDuplicateMeta | null,
+): EstimateDuplicateWarnings => {
+  if (!duplicateMeta) {
+    return {
+      missingItems: [],
+      priceDiscrepancies: [],
+    };
+  }
+
+  const missingItems: EstimateDuplicateWarnings["missingItems"] = [];
+  const priceDiscrepancies: EstimateDuplicateWarnings["priceDiscrepancies"] = [];
+
+  for (const line of lines) {
+    const sourceVariantId = duplicateMeta.lineSourceVariantIds[line.id];
+    const option = line.variantId ? itemOptionsByVariantId.get(line.variantId) : null;
+
+    if (sourceVariantId && !option) {
+      missingItems.push({
+        lineId: line.id,
+        description: line.description || "Unnamed item",
+      });
+      continue;
+    }
+
+    if (!option || option.priceAmount === null) {
+      continue;
+    }
+
+    const draftPrice = toNumber(line.unitPrice);
+    if (Math.abs(draftPrice - option.priceAmount) < 0.01) {
+      continue;
+    }
+
+    priceDiscrepancies.push({
+      lineId: line.id,
+      description: line.description || "Unnamed item",
+      draftPrice,
+      currentPrice: option.priceAmount,
+    });
+  }
+
+  return {
+    missingItems,
+    priceDiscrepancies,
+  };
+};
+
 const SALES_DOCUMENT_PAGE_CONFIG: Record<
   SalesDocumentType,
   SalesDocumentPageConfig
@@ -584,6 +714,7 @@ const loadStoredDrafts = (
             ? draft.savedAt
             : new Date().toISOString(),
         lines: lines.length > 0 ? lines : [createLine()],
+        duplicateMeta: normalizeEstimateDuplicateMeta(draft.duplicateMeta),
       } satisfies SavedBillDraft;
     });
   } catch {
@@ -615,10 +746,12 @@ export function ReturnsPage() {
 
 function SalesDocumentPage({ config }: { config: SalesDocumentPageConfig }) {
   const activeStore = useSessionStore((state) => state.activeStore);
+  const activeLocationId = useSessionStore((state) => state.activeLocationId);
   return (
     <SalesDocumentWorkspace
-      key={`${config.documentType}:${activeStore ?? "no-store"}`}
+      key={`${config.documentType}:${activeStore ?? "no-store"}:${activeLocationId ?? "default-location"}`}
       activeStore={activeStore}
+      activeLocationId={activeLocationId}
       config={config}
     />
   );
@@ -626,9 +759,11 @@ function SalesDocumentPage({ config }: { config: SalesDocumentPageConfig }) {
 
 function SalesDocumentWorkspace({
   activeStore,
+  activeLocationId,
   config,
 }: {
   activeStore: string | null;
+  activeLocationId: string | null;
   config: SalesDocumentPageConfig;
 }) {
   const location = useLocation();
@@ -682,9 +817,25 @@ function SalesDocumentWorkspace({
   const [serverActionDocumentId, setServerActionDocumentId] = useState<
     string | null
   >(null);
+  const [pendingCancelDocument, setPendingCancelDocument] =
+    useState<SalesDocumentDraft | null>(null);
+  const [pendingVoidDocument, setPendingVoidDocument] =
+    useState<SalesDocumentDraft | null>(null);
+  const [historyDocument, setHistoryDocument] = useState<SalesDocumentDraft | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<SalesDocumentHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [cancelReasonDraft, setCancelReasonDraft] =
+    useState<SalesDocumentCancelReason>("INTERNAL_DROP");
   const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
+  const [openRowMenuAnchorRect, setOpenRowMenuAnchorRect] = useState<DOMRect | null>(
+    null,
+  );
   const [numberConflict, setNumberConflict] =
     useState<NumberConflictState | null>(null);
+  const [duplicateMeta, setDuplicateMeta] = useState<EstimateDuplicateMeta | null>(
+    null,
+  );
   const [serverInvoices, setServerInvoices] = useState<SalesDocumentDraft[]>(
     [],
   );
@@ -769,8 +920,14 @@ function SalesDocumentWorkspace({
   }, [activeStore]);
 
   useEffect(() => {
-    if (!activeStore || !isOnline) {
+    if (!activeStore) {
       setServerInvoices([]);
+      setServerInvoicesLoading(false);
+      setServerInvoicesError(null);
+      return;
+    }
+
+    if (!isOnline) {
       setServerInvoicesLoading(false);
       setServerInvoicesError(null);
       return;
@@ -803,6 +960,11 @@ function SalesDocumentWorkspace({
     };
   }, [activeStore, config.documentType, config.pluralLabel, isOnline]);
 
+  const itemOptionsByVariantId = useMemo(
+    () => new Map(itemOptions.map((option) => [option.variantId, option] as const)),
+    [itemOptions],
+  );
+
   const activeCustomer = useMemo(() => {
     if (customerId) {
       return (
@@ -824,6 +986,25 @@ function SalesDocumentWorkspace({
       }) ?? null
     );
   }, [customerId, customerName, customers]);
+
+  const duplicateWarnings = useMemo(
+    () => buildDuplicateEstimateWarnings(lines, itemOptionsByVariantId, duplicateMeta),
+    [duplicateMeta, itemOptionsByVariantId, lines],
+  );
+  const duplicateWarningAlerts = useMemo<DraftReviewAlert[]>(() => {
+    const missingAlerts = duplicateWarnings.missingItems.map((warning) => ({
+      id: `missing:${warning.lineId}`,
+      title: `${warning.description} is no longer available`,
+      description: "Select a replacement item before saving or posting this duplicate.",
+    }));
+    const priceAlerts = duplicateWarnings.priceDiscrepancies.map((warning) => ({
+      id: `price:${warning.lineId}`,
+      title: `${warning.description} price differs from the current sales price`,
+      description: `Draft price ${formatCurrency(warning.draftPrice)}. Current price ${formatCurrency(warning.currentPrice)}.`,
+    }));
+
+    return [...missingAlerts, ...priceAlerts];
+  }, [duplicateWarnings]);
   const nextBillNumber = useMemo(
     () => getNextBillNumber(config.numberPrefix, serverInvoices, drafts),
     [config.numberPrefix, drafts, serverInvoices],
@@ -860,7 +1041,6 @@ function SalesDocumentWorkspace({
         new Date(left.timestamp).valueOf(),
     );
   }, [drafts, serverInvoices]);
-
   const getServerDocumentActions = (
     document: SalesDocumentDraft,
   ): SalesDocumentAction[] => {
@@ -881,6 +1061,94 @@ function SalesDocumentWorkspace({
     }
 
     return SALES_DOCUMENT_CONVERSION_CONFIG[document.documentType] ?? null;
+  };
+
+  const duplicateEstimateDraft = (source: SavedBillDraft | SalesDocumentDraft) => {
+    const sourceLines = source.lines.map(normalizeStoredLine);
+    const lineSourceVariantIds: Record<string, string> = {};
+    const duplicatedLines = sourceLines.map((line) => {
+      const nextLineId = crypto.randomUUID();
+      const sourceVariantId = line.variantId.trim();
+      if (sourceVariantId) {
+        lineSourceVariantIds[nextLineId] = sourceVariantId;
+      }
+
+      const currentOption = sourceVariantId
+        ? itemOptionsByVariantId.get(sourceVariantId)
+        : null;
+
+      return {
+        ...line,
+        id: nextLineId,
+        variantId: currentOption ? sourceVariantId : "",
+        stockOnHand: currentOption?.quantityOnHand ?? null,
+      };
+    });
+
+    const duplicatedDraft: SavedBillDraft = {
+      id: crypto.randomUUID(),
+      documentType: "SALES_ESTIMATE",
+      parentId: null,
+      billNumber: nextBillNumber,
+      transactionType: source.transactionType === "CREDIT" ? "CREDIT" : "CASH",
+      customerId: source.customerId,
+      customerName: source.customerName,
+      customerPhone: source.customerPhone,
+      customerAddress: source.customerAddress,
+      customerGstNo: source.customerGstNo,
+      validUntil: source.validUntil,
+      dispatchDate: "",
+      dispatchCarrier: "",
+      dispatchReference: "",
+      notes: source.notes,
+      savedAt: new Date().toISOString(),
+      status: "DRAFT",
+      postedAt: null,
+      lines: duplicatedLines,
+      duplicateMeta: {
+        sourceBillNumber: source.billNumber,
+        lineSourceVariantIds,
+      },
+    };
+
+    persistDrafts([duplicatedDraft, ...drafts]);
+    loadDraft(duplicatedDraft);
+    setSaveMessage(
+      `Estimate ${source.billNumber} duplicated into draft ${duplicatedDraft.billNumber}. Original prices were preserved.`,
+    );
+  };
+
+  const refreshDuplicatePricesToCurrent = () => {
+    setLines((currentLines) =>
+      currentLines.map((line) => {
+        const matchingWarning = duplicateWarnings.priceDiscrepancies.find(
+          (warning) => warning.lineId === line.id,
+        );
+        if (!matchingWarning) {
+          return line;
+        }
+
+        return {
+          ...line,
+          unitPrice: formatPriceInput(matchingWarning.currentPrice),
+        };
+      }),
+    );
+  };
+
+  const toggleRowMenu = (
+    rowId: string,
+    triggerElement: HTMLButtonElement,
+  ) => {
+    setOpenRowMenuId((current) => {
+      if (current === rowId) {
+        setOpenRowMenuAnchorRect(null);
+        return null;
+      }
+
+      setOpenRowMenuAnchorRect(triggerElement.getBoundingClientRect());
+      return rowId;
+    });
   };
 
   const startDocumentConversion = (document: SalesDocumentDraft) => {
@@ -920,7 +1188,7 @@ function SalesDocumentWorkspace({
 
   const getRowMenuActions = (row: InvoiceListRow): RowMenuAction[] => {
     if (row.status === "DRAFT") {
-      return [
+      const actions: RowMenuAction[] = [
         {
           key: "open",
           label: "Open",
@@ -944,6 +1212,19 @@ function SalesDocumentWorkspace({
           },
         },
       ];
+
+      if (config.documentType === "SALES_ESTIMATE") {
+        actions.splice(1, 0, {
+          key: "duplicate",
+          label: "Duplicate",
+          icon: Copy,
+          onSelect: () => {
+            duplicateEstimateDraft(row.source === "local" ? row.draft : row.invoice);
+          },
+        });
+      }
+
+      return actions;
     }
 
     if (row.source !== "server") {
@@ -959,6 +1240,24 @@ function SalesDocumentWorkspace({
         loadServerDraft(row.invoice);
       },
     });
+    actions.push({
+      key: "history",
+      label: "View History",
+      icon: History,
+      onSelect: () => {
+        void openDocumentHistory(row.invoice);
+      },
+    });
+    if (config.documentType === "SALES_ESTIMATE") {
+      actions.push({
+        key: "duplicate",
+        label: "Duplicate",
+        icon: Copy,
+        onSelect: () => {
+          duplicateEstimateDraft(row.invoice);
+        },
+      });
+    }
     const conversion = getServerDocumentConversion(row.invoice);
     if (conversion) {
       actions.push({
@@ -980,10 +1279,28 @@ function SalesDocumentWorkspace({
             : action === "VOID"
               ? "Void"
               : "Reopen",
-        icon: action === "REOPEN" ? RotateCcw : XCircle,
+        icon:
+          action === "REOPEN"
+            ? RotateCcw
+            : action === "VOID"
+              ? Ban
+              : XCircle,
         tone: action === "VOID" ? "danger" : "default",
         disabled: serverActionDocumentId === row.id,
         onSelect: () => {
+          if (action === "CANCEL") {
+            setCancelReasonDraft(
+              row.invoice.documentType === "SALES_ESTIMATE"
+                ? "CUSTOMER_DECLINED"
+                : "INTERNAL_DROP",
+            );
+            setPendingCancelDocument(row.invoice);
+            return;
+          }
+          if (action === "VOID") {
+            setPendingVoidDocument(row.invoice);
+            return;
+          }
           void applyServerDocumentAction(row.invoice, action);
         },
       });
@@ -991,6 +1308,15 @@ function SalesDocumentWorkspace({
 
     return actions;
   };
+
+  const openRowMenuItems: FloatingActionMenuItem[] = (() => {
+    if (!openRowMenuId) {
+      return [];
+    }
+
+    const targetRow = invoiceRows.find((row) => row.id === openRowMenuId);
+    return targetRow ? getRowMenuActions(targetRow) : [];
+  })();
 
   const routeState =
     location.state && typeof location.state === "object"
@@ -1049,6 +1375,7 @@ function SalesDocumentWorkspace({
           : "",
       );
       setNotes(typeof draft.notes === "string" ? draft.notes : "");
+      setDuplicateMeta(normalizeEstimateDuplicateMeta(draft.duplicateMeta));
       setLines(
         Array.isArray(draft.lines) && draft.lines.length > 0
           ? draft.lines.map(normalizeStoredLine)
@@ -1134,6 +1461,7 @@ function SalesDocumentWorkspace({
 
     const handlePointerDown = () => {
       setOpenRowMenuId(null);
+      setOpenRowMenuAnchorRect(null);
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -1255,6 +1583,7 @@ function SalesDocumentWorkspace({
     setNotes("");
     setLines([createLine()]);
     setNumberConflict(null);
+    setDuplicateMeta(null);
   };
 
   const openNewDraft = () => {
@@ -1308,6 +1637,7 @@ function SalesDocumentWorkspace({
       notes: notes.trim(),
       savedAt: new Date().toISOString(),
       lines: normalizedLines,
+      duplicateMeta,
     };
   };
 
@@ -1330,6 +1660,7 @@ function SalesDocumentWorkspace({
                 tenantId: activeStore,
                 documentType: config.documentType,
                 parentId: nextDraft.parentId,
+                locationId: activeLocationId,
                 billNumber: nextDraft.billNumber,
                 transactionType: nextDraft.transactionType,
                 customerId: nextDraft.customerId,
@@ -1348,6 +1679,7 @@ function SalesDocumentWorkspace({
                 tenantId: activeStore,
                 documentType: config.documentType,
                 parentId: nextDraft.parentId,
+                locationId: activeLocationId,
                 billNumber: nextDraft.billNumber,
                 transactionType: nextDraft.transactionType,
                 customerId: nextDraft.customerId,
@@ -1444,6 +1776,7 @@ function SalesDocumentWorkspace({
     setDispatchReference(draft.dispatchReference);
     setNotes(draft.notes);
     setLines(draft.lines.map((line) => ({ ...line })));
+    setDuplicateMeta(draft.duplicateMeta ?? null);
     setNumberConflict(null);
     setSaveMessage(null);
     setViewMode("editor");
@@ -1471,6 +1804,7 @@ function SalesDocumentWorkspace({
     setDispatchReference(draft.dispatchReference);
     setNotes(draft.notes);
     setLines(draft.lines.map(normalizeStoredLine));
+    setDuplicateMeta(null);
     setNumberConflict(null);
     setSaveMessage(null);
     setViewMode("editor");
@@ -1629,6 +1963,7 @@ function SalesDocumentWorkspace({
     notes,
     savedAt: new Date().toISOString(),
     lines,
+    duplicateMeta,
   });
 
   const submitPostedDraft = async (
@@ -1641,6 +1976,7 @@ function SalesDocumentWorkspace({
             tenantId,
             documentType: config.documentType,
             parentId: localDraft.parentId,
+            locationId: activeLocationId,
             billNumber: localDraft.billNumber,
             transactionType: localDraft.transactionType,
             customerId: localDraft.customerId,
@@ -1659,6 +1995,7 @@ function SalesDocumentWorkspace({
             tenantId,
             documentType: config.documentType,
             parentId: localDraft.parentId,
+            locationId: activeLocationId,
             billNumber: localDraft.billNumber,
             transactionType: localDraft.transactionType,
             customerId: localDraft.customerId,
@@ -1784,6 +2121,7 @@ function SalesDocumentWorkspace({
   const applyServerDocumentAction = async (
     document: SalesDocumentDraft,
     action: SalesDocumentAction,
+    cancelReason?: SalesDocumentCancelReason | null,
   ) => {
     if (!activeStore || serverActionDocumentId) {
       return;
@@ -1797,6 +2135,7 @@ function SalesDocumentWorkspace({
         activeStore,
         config.documentType,
         action,
+        cancelReason,
       );
       setServerInvoices((current) =>
         current.map((entry) =>
@@ -1805,7 +2144,7 @@ function SalesDocumentWorkspace({
       );
       setSaveMessage(
         action === "CANCEL"
-          ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} cancelled.`
+          ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} cancelled${updatedDocument.cancelReason ? ` (${CANCEL_REASON_LABELS[updatedDocument.cancelReason]})` : ""}.`
           : action === "VOID"
             ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} voided.`
             : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} reopened.`,
@@ -1821,6 +2160,136 @@ function SalesDocumentWorkspace({
       setServerActionDocumentId(null);
     }
   };
+
+  const openDocumentHistory = async (document: SalesDocumentDraft) => {
+    if (!activeStore) {
+      setSaveMessage(`Select a business before viewing ${config.singularLabel} history.`);
+      return;
+    }
+
+    setHistoryDocument(document);
+    setHistoryEntries([]);
+    setHistoryError(null);
+    setHistoryLoading(true);
+    try {
+      const entries = await getSalesDocumentHistory(
+        document.id,
+        activeStore,
+        config.documentType,
+      );
+      setHistoryEntries(entries);
+    } catch (error) {
+      console.error(error);
+      setHistoryError(
+        error instanceof Error
+          ? error.message
+          : `Unable to load ${config.singularLabel} history.`,
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const confirmCancelDocument = async () => {
+    if (!pendingCancelDocument) {
+      return;
+    }
+
+    await applyServerDocumentAction(
+      pendingCancelDocument,
+      "CANCEL",
+      cancelReasonDraft,
+    );
+    setPendingCancelDocument(null);
+  };
+
+  const confirmVoidDocument = async () => {
+    if (!pendingVoidDocument) {
+      return;
+    }
+
+    await applyServerDocumentAction(pendingVoidDocument, "VOID");
+    setPendingVoidDocument(null);
+  };
+
+  const renderPendingActionDialogs = () => (
+    <>
+      {pendingCancelDocument ? (
+        <ActionReasonDialog
+          title={`Cancel ${config.singularLabel}`}
+          description={`${pendingCancelDocument.billNumber} will stay in history and stop moving forward.`}
+          reasonLabel="Cancellation reason"
+          reasons={(
+            pendingCancelDocument.documentType === "SALES_ESTIMATE"
+              ? ["CUSTOMER_DECLINED", "INTERNAL_DROP", "OTHER"]
+              : ["INTERNAL_DROP", "OTHER"]
+          ).map((reason) => ({
+            value: reason,
+            label: CANCEL_REASON_LABELS[reason as SalesDocumentCancelReason],
+          }))}
+          selectedReason={cancelReasonDraft}
+          confirmLabel={
+            serverActionDocumentId === pendingCancelDocument.id
+              ? "Cancelling..."
+              : "Confirm Cancel"
+          }
+          disabled={serverActionDocumentId === pendingCancelDocument.id}
+          hint="Use Void only for clerical mistakes. Use Cancel when the deal is no longer active."
+          onSelectedReasonChange={(reason) =>
+            setCancelReasonDraft(reason as SalesDocumentCancelReason)
+          }
+          onConfirm={() => {
+            void confirmCancelDocument();
+          }}
+          onClose={() => {
+            if (serverActionDocumentId === pendingCancelDocument.id) {
+              return;
+            }
+            setPendingCancelDocument(null);
+          }}
+        />
+      ) : null}
+      {pendingVoidDocument ? (
+        <ActionReasonDialog
+          title={`Void ${config.singularLabel}`}
+          description={`${pendingVoidDocument.billNumber} will be marked void for a clerical error.`}
+          confirmLabel={
+            serverActionDocumentId === pendingVoidDocument.id
+              ? "Voiding..."
+              : "Confirm Void"
+          }
+          disabled={serverActionDocumentId === pendingVoidDocument.id}
+          hint="Void is for clerical mistakes or invalid documents. Voided documents are not currently reopenable."
+          onConfirm={() => {
+            void confirmVoidDocument();
+          }}
+          onClose={() => {
+            if (serverActionDocumentId === pendingVoidDocument.id) {
+              return;
+            }
+            setPendingVoidDocument(null);
+          }}
+        />
+      ) : null}
+      {historyDocument ? (
+        <DocumentHistoryDialog
+          title={`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} History`}
+          description={`Lifecycle and conversion events for ${historyDocument.billNumber}.`}
+          entries={historyEntries}
+          loading={historyLoading}
+          error={historyError}
+          onClose={() => {
+            if (historyLoading) {
+              return;
+            }
+            setHistoryDocument(null);
+            setHistoryEntries([]);
+            setHistoryError(null);
+          }}
+        />
+      ) : null}
+    </>
+  );
 
   const openCustomerCreate = () => {
     navigate("/app/customers/new", {
@@ -1980,44 +2449,10 @@ function SalesDocumentWorkspace({
                             aria-label={`Open actions for ${row.billNumber}`}
                             title="More actions"
                             aria-expanded={openRowMenuId === row.id}
-                            onClick={() =>
-                              setOpenRowMenuId((current) =>
-                                current === row.id ? null : row.id,
-                              )
+                            onClick={(event) =>
+                              toggleRowMenu(row.id, event.currentTarget)
                             }
                           />
-                          {openRowMenuId === row.id ? (
-                            <div className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-lg border border-border/80 bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
-                              <div className="grid gap-1">
-                                {actions.map((action) => (
-                                  <Button
-                                    key={action.key}
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className={`h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] ${
-                                      action.tone === "danger"
-                                        ? "text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
-                                        : "text-[#15314e]"
-                                    }`}
-                                    disabled={action.disabled}
-                                    onClick={() => {
-                                      setOpenRowMenuId(null);
-                                      action.onSelect();
-                                    }}
-                                  >
-                                    <action.icon
-                                      className="h-3.5 w-3.5"
-                                      aria-hidden="true"
-                                    />
-                                    {action.disabled && action.key !== "delete"
-                                      ? "Working..."
-                                      : action.label}
-                                  </Button>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
                         </div>
                       );
                     })()}
@@ -2113,48 +2548,13 @@ function SalesDocumentWorkspace({
                                 icon={MoreHorizontal}
                                 variant="ghost"
                                 className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
-                                onClick={() =>
-                                  setOpenRowMenuId((current) =>
-                                    current === row.id ? null : row.id,
-                                  )
+                                onClick={(event) =>
+                                  toggleRowMenu(row.id, event.currentTarget)
                                 }
                                 aria-label={`Open actions for ${row.billNumber}`}
                                 title="More actions"
                                 aria-expanded={openRowMenuId === row.id}
                               />
-                              {openRowMenuId === row.id ? (
-                                <div className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-lg border border-border/80 bg-white p-1 text-left shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
-                                  <div className="grid gap-1">
-                                    {actions.map((action) => (
-                                      <Button
-                                        key={action.key}
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className={`h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] ${
-                                          action.tone === "danger"
-                                            ? "text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
-                                            : "text-[#15314e]"
-                                        }`}
-                                        disabled={action.disabled}
-                                        onClick={() => {
-                                          setOpenRowMenuId(null);
-                                          action.onSelect();
-                                        }}
-                                      >
-                                        <action.icon
-                                          className="h-3.5 w-3.5"
-                                          aria-hidden="true"
-                                        />
-                                        {action.disabled &&
-                                        action.key !== "delete"
-                                          ? "Working..."
-                                          : action.label}
-                                      </Button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
                             </div>
                           );
                         })()}
@@ -2166,6 +2566,17 @@ function SalesDocumentWorkspace({
             )}
           </div>
         </div>
+        {openRowMenuId && openRowMenuAnchorRect && openRowMenuItems.length > 0 ? (
+          <FloatingActionMenu
+            anchorRect={openRowMenuAnchorRect}
+            items={openRowMenuItems}
+            onClose={() => {
+              setOpenRowMenuId(null);
+              setOpenRowMenuAnchorRect(null);
+            }}
+          />
+        ) : null}
+        {renderPendingActionDialogs()}
       </section>
     );
   }
@@ -2245,6 +2656,27 @@ function SalesDocumentWorkspace({
             </div>
           </div>
         </div>
+
+        {duplicateMeta ? (
+          <div className="pt-2">
+            <DraftReviewPanel
+              title={`Duplicate of estimate ${duplicateMeta.sourceBillNumber}`}
+              description="Original line pricing was preserved in this draft. Review any unavailable items or stale prices before posting."
+              alerts={duplicateWarningAlerts}
+              actionLabel={
+                duplicateWarnings.priceDiscrepancies.length > 0
+                  ? "Refresh to Current Price"
+                  : undefined
+              }
+              actionDisabled={duplicateWarnings.priceDiscrepancies.length === 0}
+              onAction={
+                duplicateWarnings.priceDiscrepancies.length > 0
+                  ? refreshDuplicatePricesToCurrent
+                  : undefined
+              }
+            />
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-3 pb-2 pt-1 md:flex-row md:items-start">
           {usesTransactionType(config.documentType) ? (
@@ -2992,6 +3424,17 @@ function SalesDocumentWorkspace({
           </div>
         </div>
       </div>
+      {openRowMenuId && openRowMenuAnchorRect && openRowMenuItems.length > 0 ? (
+        <FloatingActionMenu
+          anchorRect={openRowMenuAnchorRect}
+          items={openRowMenuItems}
+          onClose={() => {
+            setOpenRowMenuId(null);
+            setOpenRowMenuAnchorRect(null);
+          }}
+        />
+      ) : null}
+      {renderPendingActionDialogs()}
     </section>
   );
 }

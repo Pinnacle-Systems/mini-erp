@@ -14,9 +14,34 @@ model Business {
   deleted_at        DateTime?
   members           BusinessMember[]
   licenses          BusinessLicense[]
+  locations         BusinessLocation[]
   selected_sessions Session[]
 
   @@map("businesses")
+  @@schema("tenants")
+}
+
+model BusinessLocation {
+  id                String    @id @default(uuid()) @db.Uuid
+  business_id       String    @db.Uuid
+  name              String
+  phone_number      String?
+  email             String?
+  gstin             String?
+  state             String?
+  pincode           String?
+  address           String?
+  is_default        Boolean   @default(false)
+  is_active         Boolean   @default(true)
+  deleted_at        DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  business          Business  @relation(fields: [business_id], references: [id], onDelete: Cascade)
+  selected_sessions Session[]
+
+  @@index([business_id, is_active, deleted_at])
+  @@index([business_id, is_default, deleted_at])
+  @@map("business_locations")
   @@schema("tenants")
 }
 
@@ -88,6 +113,7 @@ enum BusinessBundleKey {
 }
 
 enum BusinessCapabilityKey {
+  BUSINESS_LOCATIONS
   ITEM_PRODUCTS
   ITEM_SERVICES
   PARTIES_CUSTOMERS

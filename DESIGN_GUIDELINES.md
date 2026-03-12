@@ -185,10 +185,24 @@ Keep those sections focused on stable rules that should apply to future work in 
 
 ## Inventory
 
-- Treat stock as business-level on-hand quantity for now. Do not introduce per-location workflows, internal transfer concepts, or location-specific UI.
+- Treat stock ownership as location-level while preserving a clear business-wide aggregate view where users need it.
 - Stock adjustments should capture only product movement direction and quantity, using direct wording for stock coming in or going out.
-- Stock review screens should summarize the business-wide quantity users are currently filtering, not split the same product into internal location rows.
+- Stock review screens may show business-wide totals, location-filtered totals, or explicit location rows depending on the workflow, but the location context must be obvious.
 - Keep inventory filters compact and labeled, with dense desktop tables as the primary review pattern.
+- If location-aware inventory is surfaced, make location selection explicit near the stock content it affects rather than hiding it in unrelated shell controls.
+
+## Financials
+
+- Keep primary financial screens business-oriented by default even when underlying transactions can carry location attribution.
+- Use location as a filter, column, or reporting dimension in financial review flows when it materially improves analysis.
+- Do not imply that each location is a separate accounting entity unless the product explicitly introduces branch-level books as a separate feature.
+
+## Business Setup
+
+- When business locations are license-enabled, surface them as a compact management pane inside the business details workflow rather than a disconnected settings screen.
+- Keep location management dense and operational: use compact card or row groups with labeled inputs, one explicit default-location action, and local add/remove controls.
+- When location capability is not enabled, do not show secondary location controls in normal user workflows; the system should continue using the default location silently.
+- If an owner can switch active location, keep the control near the existing business switcher in the session header and label the current location clearly.
 
 ## Sales
 

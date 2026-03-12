@@ -4,6 +4,7 @@ import { validateRequest } from "../../shared/middleware/validate.middleware.js"
 import {
   createSalesDocument,
   deleteSalesDocument,
+  getSalesDocumentHistory,
   listSalesDocuments,
   postSalesDocument,
   transitionSalesDocument,
@@ -12,6 +13,7 @@ import {
 import {
   createSalesDocumentSchema,
   deleteSalesDocumentSchema,
+  getSalesDocumentHistorySchema,
   listSalesDocumentsSchema,
   postSalesDocumentSchema,
   transitionSalesDocumentSchema,
@@ -22,6 +24,11 @@ const router = Router();
 
 router.use(protect);
 router.get("/documents", validateRequest(listSalesDocumentsSchema), listSalesDocuments);
+router.get(
+  "/documents/:documentId/history",
+  validateRequest(getSalesDocumentHistorySchema),
+  getSalesDocumentHistory,
+);
 router.post("/documents", validateRequest(createSalesDocumentSchema), createSalesDocument);
 router.patch(
   "/documents/:documentId",

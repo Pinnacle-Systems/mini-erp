@@ -311,3 +311,13 @@ export const setSessionSelectedBusiness = async (
     where: { id: sessionId },
     data: { selected_business_id: businessId },
   });
+
+export const setSessionSelectedLocation = async (
+  sessionId: string,
+  locationId: string | null,
+  db: SessionWriteDbClient = prisma,
+) =>
+  db.session.update({
+    where: { id: sessionId },
+    data: { selected_location_id: locationId },
+  });

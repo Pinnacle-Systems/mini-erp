@@ -8,6 +8,27 @@ export type SalesDocumentType =
   | "SALES_RETURN";
 
 export type SalesDocumentAction = "CANCEL" | "VOID" | "REOPEN";
+export type SalesDocumentCancelReason =
+  | "CUSTOMER_DECLINED"
+  | "INTERNAL_DROP"
+  | "OTHER";
+
+export type SalesDocumentHistoryEventType =
+  | "CREATED"
+  | "UPDATED"
+  | "STATUS_CHANGED"
+  | "CONVERSION_LINKED";
+
+export type SalesDocumentHistoryEntry = {
+  id: string;
+  eventType: SalesDocumentHistoryEventType;
+  actorUserId: string | null;
+  actorName: string | null;
+  fromStatus: SalesDocumentDraft["status"] | null;
+  toStatus: SalesDocumentDraft["status"] | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+};
 
 export type SalesDocumentLineDraft = {
   id: string;
@@ -25,8 +46,18 @@ export type SalesDocumentDraft = {
   id: string;
   documentType: SalesDocumentType;
   parentId?: string | null;
+  locationId?: string | null;
+  locationName?: string;
   childIds?: string[];
-  status?: "DRAFT" | "OPEN" | "PARTIAL" | "COMPLETED" | "CANCELLED" | "VOID";
+  status?:
+    | "DRAFT"
+    | "OPEN"
+    | "PARTIAL"
+    | "COMPLETED"
+    | "EXPIRED"
+    | "CANCELLED"
+    | "VOID";
+  cancelReason?: SalesDocumentCancelReason | null;
   postedAt?: string | null;
   billNumber: string;
   transactionType: "CASH" | "CREDIT";
@@ -74,6 +105,7 @@ type SalesDocumentDraftInput = {
   tenantId: string;
   documentType: SalesDocumentType;
   parentId?: string | null;
+  locationId?: string | null;
   billNumber: string;
   transactionType: "CASH" | "CREDIT";
   customerId: string | null;
@@ -125,6 +157,30 @@ export const listSalesDocuments = async (
 
   const payload = (await response.json()) as { documents?: SalesDocumentDraft[] };
   return payload.documents ?? [];
+};
+
+export const getSalesDocumentHistory = async (
+  documentId: string,
+  tenantId: string,
+  documentType: SalesDocumentType,
+): Promise<SalesDocumentHistoryEntry[]> => {
+  const query = new URLSearchParams({
+    tenantId,
+    documentType,
+  });
+  const response = await apiFetch(
+    `/api/sales/documents/${encodeURIComponent(documentId)}/history?${query.toString()}`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!response.ok) {
+    throw await parseError(response, "Unable to load document history");
+  }
+
+  const payload = (await response.json()) as { history?: SalesDocumentHistoryEntry[] };
+  return payload.history ?? [];
 };
 
 export const createSalesDocumentDraft = async (
@@ -202,11 +258,12 @@ export const transitionSalesDocument = async (
   tenantId: string,
   documentType: SalesDocumentType,
   action: SalesDocumentAction,
+  cancelReason?: SalesDocumentCancelReason | null,
 ): Promise<SalesDocumentDraft> => {
   const response = await apiFetch(`/api/sales/documents/${encodeURIComponent(documentId)}/action`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenantId, documentType, action }),
+    body: JSON.stringify({ tenantId, documentType, action, cancelReason }),
   });
 
   if (!response.ok) {

@@ -76,6 +76,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
         identityId: me.identityId,
         businesses,
         activeStore: selected,
+        activeLocationId: me.activeLocationId ?? null,
+        activeMemberRole: me.memberRole ?? null,
         activeBusinessModules: selectedModules,
         isBusinessSelected: Boolean(selected),
       });
@@ -114,6 +116,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
           role: cachedSession.role,
           identityId: cachedSession.identityId,
           tenantId: cachedSession.activeStore,
+          memberRole: cachedSession.activeMemberRole,
+          activeLocationId: cachedSession.activeLocationId,
           businesses: cachedSession.businesses,
           modules: cachedSession.activeBusinessModules,
         };

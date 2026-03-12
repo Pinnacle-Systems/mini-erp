@@ -138,6 +138,148 @@ const toIdentitySummaryView = (identity: {
   };
 };
 
+type BusinessLocationInput = {
+  id?: string;
+  name: string;
+  phoneNumber?: string | null;
+  email?: string | null;
+  gstin?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  address?: string | null;
+  isDefault?: boolean;
+};
+
+const DEFAULT_LOCATION_NAME = "Main";
+type AdminLocationDbClient = Pick<typeof prisma, "businessLocation">;
+
+const normalizeBusinessLocations = (locations?: BusinessLocationInput[]) => {
+  const source =
+    locations && locations.length > 0
+      ? locations
+      : [{ name: DEFAULT_LOCATION_NAME, isDefault: true }];
+  const normalized = source.map((location, index) => ({
+    id: location.id,
+    name: location.name.trim(),
+    phoneNumber: location.phoneNumber?.trim() || null,
+    email: location.email?.trim() || null,
+    gstin: location.gstin?.trim() || null,
+    state: location.state?.trim() || null,
+    pincode: location.pincode?.trim() || null,
+    address: location.address?.trim() || null,
+    isDefault: Boolean(location.isDefault),
+    sortIndex: index,
+  }));
+
+  const defaults = normalized.filter((location) => location.isDefault);
+  if (defaults.length > 1) {
+    throw new ConflictError("Only one default location is allowed");
+  }
+  if (defaults.length === 0 && normalized[0]) {
+    normalized[0].isDefault = true;
+  }
+
+  return normalized;
+};
+
+const toBusinessLocationView = (location: {
+  id: string;
+  name: string;
+  phone_number: string | null;
+  email: string | null;
+  gstin: string | null;
+  state: string | null;
+  pincode: string | null;
+  address: string | null;
+  is_default: boolean;
+  is_active?: boolean;
+  deleted_at?: Date | null;
+}) => ({
+  id: location.id,
+  name: location.name,
+  phoneNumber: location.phone_number,
+  email: location.email,
+  gstin: location.gstin,
+  state: location.state,
+  pincode: location.pincode,
+  address: location.address,
+  isDefault: location.is_default,
+  ...(location.is_active !== undefined ? { isActive: location.is_active } : {}),
+  ...(location.deleted_at !== undefined ? { deletedAt: location.deleted_at } : {}),
+});
+
+const syncBusinessLocations = async (
+  tx: AdminLocationDbClient,
+  businessId: string,
+  locations?: BusinessLocationInput[],
+) => {
+  const normalized = normalizeBusinessLocations(locations);
+  const existingLocations = await tx.businessLocation.findMany({
+    where: { business_id: businessId },
+    select: { id: true },
+  });
+  const existingIds = new Set(existingLocations.map((location) => location.id));
+  const retainedIds: string[] = [];
+
+  for (const location of normalized) {
+    if (location.id && !existingIds.has(location.id)) {
+      throw new NotFoundError("Business location not found");
+    }
+
+    const payload = {
+      name: location.name,
+      phone_number: location.phoneNumber,
+      email: location.email,
+      gstin: location.gstin,
+      state: location.state,
+      pincode: location.pincode,
+      address: location.address,
+      is_default: location.isDefault,
+      is_active: true,
+      deleted_at: null,
+    };
+
+    if (location.id) {
+      await tx.businessLocation.update({
+        where: { id: location.id },
+        data: payload,
+      });
+      retainedIds.push(location.id);
+      continue;
+    }
+
+    const created = await tx.businessLocation.create({
+      data: {
+        business_id: businessId,
+        ...payload,
+      },
+      select: { id: true },
+    });
+    retainedIds.push(created.id);
+  }
+
+  await tx.businessLocation.updateMany({
+    where: {
+      business_id: businessId,
+      ...(retainedIds.length > 0 ? { id: { notIn: retainedIds } } : {}),
+    },
+    data: {
+      is_default: false,
+      is_active: false,
+      deleted_at: new Date(),
+    },
+  });
+
+  return tx.businessLocation.findMany({
+    where: {
+      business_id: businessId,
+      deleted_at: null,
+      is_active: true,
+    },
+    orderBy: [{ is_default: "desc" }, { name: "asc" }],
+  });
+};
+
 const toAdminBusinessView = (
   business: {
     id: string;
@@ -153,6 +295,19 @@ const toAdminBusinessView = (
     address: string | null;
     logo: string | null;
     deleted_at?: Date | null;
+    locations?: Array<{
+      id: string;
+      name: string;
+      phone_number: string | null;
+      email: string | null;
+      gstin: string | null;
+      state: string | null;
+      pincode: string | null;
+      address: string | null;
+      is_default: boolean;
+      is_active?: boolean;
+      deleted_at?: Date | null;
+    }>;
   },
   options: {
     owner?: {
@@ -177,6 +332,17 @@ const toAdminBusinessView = (
   pincode: business.pincode,
   address: business.address,
   logo: business.logo,
+  ...(business.locations !== undefined
+    ? {
+        locations: business.locations
+          .filter((location) => location.is_active !== false && !location.deleted_at)
+          .map(toBusinessLocationView),
+        defaultLocationId:
+          business.locations.find(
+            (location) => location.is_default && location.is_active !== false && !location.deleted_at,
+          )?.id ?? null,
+      }
+    : {}),
   ...(business.deleted_at !== undefined ? { deletedAt: business.deleted_at } : {}),
   ...(options.owner !== undefined ? { owner: toIdentitySummaryView(options.owner) } : {}),
   ...(options.license !== undefined ? { license: options.license } : {}),
@@ -296,6 +462,10 @@ export const listStores = catchAsync(async (req, res) => {
       skip: (page - 1) * limit,
       take: limit,
       include: {
+        locations: {
+          where: { deleted_at: null, is_active: true },
+          orderBy: [{ is_default: "desc" }, { name: "asc" }],
+        },
         licenses: {
           where: { status: "ACTIVE" },
           orderBy: { version: "desc" },
@@ -434,6 +604,7 @@ export const createStore = catchAsync(async (req, res) => {
     address,
     logo,
     license,
+    locations,
   } = req.body as {
     name: string;
     ownerId?: string;
@@ -449,6 +620,7 @@ export const createStore = catchAsync(async (req, res) => {
     address?: string;
     logo?: string;
     license?: BusinessLicenseInput;
+    locations?: BusinessLocationInput[];
   };
   const normalizedEmail = ownerEmail?.trim().toLowerCase();
   const normalizedPhone = ownerPhone?.trim();
@@ -538,6 +710,10 @@ export const createStore = catchAsync(async (req, res) => {
         logo: logo ?? null,
       },
       include: {
+        locations: {
+          where: { deleted_at: null, is_active: true },
+          orderBy: [{ is_default: "desc" }, { name: "asc" }],
+        },
         licenses: {
           where: { status: "ACTIVE" },
           orderBy: { version: "desc" },
@@ -554,6 +730,12 @@ export const createStore = catchAsync(async (req, res) => {
         licenses: createdLicense ? [createdLicense] : business.licenses,
       };
     }
+
+    const syncedLocations = await syncBusinessLocations(prisma, business.id, locations);
+    business = {
+      ...business,
+      locations: syncedLocations,
+    };
 
     await prisma.businessMember.upsert({
       where: {
@@ -755,6 +937,10 @@ export const getStore = catchAsync(async (req, res) => {
       address: true,
       logo: true,
       deleted_at: true,
+      locations: {
+        where: { deleted_at: null, is_active: true },
+        orderBy: [{ is_default: "desc" }, { name: "asc" }],
+      },
       licenses: {
         where: { status: "ACTIVE" },
         orderBy: { version: "desc" },
@@ -801,6 +987,7 @@ export const updateStore = catchAsync(async (req, res) => {
     address,
     logo,
     license,
+    locations,
   } = req.body as {
     name?: string;
     ownerId?: string;
@@ -821,6 +1008,7 @@ export const updateStore = catchAsync(async (req, res) => {
     address?: string | null;
     logo?: string | null;
     license?: BusinessLicenseInput;
+    locations?: BusinessLocationInput[];
   };
   const normalizedBusinessName = typeof name === "string" ? name.trim() : undefined;
   const hasField = (field: string) => Object.prototype.hasOwnProperty.call(req.body ?? {}, field);
@@ -888,6 +1076,17 @@ export const updateStore = catchAsync(async (req, res) => {
       if (hasField("license") && hasLicenseInput(license)) {
         await upsertBusinessLicense(updatedStore.id, license ?? {}, tx);
       }
+
+      const nextLocations = hasField("locations")
+        ? await syncBusinessLocations(tx, updatedStore.id, locations)
+        : await tx.businessLocation.findMany({
+            where: {
+              business_id: updatedStore.id,
+              deleted_at: null,
+              is_active: true,
+            },
+            orderBy: [{ is_default: "desc" }, { name: "asc" }],
+          });
 
       if (modules) {
         const currentLicense = await tx.businessLicense.findFirst({
@@ -979,6 +1178,7 @@ export const updateStore = catchAsync(async (req, res) => {
       return {
         ...updatedStore,
         license: businessLicense,
+        locations: nextLocations,
       };
     });
   } catch (error) {

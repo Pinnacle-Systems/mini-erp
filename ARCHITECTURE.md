@@ -187,20 +187,51 @@ Revisit this after:
 2. Sales flows are implemented.
 3. At least two or three conflict types are real and recurring.
 
+## Locations
+
+Current location rule:
+
+1. Businesses may maintain one or more `tenants.business_locations` records.
+2. Every business must always have exactly one active default location, even when location UI is not surfaced.
+3. Location management and location switching are capability-gated by business license.
+4. Use the `BUSINESS_LOCATIONS` capability to control whether non-default locations are surfaced in product UI.
+5. When a business does not have the `BUSINESS_LOCATIONS` capability, operational workflows must still resolve to the default location silently instead of behaving as location-less.
+6. Active location is session context nested under the active business context, not an independent tenant selector.
+7. Treat locations as tenant-owned operational structure, not as a new cross-module ownership root.
+8. Business modules may store `location_id` plus required location snapshots when the workflow needs attribution or ownership, but must not add cross-module foreign keys back into `tenants.*` by default.
+
+Current implication:
+
+1. Auth/session flows may persist both selected business and selected location.
+2. Owner-facing location switching must only be surfaced when the current business license includes `BUSINESS_LOCATIONS`.
+3. Business setup/admin flows may manage locations, but must still preserve a default location when additional locations are hidden or removed.
+
 ## Inventory
 
 Current inventory rule:
 
-1. Treat stock as business-level quantity from the frontend point of view.
-2. Treat `stock_level` as a derived, backend-authored snapshot for display, not a client-authored record.
-3. Do not add a separate inventory CRUD API path or client-side stock math for these screens while the sync domain is still expanding.
+1. Keep catalog definition business-level, but treat inventory ownership as location-level.
+2. Inventory persistence may store `location_id` to represent where stock is held or adjusted.
+3. Treat `stock_level` as a derived, backend-authored snapshot for display, not a client-authored record.
+4. Do not add a separate inventory CRUD API path or client-side stock math for these screens while the sync domain is still expanding.
+5. Inventory transfers remain a separate workflow from ordinary stock adjustments and should only be introduced as an explicit location-to-location movement model.
 
 Implication for current screens:
 
-1. Stock Levels should aggregate synced `stock_level` entities into business-wide totals before rendering them.
-2. Stock Adjustments should remain the only place that creates inventory quantity changes from the frontend.
-3. Internal transfers and location management are intentionally out of scope for the current product flow, and the inventory persistence model is now business-scoped as well.
+1. Stock Levels may support both business-wide totals and location-aware views, but the backend remains the authority for the aggregation presented.
+2. Stock Adjustments should remain the default workflow that creates inventory quantity changes from the frontend.
+3. Internal transfers are now architecturally valid because inventory is location-owned, but they still require a dedicated workflow instead of being implied by ordinary stock adjustment UI.
 4. Stock adjustment history should remain bounded in the default sync dataset. For now, sync only the most recent 10 `stock_adjustment` records per variant to devices, while the full audit ledger remains on the server.
+
+## Financials
+
+Current financial rule:
+
+1. Keep the accounting source of truth at the business level.
+2. Do not create separate location-owned ledgers, charts of accounts, or closing flows by default.
+3. Financial records may carry `location_id` as an operational attribution dimension when the originating workflow is location-specific.
+4. Use location attribution to support location-wise reporting without turning each location into an independent accounting owner.
+5. Introduce true branch-level books only as a deliberate future exception driven by concrete compliance or operating requirements.
 
 ## Stable Catalog And Billing Rules
 
@@ -208,7 +239,7 @@ Implication for current screens:
    - item/variant identity in `catalog.*`
    - regulatory item classification (`hsn_sac`) on `catalog.items` with type-aware validation
    - price state and history in `pricing.*`
-2. Keep inventory as append-oriented ledger events in `inventory.stock_ledger`, with `stock_level` treated as a derived snapshot.
+2. Keep inventory as append-oriented ledger events in `inventory.stock_ledger`, with `stock_level` treated as a derived snapshot and inventory ownership resolved at the location level.
 3. Enforce at least one variant per item and exactly one default variant for active items.
 4. Metadata writes for catalog entities are accepted only through backend mutation handlers.
 5. Reserve `sys.*` and `billing.*` metadata namespaces and reject them for client-authored writes.
@@ -226,3 +257,6 @@ Implication for current screens:
 14. Sales invoice create, update, and posting paths are server-authoritative real-time operations, not synced entity mutations.
 15. Offline support for sales should be limited to local draft capture unless and until a dedicated server-coordinated posting workflow is designed explicitly for offline sales.
 16. Do not model posted sales invoices as ordinary sync entities while inventory, receivables, numbering, and immutable snapshot guarantees still depend on immediate backend validation and side effects.
+17. When a sales document is cancelled, persist `CANCELLED` as the primary status and store a separate backend-authored cancel reason instead of introducing near-duplicate terminal statuses such as `DECLINED`.
+18. Maintain sales document history inside `documents.*` as a document-owned ledger of draft saves, status changes, and conversion links. Persist actor user ID, actor name snapshot, event timestamp, and status edge data so lifecycle and conversion history remain attributable without introducing a broad cross-domain event system.
+19. Estimate expiry must be applied by backend-owned automation, not by client-side derived state. Run expiry sweeps in a standalone backend worker process, transition eligible `OPEN` estimates to `EXPIRED`, and record the change in document history.

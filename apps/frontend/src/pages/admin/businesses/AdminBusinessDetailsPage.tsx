@@ -12,8 +12,13 @@ import { BusinessDetailsFormPanes } from "../../../design-system/organisms/Busin
 import { BusinessLicensePane } from "../../../design-system/organisms/BusinessLicensePane";
 import { BusinessLogoPicker } from "../../../design-system/organisms/BusinessLogoPicker";
 import {
+  BusinessLocationsPane,
+  type BusinessLocationDraft,
+} from "../../../design-system/organisms/BusinessLocationsPane";
+import {
   deleteAdminStore,
   getAdminStore,
+  hasAdminStoreCapability,
   removeBusinessLogo,
   updateAdminStore,
   uploadBusinessLogo,
@@ -48,6 +53,7 @@ export function AdminBusinessDetailsPage() {
     userLimitType: "UNLIMITED" as "UNLIMITED" | "MAX_USERS" | "MAX_CONCURRENT_USERS",
     userLimitValue: "",
   });
+  const [locationDrafts, setLocationDrafts] = useState<BusinessLocationDraft[]>([]);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -105,6 +111,22 @@ export function AdminBusinessDetailsPage() {
     });
   };
 
+  const applyLocationDrafts = (source: AdminStore) => {
+    setLocationDrafts(
+      (source.locations ?? []).map((location) => ({
+        id: location.id,
+        name: location.name,
+        phoneNumber: location.phoneNumber ?? "",
+        email: location.email ?? "",
+        gstin: location.gstin ?? "",
+        state: location.state ?? "",
+        pincode: location.pincode ?? "",
+        address: location.address ?? "",
+        isDefault: Boolean(location.isDefault),
+      })),
+    );
+  };
+
   const loadStore = useCallback(async () => {
     if (!businessId) {
       setError("Business not found");
@@ -120,6 +142,7 @@ export function AdminBusinessDetailsPage() {
       setNameDraft(result.name);
       applyDetailsDraft(result);
       applyLicenseDraft(result);
+      applyLocationDrafts(result);
       clearLogoDraft();
       setIsEditingDetails(false);
     } catch (requestError) {
@@ -227,6 +250,7 @@ export function AdminBusinessDetailsPage() {
     }
     const licensePayload = buildLicenseUpdatePayload();
     if (!licensePayload) return;
+    const locationCapabilityEnabled = hasAdminStoreCapability(business, "BUSINESS_LOCATIONS");
 
     await runMutation(async () => {
       await updateAdminStore(businessId, {
@@ -239,6 +263,21 @@ export function AdminBusinessDetailsPage() {
         state: detailsDraft.state.trim() || null,
         pincode: detailsDraft.pincode.trim() || null,
         address: detailsDraft.address.trim() || null,
+        ...(locationCapabilityEnabled
+          ? {
+              locations: locationDrafts.map((location) => ({
+                ...(location.id ? { id: location.id } : {}),
+                name: location.name.trim(),
+                phoneNumber: location.phoneNumber.trim() || null,
+                email: location.email.trim() || null,
+                gstin: location.gstin.trim() || null,
+                state: location.state.trim() || null,
+                pincode: location.pincode.trim() || null,
+                address: location.address.trim() || null,
+                isDefault: location.isDefault,
+              })),
+            }
+          : {}),
         license: licensePayload,
       });
 
@@ -325,6 +364,10 @@ export function AdminBusinessDetailsPage() {
   const isFormLocked = !isEditingDetails;
   const displayLogoUrl =
     logoPreviewUrl ?? (logoMarkedForRemoval ? null : (business?.logo || null));
+  const locationCapabilityEnabled = hasAdminStoreCapability(
+    business,
+    "BUSINESS_LOCATIONS",
+  );
 
   return (
     <section className="h-auto lg:h-full lg:min-h-0 lg:text-[12px]">
@@ -375,6 +418,7 @@ export function AdminBusinessDetailsPage() {
                       onSecondaryClick={() => {
                         applyDetailsDraft(business);
                         applyLicenseDraft(business);
+                        applyLocationDrafts(business);
                         clearLogoDraft();
                         setIsEditingDetails(false);
                       }}
@@ -438,66 +482,76 @@ export function AdminBusinessDetailsPage() {
                       )
                     }
                     rightColumnExtra={
-                      <BusinessLicensePane
-                        beginsOn={licenseDraft.beginsOn}
-                        endsOn={licenseDraft.endsOn}
-                        bundleKey={licenseDraft.bundleKey}
-                        addOnCapabilities={licenseDraft.addOnCapabilities}
-                        removedCapabilities={licenseDraft.removedCapabilities}
-                        userLimitType={licenseDraft.userLimitType}
-                        userLimitValue={licenseDraft.userLimitValue}
-                        disabled={saving || isFormLocked}
-                        onBeginsOnChange={(value) =>
-                          setLicenseDraft((current) => ({
-                            ...current,
-                            beginsOn: value,
-                          }))
-                        }
-                        onEndsOnChange={(value) =>
-                          setLicenseDraft((current) => ({
-                            ...current,
-                            endsOn: value,
-                          }))
-                        }
-                        onBundleKeyChange={(value) =>
-                          setLicenseDraft((current) => ({
-                            ...current,
-                            bundleKey: value,
-                          }))
-                        }
-                        onAddOnCapabilitiesChange={(next) =>
-                          setLicenseDraft((current) => ({
-                            ...current,
-                            addOnCapabilities: next,
-                            removedCapabilities: current.removedCapabilities.filter(
-                              (capability) => !next.includes(capability),
-                            ),
-                          }))
-                        }
-                        onRemovedCapabilitiesChange={(next) =>
-                          setLicenseDraft((current) => ({
-                            ...current,
-                            removedCapabilities: next,
-                            addOnCapabilities: current.addOnCapabilities.filter(
-                              (capability) => !next.includes(capability),
-                            ),
-                          }))
-                        }
-                        onUserLimitTypeChange={(value) =>
-                          setLicenseDraft((current) => ({
-                            ...current,
-                            userLimitType: value,
-                            userLimitValue:
-                              value === "UNLIMITED" ? "" : current.userLimitValue,
-                          }))
-                        }
-                        onUserLimitValueChange={(value) =>
-                          setLicenseDraft((current) => ({
-                            ...current,
-                            userLimitValue: value,
-                          }))
-                        }
-                      />
+                      <div className="space-y-2">
+                        <BusinessLicensePane
+                          beginsOn={licenseDraft.beginsOn}
+                          endsOn={licenseDraft.endsOn}
+                          bundleKey={licenseDraft.bundleKey}
+                          addOnCapabilities={licenseDraft.addOnCapabilities}
+                          removedCapabilities={licenseDraft.removedCapabilities}
+                          userLimitType={licenseDraft.userLimitType}
+                          userLimitValue={licenseDraft.userLimitValue}
+                          disabled={saving || isFormLocked}
+                          onBeginsOnChange={(value) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              beginsOn: value,
+                            }))
+                          }
+                          onEndsOnChange={(value) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              endsOn: value,
+                            }))
+                          }
+                          onBundleKeyChange={(value) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              bundleKey: value,
+                            }))
+                          }
+                          onAddOnCapabilitiesChange={(next) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              addOnCapabilities: next,
+                              removedCapabilities: current.removedCapabilities.filter(
+                                (capability) => !next.includes(capability),
+                              ),
+                            }))
+                          }
+                          onRemovedCapabilitiesChange={(next) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              removedCapabilities: next,
+                              addOnCapabilities: current.addOnCapabilities.filter(
+                                (capability) => !next.includes(capability),
+                              ),
+                            }))
+                          }
+                          onUserLimitTypeChange={(value) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              userLimitType: value,
+                              userLimitValue:
+                                value === "UNLIMITED" ? "" : current.userLimitValue,
+                            }))
+                          }
+                          onUserLimitValueChange={(value) =>
+                            setLicenseDraft((current) => ({
+                              ...current,
+                              userLimitValue: value,
+                            }))
+                          }
+                        />
+                        {locationCapabilityEnabled ? (
+                          <BusinessLocationsPane
+                            locations={locationDrafts}
+                            disabled={saving || isFormLocked}
+                            editable={isEditingDetails}
+                            onChange={setLocationDrafts}
+                          />
+                        ) : null}
+                      </div>
                     }
                     onFieldChange={(field, value) => {
                       if (field === "name") {

@@ -8,6 +8,7 @@ export const BUNDLE_KEYS = [
   "CUSTOM",
 ] as const;
 export const CAPABILITY_KEYS = [
+  "BUSINESS_LOCATIONS",
   "ITEM_PRODUCTS",
   "ITEM_SERVICES",
   "PARTIES_CUSTOMERS",
@@ -74,6 +75,20 @@ export type AdminStore = {
   id: string;
   name: string;
   ownerId: string;
+  defaultLocationId?: string | null;
+  locations?: Array<{
+    id: string;
+    name: string;
+    phoneNumber?: string | null;
+    email?: string | null;
+    gstin?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    address?: string | null;
+    isDefault: boolean;
+    isActive?: boolean;
+    deletedAt?: string | null;
+  }>;
   phoneNumber?: string | null;
   gstin?: string | null;
   email?: string | null;
@@ -136,8 +151,25 @@ const parseError = async (response: Response, fallback: string) => {
 
 const normalizeStore = (store: AdminStore): AdminStore => ({
   ...store,
+  defaultLocationId: store.defaultLocationId ?? null,
+  locations: store.locations ?? [],
   logo: store.logo ? apiAssetUrl(store.logo) : store.logo,
 });
+
+export const hasAdminStoreCapability = (
+  store: AdminStore | null | undefined,
+  capability: CapabilityKey,
+) => {
+  const license = store?.license;
+  if (!license) {
+    return false;
+  }
+
+  const effective = new Set<CapabilityKey>(BUNDLE_CAPABILITY_MAP[license.bundleKey]);
+  for (const key of license.addOnCapabilities) effective.add(key);
+  for (const key of license.removedCapabilities) effective.delete(key);
+  return effective.has(capability);
+};
 
 const toListBusinessesUrl = (params: ListAdminBusinessesParams) => {
   const query = new URLSearchParams();
@@ -197,6 +229,17 @@ export const createAdminStore = async (
     pincode?: string;
     address?: string;
     logo?: string;
+    locations?: Array<{
+      id?: string;
+      name: string;
+      phoneNumber?: string | null;
+      email?: string | null;
+      gstin?: string | null;
+      state?: string | null;
+      pincode?: string | null;
+      address?: string | null;
+      isDefault?: boolean;
+    }>;
     license?: {
       beginsOn?: string | null;
       endsOn?: string | null;
@@ -224,6 +267,7 @@ export const createAdminStore = async (
       ...(payload.pincode ? { pincode: payload.pincode.trim() } : {}),
       ...(payload.address ? { address: payload.address.trim() } : {}),
       ...(payload.logo ? { logo: payload.logo.trim() } : {}),
+      ...(payload.locations ? { locations: payload.locations } : {}),
       ...(payload.license ? { license: payload.license } : {}),
     }),
   });
@@ -273,6 +317,17 @@ export const updateAdminStore = async (
     pincode?: string | null;
     address?: string | null;
     logo?: string | null;
+    locations?: Array<{
+      id?: string;
+      name: string;
+      phoneNumber?: string | null;
+      email?: string | null;
+      gstin?: string | null;
+      state?: string | null;
+      pincode?: string | null;
+      address?: string | null;
+      isDefault?: boolean;
+    }>;
     modules?: {
       catalog?: boolean;
       inventory?: boolean;

@@ -12,12 +12,13 @@ const SUNRISE_TRADERS = {
   name: "Sunrise Traders",
   phoneNumber: "9876543210",
   email: "sunrise.traders@example.com",
-  businessType: "retail",
+  businessType: "Retail",
   businessCategory: "Fruits & Vegetables",
   state: "Tamil Nadu",
   pincode: "643001",
   address: "12 Market Yard Road, Ooty",
   bundleKey: "TRADING" as const,
+  addOnCapabilities: ["BUSINESS_LOCATIONS"] as const,
   priceBookCode: "DEFAULT",
   priceBookName: "Default Price Book",
   testParty: {
@@ -35,21 +36,21 @@ const SUNRISE_TRADERS = {
   variants: [
     {
       value: "Ooty",
-      sku: "APL-OOTY",
+      sku: "APPL-OTY",
       salesPrice: "180.00",
       purchasePrice: "140.00",
       gstSlab: "5%",
     },
     {
       value: "Himachal",
-      sku: "APL-HIMACHAL",
+      sku: "APPL-HMCH",
       salesPrice: "210.00",
       purchasePrice: "165.00",
       gstSlab: "5%",
     },
     {
       value: "Kashmir",
-      sku: "APL-KASHMIR",
+      sku: "APPL-KSHM",
       salesPrice: "240.00",
       purchasePrice: "195.00",
       gstSlab: "5%",
@@ -60,10 +61,13 @@ const SUNRISE_TRADERS = {
 const toUtcDate = (year: number, monthIndex: number, day: number) =>
   new Date(Date.UTC(year, monthIndex, day, 0, 0, 0, 0));
 
-const toDeletedAtValue = (value: Date | null | undefined) => value?.toISOString() ?? null;
+const toDeletedAtValue = (value: Date | null | undefined) =>
+  value?.toISOString() ?? null;
 
-const buildItemPriceEntityId = (variantId: string, priceType: "SALES" | "PURCHASE") =>
-  `${variantId}:${priceType}`;
+const buildItemPriceEntityId = (
+  variantId: string,
+  priceType: "SALES" | "PURCHASE",
+) => `${variantId}:${priceType}`;
 
 const syncSeededParty = async (tenantId: string, partyId: string) => {
   const party = await prisma.party.findUnique({
@@ -144,11 +148,7 @@ const syncSeededCatalog = async (tenantId: string, itemId: string) => {
             },
           },
         },
-        orderBy: [
-          { is_default: "desc" },
-          { name: "asc" },
-          { id: "asc" },
-        ],
+        orderBy: [{ is_default: "desc" }, { name: "asc" }, { id: "asc" }],
       },
     },
   });
@@ -186,7 +186,10 @@ const syncSeededCatalog = async (tenantId: string, itemId: string) => {
     isLocked: false,
   }));
 
-  const defaultVariant = item.variants.find((variant) => variant.is_default) ?? item.variants[0] ?? null;
+  const defaultVariant =
+    item.variants.find((variant) => variant.is_default) ??
+    item.variants[0] ??
+    null;
 
   await appendSyncChange(tenantId, "item", item.id, {
     id: item.id,
@@ -237,23 +240,30 @@ const syncSeededCatalog = async (tenantId: string, itemId: string) => {
     });
 
     for (const price of prices) {
-      await appendSyncChange(tenantId, "item_price", buildItemPriceEntityId(variant.id, price.price_type), {
-        variantId: variant.id,
-        itemId: variant.item_id,
-        itemName: item.name,
-        itemCategory: item.category ?? "",
-        variantName: variant.name ?? "",
-        sku: variant.sku ?? "",
-        isDefaultVariant: Boolean(variant.is_default),
-        isActive: Boolean(variant.is_active && price.is_active && !price.deleted_at),
-        deletedAt: toDeletedAtValue(price.deleted_at),
-        amount: Number(price.amount),
-        currency: price.currency,
-        priceType: price.price_type,
-        taxMode: price.tax_mode,
-        gstSlab: price.gst_slab ?? null,
-        updatedAt: price.updated_at.toISOString(),
-      });
+      await appendSyncChange(
+        tenantId,
+        "item_price",
+        buildItemPriceEntityId(variant.id, price.price_type),
+        {
+          variantId: variant.id,
+          itemId: variant.item_id,
+          itemName: item.name,
+          itemCategory: item.category ?? "",
+          variantName: variant.name ?? "",
+          sku: variant.sku ?? "",
+          isDefaultVariant: Boolean(variant.is_default),
+          isActive: Boolean(
+            variant.is_active && price.is_active && !price.deleted_at,
+          ),
+          deletedAt: toDeletedAtValue(price.deleted_at),
+          amount: Number(price.amount),
+          currency: price.currency,
+          priceType: price.price_type,
+          taxMode: price.tax_mode,
+          gstSlab: price.gst_slab ?? null,
+          updatedAt: price.updated_at.toISOString(),
+        },
+      );
     }
   }
 };
@@ -367,6 +377,35 @@ const seed = async () => {
     },
   });
 
+  await prisma.businessLocation.upsert({
+    where: {
+      id: business.id,
+    },
+    update: {
+      name: "Main",
+      phone_number: SUNRISE_TRADERS.phoneNumber,
+      email: SUNRISE_TRADERS.email,
+      state: SUNRISE_TRADERS.state,
+      pincode: SUNRISE_TRADERS.pincode,
+      address: SUNRISE_TRADERS.address,
+      is_default: true,
+      is_active: true,
+      deleted_at: null,
+    },
+    create: {
+      id: business.id,
+      business_id: business.id,
+      name: "Main",
+      phone_number: SUNRISE_TRADERS.phoneNumber,
+      email: SUNRISE_TRADERS.email,
+      state: SUNRISE_TRADERS.state,
+      pincode: SUNRISE_TRADERS.pincode,
+      address: SUNRISE_TRADERS.address,
+      is_default: true,
+      is_active: true,
+    },
+  });
+
   const activeLicense = await prisma.businessLicense.findFirst({
     where: {
       business_id: business.id,
@@ -384,7 +423,7 @@ const seed = async () => {
         begins_at: toUtcDate(2026, 0, 1),
         ends_at: toUtcDate(2027, 0, 1),
         bundle_key: SUNRISE_TRADERS.bundleKey,
-        add_on_capability_keys: [],
+        add_on_capability_keys: [...SUNRISE_TRADERS.addOnCapabilities],
         removed_capability_keys: [],
         user_limit_type: null,
         user_limit_value: null,
@@ -399,7 +438,7 @@ const seed = async () => {
         begins_at: toUtcDate(2026, 0, 1),
         ends_at: toUtcDate(2027, 0, 1),
         bundle_key: SUNRISE_TRADERS.bundleKey,
-        add_on_capability_keys: [],
+        add_on_capability_keys: [...SUNRISE_TRADERS.addOnCapabilities],
         removed_capability_keys: [],
       },
     });
@@ -574,7 +613,10 @@ const seed = async () => {
     });
 
     for (const priceType of ["SALES", "PURCHASE"] as const) {
-      const amount = priceType === "SALES" ? variantSeed.salesPrice : variantSeed.purchasePrice;
+      const amount =
+        priceType === "SALES"
+          ? variantSeed.salesPrice
+          : variantSeed.purchasePrice;
 
       const existingPrice = await prisma.itemPrice.findFirst({
         where: {

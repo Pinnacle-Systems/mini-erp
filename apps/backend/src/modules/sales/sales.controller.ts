@@ -9,6 +9,12 @@ import {
   NotFoundError,
 } from "../../shared/utils/errors.js";
 import { getBusinessCapabilitiesFromLicense } from "../license/license.service.js";
+import {
+  mapDocumentHistoryEntries,
+  recordDocumentHistory,
+  type DocumentHistoryActor,
+  type DocumentHistoryMetadata,
+} from "./document-history.service.js";
 
 type SalesDocumentType =
   | "SALES_ESTIMATE"
@@ -18,6 +24,7 @@ type SalesDocumentType =
   | "SALES_RETURN";
 
 type SalesDocumentAction = "CANCEL" | "VOID" | "REOPEN";
+type SalesDocumentCancelReason = "CUSTOMER_DECLINED" | "INTERNAL_DROP" | "OTHER";
 
 type SalesLineInput = {
   id: string;
@@ -34,6 +41,7 @@ type SalesDocumentInput = {
   tenantId: string;
   documentType: SalesDocumentType;
   parentId?: string | null;
+  locationId?: string | null;
   billNumber: string;
   transactionType?: "CASH" | "CREDIT" | null;
   customerId?: string | null;
@@ -393,6 +401,31 @@ const getCustomerReference = async (
   };
 };
 
+const getDocumentLocationReference = async (
+  tenantId: string,
+  locationId?: string | null,
+) => {
+  if (locationId) {
+    const selectedLocation = await tenantService.validateBusinessLocation(tenantId, locationId);
+    if (selectedLocation) {
+      return {
+        locationId: selectedLocation.id,
+        locationName: selectedLocation.name,
+      };
+    }
+  }
+
+  const defaultLocation = await tenantService.getDefaultBusinessLocation(tenantId);
+  if (!defaultLocation) {
+    throw new BadRequestError("Default business location is not configured");
+  }
+
+  return {
+    locationId: defaultLocation.id,
+    locationName: defaultLocation.name,
+  };
+};
+
 const getVariantSnapshotMap = async (
   tx: Pick<typeof prisma, "itemVariant">,
   tenantId: string,
@@ -544,7 +577,9 @@ const getParentDocumentReference = async (
 const syncParentConversionStatus = async (
   tx: SalesTransactionClient,
   tenantId: string,
+  actor: DocumentHistoryActor,
   parentId?: string | null,
+  metadata?: DocumentHistoryMetadata,
 ) => {
   if (!parentId) {
     return;
@@ -565,7 +600,10 @@ const syncParentConversionStatus = async (
     },
   });
 
-  if (!parent || parent.status === "CANCELLED" || parent.status === "VOID") {
+  if (
+    !parent ||
+    ["CANCELLED", "VOID", "EXPIRED"].includes(parent.status as string)
+  ) {
     return;
   }
   if (!parent.posted_at) {
@@ -624,6 +662,19 @@ const syncParentConversionStatus = async (
       status: nextStatus,
     },
   });
+
+  await recordDocumentHistory(tx, {
+    tenantId,
+    documentId: parent.id,
+    eventType: "STATUS_CHANGED",
+    actor,
+    fromStatus: parent.status,
+    toStatus: nextStatus,
+    metadata: {
+      reason: "CONVERSION_PROGRESS",
+      ...(metadata ?? {}),
+    },
+  });
 };
 
 const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
@@ -633,8 +684,11 @@ const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
     parentId: document.parent_id ?? null,
     childIds: document.children.map((child) => child.id),
     status: document.status,
+    cancelReason: document.cancel_reason ?? null,
     postedAt: document.posted_at?.toISOString() ?? null,
     billNumber: document.doc_number,
+    locationId: document.location_id ?? null,
+    locationName: document.location_name_snapshot ?? "",
     transactionType: document.transaction_type ?? "CASH",
     customerId: document.party_id ?? null,
     customerName: document.customer_name_snapshot ?? "",
@@ -674,6 +728,7 @@ const saveDraftDocument = async (
   tx: SalesTransactionClient,
   documentId: string | null,
   input: SalesDocumentInput,
+  actor: DocumentHistoryActor,
 ) => {
   const trimmedBillNumber = input.billNumber.trim();
   const uniqueLineIds = new Set(input.lines.map((line) => line.id));
@@ -689,9 +744,10 @@ const saveDraftDocument = async (
     documentId ?? undefined,
   );
 
-  const [customerRef, variantMap] = await Promise.all([
+  const [customerRef, variantMap, locationRef] = await Promise.all([
     getCustomerReference(tx, input.tenantId, input),
     getVariantSnapshotMap(tx, input.tenantId, input.lines),
+    getDocumentLocationReference(input.tenantId, input.locationId),
   ]);
   const parentRef = await getParentDocumentReference(
     tx,
@@ -757,6 +813,8 @@ const saveDraftDocument = async (
           ? (input.transactionType ?? "CASH")
           : null,
         doc_number: trimmedBillNumber,
+        location_id: locationRef.locationId,
+        location_name_snapshot: locationRef.locationName,
         parent_id: parentRef?.id ?? null,
         party_id: customerRef.partyId,
         customer_name_snapshot: customerRef.customerName || null,
@@ -808,6 +866,20 @@ const saveDraftDocument = async (
       })),
     });
 
+    await recordDocumentHistory(tx, {
+      tenantId: input.tenantId,
+      documentId,
+      eventType: "UPDATED",
+      actor,
+      fromStatus: existing.status,
+      toStatus: existing.status,
+      metadata: {
+        lineCount: normalizedLines.length,
+        parentDocumentId: parentRef?.id ?? null,
+        locationId: locationRef.locationId,
+      },
+    });
+
     return getDocumentOrThrow(tx, input.tenantId, input.documentType, documentId);
   }
 
@@ -820,6 +892,8 @@ const saveDraftDocument = async (
         ? (input.transactionType ?? "CASH")
         : null,
       doc_number: trimmedBillNumber,
+      location_id: locationRef.locationId,
+      location_name_snapshot: locationRef.locationName,
       parent_id: parentRef?.id ?? null,
       party_id: customerRef.partyId,
       customer_name_snapshot: customerRef.customerName || null,
@@ -866,6 +940,19 @@ const saveDraftDocument = async (
     })),
   });
 
+  await recordDocumentHistory(tx, {
+    tenantId: input.tenantId,
+    documentId: created.id,
+    eventType: "CREATED",
+    actor,
+    toStatus: "DRAFT",
+    metadata: {
+      lineCount: normalizedLines.length,
+      parentDocumentId: parentRef?.id ?? null,
+      locationId: locationRef.locationId,
+    },
+  });
+
   return getDocumentOrThrow(tx, input.tenantId, input.documentType, created.id);
 };
 
@@ -874,6 +961,7 @@ const postDraftDocument = async (
   tenantId: string,
   documentType: SalesDocumentType,
   documentId: string,
+  actor: DocumentHistoryActor,
 ) => {
   const document = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
   if (document.status !== "DRAFT") {
@@ -905,7 +993,69 @@ const postDraftDocument = async (
     },
   });
 
-  await syncParentConversionStatus(tx, tenantId, document.parent_id);
+  await recordDocumentHistory(tx, {
+    tenantId,
+    documentId,
+    eventType: "STATUS_CHANGED",
+    actor,
+    fromStatus: "DRAFT",
+    toStatus: "OPEN",
+    metadata: {
+      reason: "POSTED",
+    },
+  });
+
+  if (document.parent_id) {
+    const parent = await tx.document.findFirst({
+      where: {
+        id: document.parent_id,
+        business_id: tenantId,
+        deleted_at: null,
+      },
+      select: {
+        id: true,
+        type: true,
+        doc_number: true,
+      },
+    });
+
+    if (parent) {
+      await recordDocumentHistory(tx, {
+        tenantId,
+        documentId,
+        eventType: "CONVERSION_LINKED",
+        actor,
+        fromStatus: "OPEN",
+        toStatus: "OPEN",
+        metadata: {
+          direction: "FROM_SOURCE",
+          sourceDocumentId: parent.id,
+          sourceDocumentType: parent.type,
+          sourceDocumentNumber: parent.doc_number,
+        },
+      });
+      await recordDocumentHistory(tx, {
+        tenantId,
+        documentId: parent.id,
+        eventType: "CONVERSION_LINKED",
+        actor,
+        fromStatus: null,
+        toStatus: null,
+        metadata: {
+          direction: "TO_TARGET",
+          targetDocumentId: document.id,
+          targetDocumentType: document.type,
+          targetDocumentNumber: document.doc_number,
+        },
+      });
+    }
+  }
+
+  await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+    sourceDocumentId: document.id,
+    sourceDocumentType: document.type,
+    sourceDocumentNumber: document.doc_number,
+  });
 
   return getDocumentOrThrow(tx, tenantId, documentType, documentId);
 };
@@ -916,6 +1066,8 @@ const transitionDocumentState = async (
   documentType: SalesDocumentType,
   documentId: string,
   action: SalesDocumentAction,
+  actor: DocumentHistoryActor,
+  cancelReason?: SalesDocumentCancelReason | null,
 ) => {
   const document = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
 
@@ -925,15 +1077,36 @@ const transitionDocumentState = async (
         `Only open ${SALES_DOCUMENT_META[documentType].pluralLabel} can be cancelled`,
       );
     }
+    if (!cancelReason) {
+      throw new BadRequestError("Cancel reason is required");
+    }
 
     await tx.document.update({
       where: { id: documentId },
       data: {
         status: "CANCELLED",
+        cancel_reason: cancelReason,
       },
     });
 
-    await syncParentConversionStatus(tx, tenantId, document.parent_id);
+    await recordDocumentHistory(tx, {
+      tenantId,
+      documentId,
+      eventType: "STATUS_CHANGED",
+      actor,
+      fromStatus: document.status,
+      toStatus: "CANCELLED",
+      metadata: {
+        reason: "CANCELLED",
+        cancelReason,
+      },
+    });
+
+    await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+      sourceDocumentId: document.id,
+      sourceDocumentType: document.type,
+      sourceDocumentNumber: document.doc_number,
+    });
 
     return getDocumentOrThrow(tx, tenantId, documentType, documentId);
   }
@@ -949,10 +1122,27 @@ const transitionDocumentState = async (
       where: { id: documentId },
       data: {
         status: "VOID",
+        cancel_reason: null,
       },
     });
 
-    await syncParentConversionStatus(tx, tenantId, document.parent_id);
+    await recordDocumentHistory(tx, {
+      tenantId,
+      documentId,
+      eventType: "STATUS_CHANGED",
+      actor,
+      fromStatus: document.status,
+      toStatus: "VOID",
+      metadata: {
+        reason: "VOIDED",
+      },
+    });
+
+    await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+      sourceDocumentId: document.id,
+      sourceDocumentType: document.type,
+      sourceDocumentNumber: document.doc_number,
+    });
 
     return getDocumentOrThrow(tx, tenantId, documentType, documentId);
   }
@@ -972,10 +1162,27 @@ const transitionDocumentState = async (
     where: { id: documentId },
     data: {
       status: "OPEN",
+      cancel_reason: null,
     },
   });
 
-  await syncParentConversionStatus(tx, tenantId, document.parent_id);
+  await recordDocumentHistory(tx, {
+    tenantId,
+    documentId,
+    eventType: "STATUS_CHANGED",
+    actor,
+    fromStatus: document.status,
+    toStatus: "OPEN",
+    metadata: {
+      reason: "REOPENED",
+    },
+  });
+
+  await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+    sourceDocumentId: document.id,
+    sourceDocumentType: document.type,
+    sourceDocumentNumber: document.doc_number,
+  });
 
   return getDocumentOrThrow(tx, tenantId, documentType, documentId);
 };
@@ -1022,12 +1229,49 @@ export const listSalesDocuments = catchAsync(async (req, res) => {
   res.json(toSalesDocumentListView(mapSalesDocuments(documents)));
 });
 
+export const getSalesDocumentHistory = catchAsync(async (req, res) => {
+  const { documentId } = req.params as { documentId: string };
+  const { tenantId, documentType } = req.query as {
+    tenantId: string;
+    documentType: SalesDocumentType;
+  };
+
+  await assertSalesAccess(req.user.id, tenantId, documentType);
+  await getDocumentOrThrow(prisma, tenantId, documentType, documentId);
+
+  const entries = await prisma.documentHistory.findMany({
+    where: {
+      business_id: tenantId,
+      document_id: documentId,
+    },
+    orderBy: [
+      {
+        created_at: "desc",
+      },
+      {
+        id: "desc",
+      },
+    ],
+  });
+
+  res.json(
+    successResponse({
+      history: mapDocumentHistoryEntries(entries),
+    }),
+  );
+});
+
 export const createSalesDocument = catchAsync(async (req, res) => {
   const input = req.body as SalesDocumentInput;
 
   await assertSalesAccess(req.user.id, input.tenantId, input.documentType);
 
-  const document = await prisma.$transaction((tx) => saveDraftDocument(tx, null, input));
+  const document = await prisma.$transaction((tx) =>
+    saveDraftDocument(tx, null, input, {
+      userId: req.user.id,
+      name: req.user.name ?? null,
+    }),
+  );
 
   res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
 });
@@ -1038,7 +1282,12 @@ export const updateSalesDocument = catchAsync(async (req, res) => {
 
   await assertSalesAccess(req.user.id, input.tenantId, input.documentType);
 
-  const document = await prisma.$transaction((tx) => saveDraftDocument(tx, documentId, input));
+  const document = await prisma.$transaction((tx) =>
+    saveDraftDocument(tx, documentId, input, {
+      userId: req.user.id,
+      name: req.user.name ?? null,
+    }),
+  );
 
   res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
 });
@@ -1053,7 +1302,10 @@ export const postSalesDocument = catchAsync(async (req, res) => {
   await assertSalesAccess(req.user.id, tenantId, documentType);
 
   const document = await prisma.$transaction((tx) =>
-    postDraftDocument(tx, tenantId, documentType, documentId),
+    postDraftDocument(tx, tenantId, documentType, documentId, {
+      userId: req.user.id,
+      name: req.user.name ?? null,
+    }),
   );
 
   res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
@@ -1061,16 +1313,28 @@ export const postSalesDocument = catchAsync(async (req, res) => {
 
 export const transitionSalesDocument = catchAsync(async (req, res) => {
   const { documentId } = req.params as { documentId: string };
-  const { tenantId, documentType, action } = req.body as {
+  const { tenantId, documentType, action, cancelReason } = req.body as {
     tenantId: string;
     documentType: SalesDocumentType;
     action: SalesDocumentAction;
+    cancelReason?: SalesDocumentCancelReason | null;
   };
 
   await assertSalesAccess(req.user.id, tenantId, documentType);
 
   const document = await prisma.$transaction((tx) =>
-    transitionDocumentState(tx, tenantId, documentType, documentId, action),
+    transitionDocumentState(
+      tx,
+      tenantId,
+      documentType,
+      documentId,
+      action,
+      {
+        userId: req.user.id,
+        name: req.user.name ?? null,
+      },
+      cancelReason,
+    ),
   );
 
   res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));

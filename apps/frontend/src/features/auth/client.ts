@@ -17,6 +17,9 @@ export type MePayload = {
   role: "USER" | "PLATFORM_ADMIN" | null;
   identityId: string | null;
   tenantId: string | null;
+  memberRole?: "OWNER" | "MANAGER" | "CASHIER" | null;
+  activeLocationId?: string | null;
+  locations?: Array<{ id: string; name: string; isDefault: boolean }>;
   businesses?: AssignedStore[];
   modules?: BusinessModules | null;
 };
@@ -59,7 +62,12 @@ export const login = async (username: string, password: string): Promise<LoginRe
 
 export const selectStore = async (
   businessId: string,
-): Promise<{ modules?: BusinessModules | null }> => {
+): Promise<{
+  modules?: BusinessModules | null;
+  memberRole?: "OWNER" | "MANAGER" | "CASHIER" | null;
+  activeLocationId?: string | null;
+  locations?: Array<{ id: string; name: string; isDefault: boolean }>;
+}> => {
   const response = await apiFetch("/api/auth/select-business", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -74,6 +82,9 @@ export const selectStore = async (
   const payload = (await response.json()) as {
     token?: string;
     modules?: BusinessModules | null;
+    memberRole?: "OWNER" | "MANAGER" | "CASHIER" | null;
+    activeLocationId?: string | null;
+    locations?: Array<{ id: string; name: string; isDefault: boolean }>;
   };
   if (payload.token) {
     setAccessToken(payload.token);
@@ -82,6 +93,48 @@ export const selectStore = async (
   setPersistedActiveStore(businessId);
   return {
     modules: payload.modules ?? null,
+    memberRole: payload.memberRole ?? null,
+    activeLocationId: payload.activeLocationId ?? null,
+    locations: payload.locations ?? [],
+  };
+};
+
+export const selectLocation = async (
+  businessId: string,
+  locationId: string,
+): Promise<{
+  modules?: BusinessModules | null;
+  memberRole?: "OWNER" | "MANAGER" | "CASHIER" | null;
+  activeLocationId?: string | null;
+  locations?: Array<{ id: string; name: string; isDefault: boolean }>;
+}> => {
+  const response = await apiFetch("/api/auth/select-location", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ businessId, locationId }),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message ?? "Location selection failed");
+  }
+
+  const payload = (await response.json()) as {
+    token?: string;
+    modules?: BusinessModules | null;
+    memberRole?: "OWNER" | "MANAGER" | "CASHIER" | null;
+    activeLocationId?: string | null;
+    locations?: Array<{ id: string; name: string; isDefault: boolean }>;
+  };
+  if (payload.token) {
+    setAccessToken(payload.token);
+  }
+
+  return {
+    modules: payload.modules ?? null,
+    memberRole: payload.memberRole ?? null,
+    activeLocationId: payload.activeLocationId ?? null,
+    locations: payload.locations ?? [],
   };
 };
 

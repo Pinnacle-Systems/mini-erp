@@ -25,6 +25,7 @@ model Session {
   id                   String    @id @default(uuid()) @db.Uuid
   identity_id          String    @db.Uuid
   selected_business_id String?   @db.Uuid
+  selected_location_id String?   @db.Uuid
   token_hash           String    @unique
   user_agent           String?
   ip_address           String?
@@ -33,8 +34,10 @@ model Session {
   expires_at           DateTime
   identity             Identity  @relation(fields: [identity_id], references: [id], onDelete: Cascade)
   selected_business    Business? @relation(fields: [selected_business_id], references: [id], onDelete: SetNull)
+  selected_location    BusinessLocation? @relation(fields: [selected_location_id], references: [id], onDelete: SetNull)
 
   @@index([selected_business_id, expires_at])
+  @@index([selected_location_id, expires_at])
   @@map("sessions")
   @@schema("auth")
 }

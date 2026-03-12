@@ -19,8 +19,26 @@ enum DocumentStatus {
   OPEN
   PARTIAL
   COMPLETED
+  EXPIRED
   CANCELLED
   VOID
+
+  @@schema("documents")
+}
+
+enum DocumentCancelReason {
+  CUSTOMER_DECLINED
+  INTERNAL_DROP
+  OTHER
+
+  @@schema("documents")
+}
+
+enum DocumentHistoryEventType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  CONVERSION_LINKED
 
   @@schema("documents")
 }
@@ -37,6 +55,7 @@ model Document {
   business_id                String                @db.Uuid
   type                       DocumentType
   status                     DocumentStatus        @default(DRAFT)
+  cancel_reason              DocumentCancelReason?
   transaction_type           SalesTransactionType?
   doc_number                 String
   created_at                 DateTime              @default(now())
@@ -47,6 +66,8 @@ model Document {
   dispatch_date              DateTime?             @db.Date
   dispatch_carrier           String?
   dispatch_reference         String?
+  location_id                String?               @db.Uuid
+  location_name_snapshot     String?
   party_id                   String?               @db.Uuid
   parent_id                  String?               @db.Uuid
   parent                     Document?             @relation("DocHeirarchy", fields: [parent_id], references: [id])
@@ -62,9 +83,29 @@ model Document {
   notes                      String?
   shipping_addr              String?
   lineItems                  LineItem[]
+  historyEntries             DocumentHistory[]
 
   @@unique([business_id, type, doc_number])
   @@map("documents")
+  @@schema("documents")
+}
+
+model DocumentHistory {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  business_id         String                   @db.Uuid
+  document_id         String                   @db.Uuid
+  event_type          DocumentHistoryEventType
+  actor_user_id       String?                  @db.Uuid
+  actor_name_snapshot String?
+  from_status         DocumentStatus?
+  to_status           DocumentStatus?
+  metadata            Json?
+  created_at          DateTime                 @default(now())
+  document            Document                 @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, created_at])
+  @@index([business_id, created_at])
+  @@map("document_history")
   @@schema("documents")
 }
 

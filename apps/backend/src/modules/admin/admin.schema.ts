@@ -11,6 +11,7 @@ const BUSINESS_BUNDLE_KEYS = [
   "CUSTOM",
 ] as const;
 const BUSINESS_CAPABILITY_KEYS = [
+  "BUSINESS_LOCATIONS",
   "ITEM_PRODUCTS",
   "ITEM_SERVICES",
   "PARTIES_CUSTOMERS",
@@ -170,6 +171,57 @@ const licenseSchema = z
     }
   });
 
+const businessLocationSchema = z.object({
+  id: z.uuid("Location ID must be a valid UUID").optional(),
+  name: z.string().trim().min(2, "Location name is required").max(120),
+  phoneNumber: optionalNullableTrimmedString,
+  gstin: z.preprocess((value) => {
+    if (typeof value !== "string") return value;
+    const normalized = value.trim().toUpperCase();
+    return normalized === "" ? null : normalized;
+  }, z.string().regex(/^\d{2}[A-Z]{5}\d{4}[A-Z]\d[A-Z0-9]Z[A-Z0-9]$/, "GSTIN format is invalid").nullable().optional()),
+  email: z.preprocess((value) => {
+    if (typeof value !== "string") return value;
+    const normalized = value.trim();
+    return normalized === "" ? null : normalized;
+  }, z.string().email("Location email is invalid").nullable().optional()),
+  state: optionalNullableIndiaState,
+  pincode: z.preprocess((value) => {
+    if (typeof value !== "string") return value;
+    const normalized = value.trim();
+    return normalized === "" ? null : normalized;
+  }, z.string().regex(/^\d{6}$/, "Pincode must be a 6-digit number").nullable().optional()),
+  address: optionalNullableTrimmedString,
+  isDefault: z.boolean().optional(),
+});
+
+const businessLocationsSchema = z
+  .array(businessLocationSchema)
+  .min(1, "At least one location is required")
+  .max(25, "A business can have at most 25 locations")
+  .superRefine((locations, ctx) => {
+    const defaults = locations.filter((location) => location.isDefault);
+    if (defaults.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Only one default location is allowed",
+      });
+    }
+
+    const seenNames = new Set<string>();
+    for (const [index, location] of locations.entries()) {
+      const normalized = location.name.trim().toLowerCase();
+      if (seenNames.has(normalized)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Location names must be unique within a business",
+          path: [index, "name"],
+        });
+      }
+      seenNames.add(normalized);
+    }
+  });
+
 export const listBusinessesQuerySchema = z.object({
   query: z.object({
     businessName: z.string().trim().optional(),
@@ -232,6 +284,7 @@ export const createBusinessSchema = z.object({
       address: optionalTrimmedString,
       logo: optionalTrimmedString,
       license: licenseSchema.optional(),
+      locations: businessLocationsSchema.optional(),
     })
     .refine(
       (value) => value.ownerId !== undefined || Boolean(value.ownerPhone?.trim()),
@@ -279,6 +332,7 @@ export const updateBusinessSchema = z.object({
       address: optionalNullableTrimmedString,
       logo: optionalNullableTrimmedString,
       license: licenseSchema.optional(),
+      locations: businessLocationsSchema.optional(),
     })
     .refine(
       (value) =>
@@ -295,7 +349,8 @@ export const updateBusinessSchema = z.object({
         value.pincode !== undefined ||
         value.address !== undefined ||
         value.logo !== undefined ||
-        value.license !== undefined,
+        value.license !== undefined ||
+        value.locations !== undefined,
       {
         error: "At least one update field is required",
       },

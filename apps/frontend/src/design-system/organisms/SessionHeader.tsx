@@ -2,9 +2,13 @@ import { ArrowLeft, Building2, ChevronDown, LogOut } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
+import { Select } from "../atoms/Select";
 import { BusinessSelectionDialog } from "./BusinessSelectionDialog";
-import { useSessionStore } from "../../features/auth/session-business";
-import { selectStore } from "../../features/auth/client";
+import {
+  hasAssignedStoreCapability,
+  useSessionStore,
+} from "../../features/auth/session-business";
+import { selectLocation, selectStore } from "../../features/auth/client";
 import { canSwitchStoreOffline } from "../../features/auth/license-policy";
 
 type SessionHeaderProps = {
@@ -27,7 +31,11 @@ export function SessionHeader({
   const identityId = useSessionStore((state) => state.identityId);
   const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
+  const activeLocationId = useSessionStore((state) => state.activeLocationId);
+  const activeMemberRole = useSessionStore((state) => state.activeMemberRole);
   const setActiveStore = useSessionStore((state) => state.setActiveStore);
+  const setActiveLocation = useSessionStore((state) => state.setActiveLocation);
+  const setActiveMemberRole = useSessionStore((state) => state.setActiveMemberRole);
   const setActiveBusinessModules = useSessionStore((state) => state.setActiveBusinessModules);
   const setStoreNeedsOnlineLicenseValidation = useSessionStore(
     (state) => state.setStoreNeedsOnlineLicenseValidation,
@@ -39,10 +47,27 @@ export function SessionHeader({
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
   const canSwitchStore = role === "USER" && businesses.length > 1 && showSwitchStore;
-  const activeBusinessName = useMemo(
-    () => businesses.find((business) => business.id === activeStore)?.name ?? "No business selected",
+  const activeBusiness = useMemo(
+    () => businesses.find((business) => business.id === activeStore) ?? null,
     [activeStore, businesses],
   );
+  const activeBusinessName = useMemo(
+    () => activeBusiness?.name ?? "No business selected",
+    [activeBusiness],
+  );
+  const activeLocationName = useMemo(
+    () =>
+      activeBusiness?.locations.find((location) => location.id === activeLocationId)?.name ??
+      activeBusiness?.locations.find((location) => location.isDefault)?.name ??
+      "Default location",
+    [activeBusiness, activeLocationId],
+  );
+  const canSwitchLocation =
+    role === "USER" &&
+    activeMemberRole === "OWNER" &&
+    Boolean(activeBusiness) &&
+    hasAssignedStoreCapability(activeBusiness, "BUSINESS_LOCATIONS") &&
+    (activeBusiness?.locations.length ?? 0) > 1;
   const showSelectedStore = role === "USER" && isBusinessSelected && showSwitchStore;
 
   const onSelectBusiness = async (businessId: string) => {
@@ -55,6 +80,8 @@ export function SessionHeader({
     try {
       const result = await selectStore(businessId);
       setActiveStore(businessId);
+      setActiveLocation(businessId, result.activeLocationId ?? null);
+      setActiveMemberRole(result.memberRole ?? null);
       setActiveBusinessModules(result.modules ?? null);
       setStoreNeedsOnlineLicenseValidation(businessId, false);
       setIsBusinessSelected(true);
@@ -72,6 +99,7 @@ export function SessionHeader({
           return;
         }
         setActiveStore(businessId);
+        setActiveLocation(businessId, selectedBusiness?.defaultLocationId ?? null);
         setStoreNeedsOnlineLicenseValidation(businessId, true);
         setIsBusinessSelected(true);
         setIsSwitcherOpen(false);
@@ -81,6 +109,25 @@ export function SessionHeader({
         return;
       }
       setSwitchError(error instanceof Error ? error.message : "Unable to switch business.");
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const onSelectLocation = async (locationId: string) => {
+    if (!activeStore || !activeBusiness || locationId === activeLocationId) {
+      return;
+    }
+
+    setSwitching(true);
+    setSwitchError(null);
+    try {
+      const result = await selectLocation(activeStore, locationId);
+      setActiveLocation(activeStore, result.activeLocationId ?? locationId);
+      setActiveMemberRole(result.memberRole ?? activeMemberRole);
+      setActiveBusinessModules(result.modules ?? null);
+    } catch (error) {
+      setSwitchError(error instanceof Error ? error.message : "Unable to switch location.");
     } finally {
       setSwitching(false);
     }
@@ -150,6 +197,32 @@ export function SessionHeader({
             <span className="hidden md:block truncate">{activeBusinessName}</span>
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
           </Button>
+        ) : null}
+        {canSwitchLocation ? (
+          <label className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1">
+            <span className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
+              Location
+            </span>
+            <Select
+              value={activeLocationId ?? activeBusiness?.defaultLocationId ?? ""}
+              onChange={(event) => {
+                void onSelectLocation(event.target.value);
+              }}
+              disabled={switching}
+              className="h-7 min-w-[9rem] border-0 bg-transparent px-1 text-xs"
+              aria-label="Switch location"
+            >
+              {activeBusiness?.locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        ) : showSelectedStore && activeBusiness ? (
+          <div className="hidden shrink-0 rounded-md border border-border bg-white px-2 py-1 text-[11px] text-muted-foreground md:block">
+            {activeLocationName}
+          </div>
         ) : null}
         {onLogout ? (
           <Button

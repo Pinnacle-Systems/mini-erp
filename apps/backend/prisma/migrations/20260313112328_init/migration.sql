@@ -44,7 +44,13 @@ CREATE TYPE "catalog"."ItemType" AS ENUM ('PRODUCT', 'SERVICE');
 CREATE TYPE "documents"."DocumentType" AS ENUM ('SALES_ESTIMATE', 'PROFORMA_INVOICE', 'SALES_ORDER', 'DELIVERY_CHALLAN', 'SALES_INVOICE', 'SALES_RETURN', 'PURCHASE_ORDER', 'GOODS_RECEIPT_NOTE', 'PURCHASE_INVOICE', 'PURCHASE_RETURN');
 
 -- CreateEnum
-CREATE TYPE "documents"."DocumentStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'COMPLETED', 'CANCELLED', 'VOID');
+CREATE TYPE "documents"."DocumentStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'COMPLETED', 'EXPIRED', 'CANCELLED', 'VOID');
+
+-- CreateEnum
+CREATE TYPE "documents"."DocumentCancelReason" AS ENUM ('CUSTOMER_DECLINED', 'INTERNAL_DROP', 'OTHER');
+
+-- CreateEnum
+CREATE TYPE "documents"."DocumentHistoryEventType" AS ENUM ('CREATED', 'UPDATED', 'STATUS_CHANGED', 'CONVERSION_LINKED');
 
 -- CreateEnum
 CREATE TYPE "documents"."SalesTransactionType" AS ENUM ('CASH', 'CREDIT');
@@ -92,7 +98,7 @@ CREATE TYPE "tenants"."BusinessRole" AS ENUM ('OWNER', 'MANAGER', 'CASHIER');
 CREATE TYPE "tenants"."BusinessBundleKey" AS ENUM ('SALES_LITE', 'SALES_STOCK_OUT', 'TRADING', 'SERVICE_BILLING', 'CUSTOM');
 
 -- CreateEnum
-CREATE TYPE "tenants"."BusinessCapabilityKey" AS ENUM ('ITEM_PRODUCTS', 'ITEM_SERVICES', 'PARTIES_CUSTOMERS', 'PARTIES_SUPPLIERS', 'TXN_SALE_CREATE', 'TXN_SALE_RETURN', 'TXN_PURCHASE_CREATE', 'TXN_PURCHASE_RETURN', 'INV_STOCK_OUT', 'INV_STOCK_IN', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'FINANCE_RECEIVABLES', 'FINANCE_PAYABLES');
+CREATE TYPE "tenants"."BusinessCapabilityKey" AS ENUM ('BUSINESS_LOCATIONS', 'ITEM_PRODUCTS', 'ITEM_SERVICES', 'PARTIES_CUSTOMERS', 'PARTIES_SUPPLIERS', 'TXN_SALE_CREATE', 'TXN_SALE_RETURN', 'TXN_PURCHASE_CREATE', 'TXN_PURCHASE_RETURN', 'INV_STOCK_OUT', 'INV_STOCK_IN', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'FINANCE_RECEIVABLES', 'FINANCE_PAYABLES');
 
 -- CreateTable
 CREATE TABLE "accounts"."accounts" (
@@ -148,6 +154,7 @@ CREATE TABLE "auth"."sessions" (
     "id" UUID NOT NULL,
     "identity_id" UUID NOT NULL,
     "selected_business_id" UUID,
+    "selected_location_id" UUID,
     "token_hash" TEXT NOT NULL,
     "user_agent" TEXT,
     "ip_address" TEXT,
@@ -263,6 +270,7 @@ CREATE TABLE "documents"."documents" (
     "business_id" UUID NOT NULL,
     "type" "documents"."DocumentType" NOT NULL,
     "status" "documents"."DocumentStatus" NOT NULL DEFAULT 'DRAFT',
+    "cancel_reason" "documents"."DocumentCancelReason",
     "transaction_type" "documents"."SalesTransactionType",
     "doc_number" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -273,6 +281,8 @@ CREATE TABLE "documents"."documents" (
     "dispatch_date" DATE,
     "dispatch_carrier" TEXT,
     "dispatch_reference" TEXT,
+    "location_id" UUID,
+    "location_name_snapshot" TEXT,
     "party_id" UUID,
     "parent_id" UUID,
     "customer_name_snapshot" TEXT,
@@ -287,6 +297,22 @@ CREATE TABLE "documents"."documents" (
     "shipping_addr" TEXT,
 
     CONSTRAINT "documents_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "documents"."document_history" (
+    "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
+    "document_id" UUID NOT NULL,
+    "event_type" "documents"."DocumentHistoryEventType" NOT NULL,
+    "actor_user_id" UUID,
+    "actor_name_snapshot" TEXT,
+    "from_status" "documents"."DocumentStatus",
+    "to_status" "documents"."DocumentStatus",
+    "metadata" JSONB,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "document_history_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -588,6 +614,26 @@ CREATE TABLE "tenants"."businesses" (
 );
 
 -- CreateTable
+CREATE TABLE "tenants"."business_locations" (
+    "id" UUID NOT NULL,
+    "business_id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "phone_number" TEXT,
+    "email" TEXT,
+    "gstin" TEXT,
+    "state" TEXT,
+    "pincode" TEXT,
+    "address" TEXT,
+    "is_default" BOOLEAN NOT NULL DEFAULT false,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "business_locations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "tenants"."business_licenses" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
@@ -632,6 +678,9 @@ CREATE UNIQUE INDEX "sessions_token_hash_key" ON "auth"."sessions"("token_hash")
 CREATE INDEX "sessions_selected_business_id_expires_at_idx" ON "auth"."sessions"("selected_business_id", "expires_at");
 
 -- CreateIndex
+CREATE INDEX "sessions_selected_location_id_expires_at_idx" ON "auth"."sessions"("selected_location_id", "expires_at");
+
+-- CreateIndex
 CREATE INDEX "item_categories_business_id_name_idx" ON "catalog"."item_categories"("business_id", "name");
 
 -- CreateIndex
@@ -654,6 +703,12 @@ CREATE UNIQUE INDEX "item_variant_option_values_variant_id_option_value_id_key" 
 
 -- CreateIndex
 CREATE UNIQUE INDEX "documents_business_id_type_doc_number_key" ON "documents"."documents"("business_id", "type", "doc_number");
+
+-- CreateIndex
+CREATE INDEX "document_history_document_id_created_at_idx" ON "documents"."document_history"("document_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "document_history_business_id_created_at_idx" ON "documents"."document_history"("business_id", "created_at");
 
 -- CreateIndex
 CREATE INDEX "stock_ledger_business_id_variant_id_idx" ON "inventory"."stock_ledger"("business_id", "variant_id");
@@ -755,6 +810,12 @@ CREATE INDEX "change_log_tenant_id_cursor_idx" ON "sync"."change_log"("tenant_id
 CREATE INDEX "change_log_tenant_id_entity_entity_id_server_version_idx" ON "sync"."change_log"("tenant_id", "entity", "entity_id", "server_version");
 
 -- CreateIndex
+CREATE INDEX "business_locations_business_id_is_active_deleted_at_idx" ON "tenants"."business_locations"("business_id", "is_active", "deleted_at");
+
+-- CreateIndex
+CREATE INDEX "business_locations_business_id_is_default_deleted_at_idx" ON "tenants"."business_locations"("business_id", "is_default", "deleted_at");
+
+-- CreateIndex
 CREATE INDEX "business_licenses_business_id_status_version_idx" ON "tenants"."business_licenses"("business_id", "status", "version");
 
 -- CreateIndex
@@ -779,6 +840,9 @@ ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_identity_id_fkey" FOREIGN
 ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_selected_business_id_fkey" FOREIGN KEY ("selected_business_id") REFERENCES "tenants"."businesses"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "auth"."sessions" ADD CONSTRAINT "sessions_selected_location_id_fkey" FOREIGN KEY ("selected_location_id") REFERENCES "tenants"."business_locations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "catalog"."item_collection_items" ADD CONSTRAINT "item_collection_items_collection_id_fkey" FOREIGN KEY ("collection_id") REFERENCES "catalog"."item_collections"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -801,6 +865,9 @@ ALTER TABLE "catalog"."item_variant_option_values" ADD CONSTRAINT "item_variant_
 
 -- AddForeignKey
 ALTER TABLE "documents"."documents" ADD CONSTRAINT "documents_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "documents"."documents"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "documents"."document_history" ADD CONSTRAINT "document_history_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents"."documents"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "documents"."line_items" ADD CONSTRAINT "line_items_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents"."documents"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -831,6 +898,9 @@ ALTER TABLE "pricing"."discount_rule_price_books" ADD CONSTRAINT "discount_rule_
 
 -- AddForeignKey
 ALTER TABLE "pricing"."discount_rule_price_books" ADD CONSTRAINT "discount_rule_price_books_price_book_id_fkey" FOREIGN KEY ("price_book_id") REFERENCES "pricing"."price_books"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "tenants"."business_locations" ADD CONSTRAINT "business_locations_business_id_fkey" FOREIGN KEY ("business_id") REFERENCES "tenants"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "tenants"."business_licenses" ADD CONSTRAINT "business_licenses_business_id_fkey" FOREIGN KEY ("business_id") REFERENCES "tenants"."businesses"("id") ON DELETE CASCADE ON UPDATE CASCADE;

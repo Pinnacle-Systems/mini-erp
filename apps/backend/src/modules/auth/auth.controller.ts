@@ -1,5 +1,5 @@
 import { catchAsync } from "../../shared/utils/catchAsync.js";
-import { UnauthorizedError } from "../../shared/utils/errors.js";
+import { ForbiddenError, UnauthorizedError } from "../../shared/utils/errors.js";
 import { getClientIp } from "../../shared/utils/getIp.js";
 import { successResponse } from "../../shared/http/response-mappers.js";
 import authService, { REFRESH_TOKEN_EXPIRY_MS } from "./auth.service.js";
@@ -13,7 +13,9 @@ import tenantService from "../tenant/tenant.service.js";
 import {
   assertLicensedStoreAccess,
   getBusinessModulesFromLicense,
+  hasBusinessLicenseCapability,
   setSessionSelectedBusiness,
+  setSessionSelectedLocation,
 } from "../license/license.service.js";
 
 const toAuthTokenView = (input: {
@@ -32,6 +34,8 @@ const toSelectedStoreView = (input: {
   tenantId: string;
   memberRole: string;
   modules: Record<string, boolean>;
+  activeLocationId: string | null;
+  locations: Array<{ id: string; name: string; isDefault: boolean }>;
 }) =>
   successResponse({
     role: SystemRole.USER,
@@ -39,6 +43,8 @@ const toSelectedStoreView = (input: {
     memberRole: input.memberRole,
     token: input.token,
     modules: input.modules,
+    activeLocationId: input.activeLocationId,
+    locations: input.locations,
   });
 
 const toSessionView = (input: {
@@ -47,6 +53,9 @@ const toSessionView = (input: {
   tenantId: string | null;
   businesses: unknown[];
   modules: Record<string, boolean> | null;
+  memberRole: string | null;
+  activeLocationId: string | null;
+  locations: Array<{ id: string; name: string; isDefault: boolean }>;
 }) =>
   successResponse({
     role: input.role,
@@ -54,7 +63,43 @@ const toSessionView = (input: {
     tenantId: input.tenantId,
     businesses: input.businesses,
     modules: input.modules,
+    memberRole: input.memberRole,
+    activeLocationId: input.activeLocationId,
+    locations: input.locations,
   });
+
+const resolveBusinessLocationContext = async (
+  sessionId: string,
+  businessId: string,
+  requestedLocationId?: string | null,
+) => {
+  const [locations, defaultLocation, locationCapabilityEnabled] = await Promise.all([
+    tenantService.getBusinessLocations(businessId),
+    tenantService.getDefaultBusinessLocation(businessId),
+    hasBusinessLicenseCapability(businessId, "BUSINESS_LOCATIONS"),
+  ]);
+
+  if (!defaultLocation) {
+    throw new UnauthorizedError("Default business location is not configured");
+  }
+
+  const resolvedLocationId =
+    locationCapabilityEnabled && requestedLocationId
+      ? (await tenantService.validateBusinessLocation(businessId, requestedLocationId))?.id ??
+        defaultLocation.id
+      : defaultLocation.id;
+
+  await setSessionSelectedLocation(sessionId, resolvedLocationId);
+
+  return {
+    locations: locations.map((location) => ({
+      id: location.id,
+      name: location.name,
+      isDefault: location.is_default,
+    })),
+    activeLocationId: resolvedLocationId,
+  };
+};
 
 export const login = catchAsync(async (req, res) => {
   const { phone = "", password = "" } = req.body;
@@ -148,12 +193,21 @@ export const refresh = catchAsync(async (req, res) => {
       session.identity_id,
       currentBusinessId,
     );
+    if (!member) {
+      throw new UnauthorizedError("Access denied");
+    }
     await assertLicensedStoreAccess(currentBusinessId, session.id);
     await setSessionSelectedBusiness(session.id, currentBusinessId);
+    const locationContext = await resolveBusinessLocationContext(
+      session.id,
+      currentBusinessId,
+      session.selected_location_id ?? null,
+    );
 
     const token = await signAccessToken(session.identity, session, {
       tenantId: currentBusinessId,
       memberRole: member.role,
+      locationId: locationContext.activeLocationId,
     });
 
     return res.json(toAuthTokenView({
@@ -198,6 +252,7 @@ export const selectStore = catchAsync(async (req, res) => {
   }
   await assertLicensedStoreAccess(businessId, payload.sid);
   await setSessionSelectedBusiness(payload.sid, businessId);
+  const locationContext = await resolveBusinessLocationContext(payload.sid, businessId);
 
   const accessToken = await signAccessToken(
     {
@@ -210,6 +265,7 @@ export const selectStore = catchAsync(async (req, res) => {
     {
       tenantId: businessId,
       memberRole: member.role,
+      locationId: locationContext.activeLocationId,
     },
   );
   const modules = await getBusinessModulesFromLicense(businessId);
@@ -220,6 +276,82 @@ export const selectStore = catchAsync(async (req, res) => {
       tenantId: businessId,
       memberRole: member.role,
       modules,
+      activeLocationId: locationContext.activeLocationId,
+      locations: locationContext.locations,
+    }),
+  );
+});
+
+export const selectLocation = catchAsync(async (req, res) => {
+  const { businessId = "", locationId = "" } = req.body;
+  const authHeader = req.headers.authorization ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : "";
+
+  if (!token) {
+    throw new UnauthorizedError("Unauthorized");
+  }
+
+  const payload = await verifyAccessToken(token);
+  if (
+    !payload ||
+    payload.systemRole !== SystemRole.USER ||
+    typeof payload.sub !== "string" ||
+    typeof payload.sid !== "string"
+  ) {
+    throw new UnauthorizedError("Unauthorized");
+  }
+
+  const member = await tenantService.getBusinessMembership(payload.sub, businessId);
+  if (!member) {
+    throw new UnauthorizedError("Access denied");
+  }
+  if (member.role !== "OWNER") {
+    throw new ForbiddenError("Only the business owner can switch locations");
+  }
+
+  await assertLicensedStoreAccess(businessId, payload.sid);
+  const canUseLocations = await hasBusinessLicenseCapability(businessId, "BUSINESS_LOCATIONS");
+  if (!canUseLocations) {
+    throw new ForbiddenError("Business locations are not enabled for this license");
+  }
+
+  const location = await tenantService.validateBusinessLocation(businessId, locationId);
+  if (!location) {
+    throw new UnauthorizedError("Selected location is not available");
+  }
+
+  await setSessionSelectedBusiness(payload.sid, businessId);
+  await setSessionSelectedLocation(payload.sid, location.id);
+  const modules = await getBusinessModulesFromLicense(businessId);
+  const locations = await tenantService.getBusinessLocations(businessId);
+
+  const accessToken = await signAccessToken(
+    {
+      id: payload.sub,
+      system_role: SystemRole.USER,
+    },
+    {
+      id: payload.sid,
+    },
+    {
+      tenantId: businessId,
+      memberRole: member.role,
+      locationId: location.id,
+    },
+  );
+
+  res.json(
+    toSelectedStoreView({
+      token: accessToken,
+      tenantId: businessId,
+      memberRole: member.role,
+      modules,
+      activeLocationId: location.id,
+      locations: locations.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        isDefault: entry.is_default,
+      })),
     }),
   );
 });
@@ -242,10 +374,29 @@ export const getMe = catchAsync(async (req, res) => {
     businesses = await tenantService.getBusinessesForIdentity(payload.sub);
   }
   const tenantId = typeof payload.tenantId === "string" ? payload.tenantId : null;
+  const tokenLocationId = typeof payload.locationId === "string" ? payload.locationId : null;
   if (tenantId && typeof payload.sid === "string") {
     await setSessionSelectedBusiness(payload.sid, tenantId).catch(() => undefined);
   }
   const modules = tenantId ? await getBusinessModulesFromLicense(tenantId) : null;
+  const memberRole =
+    tenantId && typeof payload.sub === "string"
+      ? (await tenantService.getBusinessMembership(payload.sub, tenantId))?.role ?? null
+      : null;
+  const locations = tenantId
+    ? (await tenantService.getBusinessLocations(tenantId)).map((location) => ({
+        id: location.id,
+        name: location.name,
+        isDefault: location.is_default,
+      }))
+    : [];
+  const activeLocationId =
+    tokenLocationId ??
+    locations.find((location) => location.isDefault)?.id ??
+    null;
+  if (tenantId && typeof payload.sid === "string") {
+    await setSessionSelectedLocation(payload.sid, activeLocationId).catch(() => undefined);
+  }
   const role =
     payload.systemRole === SystemRole.USER || payload.systemRole === SystemRole.PLATFORM_ADMIN
       ? payload.systemRole
@@ -259,6 +410,9 @@ export const getMe = catchAsync(async (req, res) => {
       tenantId,
       businesses,
       modules,
+      memberRole,
+      activeLocationId,
+      locations,
     }),
   );
 });

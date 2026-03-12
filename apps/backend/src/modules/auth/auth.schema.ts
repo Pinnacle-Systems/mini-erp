@@ -14,3 +14,10 @@ export const selectBusinessSchema = z.object({
     businessId: z.uuid(),
   }),
 });
+
+export const selectLocationSchema = z.object({
+  body: z.object({
+    businessId: z.uuid(),
+    locationId: z.uuid(),
+  }),
+});

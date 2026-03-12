@@ -430,6 +430,7 @@ const toDraft = (
     id: variant.id,
     name: variant.name,
     sku: variant.sku,
+    skuManuallyEdited: variant.sku.trim().length > 0,
     barcode: variant.barcode,
     gstSlab:
       normalizeGstSlab(salesPricingByVariantId.get(variant.id)?.gstSlab) ?? "",

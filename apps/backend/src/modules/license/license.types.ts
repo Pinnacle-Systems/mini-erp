@@ -15,6 +15,7 @@ export const BUNDLE_KEYS = [
 ] as const;
 
 export const CAPABILITY_KEYS = [
+  "BUSINESS_LOCATIONS",
   "ITEM_PRODUCTS",
   "ITEM_SERVICES",
   "PARTIES_CUSTOMERS",

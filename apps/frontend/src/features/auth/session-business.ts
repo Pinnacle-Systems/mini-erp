@@ -6,11 +6,18 @@ export const BUSINESS_CONTEXT_KEY = "mini_erp_business_context_v1";
 export type AssignedStore = {
   id: string;
   name: string;
+  defaultLocationId: string | null;
+  locations: Array<{
+    id: string;
+    name: string;
+    isDefault: boolean;
+  }>;
   license?: {
     beginsOn: string;
     endsOn: string;
     bundleKey: "SALES_LITE" | "SALES_STOCK_OUT" | "TRADING" | "SERVICE_BILLING" | "CUSTOM";
     addOnCapabilities: Array<
+      | "BUSINESS_LOCATIONS"
       | "ITEM_PRODUCTS"
       | "ITEM_SERVICES"
       | "PARTIES_CUSTOMERS"
@@ -27,6 +34,7 @@ export type AssignedStore = {
       | "FINANCE_PAYABLES"
     >;
     removedCapabilities: Array<
+      | "BUSINESS_LOCATIONS"
       | "ITEM_PRODUCTS"
       | "ITEM_SERVICES"
       | "PARTIES_CUSTOMERS"
@@ -126,6 +134,9 @@ type SessionState = {
   isHydratingSession: boolean;
   businesses: AssignedStore[];
   activeStore: string | null;
+  activeLocationId: string | null;
+  activeLocationByStore: Record<string, string | null>;
+  activeMemberRole: "OWNER" | "MANAGER" | "CASHIER" | null;
   activeBusinessModules: BusinessModules | null;
   businessModulesById: Record<string, BusinessModules>;
   pendingOnlineLicenseValidationByStore: Record<string, boolean>;
@@ -140,10 +151,14 @@ type SessionActions = {
     identityId: string;
     businesses: AssignedStore[];
     activeStore: string | null;
+    activeLocationId?: string | null;
+    activeMemberRole?: "OWNER" | "MANAGER" | "CASHIER" | null;
     activeBusinessModules?: BusinessModules | null;
     isBusinessSelected: boolean;
   }) => void;
   setActiveStore: (businessId: string | null) => void;
+  setActiveLocation: (businessId: string, locationId: string | null) => void;
+  setActiveMemberRole: (role: "OWNER" | "MANAGER" | "CASHIER" | null) => void;
   setActiveBusinessModules: (modules: BusinessModules | null) => void;
   setStoreNeedsOnlineLicenseValidation: (businessId: string, needsValidation: boolean) => void;
   setIsBusinessSelected: (value: boolean) => void;
@@ -156,6 +171,9 @@ const initialState: SessionState = {
   isHydratingSession: true,
   businesses: [],
   activeStore: null,
+  activeLocationId: null,
+  activeLocationByStore: {},
+  activeMemberRole: null,
   activeBusinessModules: null,
   businessModulesById: {},
   pendingOnlineLicenseValidationByStore: {},
@@ -175,6 +193,9 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           role: null,
           businesses: [],
           activeStore: null,
+          activeLocationId: null,
+          activeLocationByStore: {},
+          activeMemberRole: null,
           activeBusinessModules: null,
           businessModulesById: {},
           pendingOnlineLicenseValidationByStore: {},
@@ -187,17 +208,38 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           role: "PLATFORM_ADMIN",
           businesses: [],
           activeStore: null,
+          activeLocationId: null,
+          activeLocationByStore: {},
+          activeMemberRole: null,
           activeBusinessModules: null,
           businessModulesById: {},
           pendingOnlineLicenseValidationByStore: {},
           isBusinessSelected: false,
         });
       },
-      setUserSession: ({ identityId, businesses, activeStore, activeBusinessModules, isBusinessSelected }) => {
+      setUserSession: ({
+        identityId,
+        businesses,
+        activeStore,
+        activeLocationId,
+        activeMemberRole,
+        activeBusinessModules,
+        isBusinessSelected,
+      }) => {
         set((state) => {
           const nextModulesById = { ...state.businessModulesById };
+          const nextLocationsByStore = { ...state.activeLocationByStore };
           if (activeStore && activeBusinessModules) {
             nextModulesById[activeStore] = activeBusinessModules;
+          }
+          if (activeStore) {
+            const activeBusiness =
+              businesses.find((business) => business.id === activeStore) ?? null;
+            nextLocationsByStore[activeStore] =
+              activeLocationId ??
+              nextLocationsByStore[activeStore] ??
+              activeBusiness?.defaultLocationId ??
+              null;
           }
 
           return {
@@ -205,6 +247,11 @@ export const useSessionStore = create<SessionState & SessionActions>()(
             role: "USER",
             businesses,
             activeStore,
+            activeLocationId: activeStore
+              ? nextLocationsByStore[activeStore] ?? null
+              : null,
+            activeLocationByStore: nextLocationsByStore,
+            activeMemberRole: activeMemberRole ?? null,
             activeBusinessModules:
               activeStore && nextModulesById[activeStore]
                 ? nextModulesById[activeStore]
@@ -219,8 +266,25 @@ export const useSessionStore = create<SessionState & SessionActions>()(
       setActiveStore: (businessId) => {
         set((state) => ({
           activeStore: businessId,
+          activeLocationId: businessId
+            ? state.activeLocationByStore[businessId] ??
+              state.businesses.find((business) => business.id === businessId)?.defaultLocationId ??
+              null
+            : null,
           activeBusinessModules: businessId ? state.businessModulesById[businessId] ?? null : null,
         }));
+      },
+      setActiveLocation: (businessId, locationId) => {
+        set((state) => ({
+          activeLocationId: state.activeStore === businessId ? locationId : state.activeLocationId,
+          activeLocationByStore: {
+            ...state.activeLocationByStore,
+            [businessId]: locationId,
+          },
+        }));
+      },
+      setActiveMemberRole: (role) => {
+        set({ activeMemberRole: role });
       },
       setActiveBusinessModules: (modules) => {
         set((state) => {
@@ -251,6 +315,9 @@ export const useSessionStore = create<SessionState & SessionActions>()(
           role: null,
           businesses: [],
           activeStore: null,
+          activeLocationId: null,
+          activeLocationByStore: {},
+          activeMemberRole: null,
           activeBusinessModules: null,
           businessModulesById: {},
           pendingOnlineLicenseValidationByStore: {},
@@ -267,6 +334,9 @@ export const useSessionStore = create<SessionState & SessionActions>()(
         role: state.role,
         businesses: state.businesses,
         activeStore: state.activeStore,
+        activeLocationId: state.activeLocationId,
+        activeLocationByStore: state.activeLocationByStore,
+        activeMemberRole: state.activeMemberRole,
         activeBusinessModules: state.activeBusinessModules,
         businessModulesById: state.businessModulesById,
         pendingOnlineLicenseValidationByStore: state.pendingOnlineLicenseValidationByStore,
@@ -294,6 +364,8 @@ export const setAssignedStores = (businesses: AssignedStore[]) => {
     const nowIso = new Date().toISOString();
     const normalizedBusinesses = businesses.map((business) => ({
       ...business,
+      defaultLocationId: business.defaultLocationId ?? null,
+      locations: business.locations ?? [],
       license: business.license
         ? {
             ...business.license,
@@ -305,6 +377,15 @@ export const setAssignedStores = (businesses: AssignedStore[]) => {
     return {
       businesses: normalizedBusinesses,
       activeStore: active?.id ?? null,
+      activeLocationId: active?.id
+        ? state.activeLocationByStore[active.id] ?? active.defaultLocationId ?? null
+        : null,
+      activeLocationByStore: Object.fromEntries(
+        normalizedBusinesses.map((business) => [
+          business.id,
+          state.activeLocationByStore[business.id] ?? business.defaultLocationId ?? null,
+        ]),
+      ) as Record<string, string | null>,
       activeBusinessModules: active?.id ? filteredModulesById[active.id] ?? null : null,
       businessModulesById: filteredModulesById,
       pendingOnlineLicenseValidationByStore: filteredPendingValidationByStore,
@@ -320,6 +401,9 @@ export const clearSessionBusinessContext = () => {
   useSessionStore.setState({
     businesses: [],
     activeStore: null,
+    activeLocationId: null,
+    activeLocationByStore: {},
+    activeMemberRole: null,
     activeBusinessModules: null,
     businessModulesById: {},
     pendingOnlineLicenseValidationByStore: {},
