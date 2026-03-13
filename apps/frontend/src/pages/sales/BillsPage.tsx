@@ -1208,7 +1208,7 @@ function SalesDocumentWorkspace({
           tone: "danger",
           disabled: draftMutationLoading,
           onSelect: () => {
-            void removeDraft(row.id, row.source);
+            void removeDraft(row.id, row.source, row.billNumber);
           },
         },
       ];
@@ -1810,8 +1810,19 @@ function SalesDocumentWorkspace({
     setViewMode("editor");
   };
 
-  const removeDraft = async (draftId: string, source: DraftSource) => {
+  const removeDraft = async (
+    draftId: string,
+    source: DraftSource,
+    billNumber: string,
+  ) => {
     if (draftMutationLoading) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${config.singularLabel} draft '${billNumber}'? This cannot be undone.`,
+    );
+    if (!confirmed) {
       return;
     }
 
