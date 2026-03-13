@@ -49,6 +49,7 @@ jobs:
           TARGET: ${{ secrets.REMOTE_TARGET }}/apps/backend/
           SCRIPT_AFTER: |
             . ~/.nvm/nvm.sh
+            nvm install 24
             nvm use 24
             corepack enable
 
@@ -57,6 +58,7 @@ jobs:
             export DATABASE_URL=postgres://${{secrets.DB_APP_USER}}:${{secrets.DB_APP_USER_PASSWD}}@${{secrets.DB_HOST}}:${{secrets.DB_PORT}}/${{secrets.DB_NAME}}
             export CORS_ORIGIN=https://billing.pinnaclesystems.co.in
             export DEFAULT_BUSINESS_OWNER_PASSWORD=${{ secrets.DEFAULT_BUSINESS_OWNER_PASSWORD }}
+            export PORT=9890
 
             cd ${{ secrets.REMOTE_TARGET }}
             pnpm install --prod --frozen-lockfile --filter backend...
