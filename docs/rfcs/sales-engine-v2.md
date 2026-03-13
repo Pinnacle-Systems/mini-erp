@@ -1,0 +1,118 @@
+# RFC: Sales Engine V2 (Line-Level Integrity & Inventory Integration)
+
+This RFC is a standalone design document for iterative refinement. It records the current agreed direction for the sales engine and does not replace [ARCHITECTURE.md](/home/ajay/workspace/mini-erp/ARCHITECTURE.md).
+
+**Status:** Final / For Implementation
+**Area:** Sales, Inventory, Documents
+**Core Logic:** Line-level allocation ledger, Backend-authored balances, Inventory Responsibility Hierarchy.
+
+## 1. Problem Statement
+
+The current sales implementation lacks granular fulfillment tracking. We must move from header-level "amount-based" progress to line-level "quantity-based" progress. This requires:
+
+- **Direct vs. Linked Invoices:** Distinguishing when an invoice moves stock (Direct) vs. when a delivery document already moved it.
+- **Line-Level Links:** A ledger to track which specific lines were fulfilled or returned.
+- **Inventory Accuracy:** Ensuring the `StockLedger` is updated by the correct document in the chain.
+
+## 2. Data Model Changes
+
+### 2.1 DocumentLineLink (New Model)
+
+This model tracks quantity flow between documents. It lives in the `documents` module.
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `source_line_id` | UUID | FK to `documents.LineItem` |
+| `target_line_id` | UUID | FK to `documents.LineItem` |
+| `quantity` | Decimal | The amount allocated/converted |
+| `type` | Enum | `FULFILLMENT`, `RETURN` |
+
+### 2.2 StockLedger (Inventory Module)
+
+Consistent with `inventory.prisma`:
+
+- **Location:** Uses the `location_id` of the business location associated with the document.
+- **References:** `reference_id` (UUID) points to the `documents.Document` ID.
+- **Type Derivation:** The source of truth for the document type is the `type` field in the `documents.Document` table.
+
+## 3. Business Logic & Workflow
+
+### 3.1 Parent Document Resolution
+
+Because `documents.Document` stores `parent_id` but not `parent_type`, the Sales Engine must resolve the parent record to determine conversion rules.
+
+- **Rule:** When processing an Invoice, fetch the parent row via `parent_id`.
+- This check determines if the Invoice is "Direct" (no parent, or parent is an Order/Estimate) or "Linked" (parent is a Delivery Challan).
+
+### 3.2 Inventory Responsibility (The "Stock-Out" Rule)
+
+To ensure stock movement is neither missed nor double-counted:
+
+| Document Type | Scenario | Inventory Effect |
+| :--- | :--- | :--- |
+| **Delivery Challan** | Any | **Deduct Stock** |
+| **Sales Invoice** | Standalone (Direct) | **Deduct Stock** |
+| **Sales Invoice** | Parent is `SALES_ORDER` or `SALES_ESTIMATE` | **Deduct Stock** |
+| **Sales Invoice** | Parent is `DELIVERY_CHALLAN` | **No Effect** (Already handled by Challan) |
+| **Sales Return** | Parent is `SALES_INVOICE` | **Add Stock** |
+
+### 3.3 Catalog Integration (Stock vs. Service)
+
+Inventory effects only apply to items where `item.type == 'PRODUCT'`.
+
+- Items categorized as `SERVICE` will skip `StockLedger` entries but will still generate `DocumentLineLink` records for line-link and conversion tracking.
+
+## 4. Calculations & Reversals
+
+### 4.1 Backend-Authoritative Conversion Balance
+
+**Endpoint:** `GET /sales/conversion-balance/{document_id}`
+
+The balance for any source line is calculated as:
+`RemainingQty = OriginalQty - SUM(Active FULFILLMENT links) + SUM(Active RETURN links)`
+
+- **Active Link Definition:** Only links whose target documents have `posted_at != null` AND a status NOT IN (`CANCELLED`, `VOID`) are included.
+- **Drafts:** `DRAFT` documents do not consume balance.
+
+### 4.2 Cancellation & Void Policy
+
+The repository follows an immutable history pattern. Reversal of operational effects is handled as follows:
+
+1. **Block Void on Posted Docs:** Once a document has `posted_at != null`, the `VOID` action is **blocked** by the policy layer.
+2. **Mandatory Cancellation:** To reverse a posted stock-affecting document, the user must use the `CANCEL` action.
+3. **Inventory Reversal:** Upon `CANCEL`, the system writes **new reversal rows** in the `StockLedger` to offset the previous stock movement.
+   - Cancelling a **Challan/Direct Invoice** writes a positive (stock-in) entry.
+   - Cancelling a **Sales Return** writes a negative (stock-out) entry.
+4. **Balance Reversal:** Once `CANCELLED`, a document is automatically excluded from the "Active Balance" query described in Section 4.1, effectively restoring "available to convert" or "available to return" quantity.
+
+## 5. Document Specific Rules
+
+### Sales Invoice
+
+- **Return Ceiling:** A `Sales Return` can only be created against an invoice where `posted_at != null`. The maximum returnable quantity per line is: `InvoicedQty - SUM(Active Return Links)`.
+- **Direct Entry:** Standalone Invoices are supported and act as the primary fulfillment trigger for inventory.
+
+### Sales Order
+
+- **Completion:** A Sales Order is marked `COMPLETED` when all lines have active `FULFILLMENT` links equaling the original quantity.
+- **Reservation:** Explicitly **DEFERRED**. Quantity reservation logic is out of scope for this phase.
+
+## 6. Policy Decisions for V1
+
+1. **Return Source of Truth:** Returns link to the **Invoice** to maintain financial and legal change-of-ownership integrity.
+2. **Standalone Returns:** Blocked. All `SALES_RETURN` documents must have a `parent_id` pointing to a `SALES_INVOICE`.
+3. **Return Location:** The `Sales Return` uses the `location_id` specified on its own document header. During conversion from an Invoice, this defaults to the Invoice's `location_id` but is stored independently to allow override. The `StockLedger` must always use the Return's specific `location_id`.
+4. **Negative Stock Switch:** Controlled by a backend environment variable. If `false`, the `POST` service for Challans and Direct Invoices will throw a `400 Bad Request` if `CurrentStock - RequestQty < 0`.
+
+## 7. Acceptance Criteria
+
+- [ ] `DocumentLineLink` records are created whenever converted sales lines or return lines establish quantity flow.
+- [ ] `GET /sales/conversion-balance` correctly returns `RemainingQty` using the type-aware formula.
+- [ ] A standalone Invoice generates `StockLedger` entries on post.
+- [ ] An Invoice converted from a Delivery Challan does **not** generate additional `StockLedger` entries.
+- [ ] The `CANCEL` action on a stock-deducting document creates positive reversal ledger rows.
+- [ ] The `CANCEL` action on a `Sales Return` creates negative reversal ledger rows and restores the return ceiling on the source Invoice.
+- [ ] The `VOID` action is blocked for any document with a non-null `posted_at` value.
+- [ ] Sales Returns are blocked if the requested quantity exceeds the available return ceiling on the source Invoice line.
+- [ ] Service items are excluded from inventory validation but included in line-link tracking.
