@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist",
@@ -9,12 +11,22 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "skipLibCheck": true,
     "strict": false,
     "noImplicitAny": false,
     "rewriteRelativeImportExtensions": true
   },
-  "include": ["server.ts", "src/**/*.ts", "prisma.config.ts"],
-  "exclude": ["dist", "node_modules", "prisma/**"]
+  "include": [
+    "server.ts",
+    "src/**/*.ts",
+    "prisma.config.ts",
+    "prisma/seed.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+  ]
 }
