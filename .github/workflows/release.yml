@@ -62,7 +62,9 @@ jobs:
 
             cd ${{ secrets.REMOTE_TARGET }}
             pnpm install --prod --frozen-lockfile --filter backend...
-            pnpm --dir apps/backend exec prisma migrate deploy --config prisma.config.js
+            pnpm --dir apps/backend exec prisma migrate deploy
+
+            pnpm --dir apps/backend db:seed
 
             pm2 reload mini-erp-backend --update-env || pm2 start apps/backend/server.js --name mini-erp-backend
 
