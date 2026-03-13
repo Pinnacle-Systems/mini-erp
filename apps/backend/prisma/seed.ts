@@ -1,4 +1,5 @@
 import * as argon2 from "argon2";
+import type { Prisma } from "../generated/prisma/client.js";
 import { prisma } from "../src/lib/prisma.js";
 
 const ADMIN_PHONE = "1234567890";
@@ -123,7 +124,7 @@ const appendSyncChange = async (
       entity,
       entity_id: entityId,
       operation: "UPDATE",
-      data,
+      data: data as Prisma.InputJsonValue,
       server_version: (latest?.server_version ?? 0) + 1,
     },
   });
