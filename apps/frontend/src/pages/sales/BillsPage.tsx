@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Copy,
   Eye,
   FileOutput,
@@ -15,6 +16,7 @@ import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
+import { Select } from "../../design-system/atoms/Select";
 import { Switch } from "../../design-system/atoms/Switch";
 import { Textarea } from "../../design-system/atoms/Textarea";
 import { LookupDropdownInput } from "../../design-system/molecules/LookupDropdownInput";
@@ -80,6 +82,15 @@ type BillLine = {
   unit: string;
   stockOnHand: number | null;
 };
+
+type LinkedSourceBalance = {
+  sourceLineId: string;
+  sourceDocumentNumber: string;
+  remainingQuantity: string;
+};
+
+const SAME_ITEM_MIXED_ORIGIN_HINT =
+  "Parent quantity is still available for this item. Increase the linked row to use source balance; keep this row for extra local quantity.";
 
 type SavedBillDraft = Omit<SalesDocumentDraft, "lines"> & {
   lines: BillLine[];
@@ -639,23 +650,51 @@ const SALES_DOCUMENT_PAGE_CONFIG: Record<
 };
 
 const SALES_DOCUMENT_CONVERSION_CONFIG: Partial<
-  Record<SalesDocumentType, SalesDocumentConversionConfig>
+  Record<SalesDocumentType, SalesDocumentConversionConfig[]>
 > = {
-  SALES_ESTIMATE: {
-    targetDocumentType: "SALES_ORDER",
-    targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_ORDER.routePath,
-    actionLabel: "Convert to Order",
-  },
-  SALES_ORDER: {
-    targetDocumentType: "SALES_INVOICE",
-    targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
-    actionLabel: "Convert to Invoice",
-  },
-  DELIVERY_CHALLAN: {
-    targetDocumentType: "SALES_INVOICE",
-    targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
-    actionLabel: "Create Invoice",
-  },
+  SALES_ESTIMATE: [
+    {
+      targetDocumentType: "SALES_ORDER",
+      targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_ORDER.routePath,
+      actionLabel: "Convert to Order",
+    },
+    {
+      targetDocumentType: "SALES_INVOICE",
+      targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
+      actionLabel: "Convert to Invoice",
+    },
+  ],
+  SALES_ORDER: [
+    {
+      targetDocumentType: "DELIVERY_CHALLAN",
+      targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.DELIVERY_CHALLAN.routePath,
+      actionLabel: "Create Challan",
+    },
+    {
+      targetDocumentType: "SALES_INVOICE",
+      targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
+      actionLabel: "Convert to Invoice",
+    },
+  ],
+  DELIVERY_CHALLAN: [
+    {
+      targetDocumentType: "SALES_INVOICE",
+      targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
+      actionLabel: "Create Invoice",
+    },
+    {
+      targetDocumentType: "SALES_RETURN",
+      targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_RETURN.routePath,
+      actionLabel: "Create Return",
+    },
+  ],
+  SALES_INVOICE: [
+    {
+      targetDocumentType: "SALES_RETURN",
+      targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_RETURN.routePath,
+      actionLabel: "Create Return",
+    },
+  ],
 };
 
 const loadStoredDrafts = (
@@ -780,9 +819,10 @@ function SalesDocumentWorkspace({
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
   const businesses = useSessionStore((state) => state.businesses);
+  const activeBusiness =
+    businesses.find((business) => business.id === activeStore) ?? null;
   const activeBusinessName =
-    businesses.find((business) => business.id === activeStore)?.name ??
-    "No business selected";
+    activeBusiness?.name ?? "No business selected";
   const [initialDrafts] = useState<SavedBillDraft[]>(() =>
     loadStoredDrafts(activeStore, config),
   );
@@ -803,6 +843,9 @@ function SalesDocumentWorkspace({
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerGstNo, setCustomerGstNo] = useState("");
   const [parentId, setParentId] = useState<string | null>(null);
+  const [documentLocationId, setDocumentLocationId] = useState<string | null>(
+    activeLocationId ?? null,
+  );
   const [validUntil, setValidUntil] = useState("");
   const [dispatchDate, setDispatchDate] = useState("");
   const [dispatchCarrier, setDispatchCarrier] = useState("");
@@ -851,6 +894,9 @@ function SalesDocumentWorkspace({
   const [serverInvoicesError, setServerInvoicesError] = useState<string | null>(
     null,
   );
+  const [linkedSourceBalances, setLinkedSourceBalances] = useState<
+    Record<string, LinkedSourceBalance>
+  >({});
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -1061,14 +1107,14 @@ function SalesDocumentWorkspace({
     return [];
   };
 
-  const getServerDocumentConversion = (
+  const getServerDocumentConversions = (
     document: SalesDocumentDraft,
-  ): SalesDocumentConversionConfig | null => {
+  ): SalesDocumentConversionConfig[] => {
     if (!["OPEN", "PARTIAL"].includes(document.status ?? "OPEN")) {
-      return null;
+      return [];
     }
 
-    return SALES_DOCUMENT_CONVERSION_CONFIG[document.documentType] ?? null;
+    return SALES_DOCUMENT_CONVERSION_CONFIG[document.documentType] ?? [];
   };
 
   const duplicateEstimateDraft = (source: SavedBillDraft | SalesDocumentDraft) => {
@@ -1159,9 +1205,11 @@ function SalesDocumentWorkspace({
     });
   };
 
-  const startDocumentConversion = async (document: SalesDocumentDraft) => {
-    const conversion = getServerDocumentConversion(document);
-    if (!conversion || !activeStore) {
+  const startDocumentConversion = async (
+    document: SalesDocumentDraft,
+    conversion: SalesDocumentConversionConfig,
+  ) => {
+    if (!activeStore) {
       return;
     }
 
@@ -1200,6 +1248,7 @@ function SalesDocumentWorkspace({
           invoiceDraft: {
             documentType: conversion.targetDocumentType,
             parentId: document.id,
+            locationId: document.locationId ?? activeLocationId ?? null,
             billNumber: "",
             transactionType: document.transactionType,
             customerId: document.customerId,
@@ -1295,14 +1344,14 @@ function SalesDocumentWorkspace({
         },
       });
     }
-    const conversion = getServerDocumentConversion(row.invoice);
-    if (conversion) {
+    const conversions = getServerDocumentConversions(row.invoice);
+    for (const conversion of conversions) {
       actions.push({
-        key: "convert",
+        key: `convert-${conversion.targetDocumentType}`,
         label: conversion.actionLabel,
         icon: FileOutput,
         onSelect: () => {
-          startDocumentConversion(row.invoice);
+          startDocumentConversion(row.invoice, conversion);
         },
       });
     }
@@ -1357,6 +1406,9 @@ function SalesDocumentWorkspace({
       setActiveDraftId(typeof draft.id === "string" ? draft.id : null);
       setActiveDraftSource(routeState.draftSource ?? "local");
       setParentId(typeof draft.parentId === "string" ? draft.parentId : null);
+      setDocumentLocationId(
+        typeof draft.locationId === "string" ? draft.locationId : activeLocationId ?? null,
+      );
       setBillNumber(
         typeof draft.billNumber === "string" && draft.billNumber.trim()
           ? draft.billNumber
@@ -1494,6 +1546,45 @@ function SalesDocumentWorkspace({
   }, [openRowMenuId]);
 
   useEffect(() => {
+    if (!activeStore || !parentId) {
+      setLinkedSourceBalances({});
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const balance = await getSalesConversionBalance(parentId, activeStore);
+        if (cancelled) {
+          return;
+        }
+
+        setLinkedSourceBalances(
+          Object.fromEntries(
+            balance.lines.map((line) => [
+              line.sourceLineId,
+              {
+                sourceLineId: line.sourceLineId,
+                sourceDocumentNumber: balance.documentNumber,
+                remainingQuantity: line.remainingQuantity,
+              } satisfies LinkedSourceBalance,
+            ]),
+          ),
+        );
+      } catch {
+        if (!cancelled) {
+          setLinkedSourceBalances({});
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDraftId, activeDraftSource, activeStore, parentId, serverInvoices]);
+
+  useEffect(() => {
     if (!lineHighlightRequest || typeof document === "undefined") {
       return;
     }
@@ -1569,6 +1660,56 @@ function SalesDocumentWorkspace({
       config.singularLabel,
     ],
   );
+  const getLinkedLineBalance = (line: BillLine) =>
+    line.sourceLineId ? linkedSourceBalances[line.sourceLineId] ?? null : null;
+  const getLinkedLineCap = (line: BillLine) => {
+    const linkedBalance = getLinkedLineBalance(line);
+    return linkedBalance ? Math.max(0, toNumber(linkedBalance.remainingQuantity)) : null;
+  };
+  const getLineOriginTitle = (line: BillLine) => {
+    const linkedBalance = getLinkedLineBalance(line);
+    if (!linkedBalance) {
+      return null;
+    }
+
+    if (isViewingPostedDocument) {
+      return `Linked to ${linkedBalance.sourceDocumentNumber}`;
+    }
+
+    const linkedCap = getLinkedLineCap(line);
+    return `Linked to ${linkedBalance.sourceDocumentNumber}${linkedCap !== null ? ` • Cap ${formatQuantity(linkedCap)}` : ""}`;
+  };
+  const getSameItemMixedOriginHint = (line: BillLine) => {
+    if (isViewingPostedDocument || line.sourceLineId || !line.variantId) {
+      return null;
+    }
+
+    const firstAdHocRowForVariant = lines.find(
+      (candidate) => candidate.variantId === line.variantId && !candidate.sourceLineId,
+    );
+    if (firstAdHocRowForVariant?.id !== line.id) {
+      return null;
+    }
+
+    const hasLinkedRowBelowCap = lines.some((candidate) => {
+      if (candidate.variantId !== line.variantId || !candidate.sourceLineId) {
+        return false;
+      }
+
+      const linkedCap = getLinkedLineCap(candidate);
+      if (linkedCap === null) {
+        return false;
+      }
+
+      return toNumber(candidate.quantity) < linkedCap;
+    });
+
+    return hasLinkedRowBelowCap ? SAME_ITEM_MIXED_ORIGIN_HINT : null;
+  };
+  const getOriginBadgeClassName = (line: BillLine) =>
+    line.sourceLineId
+      ? "bg-sky-100 text-sky-800"
+      : "bg-slate-100 text-slate-700";
   const activeServerDocument = useMemo(
     () =>
       activeDraftSource === "server" && activeDraftId
@@ -1599,6 +1740,7 @@ function SalesDocumentWorkspace({
     setCustomerAddress("");
     setCustomerGstNo("");
     setParentId(null);
+    setDocumentLocationId(activeLocationId ?? null);
     setValidUntil("");
     setDispatchDate("");
     setDispatchCarrier("");
@@ -1607,6 +1749,7 @@ function SalesDocumentWorkspace({
     setLines([createLine()]);
     setNumberConflict(null);
     setDuplicateMeta(null);
+    setLinkedSourceBalances({});
   };
 
   const openNewDraft = () => {
@@ -1646,6 +1789,7 @@ function SalesDocumentWorkspace({
       id: activeDraftId ?? crypto.randomUUID(),
       documentType: config.documentType,
       parentId,
+      locationId: documentLocationId,
       billNumber: billNumber.trim() || nextBillNumber,
       transactionType,
       customerId,
@@ -1683,7 +1827,7 @@ function SalesDocumentWorkspace({
                 tenantId: activeStore,
                 documentType: config.documentType,
                 parentId: nextDraft.parentId,
-                locationId: activeLocationId,
+                locationId: nextDraft.locationId,
                 billNumber: nextDraft.billNumber,
                 transactionType: nextDraft.transactionType,
                 customerId: nextDraft.customerId,
@@ -1702,7 +1846,7 @@ function SalesDocumentWorkspace({
                 tenantId: activeStore,
                 documentType: config.documentType,
                 parentId: nextDraft.parentId,
-                locationId: activeLocationId,
+                locationId: nextDraft.locationId,
                 billNumber: nextDraft.billNumber,
                 transactionType: nextDraft.transactionType,
                 customerId: nextDraft.customerId,
@@ -1732,6 +1876,7 @@ function SalesDocumentWorkspace({
         setActiveDraftSource("server");
         setBillNumber(savedServerDraft.billNumber);
         setParentId(savedServerDraft.parentId ?? null);
+        setDocumentLocationId(savedServerDraft.locationId ?? activeLocationId ?? null);
         setValidUntil(savedServerDraft.validUntil);
         setDispatchDate(savedServerDraft.dispatchDate);
         setDispatchCarrier(savedServerDraft.dispatchCarrier);
@@ -1788,6 +1933,7 @@ function SalesDocumentWorkspace({
         : "CASH",
     );
     setParentId(draft.parentId ?? null);
+    setDocumentLocationId(draft.locationId ?? activeLocationId ?? null);
     setCustomerId(draft.customerId);
     setCustomerName(draft.customerName);
     setCustomerPhone(draft.customerPhone);
@@ -1816,6 +1962,7 @@ function SalesDocumentWorkspace({
         : "CASH",
     );
     setParentId(draft.parentId ?? null);
+    setDocumentLocationId(draft.locationId ?? activeLocationId ?? null);
     setCustomerId(draft.customerId);
     setCustomerName(draft.customerName);
     setCustomerPhone(draft.customerPhone);
@@ -1891,11 +2038,25 @@ function SalesDocumentWorkspace({
     setLines((currentLines) =>
       currentLines.map((line) =>
         line.id === lineId
-          ? {
-              ...line,
-              [field]: value,
-              ...(field === "description" ? { variantId: "" } : {}),
-            }
+          ? (() => {
+              const nextValue =
+                field === "quantity" && line.sourceLineId
+                  ? (() => {
+                      const maxQuantity = getLinkedLineCap(line);
+                      const parsedValue = Number(value);
+                      if (maxQuantity !== null && Number.isFinite(parsedValue)) {
+                        return formatQuantity(Math.min(Math.max(parsedValue, 0), maxQuantity));
+                      }
+                      return value;
+                    })()
+                  : value;
+
+              return {
+                ...line,
+                [field]: nextValue,
+                ...(field === "description" ? { variantId: "" } : {}),
+              };
+            })()
           : line,
       ),
     );
@@ -1921,7 +2082,11 @@ function SalesDocumentWorkspace({
       }
 
       const existingLine = currentLines.find(
-        (line) => line.variantId === option.variantId && line.id !== lineId,
+        (line) =>
+          line.variantId === option.variantId &&
+          line.id !== lineId &&
+          !line.sourceLineId &&
+          !currentLine.sourceLineId,
       );
 
       if (existingLine) {
@@ -1971,6 +2136,16 @@ function SalesDocumentWorkspace({
   };
 
   const removeLine = (lineId: string) => {
+    const targetLine = lines.find((line) => line.id === lineId) ?? null;
+    if (
+      targetLine?.sourceLineId &&
+      !window.confirm(
+        `Remove this linked line? This will restore available quantity on the source document, but the document will stay linked to its parent.`,
+      )
+    ) {
+      return;
+    }
+
     setLines((currentLines) => {
       if (currentLines.length === 1) {
         return [createLine()];
@@ -1983,6 +2158,7 @@ function SalesDocumentWorkspace({
     id: activeDraftId ?? crypto.randomUUID(),
     documentType: config.documentType,
     parentId,
+    locationId: documentLocationId,
     billNumber,
     transactionType,
     customerId,
@@ -2010,7 +2186,7 @@ function SalesDocumentWorkspace({
             tenantId,
             documentType: config.documentType,
             parentId: localDraft.parentId,
-            locationId: activeLocationId,
+            locationId: localDraft.locationId,
             billNumber: localDraft.billNumber,
             transactionType: localDraft.transactionType,
             customerId: localDraft.customerId,
@@ -2029,7 +2205,7 @@ function SalesDocumentWorkspace({
             tenantId,
             documentType: config.documentType,
             parentId: localDraft.parentId,
-            locationId: activeLocationId,
+            locationId: localDraft.locationId,
             billNumber: localDraft.billNumber,
             transactionType: localDraft.transactionType,
             customerId: localDraft.customerId,
@@ -2859,11 +3035,11 @@ function SalesDocumentWorkspace({
                 {`Customer details are required for this ${config.singularLabel}.`}
               </div>
             ) : null}
-            {activeCustomer ||
-            customerId ||
-            customerPhone ||
-            customerGstNo ||
-            customerAddress ? (
+          {activeCustomer ||
+          customerId ||
+          customerPhone ||
+          customerGstNo ||
+          customerAddress ? (
               <div className="px-1 pt-1 text-[11px] text-muted-foreground">
                 <span className="font-medium text-foreground">Phone:</span>{" "}
                 {activeCustomer?.phone || customerPhone || "Not provided"} •{" "}
@@ -2876,6 +3052,33 @@ function SalesDocumentWorkspace({
               </div>
             ) : null}
           </div>
+          {config.documentType === "DELIVERY_CHALLAN" ||
+          config.documentType === "SALES_RETURN" ? (
+            <div className="space-y-1 md:w-[17rem] md:min-w-[17rem]">
+              <Label htmlFor={`${config.documentType}-location`}>Location</Label>
+              <Select
+                id={`${config.documentType}-location`}
+                value={documentLocationId ?? ""}
+                disabled={isViewingPostedDocument}
+                onChange={(event) =>
+                  setDocumentLocationId(event.target.value || null)
+                }
+              >
+                <option value="">Select location</option>
+                {(activeBusiness?.locations ?? []).map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                    {location.isDefault ? " (Default)" : ""}
+                  </option>
+                ))}
+              </Select>
+              <div className="text-[11px] text-muted-foreground">
+                {config.documentType === "SALES_RETURN"
+                  ? "Stock is restored or reversed at this return location."
+                  : "Stock is deducted from this dispatch location."}
+              </div>
+            </div>
+          ) : null}
           {config.documentType === "SALES_ESTIMATE" ? (
             <div className="space-y-1 md:w-[17rem] md:min-w-[17rem]">
               <Label htmlFor="sales-estimate-valid-until">Valid until</Label>
@@ -2993,28 +3196,49 @@ function SalesDocumentWorkspace({
                       >
                         Item
                       </Label>
-                      <LookupDropdownInput
-                        id={`sales-line-mobile-description-${line.id}`}
-                        value={line.description}
-                        disabled={isViewingPostedDocument}
-                        onValueChange={(value) =>
-                          updateLine(line.id, "description", value)
-                        }
-                        options={itemOptions}
-                        loading={lookupLoading}
-                        loadingLabel="Loading items"
-                        placeholder="Search item or service"
-                        onOptionSelect={(option) =>
-                          applyLineItem(line.id, option)
-                        }
-                        getOptionKey={(option) => option.variantId}
-                        getOptionSearchText={(option) =>
-                          `${option.label} ${option.sku} ${option.gstLabel}`
-                        }
-                        renderOption={(option) => (
-                          <ItemOptionContent option={option} />
-                        )}
-                      />
+                      <div className="flex items-center gap-1">
+                        <div className="min-w-0 flex-1">
+                          <LookupDropdownInput
+                            id={`sales-line-mobile-description-${line.id}`}
+                            value={line.description}
+                            disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
+                            onValueChange={(value) =>
+                              updateLine(line.id, "description", value)
+                            }
+                            options={itemOptions}
+                            loading={lookupLoading}
+                            loadingLabel="Loading items"
+                            placeholder="Search item or service"
+                            onOptionSelect={(option) =>
+                              applyLineItem(line.id, option)
+                            }
+                            getOptionKey={(option) => option.variantId}
+                            getOptionSearchText={(option) =>
+                              `${option.label} ${option.sku} ${option.gstLabel}`
+                            }
+                            renderOption={(option) => (
+                              <ItemOptionContent option={option} />
+                            )}
+                          />
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
+                            line.sourceLineId ? "cursor-help" : ""
+                          }`}
+                          title={getLineOriginTitle(line) ?? undefined}
+                        >
+                          {line.sourceLineId ? "Linked" : "Ad-hoc"}
+                        </span>
+                        {getSameItemMixedOriginHint(line) ? (
+                          <span
+                            className="inline-flex shrink-0 items-center rounded-full bg-amber-500 p-1 text-white"
+                            title={getSameItemMixedOriginHint(line) ?? undefined}
+                            aria-label={getSameItemMixedOriginHint(line) ?? undefined}
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
@@ -3024,6 +3248,7 @@ function SalesDocumentWorkspace({
                         <Input
                           id={`sales-line-mobile-qty-${line.id}`}
                           value={line.quantity}
+                          max={getLinkedLineCap(line) ?? undefined}
                           readOnly={isViewingPostedDocument}
                           disabled={isViewingPostedDocument}
                           onChange={(event) =>
@@ -3181,35 +3406,58 @@ function SalesDocumentWorkspace({
                       className="align-middle"
                     >
                       <DenseTableCell className="py-1.5">
-                        <div className="space-y-1">
-                          <LookupDropdownInput
-                            value={line.description}
-                            disabled={isViewingPostedDocument}
-                            onValueChange={(value) =>
-                              updateLine(line.id, "description", value)
-                            }
-                            options={itemOptions}
-                            loading={lookupLoading}
-                            loadingLabel="Loading items"
-                            placeholder="Search item or service"
-                            onOptionSelect={(option) =>
-                              applyLineItem(line.id, option)
-                            }
-                            getOptionKey={(option) => option.variantId}
-                            getOptionSearchText={(option) =>
-                              `${option.label} ${option.sku} ${option.gstLabel}`
-                            }
-                            renderOption={(option) => (
-                              <ItemOptionContent option={option} />
-                            )}
-                          />
+                        <div className="min-w-0 flex-1">
+                          <div className="relative">
+                            <LookupDropdownInput
+                              value={line.description}
+                              disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
+                              onValueChange={(value) =>
+                                updateLine(line.id, "description", value)
+                              }
+                              options={itemOptions}
+                              loading={lookupLoading}
+                              loadingLabel="Loading items"
+                              placeholder="Search item or service"
+                              onOptionSelect={(option) =>
+                                applyLineItem(line.id, option)
+                              }
+                              getOptionKey={(option) => option.variantId}
+                              getOptionSearchText={(option) =>
+                                `${option.label} ${option.sku} ${option.gstLabel}`
+                              }
+                              renderOption={(option) => (
+                                <ItemOptionContent option={option} />
+                              )}
+                              inputClassName="pr-24"
+                            />
+                            <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-1">
+                              <span
+                                className={`pointer-events-auto inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
+                                  line.sourceLineId ? "cursor-help" : ""
+                                }`}
+                                title={getLineOriginTitle(line) ?? undefined}
+                              >
+                                {line.sourceLineId ? "Linked" : "Ad-hoc"}
+                              </span>
+                              {getSameItemMixedOriginHint(line) ? (
+                                <span
+                                  className="pointer-events-auto inline-flex shrink-0 items-center rounded-full bg-amber-500 p-0.5 text-white"
+                                  title={getSameItemMixedOriginHint(line) ?? undefined}
+                                  aria-label={getSameItemMixedOriginHint(line) ?? undefined}
+                                >
+                                  <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
                       </DenseTableCell>
                       <DenseTableCell className="py-1.5">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           <Input
                             className="!w-[4.5rem] shrink-0 px-1 text-right"
                             value={line.quantity}
+                            max={getLinkedLineCap(line) ?? undefined}
                             readOnly={isViewingPostedDocument}
                             disabled={isViewingPostedDocument}
                             onChange={(event) =>
@@ -3240,7 +3488,7 @@ function SalesDocumentWorkspace({
                       </DenseTableCell>
                       <DenseTableCell className="py-1.5">
                         <GstSlabSelect
-                          className="h-8 min-w-0 px-2 text-left text-xs"
+                          className="h-8 min-w-0 bg-white px-2 text-left text-xs"
                           value={normalizeGstSlab(line.taxRate) || ""}
                           disabled={isViewingPostedDocument}
                           onChange={(e) =>

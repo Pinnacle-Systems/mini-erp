@@ -229,8 +229,9 @@ export function HistoryPage() {
           <DenseTableHead>
             <DenseTableRow>
               <DenseTableHeaderCell className="w-[22%]">When</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[28%]">Item</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[18%]">Variant</DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[24%]">Item</DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[16%]">Variant</DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[12%]">Location</DenseTableHeaderCell>
               <DenseTableHeaderCell className="w-[12%]">Movement</DenseTableHeaderCell>
               <DenseTableHeaderCell className="w-[8%] text-right">Qty</DenseTableHeaderCell>
               <DenseTableHeaderCell className="w-[6%]">Unit</DenseTableHeaderCell>
@@ -253,6 +254,9 @@ export function HistoryPage() {
                   {row.variantName || "Default variant"}
                 </DenseTableCell>
                 <DenseTableCell className="text-muted-foreground">
+                  {row.locationName || "—"}
+                </DenseTableCell>
+                <DenseTableCell className="text-muted-foreground">
                   {toMovementLabel(row.reason)}
                 </DenseTableCell>
                 <DenseTableCell
@@ -271,7 +275,7 @@ export function HistoryPage() {
             ))}
             {filteredRows.length === 0 && !loading ? (
               <DenseTableRow>
-                <DenseTableCell colSpan={7} className="text-muted-foreground">
+                <DenseTableCell colSpan={8} className="text-muted-foreground">
                   Recent stock adjustments will appear here after inventory changes sync to this
                   device.
                 </DenseTableCell>
@@ -300,7 +304,8 @@ export function HistoryPage() {
                     {row.sku ? ` • ${row.sku}` : ""}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {toMovementLabel(row.reason)} • {formatTimestamp(row.createdAt)}
+                    {row.locationName || "Unknown location"} • {toMovementLabel(row.reason)} •{" "}
+                    {formatTimestamp(row.createdAt)}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     On hand after: {formatQuantity(row.quantityOnHand)} {row.unit}

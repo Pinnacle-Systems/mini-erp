@@ -222,6 +222,147 @@ describe("documentLinkService", () => {
     });
   });
 
+  it("skips ad-hoc lines without sourceLineId in explicit mixed-origin mode", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst.mockImplementation(async ({ where }) => {
+      if (where.id === "invoice-1") {
+        return {
+          id: "invoice-1",
+          type: "SALES_INVOICE",
+          parent_id: "order-1",
+          posted_at: new Date("2026-03-16T00:00:00.000Z"),
+          lineItems: [
+            {
+              id: "invoice-line-linked",
+              variant_id: "variant-1",
+              description_snapshot: "Product A",
+              description: "Product A",
+              quantity: "2.000",
+              unit_price: "100.00",
+              tax_rate: "18.00",
+            },
+            {
+              id: "invoice-line-ad-hoc",
+              variant_id: "variant-2",
+              description_snapshot: "Product B",
+              description: "Product B",
+              quantity: "1.000",
+              unit_price: "50.00",
+              tax_rate: "18.00",
+            },
+          ],
+        };
+      }
+
+      return {
+        id: "order-1",
+        type: "SALES_ORDER",
+        posted_at: new Date("2026-03-15T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "order-line-1",
+            variant_id: "variant-1",
+            description_snapshot: "Product A",
+            description: "Product A",
+            quantity: "5.000",
+            unit_price: "100.00",
+            tax_rate: "18.00",
+          },
+        ],
+      };
+    });
+    vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
+      {
+        sourceDocumentId: "order-1",
+        sourceDocumentType: "SALES_ORDER",
+        sourceDocumentNumber: "SO-0001",
+        sourceLineId: "order-line-1",
+        itemId: "item-1",
+        variantId: "variant-1",
+        description: "Product A",
+        originalQuantity: 5,
+        fulfilledQuantity: 0,
+        returnedQuantity: 0,
+        remainingQuantity: 5,
+        returnableQuantity: 5,
+        shipmentConsumedQuantity: 0,
+        shipmentReturnedQuantity: 0,
+        shipmentRemainingQuantity: 5,
+        invoiceableQuantity: 5,
+      },
+    ]);
+
+    await documentLinkService.upsertLinksForDocument(
+      tx as never,
+      "tenant-1",
+      "invoice-1",
+      {
+        "invoice-line-linked": "order-line-1",
+        "invoice-line-ad-hoc": null,
+      },
+    );
+
+    expect(tx.documentLineLink.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          source_line_id: "order-line-1",
+          target_line_id: "invoice-line-linked",
+          quantity: 2,
+          type: "FULFILLMENT",
+        },
+      ],
+    });
+  });
+
+  it("rejects sourceLineId values that do not belong to the selected parent", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst.mockImplementation(async ({ where }) => {
+      if (where.id === "invoice-1") {
+        return {
+          id: "invoice-1",
+          type: "SALES_INVOICE",
+          parent_id: "order-1",
+          posted_at: new Date("2026-03-16T00:00:00.000Z"),
+          lineItems: [
+            {
+              id: "invoice-line-1",
+              variant_id: "variant-1",
+              description_snapshot: "Product A",
+              description: "Product A",
+              quantity: "1.000",
+              unit_price: "100.00",
+              tax_rate: "18.00",
+            },
+          ],
+        };
+      }
+
+      return {
+        id: "order-1",
+        type: "SALES_ORDER",
+        posted_at: new Date("2026-03-15T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "order-line-1",
+            variant_id: "variant-1",
+            description_snapshot: "Product A",
+            description: "Product A",
+            quantity: "5.000",
+            unit_price: "100.00",
+            tax_rate: "18.00",
+          },
+        ],
+      };
+    });
+    vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([]);
+
+    await expect(
+      documentLinkService.upsertLinksForDocument(tx as never, "tenant-1", "invoice-1", {
+        "invoice-line-1": "other-parent-line",
+      }),
+    ).rejects.toThrow("Unable to link line Product A to the selected parent line");
+  });
+
   it("persists links for draft targets using the same strict balance validation", async () => {
     const tx = createSalesTxMock();
     tx.document.findFirst.mockImplementation(async ({ where }) => {

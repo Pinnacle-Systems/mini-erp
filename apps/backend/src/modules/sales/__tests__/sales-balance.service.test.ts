@@ -229,6 +229,50 @@ describe("salesBalanceService", () => {
     expect(balance.remainingQuantity).toBe(7);
   });
 
+  it("treats cancelled child documents as inactive links for fulfillment balance", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst.mockResolvedValue({
+      id: "estimate-1",
+      type: "SALES_ESTIMATE",
+      doc_number: "EST-0001",
+      lineItems: [
+        {
+          id: "estimate-line-1",
+          item_id: "item-1",
+          variant_id: "variant-1",
+          description_snapshot: "Product A",
+          description: "Product A",
+          quantity: "5.000",
+          source_links: [
+            {
+              quantity: "5.000",
+              type: "FULFILLMENT",
+              target_line: {
+                document: {
+                  posted_at: new Date("2026-03-15T00:00:00.000Z"),
+                  status: "CANCELLED",
+                  deleted_at: null,
+                  type: "SALES_ORDER",
+                },
+                source_links: [],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const [balance] = await salesBalanceService.getLineBalances(
+      tx as never,
+      "tenant-1",
+      "estimate-1",
+      "FULFILLMENT",
+    );
+
+    expect(balance.fulfilledQuantity).toBe(0);
+    expect(balance.remainingQuantity).toBe(5);
+  });
+
   it("ignores draft target documents when calculating live balances", async () => {
     const tx = createSalesTxMock();
     tx.document.findFirst.mockResolvedValue({

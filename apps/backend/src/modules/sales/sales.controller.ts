@@ -491,6 +491,16 @@ const getDocumentOrThrow = async (
         orderBy: {
           id: "asc",
         },
+        include: {
+          target_links: {
+            orderBy: {
+              id: "asc",
+            },
+            select: {
+              source_line_id: true,
+            },
+          },
+        },
       },
     },
   });
@@ -709,6 +719,7 @@ const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
     savedAt: document.updated_at.toISOString(),
     lines: document.lineItems.map((line) => ({
       id: line.id,
+      sourceLineId: line.target_links[0]?.source_line_id ?? null,
       variantId: line.variant_id ?? "",
       description: line.description_snapshot ?? line.description,
       quantity: formatDecimalString(Number(line.quantity)),
@@ -719,6 +730,11 @@ const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
       stockOnHand: null,
     })),
   }));
+
+const buildSourceLineMap = (document: SalesDocumentRecord) =>
+  Object.fromEntries(
+    document.lineItems.map((line) => [line.id, line.target_links[0]?.source_line_id ?? null]),
+  );
 
 const toSalesDocumentListView = (documents: ReturnType<typeof mapSalesDocuments>) =>
   successResponse({
@@ -877,16 +893,9 @@ const saveDraftDocument = async (
       })),
     });
 
-    await documentLinkService.upsertLinksForDocument(
-      tx,
-      input.tenantId,
-      documentId,
-      Object.fromEntries(
-        input.lines
-          .filter((line) => typeof line.sourceLineId === "string" && line.sourceLineId.length > 0)
-          .map((line) => [line.id, line.sourceLineId]),
-      ),
-    );
+    await documentLinkService.upsertLinksForDocument(tx, input.tenantId, documentId, {
+      ...Object.fromEntries(input.lines.map((line) => [line.id, line.sourceLineId ?? null])),
+    });
 
     await recordDocumentHistory(tx, {
       tenantId: input.tenantId,
@@ -962,16 +971,9 @@ const saveDraftDocument = async (
     })),
   });
 
-  await documentLinkService.upsertLinksForDocument(
-    tx,
-    input.tenantId,
-    created.id,
-    Object.fromEntries(
-      input.lines
-        .filter((line) => typeof line.sourceLineId === "string" && line.sourceLineId.length > 0)
-        .map((line) => [line.id, line.sourceLineId]),
-    ),
-  );
+  await documentLinkService.upsertLinksForDocument(tx, input.tenantId, created.id, {
+    ...Object.fromEntries(input.lines.map((line) => [line.id, line.sourceLineId ?? null])),
+  });
 
   await recordDocumentHistory(tx, {
     tenantId: input.tenantId,
@@ -989,7 +991,7 @@ const saveDraftDocument = async (
   return getDocumentOrThrow(tx, input.tenantId, input.documentType, created.id);
 };
 
-const postDraftDocument = async (
+export const postDraftDocument = async (
   tx: SalesTransactionClient,
   tenantId: string,
   documentType: SalesDocumentType,
@@ -1018,7 +1020,12 @@ const postDraftDocument = async (
     );
   }
 
-  await documentLinkService.upsertLinksForDocument(tx, tenantId, documentId);
+  await documentLinkService.upsertLinksForDocument(
+    tx,
+    tenantId,
+    documentId,
+    buildSourceLineMap(document),
+  );
   await stockPostingService.applyPostingEffects(tx, tenantId, documentId);
 
   await tx.document.update({
@@ -1096,7 +1103,7 @@ const postDraftDocument = async (
   return getDocumentOrThrow(tx, tenantId, documentType, documentId);
 };
 
-const transitionDocumentState = async (
+export const transitionDocumentState = async (
   tx: SalesTransactionClient,
   tenantId: string,
   documentType: SalesDocumentType,
@@ -1116,6 +1123,8 @@ const transitionDocumentState = async (
     if (!cancelReason) {
       throw new BadRequestError("Cancel reason is required");
     }
+
+    await stockPostingService.applyCancellationEffects(tx, tenantId, documentId);
 
     await tx.document.update({
       where: { id: documentId },
@@ -1200,6 +1209,8 @@ const transitionDocumentState = async (
     );
   }
 
+  await stockPostingService.applyReopenEffects(tx, tenantId, documentId);
+
   await tx.document.update({
     where: { id: documentId },
     data: {
@@ -1259,6 +1270,16 @@ export const listSalesDocuments = catchAsync(async (req, res) => {
       lineItems: {
         orderBy: {
           id: "asc",
+        },
+        include: {
+          target_links: {
+            orderBy: {
+              id: "asc",
+            },
+            select: {
+              source_line_id: true,
+            },
+          },
         },
       },
     },

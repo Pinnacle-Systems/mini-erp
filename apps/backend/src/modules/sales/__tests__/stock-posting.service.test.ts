@@ -143,17 +143,111 @@ describe("stockPostingService", () => {
             quantity: "2.000",
             description_snapshot: "Product A",
             description: "Product A",
+            target_links: [
+              {
+                source_line: {
+                  document: {
+                    type: "DELIVERY_CHALLAN",
+                  },
+                },
+              },
+            ],
           },
         ],
       })
       .mockResolvedValueOnce({
         type: "DELIVERY_CHALLAN",
       });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    tx.stockLedger.findMany.mockResolvedValue([]);
 
     await stockPostingService.applyPostingEffects(tx as never, "tenant-1", "invoice-1");
 
-    expect(tx.itemVariant.findMany).not.toHaveBeenCalled();
     expect(tx.stockLedger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("deducts stock only for ad-hoc lines on challan-backed invoices", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "invoice-1",
+        type: "SALES_INVOICE",
+        parent_id: "challan-1",
+        location_id: "location-1",
+        lineItems: [
+          {
+            id: "invoice-line-linked",
+            variant_id: "variant-linked",
+            quantity: "10.000",
+            description_snapshot: "Linked Product",
+            description: "Linked Product",
+            target_links: [
+              {
+                source_line: {
+                  document: {
+                    type: "DELIVERY_CHALLAN",
+                  },
+                },
+              },
+            ],
+          },
+          {
+            id: "invoice-line-ad-hoc",
+            variant_id: "variant-ad-hoc",
+            quantity: "2.000",
+            description_snapshot: "Ad-hoc Product",
+            description: "Ad-hoc Product",
+            target_links: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "DELIVERY_CHALLAN",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-linked",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+      {
+        id: "variant-ad-hoc",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    tx.stockLedger.findMany.mockResolvedValue([
+      {
+        variant_id: "variant-ad-hoc",
+        quantity: "5.000",
+      },
+    ]);
+
+    await stockPostingService.applyPostingEffects(tx as never, "tenant-1", "invoice-1");
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "location-1",
+          variant_id: "variant-ad-hoc",
+          quantity: -2,
+          reason: "SALE_INVOICE_POST",
+          reference_id: "invoice-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
   });
 
   it("writes positive stock rows for sales returns using the return location", async () => {
@@ -292,6 +386,160 @@ describe("stockPostingService", () => {
           quantity: -5,
           reason: "SALE_DELIVERY_CHALLAN_POST",
           reference_id: "challan-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("writes positive reversal rows when cancelling a stock-deducting document", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "challan-1",
+        type: "DELIVERY_CHALLAN",
+        parent_id: "order-1",
+        location_id: "location-1",
+        lineItems: [
+          {
+            id: "challan-line-1",
+            variant_id: "variant-product",
+            quantity: "4.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "SALES_ORDER",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+
+    await stockPostingService.applyCancellationEffects(
+      tx as never,
+      "tenant-1",
+      "challan-1",
+    );
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "location-1",
+          variant_id: "variant-product",
+          quantity: 4,
+          reason: "SALE_DELIVERY_CHALLAN_CANCEL",
+          reference_id: "challan-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("writes negative reversal rows when cancelling a sales return", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "return-1",
+        type: "SALES_RETURN",
+        parent_id: "invoice-1",
+        location_id: "return-location-1",
+        lineItems: [
+          {
+            id: "return-line-1",
+            variant_id: "variant-product",
+            quantity: "2.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "SALES_INVOICE",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+
+    await stockPostingService.applyCancellationEffects(tx as never, "tenant-1", "return-1");
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "return-location-1",
+          variant_id: "variant-product",
+          quantity: -2,
+          reason: "SALE_RETURN_CANCEL",
+          reference_id: "return-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("reapplies stock rows when reopening a cancelled stock-deducting document", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "invoice-1",
+        type: "SALES_INVOICE",
+        parent_id: "order-1",
+        location_id: "location-1",
+        lineItems: [
+          {
+            id: "invoice-line-1",
+            variant_id: "variant-product",
+            quantity: "2.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "SALES_ORDER",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    tx.stockLedger.findMany.mockResolvedValue([
+      {
+        variant_id: "variant-product",
+        quantity: "10.000",
+      },
+    ]);
+
+    await stockPostingService.applyReopenEffects(tx as never, "tenant-1", "invoice-1");
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "location-1",
+          variant_id: "variant-product",
+          quantity: -2,
+          reason: "SALE_INVOICE_REOPEN",
+          reference_id: "invoice-1",
           is_active: true,
           deleted_at: null,
         },

@@ -1383,11 +1383,18 @@ const toItemCollectionItemSnapshot = (membership) => {
   };
 };
 
-const toStockAdjustmentSnapshot = (entry, stockLevelEntityId: string, quantityOnHand: number) => {
+const toStockAdjustmentSnapshot = (
+  entry,
+  stockLevelEntityId: string,
+  quantityOnHand: number,
+  location: { id: string; name: string },
+) => {
   return {
     id: entry.id,
     businessId: entry.business_id,
     variantId: entry.variant_id,
+    locationId: location.id,
+    locationName: location.name,
     quantity: Number(entry.quantity),
     reason: entry.reason,
     referenceId: entry.reference_id ?? null,
@@ -1862,12 +1869,67 @@ const getTenantCursor = async (tenantId) => {
   return latestChange?.cursor?.toString() ?? "0";
 };
 
-const getStockLevelEntityId = (variantId: string) => variantId;
+const resolveStockAdjustmentLocation = async (
+  txAny,
+  tenantId: string,
+  requestedLocationId?: string,
+) => {
+  if (requestedLocationId) {
+    const location = await txAny.businessLocation.findFirst({
+      where: {
+        id: requestedLocationId,
+        business_id: tenantId,
+        deleted_at: null,
+        is_active: true,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    if (!location) {
+      throw validationError(
+        "Selected stock adjustment location is invalid",
+        "stock_adjustment",
+        requestedLocationId,
+      );
+    }
+
+    return location;
+  }
+
+  const defaultLocation = await txAny.businessLocation.findFirst({
+    where: {
+      business_id: tenantId,
+      deleted_at: null,
+      is_active: true,
+      is_default: true,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!defaultLocation) {
+    throw validationError(
+      "Business location is required for stock adjustment",
+      "stock_adjustment",
+      "location",
+    );
+  }
+
+  return defaultLocation;
+};
+
+const getStockLevelEntityId = (variantId: string, locationId: string) => `${variantId}:${locationId}`;
 
 const getStockLevelSnapshot = async (
   tx,
   tenantId: string,
   variantId: string,
+  location: { id: string; name: string },
 ) => {
   const txAny = tx as any;
   const [variant, ledgerEntries] = await Promise.all([
@@ -1888,6 +1950,7 @@ const getStockLevelSnapshot = async (
       where: {
         business_id: tenantId,
         variant_id: variantId,
+        location_id: location.id,
         deleted_at: null,
       },
       select: {
@@ -1906,13 +1969,15 @@ const getStockLevelSnapshot = async (
   );
 
   return {
-    id: getStockLevelEntityId(variant.id),
+    id: getStockLevelEntityId(variant.id, location.id),
     variantId: variant.id,
     itemId: variant.item_id,
     itemName: variant.item?.name ?? "",
     variantName: variant.name ?? null,
     sku: variant.sku ?? null,
     unit: variant.item?.unit ?? "PCS",
+    locationId: location.id,
+    locationName: location.name,
     quantityOnHand,
   };
 };
@@ -3360,6 +3425,10 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     typeof payload.reason === "string" && payload.reason.trim()
       ? payload.reason.trim().toUpperCase()
       : "OPENING_BALANCE";
+  const requestedLocationId =
+    typeof payload.locationId === "string" && payload.locationId.trim()
+      ? payload.locationId.trim()
+      : undefined;
 
   if (!variantId) {
     throw validationError("variantId is required for stock adjustment", mutation.entity, mutation.entityId);
@@ -3404,7 +3473,8 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     throw dependencyMissingError("Variant not found in business", "item_variant", variantId);
   }
 
-  const existingStockLevel = await getStockLevelSnapshot(tx, tenantId, variantId);
+  const location = await resolveStockAdjustmentLocation(txAny, tenantId, requestedLocationId);
+  const existingStockLevel = await getStockLevelSnapshot(tx, tenantId, variantId, location);
   const ledgerQuantity =
     requestedReason === "ADJUSTMENT_DECREASE" ? -quantity : quantity;
 
@@ -3424,6 +3494,7 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     data: {
       id: mutation.entityId,
       business_id: tenantId,
+      location_id: location.id,
       variant_id: variantId,
       quantity: ledgerQuantity,
       reason: requestedReason,
@@ -3436,6 +3507,7 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
   const prunedEntries = await txAny.stockLedger.findMany({
     where: {
       business_id: tenantId,
+      location_id: location.id,
       variant_id: variantId,
       deleted_at: null,
     },
@@ -3464,13 +3536,14 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
     });
   }
 
-  const stockLevel = await getStockLevelSnapshot(tx, tenantId, variantId);
+  const stockLevel = await getStockLevelSnapshot(tx, tenantId, variantId, location);
 
   return {
     snapshot: toStockAdjustmentSnapshot(
       createdEntry,
       String(stockLevel.id),
       Number(stockLevel.quantityOnHand),
+      location,
     ),
     additionalChanges: [
       ...prunedEntries.map((entry) => ({
