@@ -31,7 +31,7 @@ const buildLineSignature = (line: {
   ].join("|");
 
 class DocumentLinkService {
-  async createLinksForPostedDocument(
+  async upsertLinksForDocument(
     tx: SalesTransactionClient,
     tenantId: string,
     documentId: string,
@@ -203,6 +203,14 @@ class DocumentLinkService {
         data: linksToCreate,
       });
     }
+  }
+
+  async createLinksForPostedDocument(
+    tx: SalesTransactionClient,
+    tenantId: string,
+    documentId: string,
+  ): Promise<void> {
+    await this.upsertLinksForDocument(tx, tenantId, documentId);
   }
 }
 

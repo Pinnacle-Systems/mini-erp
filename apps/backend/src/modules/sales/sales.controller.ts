@@ -812,6 +812,8 @@ const saveDraftDocument = async (
       })),
     });
 
+    await documentLinkService.upsertLinksForDocument(tx, input.tenantId, documentId);
+
     await recordDocumentHistory(tx, {
       tenantId: input.tenantId,
       documentId,
@@ -886,6 +888,8 @@ const saveDraftDocument = async (
     })),
   });
 
+  await documentLinkService.upsertLinksForDocument(tx, input.tenantId, created.id);
+
   await recordDocumentHistory(tx, {
     tenantId: input.tenantId,
     documentId: created.id,
@@ -931,7 +935,7 @@ const postDraftDocument = async (
     );
   }
 
-  await documentLinkService.createLinksForPostedDocument(tx, tenantId, documentId);
+  await documentLinkService.upsertLinksForDocument(tx, tenantId, documentId);
 
   await tx.document.update({
     where: { id: documentId },

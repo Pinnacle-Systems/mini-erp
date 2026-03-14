@@ -228,4 +228,49 @@ describe("salesBalanceService", () => {
     expect(balance.returnableQuantity).toBe(7);
     expect(balance.remainingQuantity).toBe(7);
   });
+
+  it("ignores draft target documents when calculating live balances", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst.mockResolvedValue({
+      id: "order-1",
+      type: "SALES_ORDER",
+      doc_number: "SO-0001",
+      lineItems: [
+        {
+          id: "order-line-1",
+          item_id: "item-1",
+          variant_id: "variant-1",
+          description_snapshot: "Product A",
+          description: "Product A",
+          quantity: "100.000",
+          target_links: [
+            {
+              quantity: "40.000",
+              type: "FULFILLMENT",
+              target_line: {
+                document: {
+                  posted_at: null,
+                  status: "DRAFT",
+                  deleted_at: null,
+                  type: "SALES_INVOICE",
+                },
+                target_links: [],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const [balance] = await salesBalanceService.getShipmentLineBalances(
+      tx as never,
+      "tenant-1",
+      "order-1",
+    );
+
+    expect(balance.fulfilledQuantity).toBe(0);
+    expect(balance.shipmentConsumedQuantity).toBe(0);
+    expect(balance.shipmentRemainingQuantity).toBe(100);
+    expect(balance.remainingQuantity).toBe(100);
+  });
 });
