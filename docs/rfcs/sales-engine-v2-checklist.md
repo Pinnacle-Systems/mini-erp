@@ -24,18 +24,20 @@ Goal: prepare persistence for line-level allocations and location-aware stock mo
 
 Goal: make line-level quantity flow the source of truth.
 
-- [ ] Create `DocumentLinkService`
-- [ ] Support link creation for `Estimate -> Order`
-- [ ] Support link creation for `Estimate -> Invoice`
-- [ ] Support link creation for `Order -> Challan`
-- [ ] Support link creation for `Order -> Invoice`
-- [ ] Support link creation for `Invoice -> Sales Return`
-- [ ] Ensure link writes happen transactionally with document save/post behavior
-- [ ] Create `SalesBalanceService`
-- [ ] Implement remaining quantity formula:
+- [x] Create `DocumentLinkService`
+- [x] Support link creation for `Estimate -> Order`
+- [x] Support link creation for `Estimate -> Invoice`
+- [x] Support link creation for `Order -> Challan`
+- [x] Support link creation for `Order -> Invoice`
+- [x] Support link creation for `Invoice -> Sales Return`
+- [x] Support link creation for `Challan -> Sales Return`
+- [x] Ensure link writes happen transactionally with document save/post behavior
+- [x] Create `SalesBalanceService`
+- [x] Implement remaining quantity formula:
       `OriginalQty - SUM(active fulfillment links) + SUM(active return links)`
-- [ ] Treat only target documents with `posted_at != null` and status not in `CANCELLED | VOID` as active
-- [ ] Return per-line balance data with source metadata needed by conversion UI
+- [x] Distinguish shipment balance from invoice balance where challan-linked returns are allowed
+- [x] Treat only target documents with `posted_at != null` and status not in `CANCELLED | VOID` as active
+- [x] Return per-line balance data with source metadata needed by conversion UI
 
 ## Phase 3: Conversion API and Sales Flow Wiring
 
@@ -47,6 +49,7 @@ Goal: connect conversion behavior to the allocation engine.
 - [ ] Extend converted child payloads to declare source line linkage
 - [ ] Persist `DocumentLineLink` rows during conversion-based save/post flows
 - [ ] Reject conversion quantities that exceed backend-calculated remaining quantity
+- [ ] Default challan-to-invoice quantities from net delivered quantity after challan-linked returns
 - [x] Keep direct standalone documents valid without requiring parent links
 
 ## Phase 4: Inventory Responsibility and Stock Posting
@@ -63,6 +66,7 @@ Goal: make the correct document perform stock movement.
 - [ ] On challan post, validate location and write negative `StockLedger` rows
 - [ ] On direct/order-linked invoice post, validate location and write negative `StockLedger` rows
 - [ ] On sales return post, validate location and write positive `StockLedger` rows
+- [ ] On challan-linked sales return post, validate location and write positive `StockLedger` rows using the challan fulfillment context
 - [ ] Apply stock effects only for `PRODUCT` lines
 - [ ] Skip stock validation and stock ledger writes for `SERVICE` lines
 - [ ] Add `ALLOW_NEGATIVE_STOCK` backend config
@@ -76,10 +80,9 @@ Goal: enforce RFC rules for posted docs, returns, and cancellation.
 - [ ] Add policy guard layer for document actions
 - [ ] Block `VOID` when `posted_at != null`
 - [x] Keep draft-only edit/delete behavior unchanged
-- [ ] Enforce return ceiling:
-      `InvoicedQty - SUM(active return links)`
-- [ ] Require all `SALES_RETURN` documents to point to a `SALES_INVOICE`
-- [ ] Default return `location_id` from parent invoice during conversion
+- [ ] Enforce parent-specific return ceiling for invoice-linked and challan-linked returns
+- [ ] Require all `SALES_RETURN` documents to point to a `SALES_INVOICE` or `DELIVERY_CHALLAN`
+- [ ] Default return `location_id` from parent invoice or challan during conversion
 - [x] Store return `location_id` independently on the return document
 - [ ] Always use the return document’s own `location_id` for stock movement
 - [ ] On cancelling posted challan/direct invoice/order-linked invoice, write positive reversal stock rows
@@ -93,10 +96,11 @@ Goal: make the shared sales workspace consume backend authority.
 - [ ] Replace local conversion math with `GET /api/sales/conversion-balance/:documentId`
 - [ ] Pre-fill conversion quantities from backend `remainingQuantity`
 - [ ] Limit child quantities to backend-provided remaining balance
-- [ ] Update sales return creation to use invoice-linked source lines
-- [ ] Cap return quantities to backend return ceiling
-- [ ] Default return location from invoice location
+- [ ] Update sales return creation to support invoice-linked and challan-linked source lines
+- [ ] Cap return quantities to backend parent-specific return ceiling
+- [ ] Default return location from invoice or challan location
 - [ ] Surface or preserve return location override according to the RFC
+- [ ] Add challan-origin return flow in the shared sales workspace
 - [ ] Hide or disable `VOID` for posted docs in the sales workspace
 - [ ] Surface stock and return validation errors from backend responses
 - [ ] Make location visible and required on challans and returns
@@ -109,12 +113,14 @@ Goal: verify the RFC end to end.
 - [ ] Test balance service for partial fulfillment
 - [ ] Test balance service for multiple child documents
 - [ ] Test balance service for returns
+- [ ] Test balance service for challan-linked returns refilling order shipment balance
 - [ ] Test balance service exclusion of `CANCELLED` targets
 - [ ] Test balance service exclusion of `VOID` targets
 - [ ] Test standalone invoice stock deduction
 - [ ] Test order-linked invoice stock deduction
 - [ ] Test challan-backed invoice does not deduct stock again
 - [ ] Test sales return adds stock
+- [ ] Test challan-linked return reduces net invoiceable quantity on the challan
 - [ ] Test service lines skip stock movement
 - [ ] Test posted docs cannot be voided
 - [ ] Test cancelling challan/direct invoice creates positive reversal rows
@@ -126,6 +132,8 @@ Goal: verify the RFC end to end.
 - [ ] Manual run: Order -> Challan -> Invoice -> stock reduced only at challan stage
 - [ ] Manual run: Order -> Invoice -> stock reduced at invoice stage
 - [ ] Manual run: Return over ceiling -> blocked
+- [ ] Manual run: Order -> Challan -> Challan-linked Return -> order shipment balance restored
+- [ ] Manual run: Challan -> partial return -> Invoice defaults to net delivered quantity
 - [ ] Manual run: Cancel posted return -> stock reduced again and return ceiling restored
 - [ ] Manual run: Posted invoice/challan void attempt -> blocked
 
