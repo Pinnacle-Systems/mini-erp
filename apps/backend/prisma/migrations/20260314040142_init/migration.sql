@@ -53,6 +53,9 @@ CREATE TYPE "documents"."DocumentCancelReason" AS ENUM ('CUSTOMER_DECLINED', 'IN
 CREATE TYPE "documents"."DocumentHistoryEventType" AS ENUM ('CREATED', 'UPDATED', 'STATUS_CHANGED', 'CONVERSION_LINKED');
 
 -- CreateEnum
+CREATE TYPE "documents"."DocumentLineLinkType" AS ENUM ('FULFILLMENT', 'RETURN');
+
+-- CreateEnum
 CREATE TYPE "documents"."SalesTransactionType" AS ENUM ('CASH', 'CREDIT');
 
 -- CreateEnum
@@ -343,9 +346,21 @@ CREATE TABLE "documents"."line_items" (
 );
 
 -- CreateTable
+CREATE TABLE "documents"."document_line_links" (
+    "id" UUID NOT NULL,
+    "source_line_id" UUID NOT NULL,
+    "target_line_id" UUID NOT NULL,
+    "quantity" DECIMAL(12,3) NOT NULL,
+    "type" "documents"."DocumentLineLinkType" NOT NULL,
+
+    CONSTRAINT "document_line_links_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "inventory"."stock_ledger" (
     "id" UUID NOT NULL,
     "business_id" UUID NOT NULL,
+    "location_id" UUID,
     "variant_id" UUID NOT NULL,
     "quantity" DECIMAL(12,3) NOT NULL,
     "reason" TEXT NOT NULL,
@@ -711,7 +726,19 @@ CREATE INDEX "document_history_document_id_created_at_idx" ON "documents"."docum
 CREATE INDEX "document_history_business_id_created_at_idx" ON "documents"."document_history"("business_id", "created_at");
 
 -- CreateIndex
+CREATE INDEX "document_line_links_source_line_id_idx" ON "documents"."document_line_links"("source_line_id");
+
+-- CreateIndex
+CREATE INDEX "document_line_links_target_line_id_idx" ON "documents"."document_line_links"("target_line_id");
+
+-- CreateIndex
+CREATE INDEX "document_line_links_source_line_id_type_idx" ON "documents"."document_line_links"("source_line_id", "type");
+
+-- CreateIndex
 CREATE INDEX "stock_ledger_business_id_variant_id_idx" ON "inventory"."stock_ledger"("business_id", "variant_id");
+
+-- CreateIndex
+CREATE INDEX "stock_ledger_business_id_location_id_variant_id_idx" ON "inventory"."stock_ledger"("business_id", "location_id", "variant_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "customer_group_members_customer_group_id_party_id_key" ON "parties"."customer_group_members"("customer_group_id", "party_id");
@@ -871,6 +898,12 @@ ALTER TABLE "documents"."document_history" ADD CONSTRAINT "document_history_docu
 
 -- AddForeignKey
 ALTER TABLE "documents"."line_items" ADD CONSTRAINT "line_items_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "documents"."documents"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "documents"."document_line_links" ADD CONSTRAINT "document_line_links_source_line_id_fkey" FOREIGN KEY ("source_line_id") REFERENCES "documents"."line_items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "documents"."document_line_links" ADD CONSTRAINT "document_line_links_target_line_id_fkey" FOREIGN KEY ("target_line_id") REFERENCES "documents"."line_items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "parties"."customer_group_members" ADD CONSTRAINT "customer_group_members_customer_group_id_fkey" FOREIGN KEY ("customer_group_id") REFERENCES "parties"."customer_groups"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -2,21 +2,23 @@
 
 This checklist tracks implementation order and task status for [RFC: Sales Engine V2](/home/ajay/workspace/mini-erp/docs/rfcs/sales-engine-v2.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
+Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields.
+
 ## Phase 1: Data Foundation
 
 Goal: prepare persistence for line-level allocations and location-aware stock movement.
 
-- [ ] Add `DocumentLineLink` to `documents.prisma`
-- [ ] Add `DocumentLineLink.type` enum with `FULFILLMENT` and `RETURN`
-- [ ] Add relations from `DocumentLineLink` to `documents.LineItem`
-- [ ] Add indexes for `source_line_id`
-- [ ] Add indexes for `target_line_id`
-- [ ] Add a composite/indexed path for efficient balance lookups by `source_line_id` and `type`
-- [ ] Add `location_id` to `inventory.StockLedger`
-- [ ] Preserve `reference_id` as the document reference in `StockLedger`
-- [ ] Generate Prisma client
-- [ ] Create and apply migration locally
-- [ ] Verify generated client includes `DocumentLineLink` and `StockLedger.location_id`
+- [x] Add `DocumentLineLink` to `documents.prisma`
+- [x] Add `DocumentLineLink.type` enum with `FULFILLMENT` and `RETURN`
+- [x] Add relations from `DocumentLineLink` to `documents.LineItem`
+- [x] Add indexes for `source_line_id`
+- [x] Add indexes for `target_line_id`
+- [x] Add a composite/indexed path for efficient balance lookups by `source_line_id` and `type`
+- [x] Add `location_id` to `inventory.StockLedger`
+- [x] Preserve `reference_id` as the document reference in `StockLedger`
+- [x] Generate Prisma client
+- [x] Create and apply migration locally
+- [x] Verify generated client includes `DocumentLineLink` and `StockLedger.location_id`
 
 ## Phase 2: Allocation Engine
 
@@ -45,7 +47,7 @@ Goal: connect conversion behavior to the allocation engine.
 - [ ] Extend converted child payloads to declare source line linkage
 - [ ] Persist `DocumentLineLink` rows during conversion-based save/post flows
 - [ ] Reject conversion quantities that exceed backend-calculated remaining quantity
-- [ ] Keep direct standalone documents valid without requiring parent links
+- [x] Keep direct standalone documents valid without requiring parent links
 
 ## Phase 4: Inventory Responsibility and Stock Posting
 
@@ -73,12 +75,12 @@ Goal: enforce RFC rules for posted docs, returns, and cancellation.
 
 - [ ] Add policy guard layer for document actions
 - [ ] Block `VOID` when `posted_at != null`
-- [ ] Keep draft-only edit/delete behavior unchanged
+- [x] Keep draft-only edit/delete behavior unchanged
 - [ ] Enforce return ceiling:
       `InvoicedQty - SUM(active return links)`
 - [ ] Require all `SALES_RETURN` documents to point to a `SALES_INVOICE`
 - [ ] Default return `location_id` from parent invoice during conversion
-- [ ] Store return `location_id` independently on the return document
+- [x] Store return `location_id` independently on the return document
 - [ ] Always use the return document’s own `location_id` for stock movement
 - [ ] On cancelling posted challan/direct invoice/order-linked invoice, write positive reversal stock rows
 - [ ] On cancelling posted sales return, write negative reversal stock rows
@@ -130,8 +132,8 @@ Goal: verify the RFC end to end.
 ## Notes
 
 - [ ] Keep controllers thin; place business rules in services and policies
-- [ ] Keep all posting side effects inside a single Prisma transaction
-- [ ] Validate first, mark document posted last within the transaction
+- [x] Keep all posting side effects inside a single Prisma transaction
+- [x] Validate first, mark document posted last within the transaction
 - [ ] Do not implement order reservation in this phase
 - [ ] Do not add `parent_type`
 - [ ] Do not move conversion math into the frontend
