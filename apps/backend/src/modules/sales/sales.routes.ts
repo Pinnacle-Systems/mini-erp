@@ -4,6 +4,7 @@ import { validateRequest } from "../../shared/middleware/validate.middleware.js"
 import {
   createSalesDocument,
   deleteSalesDocument,
+  getSalesConversionBalance,
   getSalesDocumentHistory,
   listSalesDocuments,
   postSalesDocument,
@@ -13,6 +14,7 @@ import {
 import {
   createSalesDocumentSchema,
   deleteSalesDocumentSchema,
+  getSalesConversionBalanceSchema,
   getSalesDocumentHistorySchema,
   listSalesDocumentsSchema,
   postSalesDocumentSchema,
@@ -28,6 +30,11 @@ router.get(
   "/documents/:documentId/history",
   validateRequest(getSalesDocumentHistorySchema),
   getSalesDocumentHistory,
+);
+router.get(
+  "/conversion-balance/:documentId",
+  validateRequest(getSalesConversionBalanceSchema),
+  getSalesConversionBalance,
 );
 router.post("/documents", validateRequest(createSalesDocumentSchema), createSalesDocument);
 router.patch(

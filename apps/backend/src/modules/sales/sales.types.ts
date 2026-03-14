@@ -12,6 +12,7 @@ export type SalesDocumentCancelReason = "CUSTOMER_DECLINED" | "INTERNAL_DROP" | 
 
 export type SalesLineInput = {
   id: string;
+  sourceLineId?: string | null;
   variantId: string;
   description: string;
   quantity: string;

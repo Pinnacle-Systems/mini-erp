@@ -16,6 +16,7 @@ import {
   type DocumentHistoryMetadata,
 } from "./document-history.service.js";
 import { documentLinkService } from "./document-link.service.js";
+import { stockPostingService } from "./stock-posting.service.js";
 import { salesBalanceService } from "./sales-balance.service.js";
 import type {
   SalesDocumentAction,
@@ -508,6 +509,10 @@ const getParentDocumentReference = async (
   parentId?: string | null,
 ) => {
   if (!parentId) {
+    if (documentType === "SALES_RETURN") {
+      throw new BadRequestError("Sales return must reference a posted invoice or delivery challan");
+    }
+
     return null;
   }
 
@@ -520,6 +525,7 @@ const getParentDocumentReference = async (
     select: {
       id: true,
       type: true,
+      location_id: true,
     },
   });
 
@@ -537,6 +543,60 @@ const getParentDocumentReference = async (
   }
 
   return parent;
+};
+
+const getConversionBalanceForDocument = async (
+  tx: SalesTransactionClient,
+  tenantId: string,
+  documentId: string,
+) => {
+  const sourceDocument = await tx.document.findFirst({
+    where: {
+      id: documentId,
+      business_id: tenantId,
+      deleted_at: null,
+      type: {
+        in: ["SALES_ESTIMATE", "SALES_ORDER", "DELIVERY_CHALLAN", "SALES_INVOICE"],
+      },
+    },
+    select: {
+      id: true,
+      type: true,
+      doc_number: true,
+    },
+  });
+
+  if (!sourceDocument) {
+    throw new NotFoundError("Source document not found");
+  }
+
+  const sourceDocumentType = sourceDocument.type as SalesDocumentType;
+  const lineBalances =
+    sourceDocumentType === "SALES_ORDER"
+      ? await salesBalanceService.getShipmentLineBalances(tx, tenantId, sourceDocument.id)
+      : sourceDocumentType === "DELIVERY_CHALLAN"
+        ? await salesBalanceService.getInvoiceableLineBalances(tx, tenantId, sourceDocument.id)
+        : sourceDocumentType === "SALES_INVOICE"
+          ? await salesBalanceService.getLineBalances(tx, tenantId, sourceDocument.id, "RETURN")
+          : await salesBalanceService.getLineBalances(tx, tenantId, sourceDocument.id, "FULFILLMENT");
+
+  return successResponse({
+    documentId: sourceDocument.id,
+    documentType: sourceDocumentType,
+    documentNumber: sourceDocument.doc_number,
+    lines: lineBalances.map((line) => ({
+      sourceLineId: line.sourceLineId,
+      itemId: line.itemId,
+      variantId: line.variantId,
+      description: line.description,
+      unitPrice: formatDecimalString(line.unitPrice),
+      taxRate: line.taxRate > 0 ? `${line.taxRate}%` : "0%",
+      taxMode: line.taxMode,
+      unit: line.unit,
+      originalQuantity: formatDecimalString(line.originalQuantity),
+      remainingQuantity: formatDecimalString(line.remainingQuantity),
+    })),
+  });
 };
 
 const syncParentConversionStatus = async (
@@ -690,17 +750,22 @@ const saveDraftDocument = async (
     documentId ?? undefined,
   );
 
-  const [customerRef, variantMap, locationRef] = await Promise.all([
-    getCustomerReference(tx, input.tenantId, input),
-    getVariantSnapshotMap(tx, input.tenantId, input.lines),
-    getDocumentLocationReference(input.tenantId, input.locationId),
-  ]);
   const parentRef = await getParentDocumentReference(
     tx,
     input.tenantId,
     input.documentType,
     input.parentId,
   );
+  const [customerRef, variantMap, locationRef] = await Promise.all([
+    getCustomerReference(tx, input.tenantId, input),
+    getVariantSnapshotMap(tx, input.tenantId, input.lines),
+    getDocumentLocationReference(
+      input.tenantId,
+      input.documentType === "SALES_RETURN" && !input.locationId
+        ? (parentRef?.location_id ?? null)
+        : input.locationId,
+    ),
+  ]);
   const metadata = getDocumentMetadata(input);
 
   const normalizedLines = input.lines.map((line) => {
@@ -812,7 +877,16 @@ const saveDraftDocument = async (
       })),
     });
 
-    await documentLinkService.upsertLinksForDocument(tx, input.tenantId, documentId);
+    await documentLinkService.upsertLinksForDocument(
+      tx,
+      input.tenantId,
+      documentId,
+      Object.fromEntries(
+        input.lines
+          .filter((line) => typeof line.sourceLineId === "string" && line.sourceLineId.length > 0)
+          .map((line) => [line.id, line.sourceLineId]),
+      ),
+    );
 
     await recordDocumentHistory(tx, {
       tenantId: input.tenantId,
@@ -888,7 +962,16 @@ const saveDraftDocument = async (
     })),
   });
 
-  await documentLinkService.upsertLinksForDocument(tx, input.tenantId, created.id);
+  await documentLinkService.upsertLinksForDocument(
+    tx,
+    input.tenantId,
+    created.id,
+    Object.fromEntries(
+      input.lines
+        .filter((line) => typeof line.sourceLineId === "string" && line.sourceLineId.length > 0)
+        .map((line) => [line.id, line.sourceLineId]),
+    ),
+  );
 
   await recordDocumentHistory(tx, {
     tenantId: input.tenantId,
@@ -936,6 +1019,7 @@ const postDraftDocument = async (
   }
 
   await documentLinkService.upsertLinksForDocument(tx, tenantId, documentId);
+  await stockPostingService.applyPostingEffects(tx, tenantId, documentId);
 
   await tx.document.update({
     where: { id: documentId },
@@ -1064,6 +1148,12 @@ const transitionDocumentState = async (
   }
 
   if (action === "VOID") {
+    if (document.posted_at) {
+      throw new BadRequestError(
+        `Posted ${SALES_DOCUMENT_META[documentType].pluralLabel} cannot be voided`,
+      );
+    }
+
     if (!["OPEN", "PARTIAL"].includes(document.status)) {
       throw new BadRequestError(
         `Only open ${SALES_DOCUMENT_META[documentType].pluralLabel} can be voided`,
@@ -1211,6 +1301,30 @@ export const getSalesDocumentHistory = catchAsync(async (req, res) => {
       history: mapDocumentHistoryEntries(entries),
     }),
   );
+});
+
+export const getSalesConversionBalance = catchAsync(async (req, res) => {
+  const { documentId } = req.params as { documentId: string };
+  const { tenantId } = req.query as { tenantId: string };
+
+  const sourceDocument = await prisma.document.findFirst({
+    where: {
+      id: documentId,
+      business_id: tenantId,
+      deleted_at: null,
+    },
+    select: {
+      type: true,
+    },
+  });
+
+  if (!sourceDocument) {
+    throw new NotFoundError("Source document not found");
+  }
+
+  await assertSalesAccess(req.user.id, tenantId, sourceDocument.type as SalesDocumentType);
+
+  res.json(await getConversionBalanceForDocument(prisma, tenantId, documentId));
 });
 
 export const createSalesDocument = catchAsync(async (req, res) => {

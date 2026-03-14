@@ -32,6 +32,7 @@ export type SalesDocumentHistoryEntry = {
 
 export type SalesDocumentLineDraft = {
   id: string;
+  sourceLineId?: string | null;
   variantId: string;
   description: string;
   quantity: string;
@@ -78,6 +79,26 @@ export type SalesDocumentDraft = {
 export type SalesDocumentApiErrorDetails = {
   requested?: string;
   suggested?: string;
+};
+
+export type SalesConversionBalanceLine = {
+  sourceLineId: string;
+  itemId: string;
+  variantId: string | null;
+  description: string;
+  unitPrice: string;
+  taxRate: string;
+  taxMode: "EXCLUSIVE" | "INCLUSIVE";
+  unit: string;
+  originalQuantity: string;
+  remainingQuantity: string;
+};
+
+export type SalesConversionBalance = {
+  documentId: string;
+  documentType: SalesDocumentType;
+  documentNumber: string;
+  lines: SalesConversionBalanceLine[];
 };
 
 export class SalesDocumentApiError extends Error {
@@ -181,6 +202,27 @@ export const getSalesDocumentHistory = async (
 
   const payload = (await response.json()) as { history?: SalesDocumentHistoryEntry[] };
   return payload.history ?? [];
+};
+
+export const getSalesConversionBalance = async (
+  documentId: string,
+  tenantId: string,
+): Promise<SalesConversionBalance> => {
+  const query = new URLSearchParams({
+    tenantId,
+  });
+  const response = await apiFetch(
+    `/api/sales/conversion-balance/${encodeURIComponent(documentId)}?${query.toString()}`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!response.ok) {
+    throw await parseError(response, "Unable to load conversion balance");
+  }
+
+  return (await response.json()) as SalesConversionBalance;
 };
 
 export const createSalesDocumentDraft = async (

@@ -17,7 +17,7 @@ describe("salesBalanceService", () => {
           description_snapshot: "Product A",
           description: "Product A",
           quantity: "10.000",
-          target_links: [
+          source_links: [
             {
               quantity: "6.000",
               type: "FULFILLMENT",
@@ -28,7 +28,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "DELIVERY_CHALLAN",
                 },
-                target_links: [
+                source_links: [
                   {
                     quantity: "2.000",
                     type: "RETURN",
@@ -54,7 +54,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_INVOICE",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
             {
@@ -67,7 +67,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_INVOICE",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
           ],
@@ -102,7 +102,7 @@ describe("salesBalanceService", () => {
           description_snapshot: "Product A",
           description: "Product A",
           quantity: "10.000",
-          target_links: [
+          source_links: [
             {
               quantity: "3.330",
               type: "RETURN",
@@ -113,7 +113,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_RETURN",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
             {
@@ -126,7 +126,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_RETURN",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
             {
@@ -139,7 +139,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_RETURN",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
           ],
@@ -172,7 +172,7 @@ describe("salesBalanceService", () => {
           description_snapshot: "Product A",
           description: "Product A",
           quantity: "10.000",
-          target_links: [
+          source_links: [
             {
               quantity: "4.000",
               type: "RETURN",
@@ -183,7 +183,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_RETURN",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
             {
@@ -196,7 +196,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_RETURN",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
             {
@@ -209,7 +209,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_RETURN",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
           ],
@@ -243,7 +243,7 @@ describe("salesBalanceService", () => {
           description_snapshot: "Product A",
           description: "Product A",
           quantity: "100.000",
-          target_links: [
+          source_links: [
             {
               quantity: "40.000",
               type: "FULFILLMENT",
@@ -254,7 +254,7 @@ describe("salesBalanceService", () => {
                   deleted_at: null,
                   type: "SALES_INVOICE",
                 },
-                target_links: [],
+                source_links: [],
               },
             },
           ],

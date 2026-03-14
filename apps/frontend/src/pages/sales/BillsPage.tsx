@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Ban,
   Copy,
   Eye,
   FileOutput,
@@ -55,6 +54,7 @@ import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
 import {
   createSalesDocumentDraft,
   deleteSalesDocumentDraft,
+  getSalesConversionBalance,
   getSalesDocumentHistory,
   transitionSalesDocument,
   listSalesDocuments,
@@ -70,6 +70,7 @@ import {
 
 type BillLine = {
   id: string;
+  sourceLineId?: string | null;
   variantId: string;
   description: string;
   quantity: string;
@@ -446,6 +447,10 @@ const normalizeStoredLine = (rawLine: unknown): BillLine => {
       typeof line.id === "string" && line.id.trim()
         ? line.id
         : crypto.randomUUID(),
+    sourceLineId:
+      typeof line.sourceLineId === "string" && line.sourceLineId.trim()
+        ? line.sourceLineId
+        : null,
     variantId: typeof line.variantId === "string" ? line.variantId : "",
     description: typeof line.description === "string" ? line.description : "",
     quantity: typeof line.quantity === "string" ? line.quantity : "1",
@@ -646,6 +651,11 @@ const SALES_DOCUMENT_CONVERSION_CONFIG: Partial<
     targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
     actionLabel: "Convert to Invoice",
   },
+  DELIVERY_CHALLAN: {
+    targetDocumentType: "SALES_INVOICE",
+    targetRoutePath: SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE.routePath,
+    actionLabel: "Create Invoice",
+  },
 };
 
 const loadStoredDrafts = (
@@ -818,8 +828,6 @@ function SalesDocumentWorkspace({
     string | null
   >(null);
   const [pendingCancelDocument, setPendingCancelDocument] =
-    useState<SalesDocumentDraft | null>(null);
-  const [pendingVoidDocument, setPendingVoidDocument] =
     useState<SalesDocumentDraft | null>(null);
   const [historyDocument, setHistoryDocument] = useState<SalesDocumentDraft | null>(null);
   const [historyEntries, setHistoryEntries] = useState<SalesDocumentHistoryEntry[]>([]);
@@ -1045,7 +1053,7 @@ function SalesDocumentWorkspace({
     document: SalesDocumentDraft,
   ): SalesDocumentAction[] => {
     if (document.status === "OPEN" || document.status === "PARTIAL") {
-      return ["CANCEL", "VOID"];
+      return ["CANCEL"];
     }
     if (document.status === "CANCELLED") {
       return ["REOPEN"];
@@ -1151,39 +1159,68 @@ function SalesDocumentWorkspace({
     });
   };
 
-  const startDocumentConversion = (document: SalesDocumentDraft) => {
+  const startDocumentConversion = async (document: SalesDocumentDraft) => {
     const conversion = getServerDocumentConversion(document);
-    if (!conversion) {
+    if (!conversion || !activeStore) {
       return;
     }
 
-    navigate(conversion.targetRoutePath, {
-      state: {
-        returnTo: config.routePath,
-        draftSource: "local",
-        invoiceDraft: {
-          documentType: conversion.targetDocumentType,
-          parentId: document.id,
-          billNumber: "",
-          transactionType: document.transactionType,
-          customerId: document.customerId,
-          customerName: document.customerName,
-          customerPhone: document.customerPhone,
-          customerAddress: document.customerAddress,
-          customerGstNo: document.customerGstNo,
-          validUntil: document.validUntil,
-          dispatchDate: document.dispatchDate,
-          dispatchCarrier: document.dispatchCarrier,
-          dispatchReference: document.dispatchReference,
-          notes: document.notes,
-          lines: document.lines.map((line) => ({
-            ...line,
+    try {
+      const balance = await getSalesConversionBalance(document.id, activeStore);
+      const sourceLineById = new Map(document.lines.map((line) => [line.id, line]));
+      const convertedLines = balance.lines
+        .filter((line) => Number(line.remainingQuantity) > 0)
+        .map((line) => {
+          const sourceLine = sourceLineById.get(line.sourceLineId);
+          return {
             id: crypto.randomUUID(),
-            stockOnHand: line.stockOnHand ?? null,
-          })),
-        },
-      } satisfies BillingRouteState,
-    });
+            sourceLineId: line.sourceLineId,
+            variantId: sourceLine?.variantId ?? line.variantId ?? "",
+            description: sourceLine?.description ?? line.description,
+            quantity: line.remainingQuantity,
+            unitPrice: sourceLine?.unitPrice ?? line.unitPrice,
+            taxRate: sourceLine?.taxRate ?? line.taxRate,
+            taxMode: sourceLine?.taxMode ?? line.taxMode,
+            unit: sourceLine?.unit ?? line.unit,
+            stockOnHand: sourceLine?.stockOnHand ?? null,
+          };
+        });
+
+      if (convertedLines.length === 0) {
+        setSaveMessage(
+          `No quantity is currently available to convert from ${document.billNumber}.`,
+        );
+        return;
+      }
+
+      navigate(conversion.targetRoutePath, {
+        state: {
+          returnTo: config.routePath,
+          draftSource: "local",
+          invoiceDraft: {
+            documentType: conversion.targetDocumentType,
+            parentId: document.id,
+            billNumber: "",
+            transactionType: document.transactionType,
+            customerId: document.customerId,
+            customerName: document.customerName,
+            customerPhone: document.customerPhone,
+            customerAddress: document.customerAddress,
+            customerGstNo: document.customerGstNo,
+            validUntil: document.validUntil,
+            dispatchDate: document.dispatchDate,
+            dispatchCarrier: document.dispatchCarrier,
+            dispatchReference: document.dispatchReference,
+            notes: document.notes,
+            lines: convertedLines,
+          },
+        } satisfies BillingRouteState,
+      });
+    } catch (error) {
+      setSaveMessage(
+        error instanceof Error ? error.message : "Unable to start document conversion.",
+      );
+    }
   };
 
   const getRowMenuActions = (row: InvoiceListRow): RowMenuAction[] => {
@@ -1273,19 +1310,9 @@ function SalesDocumentWorkspace({
     for (const action of getServerDocumentActions(row.invoice)) {
       actions.push({
         key: action,
-        label:
-          action === "CANCEL"
-            ? "Cancel"
-            : action === "VOID"
-              ? "Void"
-              : "Reopen",
-        icon:
-          action === "REOPEN"
-            ? RotateCcw
-            : action === "VOID"
-              ? Ban
-              : XCircle,
-        tone: action === "VOID" ? "danger" : "default",
+        label: action === "CANCEL" ? "Cancel" : "Reopen",
+        icon: action === "REOPEN" ? RotateCcw : XCircle,
+        tone: "default",
         disabled: serverActionDocumentId === row.id,
         onSelect: () => {
           if (action === "CANCEL") {
@@ -1295,10 +1322,6 @@ function SalesDocumentWorkspace({
                 : "INTERNAL_DROP",
             );
             setPendingCancelDocument(row.invoice);
-            return;
-          }
-          if (action === "VOID") {
-            setPendingVoidDocument(row.invoice);
             return;
           }
           void applyServerDocumentAction(row.invoice, action);
@@ -2214,15 +2237,6 @@ function SalesDocumentWorkspace({
     setPendingCancelDocument(null);
   };
 
-  const confirmVoidDocument = async () => {
-    if (!pendingVoidDocument) {
-      return;
-    }
-
-    await applyServerDocumentAction(pendingVoidDocument, "VOID");
-    setPendingVoidDocument(null);
-  };
-
   const renderPendingActionDialogs = () => (
     <>
       {pendingCancelDocument ? (
@@ -2245,7 +2259,7 @@ function SalesDocumentWorkspace({
               : "Confirm Cancel"
           }
           disabled={serverActionDocumentId === pendingCancelDocument.id}
-          hint="Use Void only for clerical mistakes. Use Cancel when the deal is no longer active."
+          hint="Cancel when the deal is no longer active and the document should stay in history."
           onSelectedReasonChange={(reason) =>
             setCancelReasonDraft(reason as SalesDocumentCancelReason)
           }
@@ -2257,28 +2271,6 @@ function SalesDocumentWorkspace({
               return;
             }
             setPendingCancelDocument(null);
-          }}
-        />
-      ) : null}
-      {pendingVoidDocument ? (
-        <ActionReasonDialog
-          title={`Void ${config.singularLabel}`}
-          description={`${pendingVoidDocument.billNumber} will be marked void for a clerical error.`}
-          confirmLabel={
-            serverActionDocumentId === pendingVoidDocument.id
-              ? "Voiding..."
-              : "Confirm Void"
-          }
-          disabled={serverActionDocumentId === pendingVoidDocument.id}
-          hint="Void is for clerical mistakes or invalid documents. Voided documents are not currently reopenable."
-          onConfirm={() => {
-            void confirmVoidDocument();
-          }}
-          onClose={() => {
-            if (serverActionDocumentId === pendingVoidDocument.id) {
-              return;
-            }
-            setPendingVoidDocument(null);
           }}
         />
       ) : null}

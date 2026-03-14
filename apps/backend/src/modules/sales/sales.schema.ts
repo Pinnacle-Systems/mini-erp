@@ -20,6 +20,7 @@ const salesDocumentTaxModeSchema = z.enum(["EXCLUSIVE", "INCLUSIVE"]);
 
 const salesDocumentLineSchema = z.object({
   id: z.uuid(),
+  sourceLineId: z.uuid().nullable().optional(),
   variantId: z.uuid(),
   description: z.string().trim().min(1).max(240),
   quantity: z.string().trim().min(1).max(32),
@@ -64,6 +65,15 @@ export const getSalesDocumentHistorySchema = z.object({
   query: z.object({
     tenantId: z.uuid(),
     documentType: salesDocumentTypeSchema,
+  }),
+});
+
+export const getSalesConversionBalanceSchema = z.object({
+  params: z.object({
+    documentId: z.uuid(),
+  }),
+  query: z.object({
+    tenantId: z.uuid(),
   }),
 });
 

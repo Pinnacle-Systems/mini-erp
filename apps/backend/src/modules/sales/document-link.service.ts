@@ -35,6 +35,7 @@ class DocumentLinkService {
     tx: SalesTransactionClient,
     tenantId: string,
     documentId: string,
+    sourceLineIdByTargetLineId?: Record<string, string | null | undefined>,
   ): Promise<void> {
     const document = await tx.document.findFirst({
       where: {
@@ -149,14 +150,23 @@ class DocumentLinkService {
       const variantKey = childLine.variant_id ?? "__null__";
       const candidatePool = sourceLinesByVariantId.get(variantKey) ?? [];
       const childSignature = buildLineSignature(childLine);
-      const orderedCandidates = [...candidatePool].sort((left, right) => {
-        const leftExact = buildLineSignature(left) === childSignature ? 0 : 1;
-        const rightExact = buildLineSignature(right) === childSignature ? 0 : 1;
-        if (leftExact !== rightExact) {
-          return leftExact - rightExact;
-        }
-        return left.id.localeCompare(right.id);
-      });
+      const hintedSourceLineId = sourceLineIdByTargetLineId?.[childLine.id] ?? null;
+      const orderedCandidates = hintedSourceLineId
+        ? candidatePool.filter((candidate) => candidate.id === hintedSourceLineId)
+        : [...candidatePool].sort((left, right) => {
+            const leftExact = buildLineSignature(left) === childSignature ? 0 : 1;
+            const rightExact = buildLineSignature(right) === childSignature ? 0 : 1;
+            if (leftExact !== rightExact) {
+              return leftExact - rightExact;
+            }
+            return left.id.localeCompare(right.id);
+          });
+
+      if (hintedSourceLineId && orderedCandidates.length === 0) {
+        throw new BadRequestError(
+          `Unable to link line ${(childLine.description_snapshot ?? childLine.description).trim()} to the selected source line`,
+        );
+      }
 
       for (const sourceLine of orderedCandidates) {
         const available = remainingBySourceLineId.get(sourceLine.id) ?? 0;
