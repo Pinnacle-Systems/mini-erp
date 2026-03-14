@@ -47,22 +47,36 @@ Because `documents.Document` stores `parent_id` but not `parent_type`, the Sales
 
 ### 3.2 Inventory Responsibility (The "Stock-Out" Rule)
 
-To ensure stock movement is neither missed nor double-counted:
+To ensure stock movement is neither missed nor double-counted, inventory responsibility is evaluated at the line level during posting:
 
-| Document Type | Scenario | Inventory Effect |
+| Line Context | Document Type | Inventory Effect |
 | :--- | :--- | :--- |
-| **Delivery Challan** | Any | **Deduct Stock** |
-| **Sales Invoice** | Standalone (Direct) | **Deduct Stock** |
-| **Sales Invoice** | Parent is `SALES_ORDER` or `SALES_ESTIMATE` | **Deduct Stock** |
-| **Sales Invoice** | Parent is `DELIVERY_CHALLAN` | **No Effect** (Already handled by Challan) |
-| **Sales Return** | Parent is `SALES_INVOICE` | **Add Stock** |
-| **Sales Return** | Parent is `DELIVERY_CHALLAN` | **Add Stock** |
+| **All product lines** | `DELIVERY_CHALLAN` | **Deduct Stock** |
+| **Linked line sourced from `DELIVERY_CHALLAN`** | `SALES_INVOICE` | **No Effect** (Already handled by Challan) |
+| **Linked line sourced from `SALES_ORDER` or `SALES_ESTIMATE`** | `SALES_INVOICE` | **Deduct Stock** |
+| **Ad-hoc line with no `source_line_id`** | `SALES_INVOICE` | **Deduct Stock** |
+| **All product lines** | `SALES_RETURN` | **Add Stock** |
 
 ### 3.3 Catalog Integration (Stock vs. Service)
 
 Inventory effects only apply to items where `item.type == 'PRODUCT'`.
 
 - Items categorized as `SERVICE` will skip `StockLedger` entries but will still generate `DocumentLineLink` records for line-link and conversion tracking.
+
+### 3.4 Mixed-Origin Document Policy
+
+Documents created via conversion support mixed-origin line items.
+
+- **Linked lines:** contain a non-null `source_line_id`, consume parent balance, and are capped by the parent line's backend-authored remaining quantity.
+- **Ad-hoc lines:** contain no `source_line_id`, do not consume parent balance, and do not create `DocumentLineLink` rows.
+
+Rules:
+
+1. `parent_id` remains as document-level provenance even if all linked rows are removed from the child draft.
+2. Only lines with a valid `source_line_id` that belongs to the selected `parent_id` may create `DocumentLineLink` rows.
+3. Linked lines may be reduced below the parent cap, but may not exceed it.
+4. If the user needs quantity above the linked cap, the extra quantity must be entered as a separate ad-hoc line.
+5. Ad-hoc lines follow the child document's own stock and return rules, but never affect upstream parent completion or refill logic unless they have linked ancestry.
 
 ## 4. Calculations & Reversals
 
@@ -94,6 +108,7 @@ For a challan line being converted to invoice:
 
 - **Active Link Definition:** Only links whose target documents have `posted_at != null` AND a status NOT IN (`CANCELLED`, `VOID`) are included.
 - **Drafts:** `DRAFT` documents do not consume balance.
+- **Explicit linkage:** When `source_line_id` is present on a child line, the backend validates that it belongs to the selected parent document and uses that line as the authoritative consumption source. Lines with `source_line_id = null` are treated as ad-hoc and ignored by parent balance calculations.
 
 ### 4.2 Cancellation & Void Policy
 
@@ -138,9 +153,11 @@ The repository follows an immutable history pattern. Reversal of operational eff
 - [ ] `GET /sales/conversion-balance` correctly returns `RemainingQty` using the type-aware formula.
 - [ ] A standalone Invoice generates `StockLedger` entries on post.
 - [ ] An Invoice converted from a Delivery Challan does **not** generate additional `StockLedger` entries.
+- [ ] An ad-hoc product line added to a challan-backed Invoice generates `StockLedger` deduction on post.
 - [ ] A Sales Return converted from a Delivery Challan restores stock and refills the source order's shipment balance.
 - [ ] The `CANCEL` action on a stock-deducting document creates positive reversal ledger rows.
 - [ ] The `CANCEL` action on a `Sales Return` creates negative reversal ledger rows and restores the return ceiling on the source Invoice.
 - [ ] The `VOID` action is blocked for any document with a non-null `posted_at` value.
 - [ ] Sales Returns are blocked if the requested quantity exceeds the available return ceiling on the specific source Invoice or Delivery Challan line.
 - [ ] Service items are excluded from inventory validation but included in line-link tracking.
+- [ ] Converted drafts may contain both linked and ad-hoc lines without detaching `parent_id`.

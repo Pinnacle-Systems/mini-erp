@@ -2,7 +2,7 @@
 
 This checklist tracks implementation order and task status for [RFC: Sales Engine V2](/home/ajay/workspace/mini-erp/docs/rfcs/sales-engine-v2.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields. Backend Vitest coverage is now in place for the Phase 2 sales services, with focused service coverage above 80% branches and above 98% statements. A live over-conversion regression caused by reversed `DocumentLineLink` traversal in the balance reader was fixed the same day and manually revalidated against posted estimate-to-order conversion.
+Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields. Backend Vitest coverage is now in place for the Phase 2 sales services, with focused service coverage above 80% branches and above 98% statements. A live over-conversion regression caused by reversed `DocumentLineLink` traversal in the balance reader was fixed the same day and manually revalidated against posted estimate-to-order conversion. Mixed-origin conversion drafts are now supported with explicit `sourceLineId` semantics, linked-line quantity caps in the shared workspace, and line-aware stock deduction for ad-hoc invoice lines on challan-backed invoices.
 
 ## Phase 1: Data Foundation
 
@@ -51,6 +51,9 @@ Goal: connect conversion behavior to the allocation engine.
 - [x] Reject conversion quantities that exceed backend-calculated remaining quantity
 - [x] Default challan-to-invoice quantities from net delivered quantity after challan-linked returns
 - [x] Keep direct standalone documents valid without requiring parent links
+- [x] Treat `sourceLineId = null` as ad-hoc during converted draft save/post flows
+- [x] Reject `sourceLineId` values that do not belong to the selected `parentId`
+- [x] Keep `parent_id` as document provenance even when linked rows are removed from the child draft
 
 ## Phase 4: Inventory Responsibility and Stock Posting
 
@@ -69,6 +72,8 @@ Goal: make the correct document perform stock movement.
 - [ ] On challan-linked sales return post, validate location and write positive `StockLedger` rows using the challan fulfillment context
 - [x] Apply stock effects only for `PRODUCT` lines
 - [x] Skip stock validation and stock ledger writes for `SERVICE` lines
+- [x] Make invoice stock responsibility line-aware for mixed-origin challan-backed invoices
+- [x] Skip stock deduction for challan-linked invoice lines while deducting ad-hoc invoice lines
 - [x] Add `ALLOW_NEGATIVE_STOCK` backend config
 - [x] Block posting on insufficient stock when `ALLOW_NEGATIVE_STOCK=false`
 - [x] Allow posting to proceed when `ALLOW_NEGATIVE_STOCK=true`
@@ -85,25 +90,29 @@ Goal: enforce RFC rules for posted docs, returns, and cancellation.
 - [x] Default return `location_id` from parent invoice or challan during conversion
 - [x] Store return `location_id` independently on the return document
 - [x] Always use the return document’s own `location_id` for stock movement
-- [ ] On cancelling posted challan/direct invoice/order-linked invoice, write positive reversal stock rows
-- [ ] On cancelling posted sales return, write negative reversal stock rows
+- [x] On cancelling posted challan/direct invoice/order-linked invoice, write positive reversal stock rows
+- [x] On cancelling posted sales return, write negative reversal stock rows
 - [x] Ensure cancelled documents no longer contribute to active balance
 
 ## Phase 6: Frontend Integration
 
 Goal: make the shared sales workspace consume backend authority.
 
-- [ ] Replace local conversion math with `GET /api/sales/conversion-balance/:documentId`
-- [ ] Pre-fill conversion quantities from backend `remainingQuantity`
-- [ ] Limit child quantities to backend-provided remaining balance
-- [ ] Update sales return creation to support invoice-linked and challan-linked source lines
-- [ ] Cap return quantities to backend parent-specific return ceiling
-- [ ] Default return location from invoice or challan location
-- [ ] Surface or preserve return location override according to the RFC
-- [ ] Add challan-origin return flow in the shared sales workspace
+- [x] Replace local conversion math with `GET /api/sales/conversion-balance/:documentId`
+- [x] Pre-fill conversion quantities from backend `remainingQuantity`
+- [x] Limit child quantities to backend-provided remaining balance
+- [x] Update sales return creation to support invoice-linked and challan-linked source lines
+- [x] Cap return quantities to backend parent-specific return ceiling
+- [x] Default return location from invoice or challan location
+- [x] Surface or preserve return location override according to the RFC
+- [x] Add challan-origin return flow in the shared sales workspace
 - [x] Hide or disable `VOID` for posted docs in the sales workspace
-- [ ] Surface stock and return validation errors from backend responses
-- [ ] Make location visible and required on challans and returns
+- [x] Surface stock and return validation errors from backend responses
+- [x] Make location visible and required on challans and returns
+- [x] Distinguish linked vs ad-hoc rows in the shared sales workspace
+- [x] Lock item identity for linked rows while keeping quantity editable
+- [x] Warn before removing linked rows from converted drafts
+- [x] Show a same-item mixed-origin helper hint when an ad-hoc row coexists with unused linked parent balance
 
 ## Phase 7: Testing and Acceptance
 
@@ -122,18 +131,24 @@ Goal: verify the RFC end to end.
 - [x] Test sales return adds stock
 - [x] Test challan-linked return reduces net invoiceable quantity on the challan
 - [x] Test service lines skip stock movement
-- [ ] Test posted docs cannot be voided
-- [ ] Test cancelling challan/direct invoice creates positive reversal rows
-- [ ] Test cancelling sales return creates negative reversal rows
-- [ ] Test cancelled docs no longer count as active links
+- [x] Test posted docs cannot be voided
+- [x] Test cancelling challan/direct invoice creates positive reversal rows
+- [x] Test cancelling sales return creates negative reversal rows
+- [x] Test cancelled docs no longer count as active links
 - [x] Test `ALLOW_NEGATIVE_STOCK=false` blocks insufficient-stock posting
 - [x] Test `ALLOW_NEGATIVE_STOCK=true` allows insufficient-stock posting
+- [x] Test ad-hoc converted lines do not create `DocumentLineLink`
+- [x] Test invalid explicit `sourceLineId` values are rejected
+- [x] Test challan-backed mixed-origin invoice deducts stock only for ad-hoc product lines
 - [ ] Manual run: Direct Invoice -> post -> stock reduced
 - [ ] Manual run: Order -> Challan -> Invoice -> stock reduced only at challan stage
 - [ ] Manual run: Order -> Invoice -> stock reduced at invoice stage
 - [ ] Manual run: Return over ceiling -> blocked
 - [ ] Manual run: Order -> Challan -> Challan-linked Return -> order shipment balance restored
 - [ ] Manual run: Challan -> partial return -> Invoice defaults to net delivered quantity
+- [ ] Manual run: Challan -> Invoice with linked lines plus ad-hoc item -> only ad-hoc item deducts stock at invoice stage
+- [ ] Manual run: Converted draft with linked and ad-hoc lines -> removing linked row restores parent availability without clearing `parent_id`
+- [ ] Manual run: Linked row reduced below cap + same item added as ad-hoc -> helper hint appears and rows remain separate
 - [ ] Manual run: Cancel posted return -> stock reduced again and return ceiling restored
 - [ ] Manual run: Posted invoice/challan void attempt -> blocked
 
@@ -145,3 +160,4 @@ Goal: verify the RFC end to end.
 - [ ] Do not implement order reservation in this phase
 - [ ] Do not add `parent_type`
 - [ ] Do not move conversion math into the frontend
+- [x] Keep parent consumption line-driven via `sourceLineId` / `DocumentLineLink`, not document totals

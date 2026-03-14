@@ -1530,6 +1530,8 @@ export type StockAdjustmentHistoryRow = {
   variantName: string;
   sku: string;
   unit: string;
+  locationId: string | null;
+  locationName: string;
   quantity: number;
   reason: StockAdjustmentReason;
   quantityOnHand: number;
@@ -1781,6 +1783,7 @@ export const queueStockAdjustmentCreate = async (
     variantId: string;
     quantity: number;
     reason: StockAdjustmentReason;
+    locationId?: string | null;
   },
 ) => {
   const mutationId = crypto.randomUUID();
@@ -1795,6 +1798,7 @@ export const queueStockAdjustmentCreate = async (
       variantId: input.variantId,
       quantity: input.quantity,
       reason: input.reason,
+      ...(input.locationId ? { locationId: input.locationId } : {}),
     },
     clientTimestamp: new Date().toISOString(),
   });
@@ -1942,6 +1946,14 @@ export const getLocalStockAdjustmentHistory = async (
         variantName: stockLevel?.variantName ?? "",
         sku: option?.sku ?? stockLevel?.sku ?? "",
         unit: option?.unit ?? stockLevel?.unit ?? "PCS",
+        locationId:
+          typeof data.locationId === "string" && data.locationId.trim()
+            ? data.locationId
+            : null,
+        locationName:
+          typeof data.locationName === "string" && data.locationName.trim()
+            ? data.locationName
+            : "Unknown location",
         quantity,
         reason: String(data.reason ?? "OPENING_BALANCE") as StockAdjustmentReason,
         quantityOnHand: Number(data.quantityOnHand ?? 0),

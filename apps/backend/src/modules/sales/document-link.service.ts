@@ -133,6 +133,8 @@ class DocumentLinkService {
       existing.push(line);
       sourceLinesByVariantId.set(variantKey, existing);
     }
+    const usesExplicitSourceLineIds = sourceLineIdByTargetLineId !== undefined;
+    const parentSourceLineIds = new Set(parent.lineItems.map((line) => line.id));
 
     const linksToCreate: Array<{
       source_line_id: string;
@@ -147,10 +149,19 @@ class DocumentLinkService {
         continue;
       }
 
+      const hintedSourceLineId = sourceLineIdByTargetLineId?.[childLine.id] ?? null;
+      if (usesExplicitSourceLineIds && !hintedSourceLineId) {
+        continue;
+      }
+      if (hintedSourceLineId && !parentSourceLineIds.has(hintedSourceLineId)) {
+        throw new BadRequestError(
+          `Unable to link line ${(childLine.description_snapshot ?? childLine.description).trim()} to the selected parent line`,
+        );
+      }
+
       const variantKey = childLine.variant_id ?? "__null__";
       const candidatePool = sourceLinesByVariantId.get(variantKey) ?? [];
       const childSignature = buildLineSignature(childLine);
-      const hintedSourceLineId = sourceLineIdByTargetLineId?.[childLine.id] ?? null;
       const orderedCandidates = hintedSourceLineId
         ? candidatePool.filter((candidate) => candidate.id === hintedSourceLineId)
         : [...candidatePool].sort((left, right) => {
@@ -187,6 +198,10 @@ class DocumentLinkService {
         });
         remainingBySourceLineId.set(sourceLine.id, roundQuantity(available - allocatedQuantity));
         quantityToAllocate = roundQuantity(quantityToAllocate - allocatedQuantity);
+
+        if (usesExplicitSourceLineIds) {
+          break;
+        }
       }
 
       if (quantityToAllocate > 0) {

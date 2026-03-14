@@ -3,6 +3,10 @@ import { vi } from "vitest";
 export const createSalesTxMock = () => ({
   document: {
     findFirst: vi.fn(),
+    update: vi.fn(),
+  },
+  documentHistory: {
+    create: vi.fn(),
   },
   itemVariant: {
     findMany: vi.fn(),

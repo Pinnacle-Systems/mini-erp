@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
+import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
 import { Select } from "../../design-system/atoms/Select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../design-system/molecules/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "../../design-system/molecules/Card";
 import {
   DenseTable,
   DenseTableBody,
@@ -13,6 +15,7 @@ import {
   DenseTableRow,
 } from "../../design-system/molecules/DenseTable";
 import { useSessionStore } from "../../features/auth/session-business";
+import { hasAssignedStoreCapability } from "../../features/auth/session-business";
 import {
   getLocalStockVariantOptions,
   getSyncRejectionFromError,
@@ -64,6 +67,9 @@ const getDefaultRowCount = () => {
 const buildInitialRows = (count = getDefaultRowCount()) =>
   Array.from({ length: count }, () => buildEmptyRow());
 
+const isDesktopViewport = () =>
+  typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+
 const toUserStockErrorMessage = (error: unknown) => {
   const rejection = getSyncRejectionFromError(error);
   if (
@@ -94,16 +100,29 @@ const isRowPristine = (row: AdjustmentDraftRow) =>
 export function AdjustmentsPage() {
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
+  const activeLocationId = useSessionStore((state) => state.activeLocationId);
+  const businesses = useSessionStore((state) => state.businesses);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
+  const setActiveLocation = useSessionStore((state) => state.setActiveLocation);
   const [options, setOptions] = useState<StockVariantOption[]>([]);
   const [rows, setRows] = useState<AdjustmentDraftRow[]>(() => buildInitialRows());
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingFocusRowId, setPendingFocusRowId] = useState<string | null>(null);
 
   const isBusy = isLoadingOptions || isSubmitting;
   const optionByVariantId = new Map(options.map((option) => [option.variantId, option]));
+  const activeBusiness =
+    businesses.find((business) => business.id === activeStore) ?? null;
+  const resolvedLocationId = activeLocationId ?? activeBusiness?.defaultLocationId ?? null;
+  const activeLocation =
+    activeBusiness?.locations.find((location) => location.id === resolvedLocationId) ?? null;
+  const canSelectLocation =
+    activeBusiness !== null &&
+    hasAssignedStoreCapability(activeBusiness, "BUSINESS_LOCATIONS") &&
+    activeBusiness.locations.length > 1;
   const readyRowCount = rows.filter((row) => {
     const parsedQuantity = Number(row.quantity.trim());
     return (
@@ -186,6 +205,27 @@ export function AdjustmentsPage() {
     };
   }, [activeStore, isBusinessSelected]);
 
+  useEffect(() => {
+    if (!pendingFocusRowId) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const targetId = isDesktopViewport()
+        ? `stock-desktop-variant-${pendingFocusRowId}`
+        : `stock-mobile-variant-${pendingFocusRowId}`;
+      const target = document.getElementById(targetId);
+      if (target instanceof HTMLElement) {
+        target.focus();
+        setPendingFocusRowId(null);
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [pendingFocusRowId, rows]);
+
   const updateRow = (rowId: string, patch: Partial<AdjustmentDraftRow>) => {
     setRows((current) =>
       current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)),
@@ -193,7 +233,38 @@ export function AdjustmentsPage() {
   };
 
   const addRow = () => {
-    setRows((current) => [...current, buildEmptyRow()]);
+    const nextRow = buildEmptyRow();
+    setRows((current) => [...current, nextRow]);
+    setPendingFocusRowId(nextRow.id);
+  };
+
+  const focusRowVariant = (rowId: string) => {
+    const targetId = isDesktopViewport()
+      ? `stock-desktop-variant-${rowId}`
+      : `stock-mobile-variant-${rowId}`;
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (target instanceof HTMLElement) {
+        target.focus();
+      }
+    });
+  };
+
+  const moveToNextRowFromQuantity = (rowId: string) => {
+    const currentIndex = rows.findIndex((row) => row.id === rowId);
+    if (currentIndex < 0) {
+      return;
+    }
+
+    const nextRow = rows[currentIndex + 1];
+    if (nextRow) {
+      focusRowVariant(nextRow.id);
+      return;
+    }
+
+    const appendedRow = buildEmptyRow();
+    setRows((current) => [...current, appendedRow]);
+    setPendingFocusRowId(appendedRow.id);
   };
 
   const clearRow = (rowId: string) => {
@@ -232,6 +303,10 @@ export function AdjustmentsPage() {
       setError("Enter quantity in at least one adjustment row.");
       return;
     }
+    if (!resolvedLocationId) {
+      setError("Select a business location before recording stock adjustments.");
+      return;
+    }
 
     for (const { row, index } of enteredRows) {
       if (!row.variantId) {
@@ -261,6 +336,7 @@ export function AdjustmentsPage() {
           variantId: row.variantId,
           quantity: Number(row.quantity.trim()),
           reason: row.reason,
+          locationId: resolvedLocationId,
         });
       }
       await syncOnce(activeStore);
@@ -276,11 +352,11 @@ export function AdjustmentsPage() {
       setMessage(
         navigator.onLine
           ? readyRows.length === 1
-            ? "1 stock adjustment recorded."
-            : `${readyRows.length} stock adjustments recorded.`
+            ? `1 stock adjustment recorded for ${activeLocation?.name ?? "the selected location"}.`
+            : `${readyRows.length} stock adjustments recorded for ${activeLocation?.name ?? "the selected location"}.`
           : readyRows.length === 1
-            ? "1 stock adjustment queued offline and will sync automatically."
-            : `${readyRows.length} stock adjustments queued offline and will sync automatically.`,
+            ? `1 stock adjustment queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`
+            : `${readyRows.length} stock adjustments queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`,
       );
     } catch (nextError) {
       console.error(nextError);
@@ -297,10 +373,36 @@ export function AdjustmentsPage() {
           <div className="flex flex-wrap items-start justify-between gap-1.5">
             <div>
               <CardTitle className="text-sm">Stock Adjustments</CardTitle>
-              <CardDescription className="text-[11px] lg:text-[10px]">
-                Record multiple stock movements quickly on desktop. Mobile keeps the flow focused
-                to one stacked entry at a time.
-              </CardDescription>
+              {activeBusiness ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground lg:text-[10px]">
+                  <span className="font-medium text-foreground">Location:</span>
+                  {canSelectLocation ? (
+                    <Select
+                      value={resolvedLocationId ?? ""}
+                      disabled={isBusy}
+                      onChange={(event) => {
+                        if (!activeStore) {
+                          return;
+                        }
+                        setActiveLocation(activeStore, event.target.value || null);
+                      }}
+                      className="h-7 min-w-[11rem] max-w-[14rem] bg-white px-2 text-[11px] lg:h-6 lg:text-[10px]"
+                    >
+                      {(activeBusiness.locations ?? []).map((location) => (
+                        <option key={location.id} value={location.id}>
+                          {location.name}
+                          {location.isDefault ? " (Default)" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-foreground">
+                      {activeLocation?.name ?? "Default location"}
+                    </span>
+                  )}
+                  <span>(adjustments recorded here)</span>
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-1">
               <Button
@@ -356,7 +458,7 @@ export function AdjustmentsPage() {
                     <div className="space-y-1">
                       <Label htmlFor={`stock-variant-${row.id}`}>Item Variant</Label>
                       <Select
-                        id={`stock-variant-${row.id}`}
+                        id={`stock-mobile-variant-${row.id}`}
                         value={row.variantId}
                         onChange={(event) => updateRow(row.id, { variantId: event.target.value })}
                         disabled={isBusy}
@@ -400,7 +502,7 @@ export function AdjustmentsPage() {
                         inputMode="decimal"
                         value={row.quantity}
                         onChange={(event) => updateRow(row.id, { quantity: event.target.value })}
-                        placeholder="e.g. 25"
+                        placeholder=""
                         disabled={isBusy}
                       />
                     </div>
@@ -411,38 +513,39 @@ export function AdjustmentsPage() {
                       </p>
                     </div>
                     <div className="flex gap-1">
-                      <Button
+                      <IconButton
                         type="button"
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
+                        variant="ghost"
+                        className="flex-1 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+                        icon={RotateCcw}
+                        iconSize={14}
+                        title="Clear row"
+                        aria-label="Clear row"
                         onClick={() => clearRow(row.id)}
                         disabled={isBusy}
-                      >
-                        Clear
-                      </Button>
-                      <Button
+                      />
+                      <IconButton
                         type="button"
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
+                        variant="ghost"
+                        className="flex-1 text-muted-foreground hover:bg-red-50 hover:text-red-700"
+                        icon={Trash2}
+                        iconSize={14}
+                        title="Remove row"
+                        aria-label="Remove row"
                         onClick={() => removeRow(row.id)}
                         disabled={isBusy}
-                      >
-                        Remove
-                      </Button>
+                      />
                     </div>
                   </div>
                 ))}
               </div>
 
-              <DenseTable className="lg:flex-1">
+              <DenseTable className="mt-1 lg:flex-1">
                 <DenseTableHead>
                   <tr>
-                    <DenseTableHeaderCell className="w-[46%]">Item Variant</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[20%]">Movement</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[14%]">Quantity</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[8%]">Unit</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[56%] pl-3">Item Variant</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[18%] pl-3">Movement</DenseTableHeaderCell>
+                    <DenseTableHeaderCell className="w-[14%] pr-3 text-right">Quantity</DenseTableHeaderCell>
                     <DenseTableHeaderCell className="w-[12%] text-right">Actions</DenseTableHeaderCell>
                   </tr>
                 </DenseTableHead>
@@ -451,6 +554,7 @@ export function AdjustmentsPage() {
                     <DenseTableRow key={row.id}>
                       <DenseTableCell>
                         <Select
+                          id={`stock-desktop-variant-${row.id}`}
                           className={DENSE_SELECT_CLASS}
                           value={row.variantId}
                           onChange={(event) => updateRow(row.id, { variantId: event.target.value })}
@@ -468,6 +572,7 @@ export function AdjustmentsPage() {
                       </DenseTableCell>
                       <DenseTableCell>
                         <Select
+                          id={`stock-desktop-reason-${row.id}`}
                           className={DENSE_SELECT_CLASS}
                           value={row.reason}
                           onChange={(event) =>
@@ -487,43 +592,54 @@ export function AdjustmentsPage() {
                           ))}
                         </Select>
                       </DenseTableCell>
-                      <DenseTableCell>
-                        <Input
-                          className={DENSE_INPUT_CLASS}
-                          inputMode="decimal"
-                          value={row.quantity}
-                          onChange={(event) => updateRow(row.id, { quantity: event.target.value })}
-                          placeholder="Qty"
-                          disabled={isBusy}
-                        />
-                      </DenseTableCell>
-                      <DenseTableCell>
-                        <span className="text-[11px] text-muted-foreground">
-                          {optionByVariantId.get(row.variantId)?.unit || "-"}
-                        </span>
+                      <DenseTableCell className="text-right">
+                        <div className="ml-auto flex w-[8.75rem] items-center justify-end">
+                          <Input
+                            id={`stock-desktop-quantity-${row.id}`}
+                            className={`${DENSE_INPUT_CLASS} w-[6rem] rounded-r-none border-r-0 px-2 text-right`}
+                            inputMode="decimal"
+                            value={row.quantity}
+                            onChange={(event) => updateRow(row.id, { quantity: event.target.value })}
+                            placeholder=""
+                            disabled={isBusy}
+                            onKeyDown={(event) => {
+                              if (event.key === "Tab" && !event.shiftKey) {
+                                event.preventDefault();
+                                moveToNextRowFromQuantity(row.id);
+                              }
+                            }}
+                          />
+                          <div className="flex h-7 min-w-[2.75rem] items-center justify-center rounded-r-lg border border-l-0 border-[#9fb5cd] bg-[#f7f9fb] px-2 text-[10px] text-muted-foreground lg:h-7">
+                            {row.variantId && optionByVariantId.get(row.variantId)?.unit
+                              ? optionByVariantId.get(row.variantId)?.unit
+                              : ""}
+                          </div>
+                        </div>
                       </DenseTableCell>
                       <DenseTableCell>
                         <div className="flex justify-end gap-1">
-                          <Button
+                          <IconButton
                             type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-[10px]"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+                            icon={RotateCcw}
+                            iconSize={14}
+                            title="Clear row"
+                            aria-label="Clear row"
                             onClick={() => clearRow(row.id)}
                             disabled={isBusy}
-                          >
-                            Clear
-                          </Button>
-                          <Button
+                          />
+                          <IconButton
                             type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-[10px]"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:bg-red-50 hover:text-red-700"
+                            icon={Trash2}
+                            iconSize={14}
+                            title="Remove row"
+                            aria-label="Remove row"
                             onClick={() => removeRow(row.id)}
                             disabled={isBusy}
-                          >
-                            Remove
-                          </Button>
+                          />
                         </div>
                       </DenseTableCell>
                     </DenseTableRow>
