@@ -19,6 +19,10 @@ export type SalesLineBalance = {
   itemId: string;
   variantId: string | null;
   description: string;
+  unitPrice: number;
+  taxRate: number;
+  taxMode: "EXCLUSIVE" | "INCLUSIVE";
+  unit: string;
   originalQuantity: number;
   fulfilledQuantity: number;
   returnedQuantity: number;
@@ -37,12 +41,12 @@ type ActiveDocumentRef = {
   type: string;
 };
 
-type LoadedTargetLink = {
+type LoadedSourceLink = {
   quantity: unknown;
   type: "FULFILLMENT" | "RETURN";
   target_line: {
     document: ActiveDocumentRef;
-    target_links: Array<{
+    source_links: Array<{
       quantity: unknown;
       type: "FULFILLMENT" | "RETURN";
       target_line: {
@@ -55,7 +59,7 @@ type LoadedTargetLink = {
 const roundQuantity = (value: number) => Math.round(value * 1000) / 1000;
 
 const sumActiveReturnLinks = (
-  links: LoadedTargetLink["target_line"]["target_links"],
+  links: LoadedSourceLink["target_line"]["source_links"],
 ) =>
   links.reduce((sum, nestedLink) => {
     if (nestedLink.type !== "RETURN" || !isActiveTargetDocument(nestedLink.target_line.document)) {
@@ -92,8 +96,12 @@ class SalesBalanceService {
             variant_id: true,
             description_snapshot: true,
             description: true,
+            unit_price: true,
+            tax_rate: true,
+            tax_mode_snapshot: true,
+            unit_snapshot: true,
             quantity: true,
-            target_links: {
+            source_links: {
               select: {
                 quantity: true,
                 type: true,
@@ -107,7 +115,7 @@ class SalesBalanceService {
                         type: true,
                       },
                     },
-                    target_links: {
+                    source_links: {
                       select: {
                         quantity: true,
                         type: true,
@@ -144,7 +152,7 @@ class SalesBalanceService {
       let shipmentConsumedQuantity = 0;
       let shipmentReturnedQuantity = 0;
 
-      for (const link of line.target_links) {
+      for (const link of line.source_links) {
         if (!isActiveTargetDocument(link.target_line.document)) {
           continue;
         }
@@ -161,7 +169,7 @@ class SalesBalanceService {
             shipmentConsumedQuantity += quantity;
 
             if (link.target_line.document.type === "DELIVERY_CHALLAN") {
-              shipmentReturnedQuantity += sumActiveReturnLinks(link.target_line.target_links);
+              shipmentReturnedQuantity += sumActiveReturnLinks(link.target_line.source_links);
             }
           }
         } else if (link.type === "RETURN") {
@@ -191,6 +199,10 @@ class SalesBalanceService {
         itemId: line.item_id,
         variantId: line.variant_id ?? null,
         description: line.description_snapshot ?? line.description,
+        unitPrice: Number(line.unit_price),
+        taxRate: Number(line.tax_rate),
+        taxMode: line.tax_mode_snapshot === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
+        unit: line.unit_snapshot ?? "PCS",
         originalQuantity,
         fulfilledQuantity,
         returnedQuantity,

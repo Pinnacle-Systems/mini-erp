@@ -2,7 +2,7 @@
 
 This checklist tracks implementation order and task status for [RFC: Sales Engine V2](/home/ajay/workspace/mini-erp/docs/rfcs/sales-engine-v2.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields. Backend Vitest coverage is now in place for the Phase 2 sales services, with focused service coverage above 80% branches and above 98% statements.
+Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields. Backend Vitest coverage is now in place for the Phase 2 sales services, with focused service coverage above 80% branches and above 98% statements. A live over-conversion regression caused by reversed `DocumentLineLink` traversal in the balance reader was fixed the same day and manually revalidated against posted estimate-to-order conversion.
 
 ## Phase 1: Data Foundation
 
@@ -43,51 +43,51 @@ Goal: make line-level quantity flow the source of truth.
 
 Goal: connect conversion behavior to the allocation engine.
 
-- [ ] Add `GET /api/sales/conversion-balance/:documentId`
-- [ ] Validate tenant ownership and sales access on the balance endpoint
-- [ ] Return backend-authored line balances only
-- [ ] Extend converted child payloads to declare source line linkage
+- [x] Add `GET /api/sales/conversion-balance/:documentId`
+- [x] Validate tenant ownership and sales access on the balance endpoint
+- [x] Return backend-authored line balances only
+- [x] Extend converted child payloads to declare source line linkage
 - [x] Persist `DocumentLineLink` rows during conversion-based save/post flows
 - [x] Reject conversion quantities that exceed backend-calculated remaining quantity
-- [ ] Default challan-to-invoice quantities from net delivered quantity after challan-linked returns
+- [x] Default challan-to-invoice quantities from net delivered quantity after challan-linked returns
 - [x] Keep direct standalone documents valid without requiring parent links
 
 ## Phase 4: Inventory Responsibility and Stock Posting
 
 Goal: make the correct document perform stock movement.
 
-- [ ] Create inventory responsibility resolver
-- [ ] Treat `DELIVERY_CHALLAN` as stock-affecting
-- [ ] Treat standalone `SALES_INVOICE` as stock-affecting
-- [ ] Treat order-linked or estimate-linked `SALES_INVOICE` as stock-affecting
-- [ ] Treat challan-linked `SALES_INVOICE` as non-stock-affecting
-- [ ] Treat `SALES_RETURN` as stock-affecting
-- [ ] Create `StockPostingService`
-- [ ] On challan post, validate location and write negative `StockLedger` rows
-- [ ] On direct/order-linked invoice post, validate location and write negative `StockLedger` rows
-- [ ] On sales return post, validate location and write positive `StockLedger` rows
+- [x] Create inventory responsibility resolver
+- [x] Treat `DELIVERY_CHALLAN` as stock-affecting
+- [x] Treat standalone `SALES_INVOICE` as stock-affecting
+- [x] Treat order-linked or estimate-linked `SALES_INVOICE` as stock-affecting
+- [x] Treat challan-linked `SALES_INVOICE` as non-stock-affecting
+- [x] Treat `SALES_RETURN` as stock-affecting
+- [x] Create `StockPostingService`
+- [x] On challan post, validate location and write negative `StockLedger` rows
+- [x] On direct/order-linked invoice post, validate location and write negative `StockLedger` rows
+- [x] On sales return post, validate location and write positive `StockLedger` rows
 - [ ] On challan-linked sales return post, validate location and write positive `StockLedger` rows using the challan fulfillment context
-- [ ] Apply stock effects only for `PRODUCT` lines
-- [ ] Skip stock validation and stock ledger writes for `SERVICE` lines
-- [ ] Add `ALLOW_NEGATIVE_STOCK` backend config
-- [ ] Block posting on insufficient stock when `ALLOW_NEGATIVE_STOCK=false`
-- [ ] Allow posting to proceed when `ALLOW_NEGATIVE_STOCK=true`
+- [x] Apply stock effects only for `PRODUCT` lines
+- [x] Skip stock validation and stock ledger writes for `SERVICE` lines
+- [x] Add `ALLOW_NEGATIVE_STOCK` backend config
+- [x] Block posting on insufficient stock when `ALLOW_NEGATIVE_STOCK=false`
+- [x] Allow posting to proceed when `ALLOW_NEGATIVE_STOCK=true`
 
 ## Phase 5: Policy Layer and Reversal Logic
 
 Goal: enforce RFC rules for posted docs, returns, and cancellation.
 
-- [ ] Add policy guard layer for document actions
-- [ ] Block `VOID` when `posted_at != null`
+- [x] Add policy guard layer for document actions
+- [x] Block `VOID` when `posted_at != null`
 - [x] Keep draft-only edit/delete behavior unchanged
-- [ ] Enforce parent-specific return ceiling for invoice-linked and challan-linked returns
-- [ ] Require all `SALES_RETURN` documents to point to a `SALES_INVOICE` or `DELIVERY_CHALLAN`
-- [ ] Default return `location_id` from parent invoice or challan during conversion
+- [x] Enforce parent-specific return ceiling for invoice-linked and challan-linked returns
+- [x] Require all `SALES_RETURN` documents to point to a `SALES_INVOICE` or `DELIVERY_CHALLAN`
+- [x] Default return `location_id` from parent invoice or challan during conversion
 - [x] Store return `location_id` independently on the return document
-- [ ] Always use the return document’s own `location_id` for stock movement
+- [x] Always use the return document’s own `location_id` for stock movement
 - [ ] On cancelling posted challan/direct invoice/order-linked invoice, write positive reversal stock rows
 - [ ] On cancelling posted sales return, write negative reversal stock rows
-- [ ] Ensure cancelled documents no longer contribute to active balance
+- [x] Ensure cancelled documents no longer contribute to active balance
 
 ## Phase 6: Frontend Integration
 
@@ -101,7 +101,7 @@ Goal: make the shared sales workspace consume backend authority.
 - [ ] Default return location from invoice or challan location
 - [ ] Surface or preserve return location override according to the RFC
 - [ ] Add challan-origin return flow in the shared sales workspace
-- [ ] Hide or disable `VOID` for posted docs in the sales workspace
+- [x] Hide or disable `VOID` for posted docs in the sales workspace
 - [ ] Surface stock and return validation errors from backend responses
 - [ ] Make location visible and required on challans and returns
 
@@ -116,18 +116,18 @@ Goal: verify the RFC end to end.
 - [x] Test balance service for challan-linked returns refilling order shipment balance
 - [x] Test balance service exclusion of `CANCELLED` targets
 - [x] Test balance service exclusion of `VOID` targets
-- [ ] Test standalone invoice stock deduction
-- [ ] Test order-linked invoice stock deduction
-- [ ] Test challan-backed invoice does not deduct stock again
-- [ ] Test sales return adds stock
+- [x] Test standalone invoice stock deduction
+- [x] Test order-linked invoice stock deduction
+- [x] Test challan-backed invoice does not deduct stock again
+- [x] Test sales return adds stock
 - [x] Test challan-linked return reduces net invoiceable quantity on the challan
-- [ ] Test service lines skip stock movement
+- [x] Test service lines skip stock movement
 - [ ] Test posted docs cannot be voided
 - [ ] Test cancelling challan/direct invoice creates positive reversal rows
 - [ ] Test cancelling sales return creates negative reversal rows
 - [ ] Test cancelled docs no longer count as active links
-- [ ] Test `ALLOW_NEGATIVE_STOCK=false` blocks insufficient-stock posting
-- [ ] Test `ALLOW_NEGATIVE_STOCK=true` allows insufficient-stock posting
+- [x] Test `ALLOW_NEGATIVE_STOCK=false` blocks insufficient-stock posting
+- [x] Test `ALLOW_NEGATIVE_STOCK=true` allows insufficient-stock posting
 - [ ] Manual run: Direct Invoice -> post -> stock reduced
 - [ ] Manual run: Order -> Challan -> Invoice -> stock reduced only at challan stage
 - [ ] Manual run: Order -> Invoice -> stock reduced at invoice stage
