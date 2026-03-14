@@ -15,53 +15,16 @@ import {
   type DocumentHistoryActor,
   type DocumentHistoryMetadata,
 } from "./document-history.service.js";
-
-type SalesDocumentType =
-  | "SALES_ESTIMATE"
-  | "SALES_ORDER"
-  | "DELIVERY_CHALLAN"
-  | "SALES_INVOICE"
-  | "SALES_RETURN";
-
-type SalesDocumentAction = "CANCEL" | "VOID" | "REOPEN";
-type SalesDocumentCancelReason = "CUSTOMER_DECLINED" | "INTERNAL_DROP" | "OTHER";
-
-type SalesLineInput = {
-  id: string;
-  variantId: string;
-  description: string;
-  quantity: string;
-  unitPrice: string;
-  taxRate: string;
-  taxMode: "EXCLUSIVE" | "INCLUSIVE";
-  unit: string;
-};
-
-type SalesDocumentInput = {
-  tenantId: string;
-  documentType: SalesDocumentType;
-  parentId?: string | null;
-  locationId?: string | null;
-  billNumber: string;
-  transactionType?: "CASH" | "CREDIT" | null;
-  customerId?: string | null;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  customerGstNo: string;
-  validUntil: string;
-  dispatchDate: string;
-  dispatchCarrier: string;
-  dispatchReference: string;
-  notes: string;
-  lines: SalesLineInput[];
-};
-
-type SalesTransactionClient = Parameters<typeof prisma.$transaction>[0] extends (
-  tx: infer T,
-) => Promise<unknown>
-  ? T
-  : never;
+import { documentLinkService } from "./document-link.service.js";
+import { salesBalanceService } from "./sales-balance.service.js";
+import type {
+  SalesDocumentAction,
+  SalesDocumentCancelReason,
+  SalesDocumentInput,
+  SalesDocumentType,
+  SalesLineInput,
+  SalesTransactionClient,
+} from "./sales.types.js";
 
 type SalesDocumentRecord = Awaited<ReturnType<typeof getDocumentOrThrow>>;
 
@@ -115,8 +78,10 @@ const SALES_DOCUMENT_META: Record<
 const SALES_DOCUMENT_CONVERSION_RULES: Partial<
   Record<SalesDocumentType, SalesDocumentType[]>
 > = {
-  SALES_ESTIMATE: ["SALES_ORDER"],
-  SALES_ORDER: ["SALES_INVOICE"],
+  SALES_ESTIMATE: ["SALES_ORDER", "SALES_INVOICE"],
+  SALES_ORDER: ["DELIVERY_CHALLAN", "SALES_INVOICE"],
+  DELIVERY_CHALLAN: ["SALES_INVOICE", "SALES_RETURN"],
+  SALES_INVOICE: ["SALES_RETURN"],
 };
 
 const usesTransactionType = (documentType: SalesDocumentType) =>
@@ -616,39 +581,20 @@ const syncParentConversionStatus = async (
     return;
   }
 
-  const convertedChildren = await tx.document.findMany({
-    where: {
-      business_id: tenantId,
-      parent_id: parent.id,
-      type: {
-        in: eligibleChildTypes,
-      },
-      deleted_at: null,
-      posted_at: {
-        not: null,
-      },
-      status: {
-        notIn: ["CANCELLED", "VOID"],
-      },
-    },
-    select: {
-      grand_total: true,
-    },
-  });
+  const parentType = parent.type as SalesDocumentType;
+  if (!["SALES_ESTIMATE", "SALES_ORDER"].includes(parentType)) {
+    return;
+  }
 
-  const convertedTotal = convertedChildren.reduce(
-    (sum, child) => sum + Number(child.grand_total),
-    0,
+  const lineBalances =
+    parentType === "SALES_ORDER"
+      ? await salesBalanceService.getShipmentLineBalances(tx, tenantId, parent.id)
+      : await salesBalanceService.getLineBalances(tx, tenantId, parent.id, "FULFILLMENT");
+  const hasAnyConsumption = lineBalances.some(
+    (line) => line.fulfilledQuantity > 0 || line.returnedQuantity > 0,
   );
-  const parentTotal = Number(parent.grand_total);
-  const nextStatus =
-    convertedTotal <= 0
-      ? parent.posted_at
-        ? "OPEN"
-        : "DRAFT"
-      : convertedTotal >= parentTotal
-        ? "COMPLETED"
-        : "PARTIAL";
+  const isFullyAllocated = lineBalances.every((line) => line.remainingQuantity <= 0);
+  const nextStatus = !hasAnyConsumption ? "OPEN" : isFullyAllocated ? "COMPLETED" : "PARTIAL";
 
   if (nextStatus === parent.status) {
     return;
@@ -984,6 +930,8 @@ const postDraftDocument = async (
       `${SALES_DOCUMENT_META[documentType].singularLabel} requires an existing customer for credit transactions`,
     );
   }
+
+  await documentLinkService.createLinksForPostedDocument(tx, tenantId, documentId);
 
   await tx.document.update({
     where: { id: documentId },

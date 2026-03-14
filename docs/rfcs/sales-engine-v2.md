@@ -4,7 +4,7 @@ This RFC is a standalone design document for iterative refinement. It records th
 
 **Status:** Final / For Implementation
 **Area:** Sales, Inventory, Documents
-**Core Logic:** Line-level allocation ledger, Backend-authored balances, Inventory Responsibility Hierarchy.
+**Core Logic:** Line-level allocation ledger, Backend-authored balances, Inventory Responsibility Hierarchy, and fulfillment-aware return handling.
 
 ## 1. Problem Statement
 
@@ -56,6 +56,7 @@ To ensure stock movement is neither missed nor double-counted:
 | **Sales Invoice** | Parent is `SALES_ORDER` or `SALES_ESTIMATE` | **Deduct Stock** |
 | **Sales Invoice** | Parent is `DELIVERY_CHALLAN` | **No Effect** (Already handled by Challan) |
 | **Sales Return** | Parent is `SALES_INVOICE` | **Add Stock** |
+| **Sales Return** | Parent is `DELIVERY_CHALLAN` | **Add Stock** |
 
 ### 3.3 Catalog Integration (Stock vs. Service)
 
@@ -69,8 +70,27 @@ Inventory effects only apply to items where `item.type == 'PRODUCT'`.
 
 **Endpoint:** `GET /sales/conversion-balance/{document_id}`
 
-The balance for any source line is calculated as:
+The sales engine must distinguish shipment balance from invoice balance when fulfillment returns are allowed.
+
+**Shipment balance** applies to `SALES_ORDER` lines and is used for "available to ship" decisions.
+
+For an order line:
+`RemainingToShip = OrderQty - SUM(Active shipment-consuming fulfillment links) + SUM(Active challan-linked return links)`
+
+Shipment-consuming fulfillment links include:
+- `Order -> Delivery Challan`
+- `Order -> Sales Invoice` for direct/order-linked invoices
+
+Challan-linked return links include:
+- `Delivery Challan -> Sales Return`
+
+**Invoice balance** applies to source lines that are being invoiced or returned.
+
+For a generic source line:
 `RemainingQty = OriginalQty - SUM(Active FULFILLMENT links) + SUM(Active RETURN links)`
+
+For a challan line being converted to invoice:
+`NetInvoiceableQty = ChallanQty - SUM(Active challan-linked return links)`
 
 - **Active Link Definition:** Only links whose target documents have `posted_at != null` AND a status NOT IN (`CANCELLED`, `VOID`) are included.
 - **Drafts:** `DRAFT` documents do not consume balance.
@@ -93,16 +113,23 @@ The repository follows an immutable history pattern. Reversal of operational eff
 - **Return Ceiling:** A `Sales Return` can only be created against an invoice where `posted_at != null`. The maximum returnable quantity per line is: `InvoicedQty - SUM(Active Return Links)`.
 - **Direct Entry:** Standalone Invoices are supported and act as the primary fulfillment trigger for inventory.
 
+### Delivery Challan
+
+- **Fulfillment Rejection:** A `Sales Return` may be created against a posted delivery challan to reverse shipped quantity before invoicing.
+- **Net Invoicing:** When converting a challan to an invoice, invoiceable quantity per line is capped to: `ChallanQty - SUM(Active challan-linked return links)`.
+
 ### Sales Order
 
-- **Completion:** A Sales Order is marked `COMPLETED` when all lines have active `FULFILLMENT` links equaling the original quantity.
+- **Completion:** A Sales Order is marked `COMPLETED` when all lines have zero `RemainingToShip` after applying active fulfillment links and challan-linked returns.
 - **Reservation:** Explicitly **DEFERRED**. Quantity reservation logic is out of scope for this phase.
 
 ## 6. Policy Decisions for V1
 
-1. **Return Source of Truth:** Returns link to the **Invoice** to maintain financial and legal change-of-ownership integrity.
-2. **Standalone Returns:** Blocked. All `SALES_RETURN` documents must have a `parent_id` pointing to a `SALES_INVOICE`.
-3. **Return Location:** The `Sales Return` uses the `location_id` specified on its own document header. During conversion from an Invoice, this defaults to the Invoice's `location_id` but is stored independently to allow override. The `StockLedger` must always use the Return's specific `location_id`.
+1. **Two-Way Return Source of Truth:** Returns may link to either an **Invoice** or a **Delivery Challan**.
+   - Invoice-linked return: financial return / credit-note flow
+   - Challan-linked return: fulfillment rejection / un-shipping flow
+2. **Standalone Returns:** Blocked. All `SALES_RETURN` documents must have a `parent_id` pointing to either a `SALES_INVOICE` or a `DELIVERY_CHALLAN`.
+3. **Return Location:** The `Sales Return` uses the `location_id` specified on its own document header. During conversion from an Invoice or Challan, this defaults to the parent document's `location_id` but is stored independently to allow override. The `StockLedger` must always use the Return's specific `location_id`.
 4. **Negative Stock Switch:** Controlled by a backend environment variable. If `false`, the `POST` service for Challans and Direct Invoices will throw a `400 Bad Request` if `CurrentStock - RequestQty < 0`.
 
 ## 7. Acceptance Criteria
@@ -111,8 +138,9 @@ The repository follows an immutable history pattern. Reversal of operational eff
 - [ ] `GET /sales/conversion-balance` correctly returns `RemainingQty` using the type-aware formula.
 - [ ] A standalone Invoice generates `StockLedger` entries on post.
 - [ ] An Invoice converted from a Delivery Challan does **not** generate additional `StockLedger` entries.
+- [ ] A Sales Return converted from a Delivery Challan restores stock and refills the source order's shipment balance.
 - [ ] The `CANCEL` action on a stock-deducting document creates positive reversal ledger rows.
 - [ ] The `CANCEL` action on a `Sales Return` creates negative reversal ledger rows and restores the return ceiling on the source Invoice.
 - [ ] The `VOID` action is blocked for any document with a non-null `posted_at` value.
-- [ ] Sales Returns are blocked if the requested quantity exceeds the available return ceiling on the source Invoice line.
+- [ ] Sales Returns are blocked if the requested quantity exceeds the available return ceiling on the specific source Invoice or Delivery Challan line.
 - [ ] Service items are excluded from inventory validation but included in line-link tracking.
