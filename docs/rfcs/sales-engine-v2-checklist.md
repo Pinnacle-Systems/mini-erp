@@ -2,7 +2,7 @@
 
 This checklist tracks implementation order and task status for [RFC: Sales Engine V2](/home/ajay/workspace/mini-erp/docs/rfcs/sales-engine-v2.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields.
+Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields. Backend Vitest coverage is now in place for the Phase 2 sales services, with focused service coverage above 80% branches and above 98% statements.
 
 ## Phase 1: Data Foundation
 
@@ -47,8 +47,8 @@ Goal: connect conversion behavior to the allocation engine.
 - [ ] Validate tenant ownership and sales access on the balance endpoint
 - [ ] Return backend-authored line balances only
 - [ ] Extend converted child payloads to declare source line linkage
-- [ ] Persist `DocumentLineLink` rows during conversion-based save/post flows
-- [ ] Reject conversion quantities that exceed backend-calculated remaining quantity
+- [x] Persist `DocumentLineLink` rows during conversion-based save/post flows
+- [x] Reject conversion quantities that exceed backend-calculated remaining quantity
 - [ ] Default challan-to-invoice quantities from net delivered quantity after challan-linked returns
 - [x] Keep direct standalone documents valid without requiring parent links
 
@@ -110,17 +110,17 @@ Goal: make the shared sales workspace consume backend authority.
 Goal: verify the RFC end to end.
 
 - [ ] Test `DocumentLineLink` relations and indexes
-- [ ] Test balance service for partial fulfillment
-- [ ] Test balance service for multiple child documents
-- [ ] Test balance service for returns
-- [ ] Test balance service for challan-linked returns refilling order shipment balance
-- [ ] Test balance service exclusion of `CANCELLED` targets
-- [ ] Test balance service exclusion of `VOID` targets
+- [x] Test balance service for partial fulfillment
+- [x] Test balance service for multiple child documents
+- [x] Test balance service for returns
+- [x] Test balance service for challan-linked returns refilling order shipment balance
+- [x] Test balance service exclusion of `CANCELLED` targets
+- [x] Test balance service exclusion of `VOID` targets
 - [ ] Test standalone invoice stock deduction
 - [ ] Test order-linked invoice stock deduction
 - [ ] Test challan-backed invoice does not deduct stock again
 - [ ] Test sales return adds stock
-- [ ] Test challan-linked return reduces net invoiceable quantity on the challan
+- [x] Test challan-linked return reduces net invoiceable quantity on the challan
 - [ ] Test service lines skip stock movement
 - [ ] Test posted docs cannot be voided
 - [ ] Test cancelling challan/direct invoice creates positive reversal rows

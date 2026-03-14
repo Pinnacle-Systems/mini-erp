@@ -222,6 +222,88 @@ describe("documentLinkService", () => {
     });
   });
 
+  it("persists links for draft targets using the same strict balance validation", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst.mockImplementation(async ({ where }) => {
+      if (where.id === "draft-invoice-1") {
+        return {
+          id: "draft-invoice-1",
+          type: "SALES_INVOICE",
+          parent_id: "order-1",
+          posted_at: null,
+          lineItems: [
+            {
+              id: "draft-invoice-line-1",
+              variant_id: "variant-1",
+              description_snapshot: "Product A",
+              description: "Product A",
+              quantity: "5.000",
+              unit_price: "100.00",
+              tax_rate: "18.00",
+            },
+          ],
+        };
+      }
+
+      return {
+        id: "order-1",
+        type: "SALES_ORDER",
+        posted_at: new Date("2026-03-15T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "order-line-1",
+            variant_id: "variant-1",
+            description_snapshot: "Product A",
+            description: "Product A",
+            quantity: "5.000",
+            unit_price: "100.00",
+            tax_rate: "18.00",
+          },
+        ],
+      };
+    });
+    vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
+      {
+        sourceDocumentId: "order-1",
+        sourceDocumentType: "SALES_ORDER",
+        sourceDocumentNumber: "SO-0001",
+        sourceLineId: "order-line-1",
+        itemId: "item-1",
+        variantId: "variant-1",
+        description: "Product A",
+        originalQuantity: 5,
+        fulfilledQuantity: 0,
+        returnedQuantity: 0,
+        remainingQuantity: 5,
+        returnableQuantity: 5,
+        shipmentConsumedQuantity: 0,
+        shipmentReturnedQuantity: 0,
+        shipmentRemainingQuantity: 5,
+        invoiceableQuantity: 5,
+      },
+    ]);
+
+    await documentLinkService.upsertLinksForDocument(tx as never, "tenant-1", "draft-invoice-1");
+
+    expect(tx.documentLineLink.deleteMany).toHaveBeenCalledWith({
+      where: {
+        target_line_id: {
+          in: ["draft-invoice-line-1"],
+        },
+      },
+    });
+    expect(tx.documentLineLink.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          source_line_id: "order-line-1",
+          target_line_id: "draft-invoice-line-1",
+          quantity: 5,
+          type: "FULFILLMENT",
+        },
+      ],
+    });
+  });
+
   it("rejects converted quantities that exceed the available balance", async () => {
     const tx = createSalesTxMock();
     tx.document.findFirst.mockImplementation(async ({ where }) => {
