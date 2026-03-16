@@ -24,6 +24,7 @@ import {
   type StockAdjustmentReason,
   type StockVariantOption,
 } from "../../features/sync/engine";
+import { useToast } from "../../features/toast/useToast";
 
 const STOCK_REASON_OPTIONS: Array<{
   value: StockAdjustmentReason;
@@ -104,6 +105,7 @@ export function AdjustmentsPage() {
   const businesses = useSessionStore((state) => state.businesses);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const setActiveLocation = useSessionStore((state) => state.setActiveLocation);
+  const { showToast } = useToast();
   const [options, setOptions] = useState<StockVariantOption[]>([]);
   const [rows, setRows] = useState<AdjustmentDraftRow[]>(() => buildInitialRows());
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
@@ -123,6 +125,20 @@ export function AdjustmentsPage() {
     activeBusiness !== null &&
     hasAssignedStoreCapability(activeBusiness, "BUSINESS_LOCATIONS") &&
     activeBusiness.locations.length > 1;
+  const showAdjustmentToast = (
+    tone: "success" | "error",
+    description: string,
+  ) => {
+    showToast({
+      title:
+        tone === "success"
+          ? "Stock adjustments recorded"
+          : "Unable to record stock adjustments",
+      description,
+      tone,
+      dedupeKey: `stock-adjustments:${tone}:${description}`,
+    });
+  };
   const readyRowCount = rows.filter((row) => {
     const parsedQuantity = Number(row.quantity.trim());
     return (
@@ -300,26 +316,36 @@ export function AdjustmentsPage() {
       .filter(({ row }) => row.quantity.trim().length > 0);
 
     if (enteredRows.length === 0) {
-      setError("Enter quantity in at least one adjustment row.");
+      const nextError = "Enter quantity in at least one adjustment row.";
+      setError(nextError);
+      showAdjustmentToast("error", nextError);
       return;
     }
     if (!resolvedLocationId) {
-      setError("Select a business location before recording stock adjustments.");
+      const nextError = "Select a business location before recording stock adjustments.";
+      setError(nextError);
+      showAdjustmentToast("error", nextError);
       return;
     }
 
     for (const { row, index } of enteredRows) {
       if (!row.variantId) {
-        setError(`Row ${index + 1}: Select an item variant.`);
+        const nextError = `Row ${index + 1}: Select an item variant.`;
+        setError(nextError);
+        showAdjustmentToast("error", nextError);
         return;
       }
       if (!row.reason) {
-        setError(`Row ${index + 1}: Select a movement type.`);
+        const nextError = `Row ${index + 1}: Select a movement type.`;
+        setError(nextError);
+        showAdjustmentToast("error", nextError);
         return;
       }
       const parsedQuantity = Number(row.quantity.trim());
       if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
-        setError(`Row ${index + 1}: Quantity must be a positive number.`);
+        const nextError = `Row ${index + 1}: Quantity must be a positive number.`;
+        setError(nextError);
+        showAdjustmentToast("error", nextError);
         return;
       }
     }
@@ -349,18 +375,21 @@ export function AdjustmentsPage() {
             : row,
         ),
       );
-      setMessage(
+      const nextMessage =
         navigator.onLine
           ? readyRows.length === 1
             ? `1 stock adjustment recorded for ${activeLocation?.name ?? "the selected location"}.`
             : `${readyRows.length} stock adjustments recorded for ${activeLocation?.name ?? "the selected location"}.`
           : readyRows.length === 1
             ? `1 stock adjustment queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`
-            : `${readyRows.length} stock adjustments queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`,
-      );
+            : `${readyRows.length} stock adjustments queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`;
+      setMessage(nextMessage);
+      showAdjustmentToast("success", nextMessage);
     } catch (nextError) {
       console.error(nextError);
-      setError(toUserStockErrorMessage(nextError));
+      const nextMessage = toUserStockErrorMessage(nextError);
+      setError(nextMessage);
+      showAdjustmentToast("error", nextMessage);
     } finally {
       setIsSubmitting(false);
     }
