@@ -2,8 +2,9 @@ import { ArrowLeft, Building2, ChevronDown, LogOut } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../atoms/Button";
-import { Select } from "../atoms/Select";
 import { BusinessSelectionDialog } from "./BusinessSelectionDialog";
+import { LocationSelectionDialog } from "./LocationSelectionDialog";
+import { cn } from "../../lib/utils";
 import {
   hasAssignedStoreCapability,
   useSessionStore,
@@ -43,7 +44,9 @@ export function SessionHeader({
   const setIsBusinessSelected = useSessionStore((state) => state.setIsBusinessSelected);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
+  const [isLocationSwitcherOpen, setIsLocationSwitcherOpen] = useState(false);
   const [switchQuery, setSwitchQuery] = useState("");
+  const [locationSwitchQuery, setLocationSwitchQuery] = useState("");
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
   const canSwitchStore = role === "USER" && businesses.length > 1 && showSwitchStore;
@@ -55,13 +58,26 @@ export function SessionHeader({
     () => activeBusiness?.name ?? "No business selected",
     [activeBusiness],
   );
-  const activeLocationName = useMemo(
+  const activeLocation = useMemo(
     () =>
-      activeBusiness?.locations.find((location) => location.id === activeLocationId)?.name ??
-      activeBusiness?.locations.find((location) => location.isDefault)?.name ??
-      "Default location",
+      activeBusiness?.locations.find((location) => location.id === activeLocationId) ??
+      activeBusiness?.locations.find((location) => location.isDefault) ??
+      null,
     [activeBusiness, activeLocationId],
   );
+  const activeLocationName = useMemo(
+    () => activeLocation?.name ?? "Default location",
+    [activeLocation],
+  );
+  const activeLocationOptionLabel = useMemo(
+    () =>
+      activeLocation
+        ? `${activeLocation.name}${activeLocation.isDefault ? " (Default)" : ""}`
+        : activeLocationName,
+    [activeLocation, activeLocationName],
+  );
+  const formatLocationTriggerLabel = (name: string) =>
+    name.replace(/\b\p{L}/gu, (character) => character.toUpperCase());
   const canSwitchLocation =
     role === "USER" &&
     activeMemberRole === "OWNER" &&
@@ -69,6 +85,10 @@ export function SessionHeader({
     hasAssignedStoreCapability(activeBusiness, "BUSINESS_LOCATIONS") &&
     (activeBusiness?.locations.length ?? 0) > 1;
   const showSelectedStore = role === "USER" && isBusinessSelected && showSwitchStore;
+  const isDefaultLocationSelected = activeLocation?.isDefault ?? true;
+  const isGroupedLocationControl = canSwitchStore;
+  const standaloneLocationControl = canSwitchLocation && !isGroupedLocationControl;
+  const showLocationSearch = (activeBusiness?.locations.length ?? 0) > 8;
 
   const onSelectBusiness = async (businessId: string) => {
     if (businessId === activeStore) {
@@ -126,6 +146,8 @@ export function SessionHeader({
       setActiveLocation(activeStore, result.activeLocationId ?? locationId);
       setActiveMemberRole(result.memberRole ?? activeMemberRole);
       setActiveBusinessModules(result.modules ?? null);
+      setIsLocationSwitcherOpen(false);
+      setLocationSwitchQuery("");
     } catch (error) {
       setSwitchError(error instanceof Error ? error.message : "Unable to switch location.");
     } finally {
@@ -199,29 +221,66 @@ export function SessionHeader({
           </Button>
         ) : null}
         {canSwitchLocation ? (
-          <label className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1">
-            <span className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground">
-              Location
-            </span>
-            <Select
-              value={activeLocationId ?? activeBusiness?.defaultLocationId ?? ""}
-              onChange={(event) => {
-                void onSelectLocation(event.target.value);
-              }}
-              disabled={switching}
-              className="h-7 min-w-[9rem] border-0 bg-transparent px-1 text-xs"
-              aria-label="Switch location"
+          <button
+            type="button"
+            onClick={() => {
+              setSwitchError(null);
+              setLocationSwitchQuery("");
+              setIsLocationSwitcherOpen(true);
+            }}
+            className={cn(
+              "relative flex h-8 shrink-0 items-center overflow-hidden rounded-md transition-[border-color,box-shadow,background-color] duration-150 focus-within:border-[#5d95d6] focus-within:bg-white focus-within:outline-none focus-within:ring-2 focus-within:ring-[#6aa5eb]/20",
+              standaloneLocationControl
+                ? "min-w-[11rem] max-w-[14rem] border border-[#9fb5cd] bg-[#f7f9fb] px-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
+                : "min-w-[9.75rem] max-w-[12rem] border border-[#d1d9e6] bg-[#f8fafc] px-2 shadow-[0_1px_1px_rgba(15,23,42,0.02)]",
+            )}
+            disabled={switching}
+            aria-label="Switch location"
+            title={activeLocationOptionLabel}
+          >
+            <div
+              className={cn(
+                "pointer-events-none flex min-w-0 flex-1 items-center",
+                standaloneLocationControl ? "gap-2" : "gap-1.5",
+              )}
             >
-              {activeBusiness?.locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </Select>
-          </label>
+              {standaloneLocationControl ? (
+                <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                  Location
+                </span>
+              ) : null}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-2 w-2 shrink-0 rounded-full transition-colors",
+                  isDefaultLocationSelected ? "bg-transparent" : "bg-[#2f6fb7]",
+                )}
+              />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-xs",
+                  isDefaultLocationSelected
+                    ? standaloneLocationControl
+                      ? "font-medium text-foreground"
+                      : "text-[#334155]"
+                    : "font-medium text-[#1f4167]",
+                )}
+                title={activeLocationOptionLabel}
+              >
+                {formatLocationTriggerLabel(activeLocationName)}
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </div>
+          </button>
         ) : showSelectedStore && activeBusiness ? (
-          <div className="hidden shrink-0 rounded-md border border-border bg-white px-2 py-1 text-[11px] text-muted-foreground md:block">
-            {activeLocationName}
+          <div
+            className="hidden shrink-0 items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] text-muted-foreground md:flex"
+            title={activeLocationOptionLabel}
+          >
+            <span className="text-[10px] font-medium text-muted-foreground">Location</span>
+            <span className="max-w-[9rem] truncate text-foreground">
+              {formatLocationTriggerLabel(activeLocationName)}
+            </span>
           </div>
         ) : null}
         {onLogout ? (
@@ -253,6 +312,26 @@ export function SessionHeader({
           activeBusinessId={activeStore}
           inactiveLabel="Tap to switch"
           panelOffsetClassName="mt-8 sm:mt-16"
+        />
+      ) : null}
+      {isLocationSwitcherOpen && activeBusiness ? (
+        <LocationSelectionDialog
+          title="Switch Location"
+          locations={activeBusiness.locations}
+          query={locationSwitchQuery}
+          onQueryChange={setLocationSwitchQuery}
+          onClose={() => setIsLocationSwitcherOpen(false)}
+          onSelectLocation={(locationId) => {
+            void onSelectLocation(locationId);
+          }}
+          disabled={switching}
+          error={switchError}
+          activeLocationId={activeLocation?.id ?? activeBusiness.defaultLocationId ?? null}
+          inactiveLabel="Tap to switch"
+          activeLabel="Current location"
+          showSearch={showLocationSearch}
+          panelOffsetClassName="mt-8 sm:mt-16"
+          panelClassName="max-w-xs"
         />
       ) : null}
     </section>

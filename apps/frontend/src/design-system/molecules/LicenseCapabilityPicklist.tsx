@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 type LicenseCapabilityPicklistProps = {
   capabilities: readonly string[];
@@ -19,8 +19,6 @@ export function LicenseCapabilityPicklist({
   onAddOnCapabilitiesChange,
   onRemovedCapabilitiesChange,
 }: LicenseCapabilityPicklistProps) {
-  const [mobileView, setMobileView] = useState<"HAS" | "MISSING">("HAS");
-
   const bundleSet = useMemo(() => new Set(bundleCapabilities), [bundleCapabilities]);
   const effectiveSet = useMemo(() => {
     const next = new Set(bundleCapabilities);
@@ -29,12 +27,8 @@ export function LicenseCapabilityPicklist({
     return next;
   }, [bundleCapabilities, addOnCapabilities, removedCapabilities]);
 
-  const hasCapabilities = useMemo(
-    () => capabilities.filter((capability) => effectiveSet.has(capability)),
-    [capabilities, effectiveSet],
-  );
-  const missingCapabilities = useMemo(
-    () => capabilities.filter((capability) => !effectiveSet.has(capability)),
+  const selectedCount = useMemo(
+    () => capabilities.filter((capability) => effectiveSet.has(capability)).length,
     [capabilities, effectiveSet],
   );
 
@@ -60,97 +54,36 @@ export function LicenseCapabilityPicklist({
   };
 
   return (
-    <div className="grid gap-2">
-      <div className="rounded-md border border-[#d7e2ef] bg-[#f7fbff] p-2 lg:hidden">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setMobileView("HAS")}
-            className={`h-8 rounded-md px-2 text-xs ${
-              mobileView === "HAS"
-                ? "bg-[#2f6fb7] text-white"
-                : "border border-[#c6d5e6] bg-white text-foreground"
-            }`}
-          >
-            Has ({hasCapabilities.length})
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setMobileView("MISSING")}
-            className={`h-8 rounded-md px-2 text-xs ${
-              mobileView === "MISSING"
-                ? "bg-[#2f6fb7] text-white"
-                : "border border-[#c6d5e6] bg-white text-foreground"
-            }`}
-          >
-            Doesn&apos;t have ({missingCapabilities.length})
-          </button>
+    <div className="grid gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-1">
+        <div className="text-[10px] text-muted-foreground">Feature Access</div>
+        <div className="text-[10px] text-muted-foreground">
+          {selectedCount} of {capabilities.length} enabled
         </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Tap a capability to move it to the other list.
-        </p>
-        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1">
-          <div className="grid gap-1">
-            {(mobileView === "HAS" ? hasCapabilities : missingCapabilities).map((capability) => (
+      </div>
+
+      <div className="max-h-[18.5rem] overflow-y-auto rounded-md border border-[#d7e2ef] bg-[#fbfdff] p-1.5">
+        <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
+          {capabilities.map((capability) => {
+            const isSelected = effectiveSet.has(capability);
+
+            return (
               <button
-                key={`${mobileView}-${capability}`}
+                key={capability}
                 type="button"
                 onClick={() => toggleCapability(capability)}
                 disabled={disabled}
-                className="flex min-h-8 items-center rounded-md border border-[#e5edf7] px-2 text-left text-xs text-foreground"
+                aria-pressed={isSelected}
+                className={`flex min-h-8 items-center rounded-md border px-2 text-left text-[10px] transition ${
+                  isSelected
+                    ? "border-[#2f6fb7] bg-[#edf4fb] font-medium text-[#1f4167]"
+                    : "border-[#c6d5e6] bg-white text-foreground"
+                } ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
               >
                 <span className="min-w-0 flex-1 truncate">{capability}</span>
               </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="hidden lg:block">
-        <p className="mb-1 text-[10px] text-muted-foreground">
-          Click or select a capability to move it.
-        </p>
-      </div>
-
-      <div className="hidden gap-2 lg:grid lg:grid-cols-2">
-        <div className="grid gap-1 text-[10px] text-muted-foreground">
-          <span>Has capabilities ({hasCapabilities.length})</span>
-          <div className="h-[12rem] overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1">
-            <div className="grid gap-1">
-              {hasCapabilities.map((capability) => (
-                <button
-                  key={`desktop-has-${capability}`}
-                  type="button"
-                  onClick={() => toggleCapability(capability)}
-                  disabled={disabled}
-                  className="flex min-h-7 items-center rounded-md border border-[#e5edf7] px-2 text-left text-[11px] text-foreground"
-                >
-                  <span className="min-w-0 flex-1 truncate">{capability}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-1 text-[10px] text-muted-foreground">
-          <span>Doesn&apos;t have capabilities ({missingCapabilities.length})</span>
-          <div className="h-[12rem] overflow-y-auto rounded-md border border-[#c6d5e6] bg-white p-1">
-            <div className="grid gap-1">
-              {missingCapabilities.map((capability) => (
-                <button
-                  key={`desktop-missing-${capability}`}
-                  type="button"
-                  onClick={() => toggleCapability(capability)}
-                  disabled={disabled}
-                  className="flex min-h-7 items-center rounded-md border border-[#e5edf7] px-2 text-left text-[11px] text-foreground"
-                >
-                  <span className="min-w-0 flex-1 truncate">{capability}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+            );
+          })}
         </div>
       </div>
     </div>
