@@ -10,10 +10,18 @@ export const createSalesTxMock = () => ({
   },
   itemVariant: {
     findMany: vi.fn(),
+    findUnique: vi.fn(),
+  },
+  businessLocation: {
+    findFirst: vi.fn(),
   },
   documentLineLink: {
     deleteMany: vi.fn(),
     createMany: vi.fn(),
+  },
+  syncChangeLog: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
   },
   stockLedger: {
     findMany: vi.fn(),

@@ -1,5 +1,12 @@
 import { MoreHorizontal, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from "react";
 import { Button } from "../atoms/Button";
 import { Checkbox } from "../atoms/Checkbox";
 import { Input } from "../atoms/Input";
@@ -55,6 +62,17 @@ const updateVariant = (
 
 const normalizeOptionKey = (value: string) => value.trim().toLowerCase();
 
+type EditableFieldKey = "name" | "sku" | "barcode" | "salesPrice" | "purchasePrice" | "gstSlab";
+
+const FIRST_EDITABLE_FIELD: EditableFieldKey = "name";
+
+const isVariantRowEmpty = (variant: ItemVariantDraft) =>
+  variant.name.trim().length === 0 &&
+  variant.sku.trim().length === 0 &&
+  variant.barcode.trim().length === 0 &&
+  (variant.salesPrice ?? "").trim().length === 0 &&
+  (variant.purchasePrice ?? "").trim().length === 0;
+
 export function ItemVariantCardsEditor({
   variants,
   onVariantsChange,
@@ -74,6 +92,10 @@ export function ItemVariantCardsEditor({
 }: ItemVariantCardsEditorProps) {
   const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([]);
   const [showBulkMenu, setShowBulkMenu] = useState(false);
+  const [pendingAppendedRowFocus, setPendingAppendedRowFocus] = useState(false);
+  const [highlightedVariantId, setHighlightedVariantId] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const previousVariantIdsRef = useRef<string[]>(variants.map((variant) => variant.id));
   const optionColumns = variants.reduce<Array<{ id: string; label: string }>>((columns, variant) => {
     for (const option of variant.optionRows) {
       const trimmed = option.key.trim();
@@ -208,8 +230,116 @@ export function ItemVariantCardsEditor({
     ].join(" ");
   })();
 
+  const editableFieldOrder = useMemo<EditableFieldKey[]>(() => {
+    const fields: EditableFieldKey[] = ["name", "sku", "barcode"];
+    if (showPricingFields) {
+      fields.push("salesPrice");
+      if (showPurchasePrice) {
+        fields.push("purchasePrice");
+      }
+    }
+    if (showPricingFields || showGstSlabField) {
+      fields.push("gstSlab");
+    }
+    return fields;
+  }, [showGstSlabField, showPricingFields, showPurchasePrice]);
+
+  const editableVariantIds = useMemo(
+    () => variants.filter((variant) => !disabled && !variant.isLocked).map((variant) => variant.id),
+    [disabled, variants],
+  );
+
+  useEffect(() => {
+    if (!pendingAppendedRowFocus) {
+      previousVariantIdsRef.current = variants.map((variant) => variant.id);
+      return;
+    }
+
+    const previousVariantIds = new Set(previousVariantIdsRef.current);
+    const appendedVariant = variants.find((variant) => !previousVariantIds.has(variant.id));
+    previousVariantIdsRef.current = variants.map((variant) => variant.id);
+
+    if (!appendedVariant) {
+      return;
+    }
+
+    const focusTarget = containerRef.current?.querySelector<HTMLElement>(
+      `[data-variant-grid-cell="${appendedVariant.id}:${FIRST_EDITABLE_FIELD}"]`,
+    );
+    focusTarget?.focus();
+    setHighlightedVariantId(appendedVariant.id);
+    setPendingAppendedRowFocus(false);
+  }, [pendingAppendedRowFocus, variants]);
+
+  useEffect(() => {
+    if (!highlightedVariantId) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setHighlightedVariantId((current) => (current === highlightedVariantId ? null : current));
+    }, 1400);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [highlightedVariantId]);
+
+  const focusEditableCell = (variantId: string, field: EditableFieldKey) => {
+    containerRef.current
+      ?.querySelector<HTMLElement>(`[data-variant-grid-cell="${variantId}:${field}"]`)
+      ?.focus();
+  };
+
+  const handleGridNavigation = (
+    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+    variantId: string,
+    field: EditableFieldKey,
+  ) => {
+    if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const rowIndex = editableVariantIds.indexOf(variantId);
+    const fieldIndex = editableFieldOrder.indexOf(field);
+    if (rowIndex === -1 || fieldIndex === -1) {
+      return;
+    }
+
+    const step = event.shiftKey ? -1 : 1;
+    const nextFieldIndex = fieldIndex + step;
+
+    if (nextFieldIndex >= 0 && nextFieldIndex < editableFieldOrder.length) {
+      focusEditableCell(variantId, editableFieldOrder[nextFieldIndex]);
+      return;
+    }
+
+    const nextRowIndex = rowIndex + step;
+    if (nextRowIndex >= 0 && nextRowIndex < editableVariantIds.length) {
+      const targetField =
+        step > 0 ? editableFieldOrder[0] : editableFieldOrder[editableFieldOrder.length - 1];
+      focusEditableCell(editableVariantIds[nextRowIndex], targetField);
+      return;
+    }
+
+    if (!event.shiftKey && rowIndex === editableVariantIds.length - 1) {
+      const currentVariant = variants.find((variant) => variant.id === variantId);
+      if (!currentVariant || isVariantRowEmpty(currentVariant)) {
+        return;
+      }
+
+      setPendingAppendedRowFocus(true);
+      onAddVariant();
+    }
+  };
+
   return (
-    <div className="grid w-full gap-1.5 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
+    <div
+      ref={containerRef}
+      className="grid w-full gap-1.5 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card"
+    >
       <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
         <div className="flex items-center gap-2">
           <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
@@ -321,7 +451,9 @@ export function ItemVariantCardsEditor({
           return (
             <div
               key={variant.id}
-              className="rounded-xl border border-border/70 bg-white/90 p-1.5 lg:rounded-none lg:border-0 lg:border-b lg:border-border/70 lg:bg-transparent lg:px-2 lg:py-1.5 last:lg:border-b-0"
+              className={`rounded-xl border border-border/70 p-1.5 transition-colors duration-700 lg:rounded-none lg:border-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5 last:lg:border-b-0 ${
+                highlightedVariantId === variant.id ? "bg-sky-50/90" : "bg-white/90 lg:bg-transparent"
+              }`}
             >
               {isLocked ? (
                 <p className="mb-1 text-[10px] font-medium text-muted-foreground">
@@ -348,9 +480,11 @@ export function ItemVariantCardsEditor({
                 <div className="grid gap-1">
                   <Label className="lg:hidden">Name</Label>
                   <Input
+                    data-variant-grid-cell={`${variant.id}:name`}
                     className={denseInputClassName}
                     value={variant.name}
                     disabled={isReadOnly}
+                    onKeyDown={(event) => handleGridNavigation(event, variant.id, "name")}
                     onChange={(event) =>
                       onVariantNameChange
                         ? onVariantNameChange(variant.id, event.target.value)
@@ -381,9 +515,11 @@ export function ItemVariantCardsEditor({
                 <div className="grid gap-1">
                   <Label className="lg:hidden">SKU</Label>
                   <Input
+                    data-variant-grid-cell={`${variant.id}:sku`}
                     className={denseInputClassName}
                     value={variant.sku}
                     disabled={isReadOnly}
+                    onKeyDown={(event) => handleGridNavigation(event, variant.id, "sku")}
                     onChange={(event) =>
                       onVariantSkuChange
                         ? onVariantSkuChange(variant.id, event.target.value)
@@ -400,9 +536,11 @@ export function ItemVariantCardsEditor({
                 <div className="grid gap-1">
                   <Label className="lg:hidden">Barcode</Label>
                   <Input
+                    data-variant-grid-cell={`${variant.id}:barcode`}
                     className={denseInputClassName}
                     value={variant.barcode}
                     disabled={isReadOnly}
+                    onKeyDown={(event) => handleGridNavigation(event, variant.id, "barcode")}
                     onChange={(event) =>
                       onVariantsChange(
                         updateVariant(variants, variant.id, (entry) => ({
@@ -418,9 +556,11 @@ export function ItemVariantCardsEditor({
                   <div className="grid gap-1">
                     <Label className="lg:hidden">Sales</Label>
                     <Input
+                      data-variant-grid-cell={`${variant.id}:salesPrice`}
                       className={denseInputClassName}
                       value={variant.salesPrice ?? ""}
                       disabled={isReadOnly}
+                      onKeyDown={(event) => handleGridNavigation(event, variant.id, "salesPrice")}
                       onChange={(event) =>
                         onVariantsChange(
                           updateVariant(variants, variant.id, (entry) => ({
@@ -438,9 +578,11 @@ export function ItemVariantCardsEditor({
                   <div className="grid gap-1">
                     <Label className="lg:hidden">Purchase</Label>
                     <Input
+                      data-variant-grid-cell={`${variant.id}:purchasePrice`}
                       className={denseInputClassName}
                       value={variant.purchasePrice ?? ""}
                       disabled={isReadOnly}
+                      onKeyDown={(event) => handleGridNavigation(event, variant.id, "purchasePrice")}
                       onChange={(event) =>
                         onVariantsChange(
                           updateVariant(variants, variant.id, (entry) => ({
@@ -458,9 +600,11 @@ export function ItemVariantCardsEditor({
                   <div className="grid gap-1">
                     <Label className="lg:hidden">GST %</Label>
                     <GstSlabSelect
+                      data-variant-grid-cell={`${variant.id}:gstSlab`}
                       className={denseInputClassName}
                       value={variant.gstSlab ?? ""}
                       disabled={isReadOnly}
+                      onKeyDown={(event) => handleGridNavigation(event, variant.id, "gstSlab")}
                       onChange={(event) =>
                         onVariantsChange(
                           updateVariant(variants, variant.id, (entry) => ({
