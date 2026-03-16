@@ -3,6 +3,46 @@ import { stockPostingService } from "../stock-posting.service.js";
 import { createSalesTxMock } from "./test-utils.js";
 
 describe("stockPostingService", () => {
+  const primeStockLevelSyncMocks = (
+    tx: ReturnType<typeof createSalesTxMock>,
+    options: {
+      variantId: string;
+      locationId: string;
+      locationName: string;
+      quantityOnHand: string;
+      itemId?: string;
+      itemName?: string;
+      variantName?: string | null;
+      sku?: string | null;
+      unit?: string;
+    },
+  ) => {
+    tx.itemVariant.findUnique.mockResolvedValue({
+      id: options.variantId,
+      business_id: "tenant-1",
+      item_id: options.itemId ?? "item-1",
+      name: options.variantName ?? "Variant A",
+      sku: options.sku ?? "SKU-1",
+      deleted_at: null,
+      item: {
+        id: options.itemId ?? "item-1",
+        name: options.itemName ?? "Product A",
+        unit: options.unit ?? "PCS",
+        deleted_at: null,
+      },
+    });
+    tx.businessLocation.findFirst.mockResolvedValue({
+      id: options.locationId,
+      name: options.locationName,
+    });
+    tx.syncChangeLog.findFirst.mockResolvedValue(null);
+    tx.stockLedger.findMany.mockResolvedValueOnce([
+      {
+        quantity: options.quantityOnHand,
+      },
+    ]);
+  };
+
   afterEach(() => {
     delete process.env.ALLOW_NEGATIVE_STOCK;
   });
@@ -14,6 +54,7 @@ describe("stockPostingService", () => {
       type: "SALES_INVOICE",
       parent_id: null,
       location_id: "location-1",
+      location_name_snapshot: "Main Warehouse",
       lineItems: [
         {
           id: "invoice-line-1",
@@ -32,12 +73,18 @@ describe("stockPostingService", () => {
         },
       },
     ]);
-    tx.stockLedger.findMany.mockResolvedValue([
+    tx.stockLedger.findMany.mockResolvedValueOnce([
       {
         variant_id: "variant-product",
         quantity: "10.000",
       },
     ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "9.000",
+    });
 
     await stockPostingService.applyPostingEffects(
       tx as never,
@@ -58,6 +105,21 @@ describe("stockPostingService", () => {
           deleted_at: null,
         },
       ],
+    });
+    expect(tx.syncChangeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenant_id: "tenant-1",
+        entity: "stock_level",
+        entity_id: "variant-product:location-1",
+        operation: "UPDATE",
+        server_version: 1,
+        data: expect.objectContaining({
+          variantId: "variant-product",
+          locationId: "location-1",
+          locationName: "Main Warehouse",
+          quantityOnHand: 9,
+        }),
+      }),
     });
   });
 
@@ -103,12 +165,18 @@ describe("stockPostingService", () => {
         },
       },
     ]);
-    tx.stockLedger.findMany.mockResolvedValue([
+    tx.stockLedger.findMany.mockResolvedValueOnce([
       {
         variant_id: "variant-product",
         quantity: "10.000",
       },
     ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "location-1",
+      quantityOnHand: "8.000",
+    });
 
     await stockPostingService.applyPostingEffects(tx as never, "tenant-1", "invoice-1");
 
@@ -225,10 +293,34 @@ describe("stockPostingService", () => {
         },
       },
     ]);
-    tx.stockLedger.findMany.mockResolvedValue([
+    tx.stockLedger.findMany.mockResolvedValueOnce([
       {
         variant_id: "variant-ad-hoc",
         quantity: "5.000",
+      },
+    ]);
+    tx.itemVariant.findUnique.mockResolvedValue({
+      id: "variant-ad-hoc",
+      business_id: "tenant-1",
+      item_id: "item-1",
+      name: "Ad-hoc Product",
+      sku: "ADHOC-1",
+      deleted_at: null,
+      item: {
+        id: "item-1",
+        name: "Product A",
+        unit: "PCS",
+        deleted_at: null,
+      },
+    });
+    tx.businessLocation.findFirst.mockResolvedValue({
+      id: "location-1",
+      name: "location-1",
+    });
+    tx.syncChangeLog.findFirst.mockResolvedValue(null);
+    tx.stockLedger.findMany.mockResolvedValueOnce([
+      {
+        quantity: "3.000",
       },
     ]);
 
@@ -279,10 +371,16 @@ describe("stockPostingService", () => {
         },
       },
     ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "return-location-1",
+      locationName: "return-location-1",
+      quantityOnHand: "3.000",
+    });
 
     await stockPostingService.applyPostingEffects(tx as never, "tenant-1", "return-1");
 
-    expect(tx.stockLedger.findMany).not.toHaveBeenCalled();
+    expect(tx.stockLedger.findMany).toHaveBeenCalledTimes(1);
     expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
       data: [
         {
@@ -307,6 +405,7 @@ describe("stockPostingService", () => {
         type: "DELIVERY_CHALLAN",
         parent_id: "order-1",
         location_id: "location-1",
+        location_name_snapshot: "Main Warehouse",
         lineItems: [
           {
             id: "challan-line-1",
@@ -328,7 +427,7 @@ describe("stockPostingService", () => {
         },
       },
     ]);
-    tx.stockLedger.findMany.mockResolvedValue([
+    tx.stockLedger.findMany.mockResolvedValueOnce([
       {
         variant_id: "variant-product",
         quantity: "2.000",
@@ -373,10 +472,16 @@ describe("stockPostingService", () => {
         },
       },
     ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "-5.000",
+    });
 
     await stockPostingService.applyPostingEffects(tx as never, "tenant-1", "challan-1");
 
-    expect(tx.stockLedger.findMany).not.toHaveBeenCalled();
+    expect(tx.stockLedger.findMany).toHaveBeenCalledTimes(1);
     expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
       data: [
         {
@@ -391,6 +496,15 @@ describe("stockPostingService", () => {
         },
       ],
     });
+    expect(tx.syncChangeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entity: "stock_level",
+        entity_id: "variant-product:location-1",
+        data: expect.objectContaining({
+          quantityOnHand: -5,
+        }),
+      }),
+    });
   });
 
   it("writes positive reversal rows when cancelling a stock-deducting document", async () => {
@@ -401,6 +515,7 @@ describe("stockPostingService", () => {
         type: "DELIVERY_CHALLAN",
         parent_id: "order-1",
         location_id: "location-1",
+        location_name_snapshot: "Main Warehouse",
         lineItems: [
           {
             id: "challan-line-1",
@@ -422,6 +537,12 @@ describe("stockPostingService", () => {
         },
       },
     ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "4.000",
+    });
 
     await stockPostingService.applyCancellationEffects(
       tx as never,
@@ -442,6 +563,15 @@ describe("stockPostingService", () => {
           deleted_at: null,
         },
       ],
+    });
+    expect(tx.syncChangeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entity: "stock_level",
+        entity_id: "variant-product:location-1",
+        data: expect.objectContaining({
+          quantityOnHand: 4,
+        }),
+      }),
     });
   });
 
@@ -474,6 +604,12 @@ describe("stockPostingService", () => {
         },
       },
     ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "return-location-1",
+      locationName: "return-location-1",
+      quantityOnHand: "-2.000",
+    });
 
     await stockPostingService.applyCancellationEffects(tx as never, "tenant-1", "return-1");
 
@@ -501,6 +637,7 @@ describe("stockPostingService", () => {
         type: "SALES_INVOICE",
         parent_id: "order-1",
         location_id: "location-1",
+        location_name_snapshot: "Main Warehouse",
         lineItems: [
           {
             id: "invoice-line-1",
@@ -522,12 +659,18 @@ describe("stockPostingService", () => {
         },
       },
     ]);
-    tx.stockLedger.findMany.mockResolvedValue([
+    tx.stockLedger.findMany.mockResolvedValueOnce([
       {
         variant_id: "variant-product",
         quantity: "10.000",
       },
     ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "8.000",
+    });
 
     await stockPostingService.applyReopenEffects(tx as never, "tenant-1", "invoice-1");
 
@@ -544,6 +687,15 @@ describe("stockPostingService", () => {
           deleted_at: null,
         },
       ],
+    });
+    expect(tx.syncChangeLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entity: "stock_level",
+        entity_id: "variant-product:location-1",
+        data: expect.objectContaining({
+          quantityOnHand: 8,
+        }),
+      }),
     });
   });
 });

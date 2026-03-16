@@ -37,6 +37,7 @@ type StockPostingDocument = {
   type: string;
   parent_id: string | null;
   location_id: string | null;
+  location_name_snapshot?: string | null;
   lineItems: Array<{
     id: string;
     variant_id: string | null;
@@ -73,6 +74,7 @@ class StockPostingService {
         type: true,
         parent_id: true,
         location_id: true,
+        location_name_snapshot: true,
         lineItems: {
           orderBy: {
             id: "asc",
@@ -278,6 +280,145 @@ class StockPostingService {
     }
   }
 
+  private getStockLevelEntityId(variantId: string, locationId: string) {
+    return `${variantId}:${locationId}`;
+  }
+
+  private async getNextSyncServerVersion(
+    tx: SalesTransactionClient,
+    tenantId: string,
+    entity: string,
+    entityId: string,
+  ) {
+    const txAny = tx as any;
+    const latestEntityChange = await txAny.syncChangeLog.findFirst({
+      where: {
+        tenant_id: tenantId,
+        entity,
+        entity_id: entityId,
+      },
+      orderBy: {
+        server_version: "desc",
+      },
+      select: {
+        server_version: true,
+      },
+    });
+
+    return (latestEntityChange?.server_version ?? 0) + 1;
+  }
+
+  private async appendSyncChange(
+    tx: SalesTransactionClient,
+    tenantId: string,
+    entity: string,
+    entityId: string,
+    operation: "CREATE" | "UPDATE" | "DELETE" | "PURGE",
+    data: Record<string, unknown>,
+  ) {
+    const txAny = tx as any;
+    const serverVersion = await this.getNextSyncServerVersion(tx, tenantId, entity, entityId);
+    await txAny.syncChangeLog.create({
+      data: {
+        tenant_id: tenantId,
+        entity,
+        entity_id: entityId,
+        operation,
+        data,
+        server_version: serverVersion,
+      },
+    });
+  }
+
+  private async getStockLevelSnapshot(
+    tx: SalesTransactionClient,
+    tenantId: string,
+    variantId: string,
+    locationId: string,
+    fallbackLocationName: string | null,
+  ) {
+    const txAny = tx as any;
+    const [variant, ledgerEntries, location] = await Promise.all([
+      txAny.itemVariant.findUnique({
+        where: { id: variantId },
+        include: {
+          item: {
+            select: {
+              id: true,
+              name: true,
+              unit: true,
+              deleted_at: true,
+            },
+          },
+        },
+      }),
+      txAny.stockLedger.findMany({
+        where: {
+          business_id: tenantId,
+          variant_id: variantId,
+          location_id: locationId,
+          deleted_at: null,
+        },
+        select: {
+          quantity: true,
+        },
+      }),
+      txAny.businessLocation.findFirst({
+        where: {
+          id: locationId,
+          business_id: tenantId,
+          deleted_at: null,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+    ]);
+
+    if (!variant || variant.business_id !== tenantId || variant.deleted_at || variant.item?.deleted_at) {
+      throw new BadRequestError("One or more selected items are no longer available");
+    }
+
+    const quantityOnHand = ledgerEntries.reduce((total, entry) => total + Number(entry.quantity), 0);
+
+    return {
+      id: this.getStockLevelEntityId(variant.id, locationId),
+      variantId: variant.id,
+      itemId: variant.item_id,
+      itemName: variant.item?.name ?? "",
+      variantName: variant.name ?? null,
+      sku: variant.sku ?? null,
+      unit: variant.item?.unit ?? "PCS",
+      locationId,
+      locationName: location?.name ?? fallbackLocationName ?? "",
+      quantityOnHand,
+    };
+  }
+
+  private async appendStockLevelSyncChanges(
+    tx: SalesTransactionClient,
+    tenantId: string,
+    document: Pick<StockPostingDocument, "location_id" | "location_name_snapshot">,
+    productLines: Array<{ variant_id: string }>,
+  ) {
+    if (!document.location_id || productLines.length === 0) {
+      return;
+    }
+
+    const uniqueVariantIds = [...new Set(productLines.map((line) => line.variant_id))];
+    for (const variantId of uniqueVariantIds) {
+      const snapshot = await this.getStockLevelSnapshot(
+        tx,
+        tenantId,
+        variantId,
+        document.location_id,
+        document.location_name_snapshot ?? null,
+      );
+      await this.appendSyncChange(tx, tenantId, "stock_level", String(snapshot.id), "UPDATE", snapshot);
+    }
+  }
+
   async applyPostingEffects(
     tx: SalesTransactionClient,
     tenantId: string,
@@ -326,6 +467,8 @@ class StockPostingService {
         deleted_at: null,
       })),
     });
+
+    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
   }
 
   async applyCancellationEffects(
@@ -370,6 +513,8 @@ class StockPostingService {
         deleted_at: null,
       })),
     });
+
+    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
   }
 
   async applyReopenEffects(
@@ -418,6 +563,8 @@ class StockPostingService {
         deleted_at: null,
       })),
     });
+
+    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
   }
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   AlertTriangle,
   Copy,
@@ -147,6 +147,16 @@ type NumberConflictState = {
 };
 
 type DraftSource = "local" | "server";
+
+type SalesLineFieldKey =
+  | "description"
+  | "quantity"
+  | "unitPrice"
+  | "taxRate"
+  | "taxMode";
+
+const getSalesLineDescriptionInputId = (lineId: string) =>
+  `sales-line-desktop-description-${lineId}`;
 
 type EstimateDuplicateMeta = {
   sourceBillNumber: string;
@@ -863,6 +873,7 @@ function SalesDocumentWorkspace({
     lineId: string;
     nonce: number;
   } | null>(null);
+  const pendingAppendedLineIdRef = useRef<string | null>(null);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [itemOptions, setItemOptions] = useState<SalesItemOption[]>([]);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -1614,6 +1625,31 @@ function SalesDocumentWorkspace({
     };
   }, [lineHighlightRequest]);
 
+  useEffect(() => {
+    if (!pendingAppendedLineIdRef.current || typeof document === "undefined") {
+      return;
+    }
+
+    const lineId = pendingAppendedLineIdRef.current;
+    const animationFrameId = window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(
+        `#${getSalesLineDescriptionInputId(lineId)}`,
+      );
+      if (target) {
+        target.focus();
+      }
+      setLineHighlightRequest((current) => ({
+        lineId,
+        nonce: (current?.nonce ?? 0) + 1,
+      }));
+      pendingAppendedLineIdRef.current = null;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [lines]);
+
   const phoneCandidate = useMemo(
     () => normalizePhoneCandidate(customerName),
     [customerName],
@@ -1709,6 +1745,7 @@ function SalesDocumentWorkspace({
 
     return hasLinkedRowBelowCap ? SAME_ITEM_MIXED_ORIGIN_HINT : null;
   };
+  const shouldShowOriginBadges = Boolean(parentId);
   const getOriginBadgeClassName = (line: BillLine) =>
     line.sourceLineId
       ? "bg-sky-100 text-sky-800"
@@ -2155,6 +2192,101 @@ function SalesDocumentWorkspace({
       }
       return currentLines.filter((line) => line.id !== lineId);
     });
+  };
+
+  const appendLine = () => {
+    if (isViewingPostedDocument) {
+      return;
+    }
+
+    const nextLine = createLine();
+    pendingAppendedLineIdRef.current = nextLine.id;
+    setLines((currentLines) => [...currentLines, nextLine]);
+  };
+
+  const getEditableLineFields = (line: BillLine): SalesLineFieldKey[] => {
+    if (isViewingPostedDocument) {
+      return [];
+    }
+
+    const fields: SalesLineFieldKey[] = [];
+    if (!line.sourceLineId) {
+      fields.push("description");
+    }
+    fields.push("quantity", "unitPrice", "taxRate", "taxMode");
+    return fields;
+  };
+
+  const focusSalesLineCell = (lineId: string, field: SalesLineFieldKey) => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (field === "description") {
+      document
+        .querySelector<HTMLElement>(`#${getSalesLineDescriptionInputId(lineId)}`)
+        ?.focus();
+      return;
+    }
+
+    document
+      .querySelector<HTMLElement>(`[data-sales-line-cell="${lineId}:${field}"]`)
+      ?.focus();
+  };
+
+  const handleSalesLineNavigation = (
+    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>,
+    lineId: string,
+    field: SalesLineFieldKey,
+  ) => {
+    if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    if (
+      event.currentTarget instanceof HTMLInputElement &&
+      event.currentTarget.getAttribute("aria-activedescendant")
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const currentLine = lines.find((line) => line.id === lineId);
+    if (!currentLine) {
+      return;
+    }
+
+    const currentLineFields = getEditableLineFields(currentLine);
+    const lineIndex = lines.findIndex((line) => line.id === lineId);
+    const fieldIndex = currentLineFields.indexOf(field);
+    if (lineIndex === -1 || fieldIndex === -1) {
+      return;
+    }
+
+    const step = event.shiftKey ? -1 : 1;
+    const nextFieldIndex = fieldIndex + step;
+    if (nextFieldIndex >= 0 && nextFieldIndex < currentLineFields.length) {
+      focusSalesLineCell(lineId, currentLineFields[nextFieldIndex]);
+      return;
+    }
+
+    let nextLineIndex = lineIndex + step;
+    while (nextLineIndex >= 0 && nextLineIndex < lines.length) {
+      const nextFields = getEditableLineFields(lines[nextLineIndex]);
+      if (nextFields.length > 0) {
+        focusSalesLineCell(
+          lines[nextLineIndex].id,
+          step > 0 ? nextFields[0] : nextFields[nextFields.length - 1],
+        );
+        return;
+      }
+      nextLineIndex += step;
+    }
+
+    if (!event.shiftKey && lineIndex === lines.length - 1 && hasLineContent(currentLine)) {
+      appendLine();
+    }
   };
 
   const buildRouteInvoiceDraft = (): SavedBillDraft => ({
@@ -3175,9 +3307,7 @@ function SalesDocumentWorkspace({
               variant="outline"
               size="sm"
               disabled={isViewingPostedDocument}
-              onClick={() =>
-                setLines((currentLines) => [...currentLines, createLine()])
-              }
+              onClick={appendLine}
             >
               Add Line
             </Button>
@@ -3240,14 +3370,20 @@ function SalesDocumentWorkspace({
                             )}
                           />
                         </div>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
-                            line.sourceLineId ? "cursor-help" : ""
-                          }`}
-                          title={getLineOriginTitle(line) ?? undefined}
-                        >
-                          {line.sourceLineId ? "Linked" : "Ad-hoc"}
-                        </span>
+                        {shouldShowOriginBadges ? (
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
+                              line.sourceLineId ? "cursor-help" : ""
+                            }`}
+                            title={
+                              line.sourceLineId
+                                ? getLineOriginTitle(line) ?? undefined
+                                : undefined
+                            }
+                          >
+                            {line.sourceLineId ? "Linked" : "Ad-hoc"}
+                          </span>
+                        ) : null}
                         {getSameItemMixedOriginHint(line) ? (
                           <span
                             className="inline-flex shrink-0 items-center rounded-full bg-amber-500 p-1 text-white"
@@ -3428,6 +3564,7 @@ function SalesDocumentWorkspace({
                         <div className="min-w-0 flex-1">
                           <div className="relative">
                             <LookupDropdownInput
+                              id={getSalesLineDescriptionInputId(line.id)}
                               value={line.description}
                               disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
                               onValueChange={(value) =>
@@ -3448,16 +3585,30 @@ function SalesDocumentWorkspace({
                                 <ItemOptionContent option={option} />
                               )}
                               inputClassName="pr-24"
+                              inputProps={{
+                                onKeyDown: (event) =>
+                                  handleSalesLineNavigation(
+                                    event,
+                                    line.id,
+                                    "description",
+                                  ),
+                              }}
                             />
                             <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-1">
-                              <span
-                                className={`pointer-events-auto inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
-                                  line.sourceLineId ? "cursor-help" : ""
-                                }`}
-                                title={getLineOriginTitle(line) ?? undefined}
-                              >
-                                {line.sourceLineId ? "Linked" : "Ad-hoc"}
-                              </span>
+                              {shouldShowOriginBadges ? (
+                                <span
+                                  className={`pointer-events-auto inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
+                                    line.sourceLineId ? "cursor-help" : ""
+                                  }`}
+                                  title={
+                                    line.sourceLineId
+                                      ? getLineOriginTitle(line) ?? undefined
+                                      : undefined
+                                  }
+                                >
+                                  {line.sourceLineId ? "Linked" : "Ad-hoc"}
+                                </span>
+                              ) : null}
                               {getSameItemMixedOriginHint(line) ? (
                                 <span
                                   className="pointer-events-auto inline-flex shrink-0 items-center rounded-full bg-amber-500 p-0.5 text-white"
@@ -3474,6 +3625,7 @@ function SalesDocumentWorkspace({
                       <DenseTableCell className="py-1.5">
                         <div className="flex items-center gap-1">
                           <Input
+                            data-sales-line-cell={`${line.id}:quantity`}
                             className="!w-[4.5rem] shrink-0 px-1 text-right"
                             value={line.quantity}
                             max={getLinkedLineCap(line) ?? undefined}
@@ -3486,6 +3638,13 @@ function SalesDocumentWorkspace({
                                 event.target.value,
                               )
                             }
+                            onKeyDown={(event) =>
+                              handleSalesLineNavigation(
+                                event,
+                                line.id,
+                                "quantity",
+                              )
+                            }
                             inputMode="decimal"
                           />
                           <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap">
@@ -3495,6 +3654,7 @@ function SalesDocumentWorkspace({
                       </DenseTableCell>
                       <DenseTableCell className="py-1.5">
                         <Input
+                          data-sales-line-cell={`${line.id}:unitPrice`}
                           className="min-w-0 px-2 text-right"
                           value={line.unitPrice}
                           readOnly={isViewingPostedDocument}
@@ -3502,22 +3662,38 @@ function SalesDocumentWorkspace({
                           onChange={(event) =>
                             updateLine(line.id, "unitPrice", event.target.value)
                           }
+                          onKeyDown={(event) =>
+                            handleSalesLineNavigation(
+                              event,
+                              line.id,
+                              "unitPrice",
+                            )
+                          }
                           inputMode="decimal"
                         />
                       </DenseTableCell>
                       <DenseTableCell className="py-1.5">
                         <GstSlabSelect
+                          data-sales-line-cell={`${line.id}:taxRate`}
                           className="h-8 min-w-0 bg-white px-2 text-left text-xs"
                           value={normalizeGstSlab(line.taxRate) || ""}
                           disabled={isViewingPostedDocument}
                           onChange={(e) =>
                             updateLine(line.id, "taxRate", e.target.value)
                           }
+                          onKeyDown={(event) =>
+                            handleSalesLineNavigation(
+                              event,
+                              line.id,
+                              "taxRate",
+                            )
+                          }
                           placeholderOption="GST %"
                         />
                       </DenseTableCell>
                       <DenseTableCell className="py-1.5">
                         <Button
+                          data-sales-line-cell={`${line.id}:taxMode`}
                           type="button"
                           variant="outline"
                           size="sm"
@@ -3529,7 +3705,14 @@ function SalesDocumentWorkspace({
                               "taxMode",
                               line.taxMode === "INCLUSIVE"
                                 ? "EXCLUSIVE"
-                                : "INCLUSIVE",
+                              : "INCLUSIVE",
+                            )
+                          }
+                          onKeyDown={(event) =>
+                            handleSalesLineNavigation(
+                              event,
+                              line.id,
+                              "taxMode",
                             )
                           }
                         >
