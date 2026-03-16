@@ -52,6 +52,7 @@ import {
   type StockLevelRow,
   type StockVariantOption,
 } from "../../features/sync/engine";
+import { useToast } from "../../features/toast/useToast";
 import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
 import {
   createSalesDocumentDraft,
@@ -818,6 +819,7 @@ function SalesDocumentWorkspace({
   const location = useLocation();
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
+  const { showToast } = useToast();
   const businesses = useSessionStore((state) => state.businesses);
   const activeBusiness =
     businesses.find((business) => business.id === activeStore) ?? null;
@@ -1521,6 +1523,7 @@ function SalesDocumentWorkspace({
 
     navigate(location.pathname, { replace: true, state: null });
   }, [
+    activeLocationId,
     config.documentType,
     location.pathname,
     navigate,
@@ -2237,9 +2240,19 @@ function SalesDocumentWorkspace({
     );
   };
 
+  const showPostErrorToast = (message: string) => {
+    showToast({
+      title: `Unable to post ${config.singularLabel}`,
+      description: message,
+      tone: "error",
+      dedupeKey: `sales-post-error:${config.documentType}:${message}`,
+    });
+  };
+
   const postDraft = async () => {
     if (postValidationMessage) {
       setSaveMessage(postValidationMessage);
+      showPostErrorToast(postValidationMessage);
       return;
     }
 
@@ -2264,12 +2277,16 @@ function SalesDocumentWorkspace({
         setSaveMessage(
           `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`,
         );
+        showPostErrorToast(
+          `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`,
+        );
       } else {
-        setSaveMessage(
+        const message =
           error instanceof Error
             ? error.message
-            : `Unable to post ${config.singularLabel}.`,
-        );
+            : `Unable to post ${config.singularLabel}.`;
+        setSaveMessage(message);
+        showPostErrorToast(message);
       }
     } finally {
       setDraftMutationLoading(false);
@@ -2316,12 +2333,16 @@ function SalesDocumentWorkspace({
         setSaveMessage(
           `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || numberConflict.suggested} is already in use.`,
         );
+        showPostErrorToast(
+          `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || numberConflict.suggested} is already in use.`,
+        );
       } else {
-        setSaveMessage(
+        const message =
           error instanceof Error
             ? error.message
-            : `Unable to post ${config.singularLabel}.`,
-        );
+            : `Unable to post ${config.singularLabel}.`;
+        setSaveMessage(message);
+        showPostErrorToast(message);
       }
     } finally {
       setDraftMutationLoading(false);
@@ -2819,16 +2840,14 @@ function SalesDocumentWorkspace({
                     onClick={() => {
                       void postDraft();
                     }}
-                    disabled={
-                      draftMutationLoading || Boolean(postValidationMessage)
-                    }
+                    disabled={draftMutationLoading}
                     title={postValidationMessage ?? config.postActionLabel}
                   >
                     {draftMutationLoading
                       ? "Working..."
                       : !postValidationMessage
                         ? config.postActionLabel
-                        : "Cannot Post Yet"}
+                        : "Review Posting Issues"}
                   </Button>
                 </>
               ) : null}
