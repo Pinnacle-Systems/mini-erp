@@ -1,7 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { documentLinkService } from "../document-link.service.js";
 import { salesBalanceService } from "../sales-balance.service.js";
+import type { SalesLineBalance } from "../sales-balance.service.js";
 import { createSalesTxMock } from "./test-utils.js";
+
+const makeLineBalance = (
+  overrides: Partial<SalesLineBalance> & Pick<SalesLineBalance, "sourceLineId">,
+): SalesLineBalance => {
+  const { sourceLineId, ...restOverrides } = overrides;
+
+  return {
+    sourceDocumentId: "order-1",
+    sourceDocumentType: "SALES_ORDER",
+    sourceDocumentNumber: "SO-0001",
+    sourceLineId,
+    itemId: "item-1",
+    variantId: "variant-1",
+    description: "Product A",
+    unitPrice: 100,
+    taxRate: 18,
+    taxMode: "EXCLUSIVE",
+    unit: "PCS",
+    originalQuantity: 5,
+    fulfilledQuantity: 0,
+    returnedQuantity: 0,
+    remainingQuantity: 5,
+    returnableQuantity: 5,
+    shipmentConsumedQuantity: 0,
+    shipmentReturnedQuantity: 0,
+    shipmentRemainingQuantity: 5,
+    invoiceableQuantity: 5,
+    ...restOverrides,
+  };
+};
 
 describe("documentLinkService", () => {
   beforeEach(() => {
@@ -177,24 +208,12 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
+      makeLineBalance({
         sourceDocumentId: "challan-1",
         sourceDocumentType: "DELIVERY_CHALLAN",
         sourceDocumentNumber: "DC-0001",
         sourceLineId: "challan-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
-        originalQuantity: 5,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
-        remainingQuantity: 5,
-        returnableQuantity: 5,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
-        shipmentRemainingQuantity: 5,
-        invoiceableQuantity: 5,
-      },
+      }),
     ]);
 
     await documentLinkService.createLinksForPostedDocument(
@@ -272,24 +291,9 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      makeLineBalance({
         sourceLineId: "order-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
-        originalQuantity: 5,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
-        remainingQuantity: 5,
-        returnableQuantity: 5,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
-        shipmentRemainingQuantity: 5,
-        invoiceableQuantity: 5,
-      },
+      }),
     ]);
 
     await documentLinkService.upsertLinksForDocument(
@@ -404,24 +408,9 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      makeLineBalance({
         sourceLineId: "order-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
-        originalQuantity: 5,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
-        remainingQuantity: 5,
-        returnableQuantity: 5,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
-        shipmentRemainingQuantity: 5,
-        invoiceableQuantity: 5,
-      },
+      }),
     ]);
 
     await documentLinkService.upsertLinksForDocument(tx as never, "tenant-1", "draft-invoice-1");
@@ -486,24 +475,9 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      makeLineBalance({
         sourceLineId: "order-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
-        originalQuantity: 5,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
-        remainingQuantity: 5,
-        returnableQuantity: 5,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
-        shipmentRemainingQuantity: 5,
-        invoiceableQuantity: 5,
-      },
+      }),
     ]);
 
     await expect(
@@ -552,24 +526,9 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      makeLineBalance({
         sourceLineId: "order-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
-        originalQuantity: 5,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
-        remainingQuantity: 5,
-        returnableQuantity: 5,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
-        shipmentRemainingQuantity: 5,
-        invoiceableQuantity: 5,
-      },
+      }),
     ]);
 
     await documentLinkService.createLinksForPostedDocument(tx as never, "tenant-1", "invoice-1");
@@ -634,42 +593,22 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      makeLineBalance({
         sourceLineId: "order-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
         originalQuantity: 2,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
         remainingQuantity: 2,
         returnableQuantity: 2,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
         shipmentRemainingQuantity: 2,
         invoiceableQuantity: 2,
-      },
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      }),
+      makeLineBalance({
         sourceLineId: "order-line-2",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
         originalQuantity: 3,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
         remainingQuantity: 3,
         returnableQuantity: 3,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
         shipmentRemainingQuantity: 3,
         invoiceableQuantity: 3,
-      },
+      }),
     ]);
 
     await documentLinkService.createLinksForPostedDocument(tx as never, "tenant-1", "invoice-1");
@@ -742,42 +681,25 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      makeLineBalance({
         sourceLineId: "a-line",
-        itemId: "item-1",
-        variantId: "variant-1",
         description: "Other Match",
         originalQuantity: 2,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
         remainingQuantity: 2,
         returnableQuantity: 2,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
         shipmentRemainingQuantity: 2,
         invoiceableQuantity: 2,
-      },
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      }),
+      makeLineBalance({
         sourceLineId: "b-line",
-        itemId: "item-1",
-        variantId: "variant-1",
         description: "Preferred Match",
         originalQuantity: 2,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
+        unitPrice: 120,
         remainingQuantity: 2,
         returnableQuantity: 2,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
         shipmentRemainingQuantity: 2,
         invoiceableQuantity: 2,
-      },
+      }),
     ]);
 
     await documentLinkService.createLinksForPostedDocument(tx as never, "tenant-1", "invoice-1");
@@ -835,24 +757,18 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
+      makeLineBalance({
         sourceDocumentId: "challan-1",
         sourceDocumentType: "DELIVERY_CHALLAN",
         sourceDocumentNumber: "DC-0001",
         sourceLineId: "challan-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
         description: "Delivered Product",
-        originalQuantity: 5,
-        fulfilledQuantity: 0,
         returnedQuantity: 2,
         remainingQuantity: 3,
         returnableQuantity: 3,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
         shipmentRemainingQuantity: 3,
         invoiceableQuantity: 3,
-      },
+      }),
     ]);
 
     await documentLinkService.createLinksForPostedDocument(tx as never, "tenant-1", "invoice-1");
@@ -910,24 +826,9 @@ describe("documentLinkService", () => {
       };
     });
     vi.spyOn(salesBalanceService, "getLineBalances").mockResolvedValue([
-      {
-        sourceDocumentId: "order-1",
-        sourceDocumentType: "SALES_ORDER",
-        sourceDocumentNumber: "SO-0001",
+      makeLineBalance({
         sourceLineId: "order-line-1",
-        itemId: "item-1",
-        variantId: "variant-1",
-        description: "Product A",
-        originalQuantity: 5,
-        fulfilledQuantity: 0,
-        returnedQuantity: 0,
-        remainingQuantity: 5,
-        returnableQuantity: 5,
-        shipmentConsumedQuantity: 0,
-        shipmentReturnedQuantity: 0,
-        shipmentRemainingQuantity: 5,
-        invoiceableQuantity: 5,
-      },
+      }),
     ]);
 
     await documentLinkService.createLinksForPostedDocument(tx as never, "tenant-1", "invoice-1");
