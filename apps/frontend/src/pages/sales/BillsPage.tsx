@@ -121,6 +121,9 @@ type SalesDocumentPageConfig = {
   routeAppDraftLabel: string;
   numberPrefix: string;
   storageKeyPrefix: string;
+  workspaceVariant?: "standard" | "pos";
+  defaultTransactionType?: "CASH" | "CREDIT";
+  openEditorByDefault?: boolean;
 };
 
 type SalesDocumentConversionConfig = {
@@ -660,6 +663,25 @@ const SALES_DOCUMENT_PAGE_CONFIG: Record<
   },
 };
 
+const SALES_POS_PAGE_CONFIG: SalesDocumentPageConfig = {
+  documentType: "SALES_INVOICE",
+  routePath: "/app/sales-pos",
+  listTitle: "Recent POS Sales",
+  createTitle: "Create POS Sale",
+  singularLabel: "POS sale",
+  pluralLabel: "POS sales",
+  listEmptyMessage:
+    "No recent POS sales yet. Start a sale to create the first invoice.",
+  createActionLabel: "Start Sale",
+  postActionLabel: "Post Sale",
+  routeAppDraftLabel: "POS sale",
+  numberPrefix: "INV-",
+  storageKeyPrefix: "mini_erp_sales_pos_drafts_v1",
+  workspaceVariant: "pos",
+  defaultTransactionType: "CASH",
+  openEditorByDefault: true,
+};
+
 const SALES_DOCUMENT_CONVERSION_CONFIG: Partial<
   Record<SalesDocumentType, SalesDocumentConversionConfig[]>
 > = {
@@ -787,6 +809,9 @@ export function BillsPage() {
     <SalesDocumentPage config={SALES_DOCUMENT_PAGE_CONFIG.SALES_INVOICE} />
   );
 }
+export function PosPage() {
+  return <SalesDocumentPage config={SALES_POS_PAGE_CONFIG} />;
+}
 export function EstimatesPage() {
   return (
     <SalesDocumentPage config={SALES_DOCUMENT_PAGE_CONFIG.SALES_ESTIMATE} />
@@ -817,15 +842,17 @@ function SalesDocumentPage({ config }: { config: SalesDocumentPageConfig }) {
   );
 }
 
-function SalesDocumentWorkspace({
-  activeStore,
-  activeLocationId,
-  config,
-}: {
+type SalesDocumentWorkspaceProps = {
   activeStore: string | null;
   activeLocationId: string | null;
   config: SalesDocumentPageConfig;
-}) {
+};
+
+function useSalesDocumentWorkspace({
+  activeStore,
+  activeLocationId,
+  config,
+}: SalesDocumentWorkspaceProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);
@@ -839,7 +866,10 @@ function SalesDocumentWorkspace({
     loadStoredDrafts(activeStore, config),
   );
   const [drafts, setDrafts] = useState<SavedBillDraft[]>(initialDrafts);
-  const [viewMode, setViewMode] = useState<"list" | "editor">("list");
+  const isPosMode = config.workspaceVariant === "pos";
+  const [viewMode, setViewMode] = useState<"list" | "editor">(
+    config.openEditorByDefault ? "editor" : "list",
+  );
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [activeDraftSource, setActiveDraftSource] =
     useState<DraftSource | null>(null);
@@ -847,7 +877,7 @@ function SalesDocumentWorkspace({
     getNextBillNumber(config.numberPrefix, [], initialDrafts),
   );
   const [transactionType, setTransactionType] = useState<"CASH" | "CREDIT">(
-    "CREDIT",
+    config.defaultTransactionType ?? "CREDIT",
   );
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
@@ -873,6 +903,7 @@ function SalesDocumentWorkspace({
     lineId: string;
     nonce: number;
   } | null>(null);
+  const [quickAddItemQuery, setQuickAddItemQuery] = useState("");
   const pendingAppendedLineIdRef = useRef<string | null>(null);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [itemOptions, setItemOptions] = useState<SalesItemOption[]>([]);
@@ -1769,11 +1800,12 @@ function SalesDocumentWorkspace({
     }
   };
 
-  const resetEditor = () => {
+  const resetEditor = (options?: { focusFirstLine?: boolean }) => {
+    const nextLine = createLine();
     setActiveDraftId(null);
     setActiveDraftSource(null);
     setBillNumber(nextBillNumber);
-    setTransactionType("CASH");
+    setTransactionType(config.defaultTransactionType ?? "CASH");
     setCustomerId(null);
     setCustomerName("");
     setCustomerPhone("");
@@ -1786,14 +1818,18 @@ function SalesDocumentWorkspace({
     setDispatchCarrier("");
     setDispatchReference("");
     setNotes("");
-    setLines([createLine()]);
+    setLines([nextLine]);
+    setQuickAddItemQuery("");
     setNumberConflict(null);
     setDuplicateMeta(null);
     setLinkedSourceBalances({});
+    if (options?.focusFirstLine) {
+      pendingAppendedLineIdRef.current = nextLine.id;
+    }
   };
 
   const openNewDraft = () => {
-    resetEditor();
+    resetEditor({ focusFirstLine: isPosMode });
     setSaveMessage(
       activeStore
         ? null
@@ -2175,6 +2211,23 @@ function SalesDocumentWorkspace({
     }
   };
 
+  const quickAddLineItem = (option: SalesItemOption) => {
+    setQuickAddItemQuery("");
+    const reusableLine =
+      lines.find((line) => !hasLineContent(line) && !line.sourceLineId) ?? null;
+    if (reusableLine) {
+      applyLineItem(reusableLine.id, option);
+      return;
+    }
+
+    const nextLine = createLine();
+    pendingAppendedLineIdRef.current = nextLine.id;
+    setLines((currentLines) => [...currentLines, nextLine]);
+    window.requestAnimationFrame(() => {
+      applyLineItem(nextLine.id, option);
+    });
+  };
+
   const removeLine = (lineId: string) => {
     const targetLine = lines.find((line) => line.id === lineId) ?? null;
     if (
@@ -2365,10 +2418,12 @@ function SalesDocumentWorkspace({
       const nextDrafts = drafts.filter((draft) => draft.id !== localDraft.id);
       persistDrafts(nextDrafts);
     }
-    resetEditor();
-    setViewMode("list");
+    resetEditor({ focusFirstLine: isPosMode });
+    setViewMode(isPosMode ? "editor" : "list");
     setSaveMessage(
-      `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted.`,
+      isPosMode
+        ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted. Ready for the next sale.`
+        : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted.`,
     );
   };
 
@@ -2691,6 +2746,188 @@ function SalesDocumentWorkspace({
     }
   };
 
+  return {
+    activeBusiness,
+    activeBusinessName,
+    activeCustomer,
+    activeDraftId,
+    activeServerDocument,
+    appendLine,
+    applyCustomer,
+    applyLineItem,
+    applySuggestedInvoiceNumber,
+    billNumber,
+    canQuickCreateFromPhone,
+    config,
+    customerActionLoading,
+    customerAddress,
+    customerGstNo,
+    customerId,
+    customerName,
+    customerPhone,
+    customers,
+    dispatchCarrier,
+    dispatchDate,
+    dispatchReference,
+    documentLocationId,
+    draftMutationLoading,
+    duplicateMeta,
+    duplicateWarningAlerts,
+    duplicateWarnings,
+    getRowMenuActions,
+    getLineOriginTitle,
+    getLinkedLineCap,
+    getOriginBadgeClassName,
+    getSameItemMixedOriginHint,
+    handleSalesLineNavigation,
+    invoiceRows,
+    isOnline,
+    isPosMode,
+    isViewingPostedDocument,
+    itemOptions,
+    lines,
+    loadDraft,
+    loadServerDraft,
+    lookupError,
+    lookupLoading,
+    notes,
+    numberConflict,
+    openCustomerCreate,
+    openNewDraft,
+    openRowMenuAnchorRect,
+    openRowMenuId,
+    openRowMenuItems,
+    postDraft,
+    postValidationMessage,
+    quickAddItemQuery,
+    quickAddLineItem,
+    quickCreateCustomerFromPhone,
+    refreshDuplicatePricesToCurrent,
+    removeLine,
+    renderPendingActionDialogs,
+    saveDraft,
+    saveMessage,
+    serverInvoicesError,
+    serverInvoicesLoading,
+    setBillNumber,
+    setCustomerAddress,
+    setCustomerGstNo,
+    setCustomerId,
+    setCustomerName,
+    setCustomerPhone,
+    setDispatchCarrier,
+    setDispatchDate,
+    setDispatchReference,
+    setDocumentLocationId,
+    setNotes,
+    setNumberConflict,
+    setOpenRowMenuAnchorRect,
+    setOpenRowMenuId,
+    setQuickAddItemQuery,
+    setTransactionType,
+    setValidUntil,
+    setViewMode,
+    shouldShowOriginBadges,
+    toggleRowMenu,
+    totals,
+    transactionType,
+    updateLine,
+    validUntil,
+    viewMode,
+  };
+}
+
+function SalesDocumentWorkspace(props: SalesDocumentWorkspaceProps) {
+  const {
+    activeBusiness,
+    activeBusinessName,
+    activeCustomer,
+    activeDraftId,
+    activeServerDocument,
+    appendLine,
+    applyCustomer,
+    applyLineItem,
+    applySuggestedInvoiceNumber,
+    billNumber,
+    canQuickCreateFromPhone,
+    config,
+    customerActionLoading,
+    customerAddress,
+    customerGstNo,
+    customerId,
+    customerName,
+    customerPhone,
+    customers,
+    dispatchCarrier,
+    dispatchDate,
+    dispatchReference,
+    documentLocationId,
+    draftMutationLoading,
+    duplicateMeta,
+    duplicateWarningAlerts,
+    duplicateWarnings,
+    getRowMenuActions,
+    getLineOriginTitle,
+    getLinkedLineCap,
+    getOriginBadgeClassName,
+    getSameItemMixedOriginHint,
+    handleSalesLineNavigation,
+    invoiceRows,
+    isOnline,
+    isPosMode,
+    isViewingPostedDocument,
+    itemOptions,
+    lines,
+    loadDraft,
+    loadServerDraft,
+    lookupError,
+    lookupLoading,
+    notes,
+    numberConflict,
+    openCustomerCreate,
+    openNewDraft,
+    openRowMenuAnchorRect,
+    openRowMenuId,
+    openRowMenuItems,
+    postDraft,
+    postValidationMessage,
+    quickAddItemQuery,
+    quickAddLineItem,
+    quickCreateCustomerFromPhone,
+    refreshDuplicatePricesToCurrent,
+    removeLine,
+    renderPendingActionDialogs,
+    saveDraft,
+    saveMessage,
+    serverInvoicesError,
+    serverInvoicesLoading,
+    setBillNumber,
+    setCustomerAddress,
+    setCustomerGstNo,
+    setCustomerId,
+    setCustomerName,
+    setCustomerPhone,
+    setDispatchCarrier,
+    setDispatchDate,
+    setDispatchReference,
+    setDocumentLocationId,
+    setNotes,
+    setNumberConflict,
+    setOpenRowMenuAnchorRect,
+    setOpenRowMenuId,
+    setQuickAddItemQuery,
+    setTransactionType,
+    setValidUntil,
+    setViewMode,
+    shouldShowOriginBadges,
+    toggleRowMenu,
+    totals,
+    transactionType,
+    updateLine,
+    validUntil,
+    viewMode,
+  } = useSalesDocumentWorkspace(props);
+
   if (viewMode === "list") {
     return (
       <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
@@ -2928,7 +3165,9 @@ function SalesDocumentWorkspace({
             <p className="text-xs text-muted-foreground">
               {isViewingPostedDocument
                 ? "Posted documents open here in read-only mode for review."
-                : "Select a customer, add lines, save the draft, then post when it is ready."}
+                : isPosMode
+                  ? "Add items fast, keep customer optional for cash sales, and post as soon as checkout is done."
+                  : "Select a customer, add lines, save the draft, then post when it is ready."}
             </p>
             {isViewingPostedDocument ? (
               <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1 text-[11px] text-muted-foreground">
@@ -2949,7 +3188,7 @@ function SalesDocumentWorkspace({
                 size="sm"
                 onClick={() => setViewMode("list")}
               >
-                Back to Recent
+                {isPosMode ? "Recent Sales" : "Back to Recent"}
               </Button>
               {!isViewingPostedDocument ? (
                 <>
@@ -3053,13 +3292,18 @@ function SalesDocumentWorkspace({
             <Input
               id="sales-bill-number"
               value={billNumber}
-              readOnly={isViewingPostedDocument}
-              disabled={isViewingPostedDocument}
+              readOnly={isViewingPostedDocument || isPosMode}
+              disabled={isViewingPostedDocument || isPosMode}
               onChange={(event) => {
                 setBillNumber(event.target.value);
                 setNumberConflict(null);
               }}
             />
+            {isPosMode ? (
+              <div className="text-[11px] text-muted-foreground">
+                POS uses the next invoice number automatically for faster checkout.
+              </div>
+            ) : null}
             {numberConflict ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                 {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}{" "}
@@ -3298,19 +3542,64 @@ function SalesDocumentWorkspace({
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2 md:overflow-hidden">
-          <div className="flex items-center justify-between md:shrink-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-              {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
+          <div className="flex flex-col gap-2 md:shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+                {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isViewingPostedDocument}
+                onClick={appendLine}
+              >
+                Add Line
+              </Button>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isViewingPostedDocument}
-              onClick={appendLine}
-            >
-              Add Line
-            </Button>
+            {isPosMode ? (
+              <div className="grid gap-2 rounded-xl border border-border/80 bg-slate-50 p-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div className="space-y-1">
+                  <Label htmlFor="sales-pos-quick-add">Quick add item</Label>
+                  <LookupDropdownInput
+                    id="sales-pos-quick-add"
+                    value={quickAddItemQuery}
+                    disabled={isViewingPostedDocument}
+                    onValueChange={setQuickAddItemQuery}
+                    options={itemOptions}
+                    loading={lookupLoading}
+                    loadingLabel="Loading items"
+                    placeholder="Search item, SKU, or service"
+                    onOptionSelect={quickAddLineItem}
+                    getOptionKey={(option) => option.variantId}
+                    getOptionSearchText={(option) =>
+                      `${option.label} ${option.sku} ${option.gstLabel}`
+                    }
+                    renderOption={(option) => <ItemOptionContent option={option} />}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground lg:min-w-[18rem]">
+                  <div className="rounded-lg border border-border/70 bg-white px-2 py-1.5">
+                    <div>Lines</div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {normalizeLines(lines).length || 1}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-white px-2 py-1.5">
+                    <div>Subtotal</div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {formatCurrency(totals.subTotal)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[#8fb6e2] bg-[#edf5ff] px-2 py-1.5">
+                    <div>Total</div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {formatCurrency(totals.grandTotal)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2 md:hidden">
@@ -3872,6 +4161,57 @@ function SalesDocumentWorkspace({
                     {formatCurrency(totals.grandTotal)}
                   </span>
                 </div>
+                {isPosMode ? (
+                  <div className="space-y-2 border-t border-border/70 pt-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-foreground">
+                        Recent sales
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-[#1f4167] hover:underline"
+                        onClick={() => setViewMode("list")}
+                      >
+                        Open list
+                      </Button>
+                    </div>
+                    <div className="max-h-40 space-y-1 overflow-y-auto">
+                      {invoiceRows.slice(0, 5).map((row) => (
+                        <Button
+                          key={`${row.source}:${row.id}`}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="flex h-auto w-full items-center justify-between rounded-md border-border/70 bg-slate-50 px-2 py-1.5 text-left text-[11px] font-normal hover:border-[#8fb6e2] hover:bg-[#edf5ff]"
+                          onClick={() =>
+                            row.source === "local"
+                              ? loadDraft(row.draft)
+                              : loadServerDraft(row.invoice)
+                          }
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium text-foreground">
+                              {row.billNumber}
+                            </span>
+                            <span className="block truncate text-muted-foreground">
+                              {row.customerName}
+                            </span>
+                          </span>
+                          <span className="shrink-0 pl-2 font-semibold text-foreground">
+                            {formatCurrency(row.total)}
+                          </span>
+                        </Button>
+                      ))}
+                      {invoiceRows.length === 0 ? (
+                        <div className="rounded-md border border-dashed border-border/70 px-2 py-2 text-[11px] text-muted-foreground">
+                          No POS sales yet.
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
