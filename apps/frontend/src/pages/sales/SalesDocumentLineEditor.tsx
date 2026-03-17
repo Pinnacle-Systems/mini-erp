@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
@@ -13,6 +13,7 @@ import {
   DenseTableHeaderCell,
   DenseTableRow,
 } from "../../design-system/molecules/DenseTable";
+import { useSpreadsheetNavigation } from "../../design-system/molecules/useSpreadsheetNavigation";
 import { normalizeGstSlab } from "../../lib/gst-slabs";
 import { SalesItemOptionContent } from "./SalesItemOptionContent";
 import {
@@ -45,16 +46,21 @@ type SalesDocumentLineEditorProps = {
     value: string,
   ) => void;
   onRemoveLine: (lineId: string) => void;
-  onHandleLineNavigation: (
-    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>,
-    lineId: string,
-    field: SalesLineFieldKey,
-  ) => void;
   getLinkedLineCap: (line: BillLine) => number | null;
   getLineOriginTitle: (line: BillLine) => string | null;
   getOriginBadgeClassName: (line: BillLine) => string;
   getSameItemMixedOriginHint: (line: BillLine) => string | null;
 };
+
+const hasEditableLineContent = (line: BillLine) =>
+  Boolean(
+    line.description.trim() ||
+      line.unitPrice.trim() ||
+      line.variantId.trim() ||
+      (line.quantity.trim() &&
+        line.quantity.trim() !== "0" &&
+        line.quantity.trim() !== "1"),
+  );
 
 export function SalesDocumentLineEditor({
   config,
@@ -71,18 +77,58 @@ export function SalesDocumentLineEditor({
   onApplyLineItem,
   onUpdateLine,
   onRemoveLine,
-  onHandleLineNavigation,
   getLinkedLineCap,
   getLineOriginTitle,
   getOriginBadgeClassName,
   getSameItemMixedOriginHint,
 }: SalesDocumentLineEditorProps) {
+  const desktopTableRef = useRef<HTMLDivElement | null>(null);
   const hasStartedSale = lines.some(
     (line) =>
       line.variantId.trim().length > 0 ||
       line.description.trim().length > 0 ||
       line.unitPrice.trim().length > 0,
   );
+  const getLineFieldOrder = (lineId: string): SalesLineFieldKey[] => {
+    if (isViewingPostedDocument) {
+      return [];
+    }
+
+    const line = lines.find((entry) => entry.id === lineId);
+    if (!line) {
+      return [];
+    }
+
+    const fields: SalesLineFieldKey[] = [];
+    if (!line.sourceLineId) {
+      fields.push("description");
+    }
+    fields.push("quantity", "unitPrice", "taxRate");
+    if (!isPosMode) {
+      fields.push("taxMode");
+    }
+    return fields;
+  };
+  const {
+    getCellDataAttributes,
+    handleCellFocus,
+    handleCellKeyDown,
+  } = useSpreadsheetNavigation<SalesLineFieldKey>({
+    containerRef: desktopTableRef,
+    getRowOrder: () => lines.map((line) => line.id),
+    getFieldOrderForRow: getLineFieldOrder,
+    canAppendFromRow: (lineId) => {
+      if (isPosMode) {
+        return false;
+      }
+
+      const line = lines.find((entry) => entry.id === lineId);
+      return Boolean(line && hasEditableLineContent(line));
+    },
+    onRequestAppendRow: () => {
+      onAppendLine();
+    },
+  });
 
   return (
     <div className="flex min-h-[14rem] flex-1 flex-col gap-2 pt-2 md:min-h-[16rem] md:overflow-hidden lg:min-h-[18rem]">
@@ -117,6 +163,14 @@ export function SalesDocumentLineEditor({
         ) : null}
         {lines.map((line, index) => {
           const lineTotals = getLineTotals(line);
+          const isPosStarterLine =
+            isPosMode &&
+            !hasStartedSale &&
+            index === 0 &&
+            !line.sourceLineId &&
+            line.variantId.trim().length === 0 &&
+            line.description.trim().length === 0 &&
+            line.unitPrice.trim().length === 0;
           return (
             <div
               key={line.id}
@@ -152,26 +206,32 @@ export function SalesDocumentLineEditor({
                   </Label>
                   <div className="flex items-center gap-1">
                     <div className="min-w-0 flex-1">
-                      <LookupDropdownInput
-                        id={`sales-line-mobile-description-${line.id}`}
-                        value={line.description}
-                        disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
-                        onValueChange={(value) =>
-                          onUpdateLine(line.id, "description", value)
-                        }
-                        options={itemOptions}
-                        loading={lookupLoading}
-                        loadingLabel="Loading items"
-                        placeholder="Search item or service"
-                        onOptionSelect={(option) => onApplyLineItem(line.id, option)}
-                        getOptionKey={(option) => option.variantId}
-                        getOptionSearchText={(option) =>
-                          `${option.label} ${option.sku} ${option.gstLabel}`
-                        }
-                        renderOption={(option) => (
-                          <SalesItemOptionContent option={option} />
-                        )}
-                      />
+                      {isPosStarterLine ? (
+                        <div className="flex h-8 items-center rounded-lg border border-dashed border-[#b9cfe7] bg-[#f8fbff] px-3 text-[11px] text-muted-foreground">
+                          Use Quick add item above to start the sale.
+                        </div>
+                      ) : (
+                        <LookupDropdownInput
+                          id={`sales-line-mobile-description-${line.id}`}
+                          value={line.description}
+                          disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
+                          onValueChange={(value) =>
+                            onUpdateLine(line.id, "description", value)
+                          }
+                          options={itemOptions}
+                          loading={lookupLoading}
+                          loadingLabel="Loading items"
+                          placeholder="Search item or service"
+                          onOptionSelect={(option) => onApplyLineItem(line.id, option)}
+                          getOptionKey={(option) => option.variantId}
+                          getOptionSearchText={(option) =>
+                            `${option.label} ${option.sku} ${option.gstLabel}`
+                          }
+                          renderOption={(option) => (
+                            <SalesItemOptionContent option={option} />
+                          )}
+                        />
+                      )}
                     </div>
                     {shouldShowOriginBadges ? (
                       <span
@@ -203,6 +263,7 @@ export function SalesDocumentLineEditor({
                     <Label htmlFor={`sales-line-mobile-qty-${line.id}`}>Qty</Label>
                     <Input
                       id={`sales-line-mobile-qty-${line.id}`}
+                      className="text-right tabular-nums"
                       value={line.quantity}
                       max={getLinkedLineCap(line) ?? undefined}
                       readOnly={isViewingPostedDocument}
@@ -217,6 +278,7 @@ export function SalesDocumentLineEditor({
                     <Label htmlFor={`sales-line-mobile-rate-${line.id}`}>Rate</Label>
                     <Input
                       id={`sales-line-mobile-rate-${line.id}`}
+                      className="text-right tabular-nums"
                       value={line.unitPrice}
                       readOnly={isViewingPostedDocument}
                       disabled={isViewingPostedDocument}
@@ -316,7 +378,10 @@ export function SalesDocumentLineEditor({
         })}
       </div>
 
-      <div className="hidden min-h-0 flex-1 overflow-hidden md:flex md:flex-col">
+      <div
+        ref={desktopTableRef}
+        className="hidden min-h-0 flex-1 overflow-hidden md:flex md:flex-col"
+      >
         <div className="flex min-h-0 flex-1 flex-col gap-2">
         {isPosMode && !hasStartedSale ? (
           <div className="rounded-lg border border-dashed border-[#b9cfe7] bg-[#f8fbff] px-3 py-2 text-[11px] text-muted-foreground">
@@ -329,35 +394,45 @@ export function SalesDocumentLineEditor({
         >
           <DenseTableHead>
             <tr>
-              <DenseTableHeaderCell className="w-[36%] px-1.5 lg:px-2.5">
+              <DenseTableHeaderCell className={`${isPosMode ? "w-[34%]" : "w-[28%]"} px-1.5 lg:px-2.5`}>
                 Item
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[13%] px-1.5 lg:px-2.5">
+              <DenseTableHeaderCell className="w-[10%] px-1.5 lg:px-2.5">
                 Qty
               </DenseTableHeaderCell>
               <DenseTableHeaderCell className="w-[10%] px-1.5 lg:px-2.5">
                 Rate
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[9%] px-1.5 lg:px-2.5">
+              <DenseTableHeaderCell className="w-[12%] px-1.5 lg:px-2.5">
                 GST %
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[7%] px-1.5 lg:px-2.5">
-                Mode
-              </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[9%] px-1.5 text-right lg:px-2.5">
+              {!isPosMode ? (
+                <DenseTableHeaderCell className="w-[7%] px-1.5 lg:px-2.5">
+                  Mode
+                </DenseTableHeaderCell>
+              ) : null}
+              <DenseTableHeaderCell className={`${isPosMode ? "w-[9%]" : "w-[9%]"} px-1.5 text-right lg:px-2.5`}>
                 Tax
               </DenseTableHeaderCell>
               <DenseTableHeaderCell className="w-[9%] px-1.5 text-right lg:px-2.5">
                 Total
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[4%] px-1 text-right lg:px-2.5">
+              <DenseTableHeaderCell className={`${isPosMode ? "w-[6%]" : "w-[4%]"} px-2 text-right lg:px-3`}>
                 {" "}
               </DenseTableHeaderCell>
             </tr>
           </DenseTableHead>
           <DenseTableBody>
-            {lines.map((line) => {
+            {lines.map((line, index) => {
               const lineTotals = getLineTotals(line);
+              const isPosStarterLine =
+                isPosMode &&
+                !hasStartedSale &&
+                index === 0 &&
+                !line.sourceLineId &&
+                line.variantId.trim().length === 0 &&
+                line.description.trim().length === 0 &&
+                line.unitPrice.trim().length === 0;
               return (
                 <DenseTableRow
                   key={line.id}
@@ -373,35 +448,39 @@ export function SalesDocumentLineEditor({
                   <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="relative">
-                        <LookupDropdownInput
-                          id={getSalesLineDescriptionInputId(line.id)}
-                          value={line.description}
-                          disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
-                          onValueChange={(value) =>
-                            onUpdateLine(line.id, "description", value)
-                          }
-                          options={itemOptions}
-                          loading={lookupLoading}
-                          loadingLabel="Loading items"
-                          placeholder="Search item or service"
-                          onOptionSelect={(option) => onApplyLineItem(line.id, option)}
-                          getOptionKey={(option) => option.variantId}
-                          getOptionSearchText={(option) =>
-                            `${option.label} ${option.sku} ${option.gstLabel}`
-                          }
-                          renderOption={(option) => (
-                            <SalesItemOptionContent option={option} />
-                          )}
-                          inputClassName="pr-16 lg:pr-24"
-                          inputProps={{
-                            onKeyDown: (event) =>
-                              onHandleLineNavigation(
-                                event,
-                                line.id,
-                                "description",
-                              ),
-                          }}
-                        />
+                        {isPosStarterLine ? (
+                          <div className="flex h-8 items-center rounded-lg border border-dashed border-[#b9cfe7] bg-[#f8fbff] px-3 text-[11px] text-muted-foreground">
+                            Use Quick add item above to start the sale.
+                          </div>
+                        ) : (
+                          <LookupDropdownInput
+                            id={getSalesLineDescriptionInputId(line.id)}
+                            value={line.description}
+                            disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
+                            onValueChange={(value) =>
+                              onUpdateLine(line.id, "description", value)
+                            }
+                            options={itemOptions}
+                            loading={lookupLoading}
+                            loadingLabel="Loading items"
+                            placeholder="Search item or service"
+                            onOptionSelect={(option) => onApplyLineItem(line.id, option)}
+                            getOptionKey={(option) => option.variantId}
+                            getOptionSearchText={(option) =>
+                              `${option.label} ${option.sku} ${option.gstLabel}`
+                            }
+                            renderOption={(option) => (
+                              <SalesItemOptionContent option={option} />
+                            )}
+                            inputClassName={isPosMode ? "pr-8 lg:pr-10" : "pr-10 lg:pr-12"}
+                            inputProps={{
+                              ...getCellDataAttributes(line.id, "description"),
+                              onKeyDown: (event) =>
+                                handleCellKeyDown(event, line.id, "description"),
+                              onFocus: () => handleCellFocus(line.id, "description"),
+                            }}
+                          />
+                        )}
                         <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-1">
                           {shouldShowOriginBadges ? (
                             <span
@@ -433,8 +512,9 @@ export function SalesDocumentLineEditor({
                   <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <div className="flex items-center gap-0.5 lg:gap-1">
                       <Input
+                        {...getCellDataAttributes(line.id, "quantity")}
                         data-sales-line-cell={`${line.id}:quantity`}
-                        className="!w-[3.5rem] shrink-0 px-1 text-right lg:!w-[4.5rem]"
+                        className="!w-[2.75rem] shrink-0 px-1 text-right tabular-nums lg:!w-[3rem]"
                         value={line.quantity}
                         max={getLinkedLineCap(line) ?? undefined}
                         readOnly={isViewingPostedDocument}
@@ -442,9 +522,8 @@ export function SalesDocumentLineEditor({
                         onChange={(event) =>
                           onUpdateLine(line.id, "quantity", event.target.value)
                         }
-                        onKeyDown={(event) =>
-                          onHandleLineNavigation(event, line.id, "quantity")
-                        }
+                        onFocus={() => handleCellFocus(line.id, "quantity")}
+                        onKeyDown={(event) => handleCellKeyDown(event, line.id, "quantity")}
                         inputMode="decimal"
                       />
                       <span className="shrink-0 whitespace-nowrap text-[9px] text-muted-foreground lg:text-[10px]">
@@ -454,22 +533,23 @@ export function SalesDocumentLineEditor({
                   </DenseTableCell>
                   <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <Input
+                      {...getCellDataAttributes(line.id, "unitPrice")}
                       data-sales-line-cell={`${line.id}:unitPrice`}
-                      className="min-w-0 px-1.5 text-right lg:px-2"
+                      className="min-w-0 px-1.5 text-right tabular-nums lg:px-2"
                       value={line.unitPrice}
                       readOnly={isViewingPostedDocument}
                       disabled={isViewingPostedDocument}
                       onChange={(event) =>
                         onUpdateLine(line.id, "unitPrice", event.target.value)
                       }
-                      onKeyDown={(event) =>
-                        onHandleLineNavigation(event, line.id, "unitPrice")
-                      }
+                      onFocus={() => handleCellFocus(line.id, "unitPrice")}
+                      onKeyDown={(event) => handleCellKeyDown(event, line.id, "unitPrice")}
                       inputMode="decimal"
                     />
                   </DenseTableCell>
                   <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <GstSlabSelect
+                      {...getCellDataAttributes(line.id, "taxRate")}
                       data-sales-line-cell={`${line.id}:taxRate`}
                       className="h-8 min-w-0 bg-white px-1 text-left text-[11px] lg:px-2 lg:text-xs"
                       value={normalizeGstSlab(line.taxRate) || ""}
@@ -477,34 +557,35 @@ export function SalesDocumentLineEditor({
                       onChange={(e) =>
                         onUpdateLine(line.id, "taxRate", e.target.value)
                       }
-                      onKeyDown={(event) =>
-                        onHandleLineNavigation(event, line.id, "taxRate")
-                      }
+                      onFocus={() => handleCellFocus(line.id, "taxRate")}
+                      onKeyDown={(event) => handleCellKeyDown(event, line.id, "taxRate")}
                       placeholderOption="GST %"
                     />
                   </DenseTableCell>
-                  <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
-                    <Button
-                      data-sales-line-cell={`${line.id}:taxMode`}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-full min-w-0 border-border/70 px-0 text-[11px] text-muted-foreground lg:text-xs"
-                      disabled={isViewingPostedDocument}
-                      onClick={() =>
-                        onUpdateLine(
-                          line.id,
-                          "taxMode",
-                          line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
-                        )
-                      }
-                      onKeyDown={(event) =>
-                        onHandleLineNavigation(event, line.id, "taxMode")
-                      }
-                    >
-                      {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
-                    </Button>
-                  </DenseTableCell>
+                  {!isPosMode ? (
+                    <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
+                      <Button
+                        {...getCellDataAttributes(line.id, "taxMode")}
+                        data-sales-line-cell={`${line.id}:taxMode`}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-full min-w-0 border-border/70 px-0 text-[11px] text-muted-foreground lg:text-xs"
+                        disabled={isViewingPostedDocument}
+                        onClick={() =>
+                          onUpdateLine(
+                            line.id,
+                            "taxMode",
+                            line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
+                          )
+                        }
+                        onFocus={() => handleCellFocus(line.id, "taxMode")}
+                        onKeyDown={(event) => handleCellKeyDown(event, line.id, "taxMode")}
+                      >
+                        {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
+                      </Button>
+                    </DenseTableCell>
+                  ) : null}
                   <DenseTableCell className="px-1.5 py-1.5 text-right lg:px-2.5">
                     <div className="flex h-8 items-center justify-end whitespace-nowrap text-[10px] font-medium text-foreground lg:text-[11px]">
                       {formatCurrency(lineTotals.taxTotal)}
@@ -515,7 +596,7 @@ export function SalesDocumentLineEditor({
                       {formatCurrency(lineTotals.total)}
                     </div>
                   </DenseTableCell>
-                  <DenseTableCell className="px-1 py-1.5 text-right lg:px-2.5">
+                  <DenseTableCell className="px-2 py-1.5 text-right lg:px-3">
                     <Button
                       type="button"
                       variant="ghost"

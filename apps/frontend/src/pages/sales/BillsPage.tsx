@@ -271,15 +271,12 @@ function SalesDocumentWorkspace({
     getLinkedLineCap,
     getOriginBadgeClassName,
     getSameItemMixedOriginHint,
-    handleSalesLineNavigation,
     invoiceRows,
     isOnline,
     isPosMode,
     isViewingPostedDocument,
     itemOptions,
     lines,
-    loadDraft,
-    loadServerDraft,
     lookupError,
     lookupLoading,
     notes,
@@ -349,6 +346,7 @@ function SalesDocumentWorkspace({
     activeLineId && lines.some((line) => line.id === activeLineId)
       ? activeLineId
       : lines[0]?.id ?? null;
+  const validLineCount = normalizeLines(lines).length;
 
   const buildPosCheckoutNotes = (amountTendered: number) => {
     const paymentSnapshot = `[POS Checkout] Cash Tendered: ${formatCurrency(
@@ -389,6 +387,9 @@ function SalesDocumentWorkspace({
 
   const handlePostDraft = () => {
     if (isPosMode) {
+      if (validLineCount === 0) {
+        return;
+      }
       setPosPaymentError(null);
       setIsPosPaymentOpen(true);
       return;
@@ -397,7 +398,7 @@ function SalesDocumentWorkspace({
   };
 
   const handleOpenPosPayment = () => {
-    if (!isPosMode) {
+    if (!isPosMode || validLineCount === 0) {
       return;
     }
 
@@ -536,7 +537,7 @@ function SalesDocumentWorkspace({
         disabled={isViewingPostedDocument}
         lookupLoading={lookupLoading}
         itemOptions={itemOptions}
-        linesCount={normalizeLines(lines).length}
+        linesCount={validLineCount}
         subTotal={totals.subTotal}
         grandTotal={totals.grandTotal}
         focusSignal={posQuickAddFocusSignal}
@@ -546,7 +547,7 @@ function SalesDocumentWorkspace({
     ) : null;
 
   const transactionField = usesTransactionType(config.documentType) ? (
-    <div className="space-y-1">
+    <div className={isPosMode ? "space-y-0.5" : "space-y-1"}>
       <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
       <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
         <span
@@ -584,7 +585,7 @@ function SalesDocumentWorkspace({
   ) : null;
 
   const billNumberField = (
-    <div className={`space-y-1 ${isPosMode ? "md:w-40" : "md:w-48"}`}>
+    <div className={`${isPosMode ? "space-y-0.5 md:w-36" : "space-y-1 md:w-48"}`}>
       <Label htmlFor="sales-bill-number">
         {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}
       </Label>
@@ -599,7 +600,7 @@ function SalesDocumentWorkspace({
         }}
       />
       {isPosMode ? (
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-[10px] text-muted-foreground">
           Auto-assigned
         </div>
       ) : null}
@@ -790,9 +791,9 @@ function SalesDocumentWorkspace({
         ) : null}
 
         {isPosMode ? (
-          <div className="grid gap-3 pb-2 pt-1 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+          <div className="grid gap-3 pb-2 pt-1 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
             <div className="flex min-h-0 flex-col gap-3">
-              <div className="grid gap-2 rounded-xl border border-border/70 bg-slate-50/65 px-2 py-2 lg:grid-cols-[auto_auto_minmax(0,1fr)] lg:items-start">
+              <div className="grid gap-1.5 rounded-xl border border-border/70 bg-slate-50/65 px-2 py-1.5 lg:grid-cols-[auto_auto] lg:items-start">
                 {transactionField}
                 {billNumberField}
               </div>
@@ -827,7 +828,6 @@ function SalesDocumentWorkspace({
                       setActiveLineId(fallbackLineId);
                     }
                   }}
-                  onHandleLineNavigation={handleSalesLineNavigation}
                   getLinkedLineCap={getLinkedLineCap}
                   getLineOriginTitle={getLineOriginTitle}
                   getOriginBadgeClassName={getOriginBadgeClassName}
@@ -910,13 +910,7 @@ function SalesDocumentWorkspace({
                   dispatchCarrier={dispatchCarrier}
                   isPosMode={isPosMode}
                   isPosting={draftMutationLoading}
-                  invoiceRows={invoiceRows}
-                  onOpenInvoiceRow={(row) =>
-                    row.source === "local"
-                      ? loadDraft(row.draft)
-                      : loadServerDraft(row.invoice)
-                  }
-                  onOpenList={() => setViewMode("list")}
+                  canCheckout={validLineCount > 0}
                   onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}
                   className="border-t-0 pt-0 md:w-full md:border-l-0 md:pl-0"
                 />
@@ -1049,7 +1043,6 @@ function SalesDocumentWorkspace({
                 setActiveLineId(fallbackLineId);
               }
             }}
-            onHandleLineNavigation={handleSalesLineNavigation}
             getLinkedLineCap={getLinkedLineCap}
             getLineOriginTitle={getLineOriginTitle}
             getOriginBadgeClassName={getOriginBadgeClassName}
@@ -1130,13 +1123,7 @@ function SalesDocumentWorkspace({
               dispatchCarrier={dispatchCarrier}
               isPosMode={isPosMode}
               isPosting={draftMutationLoading}
-              invoiceRows={invoiceRows}
-              onOpenInvoiceRow={(row) =>
-                row.source === "local"
-                  ? loadDraft(row.draft)
-                  : loadServerDraft(row.invoice)
-              }
-              onOpenList={() => setViewMode("list")}
+              canCheckout={validLineCount > 0}
               onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}
             />
           </div>

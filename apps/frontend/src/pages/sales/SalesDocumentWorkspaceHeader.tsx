@@ -60,7 +60,7 @@ export function SalesDocumentWorkspaceHeader({
           {isViewingPostedDocument
             ? "Posted documents open here in read-only mode for review."
             : isPosMode
-              ? "Add items fast, keep customer optional for cash sales, and post as soon as checkout is done."
+              ? "Add items fast and complete checkout from the summary rail."
               : "Select a customer, add lines, save the draft, then post when it is ready."}
         </p>
         {isViewingPostedDocument ? (
@@ -113,26 +113,28 @@ export function SalesDocumentWorkspaceHeader({
                   </span>
                 ) : null}
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={onPostDraft}
-                disabled={draftMutationLoading}
-                title={postValidationMessage ?? postActionLabel ?? config.postActionLabel}
-              >
-                <span>
-                  {draftMutationLoading
-                    ? "Working..."
-                    : !postValidationMessage
-                      ? postActionLabel ?? config.postActionLabel
-                      : "Review Posting Issues"}
-                </span>
-                {!draftMutationLoading && postShortcutHint ? (
-                  <span className="ml-2 rounded border border-white/40 bg-white/10 px-1 py-0 text-[10px] font-medium text-white/90">
-                    {postShortcutHint}
+              {!isPosMode ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={onPostDraft}
+                  disabled={draftMutationLoading}
+                  title={postValidationMessage ?? postActionLabel ?? config.postActionLabel}
+                >
+                  <span>
+                    {draftMutationLoading
+                      ? "Working..."
+                      : !postValidationMessage
+                        ? postActionLabel ?? config.postActionLabel
+                        : "Review Posting Issues"}
                   </span>
-                ) : null}
-              </Button>
+                  {!draftMutationLoading && postShortcutHint ? (
+                    <span className="ml-2 rounded border border-white/40 bg-white/10 px-1 py-0 text-[10px] font-medium text-white/90">
+                      {postShortcutHint}
+                    </span>
+                  ) : null}
+                </Button>
+              ) : null}
             </>
           ) : null}
         </div>

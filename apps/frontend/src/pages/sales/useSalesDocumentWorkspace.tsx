@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Copy,
   Eye,
@@ -2069,91 +2069,6 @@ export function useSalesDocumentWorkspace({
     return nextLine.id;
   };
 
-  const getEditableLineFields = (line: BillLine): SalesLineFieldKey[] => {
-    if (isViewingPostedDocument) {
-      return [];
-    }
-
-    const fields: SalesLineFieldKey[] = [];
-    if (!line.sourceLineId) {
-      fields.push("description");
-    }
-    fields.push("quantity", "unitPrice", "taxRate", "taxMode");
-    return fields;
-  };
-
-  const focusSalesLineCell = (lineId: string, field: SalesLineFieldKey) => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    if (field === "description") {
-      document
-        .querySelector<HTMLElement>(`#${getSalesLineDescriptionInputId(lineId)}`)
-        ?.focus();
-      return;
-    }
-
-    document
-      .querySelector<HTMLElement>(`[data-sales-line-cell="${lineId}:${field}"]`)
-      ?.focus();
-  };
-
-  const handleSalesLineNavigation = (
-    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>,
-    lineId: string,
-    field: SalesLineFieldKey,
-  ) => {
-    if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) {
-      return;
-    }
-
-    if (
-      event.currentTarget instanceof HTMLInputElement &&
-      event.currentTarget.getAttribute("aria-activedescendant")
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const currentLine = lines.find((line) => line.id === lineId);
-    if (!currentLine) {
-      return;
-    }
-
-    const currentLineFields = getEditableLineFields(currentLine);
-    const lineIndex = lines.findIndex((line) => line.id === lineId);
-    const fieldIndex = currentLineFields.indexOf(field);
-    if (lineIndex === -1 || fieldIndex === -1) {
-      return;
-    }
-
-    const step = event.shiftKey ? -1 : 1;
-    const nextFieldIndex = fieldIndex + step;
-    if (nextFieldIndex >= 0 && nextFieldIndex < currentLineFields.length) {
-      focusSalesLineCell(lineId, currentLineFields[nextFieldIndex]);
-      return;
-    }
-
-    let nextLineIndex = lineIndex + step;
-    while (nextLineIndex >= 0 && nextLineIndex < lines.length) {
-      const nextFields = getEditableLineFields(lines[nextLineIndex]);
-      if (nextFields.length > 0) {
-        focusSalesLineCell(
-          lines[nextLineIndex].id,
-          step > 0 ? nextFields[0] : nextFields[nextFields.length - 1],
-        );
-        return;
-      }
-      nextLineIndex += step;
-    }
-
-    if (!event.shiftKey && lineIndex === lines.length - 1 && hasLineContent(currentLine)) {
-      appendLine();
-    }
-  };
-
   const buildRouteInvoiceDraft = (): SavedBillDraft => ({
     id: activeDraftId ?? crypto.randomUUID(),
     documentType: config.documentType,
@@ -2616,7 +2531,6 @@ export function useSalesDocumentWorkspace({
     getLinkedLineCap,
     getOriginBadgeClassName,
     getSameItemMixedOriginHint,
-    handleSalesLineNavigation,
     invoiceRows,
     isOnline,
     isPosMode,
