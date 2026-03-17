@@ -77,8 +77,15 @@ export function SalesDocumentLineEditor({
   getOriginBadgeClassName,
   getSameItemMixedOriginHint,
 }: SalesDocumentLineEditorProps) {
+  const hasStartedSale = lines.some(
+    (line) =>
+      line.variantId.trim().length > 0 ||
+      line.description.trim().length > 0 ||
+      line.unitPrice.trim().length > 0,
+  );
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2 md:overflow-hidden">
+    <div className="flex min-h-[14rem] flex-1 flex-col gap-2 pt-2 md:min-h-[16rem] md:overflow-hidden lg:min-h-[18rem]">
       <div className="flex flex-col gap-2 md:shrink-0">
         <div className="flex items-center justify-between">
           <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
@@ -98,6 +105,16 @@ export function SalesDocumentLineEditor({
       </div>
 
       <div className="space-y-2 md:hidden">
+        {isPosMode && !hasStartedSale ? (
+          <div className="rounded-xl border border-dashed border-[#b9cfe7] bg-[#f8fbff] px-4 py-8 text-center">
+            <div className="text-sm font-semibold text-foreground">
+              Scan barcode or search item to start sale
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              The register is ready for the next item. Blank rows remain visible below.
+            </div>
+          </div>
+        ) : null}
         {lines.map((line, index) => {
           const lineTotals = getLineTotals(line);
           return (
@@ -299,22 +316,41 @@ export function SalesDocumentLineEditor({
         })}
       </div>
 
-      <div className="hidden min-h-0 flex-1 overflow-hidden md:block">
-        <DenseTable className="rounded-xl border-border/80 [scrollbar-gutter:stable]">
+      <div className="hidden min-h-0 flex-1 overflow-hidden md:flex md:flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+        {isPosMode && !hasStartedSale ? (
+          <div className="rounded-lg border border-dashed border-[#b9cfe7] bg-[#f8fbff] px-3 py-2 text-[11px] text-muted-foreground">
+            Scan barcode or search item to start sale. The first editable row is ready below.
+          </div>
+        ) : null}
+        <DenseTable
+          className="md:block overflow-x-hidden rounded-xl border-border/80 bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)]"
+          tableClassName="text-[10px] lg:text-[11px]"
+        >
           <DenseTableHead>
             <tr>
-              <DenseTableHeaderCell className="w-[36%]">Item</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[13%]">Qty</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[10%]">Rate</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[9%]">GST %</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[7%]">Mode</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[9%] text-right">
+              <DenseTableHeaderCell className="w-[36%] px-1.5 lg:px-2.5">
+                Item
+              </DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[13%] px-1.5 lg:px-2.5">
+                Qty
+              </DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[10%] px-1.5 lg:px-2.5">
+                Rate
+              </DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[9%] px-1.5 lg:px-2.5">
+                GST %
+              </DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[7%] px-1.5 lg:px-2.5">
+                Mode
+              </DenseTableHeaderCell>
+              <DenseTableHeaderCell className="w-[9%] px-1.5 text-right lg:px-2.5">
                 Tax
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[9%] text-right">
+              <DenseTableHeaderCell className="w-[9%] px-1.5 text-right lg:px-2.5">
                 Total
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[4%] text-right">
+              <DenseTableHeaderCell className="w-[4%] px-1 text-right lg:px-2.5">
                 {" "}
               </DenseTableHeaderCell>
             </tr>
@@ -328,13 +364,13 @@ export function SalesDocumentLineEditor({
                   data-bill-line-id={line.id}
                   className={`align-middle ${
                     isPosMode && activeLineId === line.id
-                      ? "bg-[#edf5ff] shadow-[inset_3px_0_0_0_#4a8dd9]"
+                      ? "[&>td]:bg-[#edf5ff] shadow-[inset_3px_0_0_0_#4a8dd9]"
                       : ""
                   }`}
                   onClick={() => onActiveLineChange?.(line.id)}
                   onFocusCapture={() => onActiveLineChange?.(line.id)}
                 >
-                  <DenseTableCell className="py-1.5">
+                  <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="relative">
                         <LookupDropdownInput
@@ -356,7 +392,7 @@ export function SalesDocumentLineEditor({
                           renderOption={(option) => (
                             <SalesItemOptionContent option={option} />
                           )}
-                          inputClassName="pr-24"
+                          inputClassName="pr-16 lg:pr-24"
                           inputProps={{
                             onKeyDown: (event) =>
                               onHandleLineNavigation(
@@ -394,11 +430,11 @@ export function SalesDocumentLineEditor({
                       </div>
                     </div>
                   </DenseTableCell>
-                  <DenseTableCell className="py-1.5">
-                    <div className="flex items-center gap-1">
+                  <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
+                    <div className="flex items-center gap-0.5 lg:gap-1">
                       <Input
                         data-sales-line-cell={`${line.id}:quantity`}
-                        className="!w-[4.5rem] shrink-0 px-1 text-right"
+                        className="!w-[3.5rem] shrink-0 px-1 text-right lg:!w-[4.5rem]"
                         value={line.quantity}
                         max={getLinkedLineCap(line) ?? undefined}
                         readOnly={isViewingPostedDocument}
@@ -411,15 +447,15 @@ export function SalesDocumentLineEditor({
                         }
                         inputMode="decimal"
                       />
-                      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">
+                      <span className="shrink-0 whitespace-nowrap text-[9px] text-muted-foreground lg:text-[10px]">
                         {line.unit || "PCS"}
                       </span>
                     </div>
                   </DenseTableCell>
-                  <DenseTableCell className="py-1.5">
+                  <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <Input
                       data-sales-line-cell={`${line.id}:unitPrice`}
-                      className="min-w-0 px-2 text-right"
+                      className="min-w-0 px-1.5 text-right lg:px-2"
                       value={line.unitPrice}
                       readOnly={isViewingPostedDocument}
                       disabled={isViewingPostedDocument}
@@ -432,10 +468,10 @@ export function SalesDocumentLineEditor({
                       inputMode="decimal"
                     />
                   </DenseTableCell>
-                  <DenseTableCell className="py-1.5">
+                  <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <GstSlabSelect
                       data-sales-line-cell={`${line.id}:taxRate`}
-                      className="h-8 min-w-0 bg-white px-2 text-left text-xs"
+                      className="h-8 min-w-0 bg-white px-1 text-left text-[11px] lg:px-2 lg:text-xs"
                       value={normalizeGstSlab(line.taxRate) || ""}
                       disabled={isViewingPostedDocument}
                       onChange={(e) =>
@@ -447,13 +483,13 @@ export function SalesDocumentLineEditor({
                       placeholderOption="GST %"
                     />
                   </DenseTableCell>
-                  <DenseTableCell className="py-1.5">
+                  <DenseTableCell className="px-1.5 py-1.5 lg:px-2.5">
                     <Button
                       data-sales-line-cell={`${line.id}:taxMode`}
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-8 w-full min-w-0 border-border/70 px-0 text-xs text-muted-foreground"
+                      className="h-8 w-full min-w-0 border-border/70 px-0 text-[11px] text-muted-foreground lg:text-xs"
                       disabled={isViewingPostedDocument}
                       onClick={() =>
                         onUpdateLine(
@@ -469,22 +505,22 @@ export function SalesDocumentLineEditor({
                       {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
                     </Button>
                   </DenseTableCell>
-                  <DenseTableCell className="py-1.5 text-right">
-                    <div className="flex h-8 items-center justify-end whitespace-nowrap text-[11px] font-medium text-foreground">
+                  <DenseTableCell className="px-1.5 py-1.5 text-right lg:px-2.5">
+                    <div className="flex h-8 items-center justify-end whitespace-nowrap text-[10px] font-medium text-foreground lg:text-[11px]">
                       {formatCurrency(lineTotals.taxTotal)}
                     </div>
                   </DenseTableCell>
-                  <DenseTableCell className="py-1.5 text-right">
-                    <div className="flex h-8 items-center justify-end whitespace-nowrap text-[11px] font-semibold text-foreground">
+                  <DenseTableCell className="px-1.5 py-1.5 text-right lg:px-2.5">
+                    <div className="flex h-8 items-center justify-end whitespace-nowrap text-[10px] font-semibold text-foreground lg:text-[11px]">
                       {formatCurrency(lineTotals.total)}
                     </div>
                   </DenseTableCell>
-                  <DenseTableCell className="py-1.5 text-right">
+                  <DenseTableCell className="px-1 py-1.5 text-right lg:px-2.5">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 w-8 p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600 lg:h-8 lg:w-8"
                       onClick={() => onRemoveLine(line.id)}
                       title="Remove line"
                       disabled={isViewingPostedDocument}
@@ -498,6 +534,7 @@ export function SalesDocumentLineEditor({
             })}
           </DenseTableBody>
         </DenseTable>
+        </div>
       </div>
     </div>
   );

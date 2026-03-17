@@ -336,6 +336,7 @@ function SalesDocumentWorkspace({
   const [posQuickAddFocusSignal, setPosQuickAddFocusSignal] = useState(0);
   const [isPosPaymentOpen, setIsPosPaymentOpen] = useState(false);
   const [posPaymentError, setPosPaymentError] = useState<string | null>(null);
+  const [isPosNotesOpen, setIsPosNotesOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<PrintableReceiptData | null>(null);
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(() => {
     if (typeof window === "undefined") {
@@ -544,9 +545,208 @@ function SalesDocumentWorkspace({
       />
     ) : null;
 
+  const transactionField = usesTransactionType(config.documentType) ? (
+    <div className="space-y-1">
+      <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
+      <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
+        <span
+          className={
+            transactionType === "CASH"
+              ? "font-semibold text-foreground"
+              : "text-muted-foreground"
+          }
+        >
+          Cash
+        </span>
+        <Switch
+          id="sales-bill-transaction-switch"
+          checked={transactionType === "CREDIT"}
+          disabled={isViewingPostedDocument}
+          onCheckedChange={(checked) =>
+            setTransactionType(checked ? "CREDIT" : "CASH")
+          }
+          aria-label="Toggle cash or credit transaction"
+          className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
+          checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
+          uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+        />
+        <span
+          className={
+            transactionType === "CREDIT"
+              ? "font-semibold text-foreground"
+              : "text-muted-foreground"
+          }
+        >
+          Credit
+        </span>
+      </div>
+    </div>
+  ) : null;
+
+  const billNumberField = (
+    <div className={`space-y-1 ${isPosMode ? "md:w-40" : "md:w-48"}`}>
+      <Label htmlFor="sales-bill-number">
+        {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}
+      </Label>
+      <Input
+        id="sales-bill-number"
+        value={billNumber}
+        readOnly={isViewingPostedDocument || isPosMode}
+        disabled={isViewingPostedDocument || isPosMode}
+        onChange={(event) => {
+          setBillNumber(event.target.value);
+          setNumberConflict(null);
+        }}
+      />
+      {isPosMode ? (
+        <div className="text-[11px] text-muted-foreground">
+          Auto-assigned
+        </div>
+      ) : null}
+      {numberConflict ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+          {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}{" "}
+          <span className="font-semibold">{numberConflict.requested}</span> is already
+          used. Suggested:{" "}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] underline underline-offset-2 hover:bg-transparent"
+            onClick={() => {
+              void applySuggestedInvoiceNumber();
+            }}
+            disabled={draftMutationLoading}
+          >
+            {numberConflict.suggested}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const customerField = (
+    <div
+      className={`space-y-1 ${
+        isPosMode ? "min-w-0" : "md:w-[28rem] md:max-w-[28rem]"
+      }`}
+    >
+      <Label htmlFor="sales-bill-customer">
+        {usesTransactionType(config.documentType) ? "Customer" : "Customer *"}
+      </Label>
+      <LookupDropdownInput
+        id="sales-bill-customer"
+        value={customerName}
+        disabled={isViewingPostedDocument}
+        onValueChange={(value) => {
+          setCustomerName(value);
+          setCustomerId(null);
+          if (!value.trim()) {
+            setCustomerPhone("");
+            setCustomerAddress("");
+            setCustomerGstNo("");
+          }
+        }}
+        options={customers}
+        loading={lookupLoading}
+        loadingLabel="Loading customers"
+        placeholder="Search or enter customer"
+        onOptionSelect={applyCustomer}
+        getOptionKey={(customer) => customer.entityId}
+        getOptionSearchText={(customer) =>
+          `${customer.name} ${customer.phone} ${customer.email} ${customer.gstNo}`
+        }
+        renderOption={(customer) => (
+          <div className="space-y-0.5">
+            <div className="font-medium text-foreground">{customer.name}</div>
+            <div className="text-[10px] text-muted-foreground">
+              {[customer.phone, customer.gstNo].filter(Boolean).join("  |  ") ||
+                "No phone or GST"}
+            </div>
+          </div>
+        )}
+      />
+      {!isViewingPostedDocument &&
+      usesTransactionType(config.documentType) &&
+      transactionType === "CREDIT" &&
+      !activeCustomer ? (
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          <span className="text-amber-700">
+            {`Credit ${config.pluralLabel} require an existing customer.`}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+            onClick={openCustomerCreate}
+          >
+            Create customer
+          </Button>
+        </div>
+      ) : null}
+      {!isViewingPostedDocument &&
+      usesTransactionType(config.documentType) &&
+      transactionType === "CASH" &&
+      !activeCustomer ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+          <span className="text-muted-foreground">
+            {`Customer is optional for cash ${config.pluralLabel}.`}
+          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            {canQuickCreateFromPhone ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                onClick={() => {
+                  void quickCreateCustomerFromPhone();
+                }}
+                disabled={customerActionLoading}
+              >
+                {customerActionLoading ? "Creating..." : "Quick create from phone"}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+              onClick={openCustomerCreate}
+            >
+              Create customer
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {!isViewingPostedDocument &&
+      !usesTransactionType(config.documentType) &&
+      !customerName.trim() ? (
+        <div className="text-[11px] text-amber-700">
+          {`Customer details are required for this ${config.singularLabel}.`}
+        </div>
+      ) : null}
+      {activeCustomer ||
+      customerId ||
+      customerPhone ||
+      customerGstNo ||
+      customerAddress ? (
+        <div className="px-1 pt-1 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">Phone:</span>{" "}
+          {activeCustomer?.phone || customerPhone || "Not provided"} •{" "}
+          <span className="font-medium text-foreground">GST:</span>{" "}
+          {activeCustomer?.gstNo || customerGstNo || "Not provided"} •{" "}
+          <span className="font-medium text-foreground">Address:</span>{" "}
+          {activeCustomer?.address || customerAddress || "No billing address"}
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
-      <div className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-1 lg:overflow-hidden">
+      <div className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden">
         <SalesDocumentWorkspaceHeader
           config={config}
           isViewingPostedDocument={isViewingPostedDocument}
@@ -557,9 +757,13 @@ function SalesDocumentWorkspace({
           draftMutationLoading={draftMutationLoading}
           linesCount={normalizeLines(lines).length}
           postValidationMessage={postValidationMessage}
+          postActionLabel={isPosMode && !postValidationMessage ? "Pay Now" : undefined}
           saveShortcutHint={isPosMode ? "Ctrl+S" : undefined}
           postShortcutHint={isPosMode ? "Ctrl+Enter" : undefined}
+          showNewSaleAction={isPosMode && isViewingPostedDocument}
+          newSaleActionLabel="Start New Sale"
           onOpenList={() => setViewMode("list")}
+          onOpenNewSale={isPosMode ? openNewDraft : undefined}
           onSaveDraft={handleSaveDraft}
           onPostDraft={handlePostDraft}
         />
@@ -585,206 +789,146 @@ function SalesDocumentWorkspace({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-3 pb-2 pt-1 md:flex-row md:items-start">
-          {usesTransactionType(config.documentType) ? (
-            <div className="space-y-1">
-              <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
-              <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
-                <span
-                  className={
-                    transactionType === "CASH"
-                      ? "font-semibold text-foreground"
-                      : "text-muted-foreground"
-                  }
-                >
-                  Cash
-                </span>
-                <Switch
-                  id="sales-bill-transaction-switch"
-                  checked={transactionType === "CREDIT"}
-                  disabled={isViewingPostedDocument}
-                  onCheckedChange={(checked) =>
-                    setTransactionType(checked ? "CREDIT" : "CASH")
-                  }
-                  aria-label="Toggle cash or credit transaction"
-                  className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
-                  checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
-                  uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+        {isPosMode ? (
+          <div className="grid gap-3 pb-2 pt-1 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+            <div className="flex min-h-0 flex-col gap-3">
+              <div className="grid gap-2 rounded-xl border border-border/70 bg-slate-50/65 px-2 py-2 lg:grid-cols-[auto_auto_minmax(0,1fr)] lg:items-start">
+                {transactionField}
+                {billNumberField}
+              </div>
+              {lookupError ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
+                  {lookupError}
+                </div>
+              ) : null}
+              <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border/80 bg-white p-2 shadow-sm">
+                <SalesDocumentLineEditor
+                  config={config}
+                  lines={lines}
+                  itemOptions={itemOptions}
+                  lookupLoading={lookupLoading}
+                  isViewingPostedDocument={isViewingPostedDocument}
+                  isPosMode={isPosMode}
+                  shouldShowOriginBadges={shouldShowOriginBadges}
+                  activeLineId={effectiveActiveLineId}
+                  lineHeaderSlot={posLineHeader}
+                  onActiveLineChange={setActiveLineId}
+                  onAppendLine={handleAppendLine}
+                  onApplyLineItem={applyLineItem}
+                  onUpdateLine={updateLine}
+                  onRemoveLine={(lineId) => {
+                    const currentIndex = lines.findIndex((line) => line.id === lineId);
+                    const fallbackLineId =
+                      lines[currentIndex + 1]?.id ??
+                      lines[currentIndex - 1]?.id ??
+                      null;
+                    removeLine(lineId);
+                    if (lineId === effectiveActiveLineId) {
+                      setActiveLineId(fallbackLineId);
+                    }
+                  }}
+                  onHandleLineNavigation={handleSalesLineNavigation}
+                  getLinkedLineCap={getLinkedLineCap}
+                  getLineOriginTitle={getLineOriginTitle}
+                  getOriginBadgeClassName={getOriginBadgeClassName}
+                  getSameItemMixedOriginHint={getSameItemMixedOriginHint}
                 />
-                <span
-                  className={
-                    transactionType === "CREDIT"
-                      ? "font-semibold text-foreground"
-                      : "text-muted-foreground"
-                  }
-                >
-                  Credit
-                </span>
               </div>
             </div>
-          ) : null}
-          <div className="space-y-1 md:w-48">
-            <Label htmlFor="sales-bill-number">
-              {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}
-            </Label>
-            <Input
-              id="sales-bill-number"
-              value={billNumber}
-              readOnly={isViewingPostedDocument || isPosMode}
-              disabled={isViewingPostedDocument || isPosMode}
-              onChange={(event) => {
-                setBillNumber(event.target.value);
-                setNumberConflict(null);
-              }}
-            />
-            {isPosMode ? (
-              <div className="text-[11px] text-muted-foreground">
-                POS uses the next invoice number automatically for faster checkout.
-              </div>
-            ) : null}
-            {numberConflict ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
-                {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}{" "}
-                <span className="font-semibold">
-                  {numberConflict.requested}
-                </span>{" "}
-                is already used. Suggested:{" "}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] underline underline-offset-2 hover:bg-transparent"
-                  onClick={() => {
-                    void applySuggestedInvoiceNumber();
-                  }}
-                  disabled={draftMutationLoading}
-                >
-                  {numberConflict.suggested}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-          <div className="space-y-1 md:w-[28rem] md:max-w-[28rem]">
-            <Label htmlFor="sales-bill-customer">
-              {usesTransactionType(config.documentType)
-                ? "Customer"
-                : "Customer *"}
-            </Label>
-            <LookupDropdownInput
-              id="sales-bill-customer"
-              value={customerName}
-              disabled={isViewingPostedDocument}
-              onValueChange={(value) => {
-                setCustomerName(value);
-                setCustomerId(null);
-                if (!value.trim()) {
-                  setCustomerPhone("");
-                  setCustomerAddress("");
-                  setCustomerGstNo("");
-                }
-              }}
-              options={customers}
-              loading={lookupLoading}
-              loadingLabel="Loading customers"
-              placeholder="Search or enter customer"
-              onOptionSelect={applyCustomer}
-              getOptionKey={(customer) => customer.entityId}
-              getOptionSearchText={(customer) =>
-                `${customer.name} ${customer.phone} ${customer.email} ${customer.gstNo}`
-              }
-              renderOption={(customer) => (
-                <div className="space-y-0.5">
-                  <div className="font-medium text-foreground">
-                    {customer.name}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {[customer.phone, customer.gstNo]
-                      .filter(Boolean)
-                      .join("  |  ") || "No phone or GST"}
-                  </div>
-                </div>
-              )}
-            />
-            {!isViewingPostedDocument &&
-            usesTransactionType(config.documentType) &&
-            transactionType === "CREDIT" &&
-            !activeCustomer ? (
-              <div className="flex items-center justify-between gap-2 text-[11px]">
-                <span className="text-amber-700">
-                  {`Credit ${config.pluralLabel} require an existing customer.`}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
-                  onClick={openCustomerCreate}
-                >
-                  Create customer
-                </Button>
-              </div>
-            ) : null}
-            {!isViewingPostedDocument &&
-            usesTransactionType(config.documentType) &&
-            transactionType === "CASH" &&
-            !activeCustomer ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <span className="text-muted-foreground">
-                  {`Customer is optional for cash ${config.pluralLabel}.`}
-                </span>
-                <div className="flex flex-wrap items-center gap-3">
-                  {canQuickCreateFromPhone ? (
+
+            <div className="lg:sticky lg:top-0">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-white p-2 shadow-sm">
+                {customerField}
+                <div className="flex flex-col gap-1">
+                  {isPosMode && !isViewingPostedDocument ? (
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
-                      onClick={() => {
-                        void quickCreateCustomerFromPhone();
-                      }}
-                      disabled={customerActionLoading}
+                      className="h-auto w-fit px-0 py-0 text-[11px] font-medium text-[#1f4167] hover:bg-transparent"
+                      onClick={() => setIsPosNotesOpen((current) => !current)}
                     >
-                      {customerActionLoading
-                        ? "Creating..."
-                        : "Quick create from phone"}
+                      {isPosNotesOpen || notes.trim()
+                        ? "Hide note"
+                        : "Add note (optional)"}
                     </Button>
+                  ) : (
+                    <Label htmlFor="sales-bill-notes">Notes</Label>
+                  )}
+                  {!isPosMode || isViewingPostedDocument || isPosNotesOpen || notes.trim() ? (
+                    <Textarea
+                      id="sales-bill-notes"
+                      value={notes}
+                      readOnly={isViewingPostedDocument}
+                      disabled={isViewingPostedDocument}
+                      onChange={(event) => setNotes(event.target.value)}
+                      placeholder="Optional internal note"
+                      rows={2}
+                      className="w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:px-2.5 md:py-1.5 md:text-[11px]"
+                    />
                   ) : null}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
-                    onClick={openCustomerCreate}
-                  >
-                    Create customer
-                  </Button>
                 </div>
+                <div className="min-h-[1.75rem]">
+                  {!isViewingPostedDocument && numberConflict ? (
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                      <span>
+                        Requested number{" "}
+                        <span className="font-semibold">{numberConflict.requested}</span>{" "}
+                        is unavailable.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                        onClick={() => {
+                          void applySuggestedInvoiceNumber();
+                        }}
+                        disabled={draftMutationLoading}
+                      >
+                        Use {numberConflict.suggested}
+                      </Button>
+                    </div>
+                  ) : !isViewingPostedDocument && postValidationMessage ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                      {postValidationMessage}
+                    </div>
+                  ) : saveMessage ? (
+                    <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1 text-[11px] text-muted-foreground">
+                      {saveMessage}
+                    </div>
+                  ) : null}
+                </div>
+                <SalesDocumentSummaryPanel
+                  config={config}
+                  activeBusinessName={activeBusinessName}
+                  totals={totals}
+                  linesCountSource={lines}
+                  validUntil={validUntil}
+                  dispatchDate={dispatchDate}
+                  dispatchReference={dispatchReference}
+                  dispatchCarrier={dispatchCarrier}
+                  isPosMode={isPosMode}
+                  isPosting={draftMutationLoading}
+                  invoiceRows={invoiceRows}
+                  onOpenInvoiceRow={(row) =>
+                    row.source === "local"
+                      ? loadDraft(row.draft)
+                      : loadServerDraft(row.invoice)
+                  }
+                  onOpenList={() => setViewMode("list")}
+                  onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}
+                  className="border-t-0 pt-0 md:w-full md:border-l-0 md:pl-0"
+                />
               </div>
-            ) : null}
-            {!isViewingPostedDocument &&
-            !usesTransactionType(config.documentType) &&
-            !customerName.trim() ? (
-              <div className="text-[11px] text-amber-700">
-                {`Customer details are required for this ${config.singularLabel}.`}
-              </div>
-            ) : null}
-          {activeCustomer ||
-          customerId ||
-          customerPhone ||
-          customerGstNo ||
-          customerAddress ? (
-              <div className="px-1 pt-1 text-[11px] text-muted-foreground">
-                <span className="font-medium text-foreground">Phone:</span>{" "}
-                {activeCustomer?.phone || customerPhone || "Not provided"} •{" "}
-                <span className="font-medium text-foreground">GST:</span>{" "}
-                {activeCustomer?.gstNo || customerGstNo || "Not provided"} •{" "}
-                <span className="font-medium text-foreground">Address:</span>{" "}
-                {activeCustomer?.address ||
-                  customerAddress ||
-                  "No billing address"}
-              </div>
-            ) : null}
+            </div>
           </div>
+        ) : (
+        <>
+        <div className="flex flex-col gap-3 pb-2 pt-1 md:flex-row md:items-start">
+          {transactionField}
+          {billNumberField}
+          {customerField}
           {config.documentType === "DELIVERY_CHALLAN" ||
           config.documentType === "SALES_RETURN" ? (
             <div className="space-y-1 md:w-[17rem] md:min-w-[17rem]">
@@ -912,19 +1056,35 @@ function SalesDocumentWorkspace({
             getSameItemMixedOriginHint={getSameItemMixedOriginHint}
           />
 
-          <div className="flex flex-col gap-4 rounded-xl border border-border/85 bg-white p-2 md:flex-row md:shrink-0">
-            <div className="flex flex-1 flex-col gap-1 md:min-h-[6rem]">
-              <Label htmlFor="sales-bill-notes">Notes</Label>
-              <Textarea
-                id="sales-bill-notes"
-                value={notes}
-                readOnly={isViewingPostedDocument}
-                disabled={isViewingPostedDocument}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Optional internal note"
-                rows={2}
-                className="w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:flex-1 md:px-2.5 md:py-1.5 md:text-[11px]"
-              />
+          <div className="flex flex-col gap-4 rounded-xl border border-border/85 bg-white p-2 md:flex-row md:items-start md:shrink-0">
+            <div className="flex flex-col gap-1 md:min-h-0 md:flex-1">
+              {isPosMode && !isViewingPostedDocument ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto w-fit px-0 py-0 text-[11px] font-medium text-[#1f4167] hover:bg-transparent"
+                  onClick={() => setIsPosNotesOpen((current) => !current)}
+                >
+                  {isPosNotesOpen || notes.trim()
+                    ? "Hide note"
+                    : "Add note (optional)"}
+                </Button>
+              ) : (
+                <Label htmlFor="sales-bill-notes">Notes</Label>
+              )}
+              {!isPosMode || isViewingPostedDocument || isPosNotesOpen || notes.trim() ? (
+                <Textarea
+                  id="sales-bill-notes"
+                  value={notes}
+                  readOnly={isViewingPostedDocument}
+                  disabled={isViewingPostedDocument}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Optional internal note"
+                  rows={isPosMode ? 2 : 2}
+                  className="w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:flex-1 md:px-2.5 md:py-1.5 md:text-[11px]"
+                />
+              ) : null}
               <div className="min-h-[1.75rem]">
                 {!isViewingPostedDocument && numberConflict ? (
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
@@ -966,21 +1126,23 @@ function SalesDocumentWorkspace({
               linesCountSource={lines}
               validUntil={validUntil}
               dispatchDate={dispatchDate}
-          dispatchReference={dispatchReference}
-          dispatchCarrier={dispatchCarrier}
-          isPosMode={isPosMode}
-          isPosting={draftMutationLoading}
-          invoiceRows={invoiceRows}
-          onOpenInvoiceRow={(row) =>
-            row.source === "local"
-              ? loadDraft(row.draft)
-              : loadServerDraft(row.invoice)
-          }
-          onOpenList={() => setViewMode("list")}
-          onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}
-        />
+              dispatchReference={dispatchReference}
+              dispatchCarrier={dispatchCarrier}
+              isPosMode={isPosMode}
+              isPosting={draftMutationLoading}
+              invoiceRows={invoiceRows}
+              onOpenInvoiceRow={(row) =>
+                row.source === "local"
+                  ? loadDraft(row.draft)
+                  : loadServerDraft(row.invoice)
+              }
+              onOpenList={() => setViewMode("list")}
+              onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}
+            />
           </div>
         </div>
+        </>
+        )}
       </div>
       {openRowMenuId && openRowMenuAnchorRect && openRowMenuItems.length > 0 ? (
         <FloatingActionMenu

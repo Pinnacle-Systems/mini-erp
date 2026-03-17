@@ -383,7 +383,9 @@ const hasLineContent = (line: BillLine) =>
     line.description.trim() ||
     line.unitPrice.trim() ||
     line.variantId.trim() ||
-    (line.quantity.trim() && line.quantity.trim() !== "0"),
+    (line.quantity.trim() &&
+      line.quantity.trim() !== "0" &&
+      line.quantity.trim() !== "1"),
   );
 
 export const normalizeLines = (lines: BillLine[]) => {
@@ -683,9 +685,10 @@ export function useSalesDocumentWorkspace({
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [activeDraftSource, setActiveDraftSource] =
     useState<DraftSource | null>(null);
-  const [billNumber, setBillNumber] = useState(() =>
+  const [billNumber, setBillNumberState] = useState(() =>
     getNextBillNumber(config.numberPrefix, [], initialDrafts),
   );
+  const [billNumberIsAuto, setBillNumberIsAuto] = useState(true);
   const [transactionType, setTransactionType] = useState<"CASH" | "CREDIT">(
     config.defaultTransactionType ?? "CREDIT",
   );
@@ -903,6 +906,16 @@ export function useSalesDocumentWorkspace({
     () => getNextBillNumber(config.numberPrefix, serverInvoices, drafts),
     [config.numberPrefix, drafts, serverInvoices],
   );
+
+  const assignAutoBillNumber = (value: string) => {
+    setBillNumberState(value);
+    setBillNumberIsAuto(true);
+  };
+
+  const assignManualBillNumber = (value: string) => {
+    setBillNumberState(value);
+    setBillNumberIsAuto(false);
+  };
   const invoiceRows = useMemo<InvoiceListRow[]>(() => {
     const localRows: InvoiceListRow[] = drafts.map((draft) => ({
       source: "local",
@@ -1249,11 +1262,11 @@ export function useSalesDocumentWorkspace({
       setDocumentLocationId(
         typeof draft.locationId === "string" ? draft.locationId : activeLocationId ?? null,
       );
-      setBillNumber(
-        typeof draft.billNumber === "string" && draft.billNumber.trim()
-          ? draft.billNumber
-          : nextBillNumber,
-      );
+      if (typeof draft.billNumber === "string" && draft.billNumber.trim()) {
+        assignManualBillNumber(draft.billNumber);
+      } else {
+        assignAutoBillNumber(nextBillNumber);
+      }
       setTransactionType(
         usesTransactionType(config.documentType) &&
           draft.transactionType === "CREDIT"
@@ -1348,6 +1361,28 @@ export function useSalesDocumentWorkspace({
     navigate,
     nextBillNumber,
     routeState,
+  ]);
+
+  useEffect(() => {
+    if (!billNumberIsAuto) {
+      return;
+    }
+
+    if (activeDraftId || activeDraftSource) {
+      return;
+    }
+
+    if (billNumber === nextBillNumber) {
+      return;
+    }
+
+    setBillNumberState(nextBillNumber);
+  }, [
+    activeDraftId,
+    activeDraftSource,
+    billNumber,
+    billNumberIsAuto,
+    nextBillNumber,
   ]);
 
   useEffect(() => {
@@ -1580,7 +1615,7 @@ export function useSalesDocumentWorkspace({
     const nextLine = createLine();
     setActiveDraftId(null);
     setActiveDraftSource(null);
-    setBillNumber(nextBillNumber);
+    assignAutoBillNumber(nextBillNumber);
     setTransactionType(config.defaultTransactionType ?? "CASH");
     setCustomerId(null);
     setCustomerName("");
@@ -1640,7 +1675,7 @@ export function useSalesDocumentWorkspace({
       documentType: config.documentType,
       parentId,
       locationId: documentLocationId,
-      billNumber: billNumber.trim() || nextBillNumber,
+      billNumber: billNumberIsAuto ? nextBillNumber : billNumber.trim() || nextBillNumber,
       transactionType,
       customerId,
       customerName: customerName.trim(),
@@ -1724,7 +1759,7 @@ export function useSalesDocumentWorkspace({
         });
         setActiveDraftId(savedServerDraft.id);
         setActiveDraftSource("server");
-        setBillNumber(savedServerDraft.billNumber);
+        assignManualBillNumber(savedServerDraft.billNumber);
         setParentId(savedServerDraft.parentId ?? null);
         setDocumentLocationId(savedServerDraft.locationId ?? activeLocationId ?? null);
         setValidUntil(savedServerDraft.validUntil);
@@ -1748,7 +1783,7 @@ export function useSalesDocumentWorkspace({
         persistDrafts(nextDrafts);
         setActiveDraftId(nextDraft.id);
         setActiveDraftSource("local");
-        setBillNumber(nextDraft.billNumber);
+        assignManualBillNumber(nextDraft.billNumber);
         setValidUntil(nextDraft.validUntil);
         setDispatchDate(nextDraft.dispatchDate);
         setDispatchCarrier(nextDraft.dispatchCarrier);
@@ -1773,7 +1808,7 @@ export function useSalesDocumentWorkspace({
   const loadDraft = (draft: SavedBillDraft) => {
     setActiveDraftId(draft.id);
     setActiveDraftSource("local");
-    setBillNumber(draft.billNumber);
+    assignManualBillNumber(draft.billNumber);
     setTransactionType(
       usesTransactionType(config.documentType) &&
         draft.transactionType === "CREDIT"
@@ -1802,7 +1837,7 @@ export function useSalesDocumentWorkspace({
   const loadServerDraft = (draft: SalesDocumentDraft) => {
     setActiveDraftId(draft.id);
     setActiveDraftSource("server");
-    setBillNumber(draft.billNumber);
+    assignManualBillNumber(draft.billNumber);
     setTransactionType(
       usesTransactionType(config.documentType) &&
         draft.transactionType === "CREDIT"
@@ -2297,7 +2332,7 @@ export function useSalesDocumentWorkspace({
     }
 
     setDraftMutationLoading(true);
-    setBillNumber(numberConflict.suggested);
+    assignManualBillNumber(numberConflict.suggested);
     setNumberConflict(null);
     setSaveMessage(
       `Retrying with ${config.singularLabel} number ${numberConflict.suggested}.`,
@@ -2611,7 +2646,7 @@ export function useSalesDocumentWorkspace({
     saveMessage,
     serverInvoicesError,
     serverInvoicesLoading,
-    setBillNumber,
+    setBillNumber: assignManualBillNumber,
     setCustomerAddress,
     setCustomerGstNo,
     setCustomerId,
