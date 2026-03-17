@@ -126,7 +126,7 @@ type NumberConflictState = {
 
 type DraftSource = "local" | "server";
 
-type SalesLineFieldKey =
+export type SalesLineFieldKey =
   | "description"
   | "quantity"
   | "unitPrice"
