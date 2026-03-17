@@ -11,7 +11,16 @@ import { Checkbox } from "../atoms/Checkbox";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
 import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
+import {
+  getSpreadsheetCellClassName,
+  spreadsheetCellControlClassName,
+  spreadsheetCellNumericClassName,
+  spreadsheetCellSelectClassName,
+  spreadsheetGridClassName,
+  spreadsheetHeaderCellClassName,
+} from "../../design-system/molecules/spreadsheetStyles";
 import { useSpreadsheetNavigation } from "../../design-system/molecules/useSpreadsheetNavigation";
+import { cn } from "../../lib/utils";
 
 export type VariantOptionRowDraft = {
   id: string;
@@ -230,6 +239,17 @@ export function ItemVariantCardsEditor({
     ].join(" ");
   })();
 
+  const getDesktopInputClassName = (options?: {
+    numeric?: boolean;
+    textPadding?: boolean;
+    select?: boolean;
+  }) =>
+    cn(
+      options?.select ? spreadsheetCellSelectClassName : spreadsheetCellControlClassName,
+      options?.numeric ? spreadsheetCellNumericClassName : undefined,
+      options?.textPadding ? "lg:pl-2.5" : undefined,
+    );
+
   const editableFieldOrder = useMemo<EditableFieldKey[]>(() => {
     const fields: EditableFieldKey[] = ["name", "sku", "barcode"];
     if (showPricingFields) {
@@ -383,12 +403,20 @@ export function ItemVariantCardsEditor({
         </div>
       </div>
 
-      <div className="grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0">
+      <div
+        className={cn(
+          "grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0",
+          spreadsheetGridClassName,
+        )}
+      >
         <div
-          className="hidden bg-slate-50/95 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:gap-1 lg:border-b lg:border-border/70 lg:px-2 lg:py-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground"
+          className={cn(
+            "hidden lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:border-b lg:border-border/70 lg:p-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground",
+            spreadsheetGridClassName,
+          )}
           style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
         >
-          <span className="flex justify-center">
+          <span className={cn(spreadsheetHeaderCellClassName, "justify-center")}>
             <Checkbox
               checked={allSelectableSelected}
               disabled={selectableVariantIds.length === 0}
@@ -396,16 +424,30 @@ export function ItemVariantCardsEditor({
               onChange={(event) => handleToggleSelectAll(event.target.checked)}
             />
           </span>
-          <span>Name</span>
+          <span className={spreadsheetHeaderCellClassName}>Name</span>
           {optionColumns.map((column) => (
-            <span key={column.id}>{column.label}</span>
+            <span key={column.id} className={spreadsheetHeaderCellClassName}>
+              {column.label}
+            </span>
           ))}
-          <span>SKU</span>
-          <span>Barcode</span>
-          {showPricingFields ? <span>Sales</span> : null}
-          {showPricingFields && showPurchasePrice ? <span>Purchase</span> : null}
-          {showPricingFields || showGstSlabField ? <span>GST %</span> : null}
-          <span className="text-center">{showActiveToggle ? "Active" : ""}</span>
+          <span className={spreadsheetHeaderCellClassName}>SKU</span>
+          <span className={spreadsheetHeaderCellClassName}>Barcode</span>
+          {showPricingFields ? (
+            <span className={cn(spreadsheetHeaderCellClassName, "justify-end text-right")}>
+              Sales
+            </span>
+          ) : null}
+          {showPricingFields && showPurchasePrice ? (
+            <span className={cn(spreadsheetHeaderCellClassName, "justify-end text-right")}>
+              Purchase
+            </span>
+          ) : null}
+          {showPricingFields || showGstSlabField ? (
+            <span className={spreadsheetHeaderCellClassName}>GST %</span>
+          ) : null}
+          <span className={cn(spreadsheetHeaderCellClassName, "justify-center text-center")}>
+            {showActiveToggle ? "Active" : ""}
+          </span>
         </div>
         {variants.map((variant) => {
           const isLocked = Boolean(variant.isLocked);
@@ -416,7 +458,7 @@ export function ItemVariantCardsEditor({
           return (
             <div
               key={variant.id}
-              className={`rounded-xl border border-border/70 p-1.5 transition-colors duration-700 lg:rounded-none lg:border-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5 last:lg:border-b-0 ${
+              className={`rounded-xl border border-border/70 p-1.5 transition-colors duration-700 lg:rounded-none lg:border-0 lg:px-0 lg:py-0 last:lg:border-b-0 ${
                 highlightedVariantId === variant.id ? "bg-sky-50/90" : "bg-white/90 lg:bg-transparent"
               }`}
             >
@@ -428,10 +470,13 @@ export function ItemVariantCardsEditor({
                 </p>
               ) : null}
               <div
-                className="grid gap-1.5 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:gap-1"
+                className={cn(
+                  "grid gap-1.5 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center",
+                  spreadsheetGridClassName,
+                )}
                 style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
               >
-                <div className="grid gap-1 lg:justify-items-center">
+                <div className={cn("grid gap-1 lg:justify-items-center", getSpreadsheetCellClassName({ align: "center" }))}>
                   <Label className="lg:hidden">Select</Label>
                   <Checkbox
                     checked={selectedVariantIds.includes(variant.id)}
@@ -442,12 +487,12 @@ export function ItemVariantCardsEditor({
                     }
                   />
                 </div>
-                <div className="grid gap-1">
+                <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
                   <Label className="lg:hidden">Name</Label>
                   <Input
                     {...getCellDataAttributes(variant.id, "name")}
                     data-variant-grid-cell={`${variant.id}:name`}
-                    className={denseInputClassName}
+                    className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
                     value={variant.name}
                     disabled={isReadOnly}
                     onFocus={() => handleCellFocus(variant.id, "name")}
@@ -470,21 +515,24 @@ export function ItemVariantCardsEditor({
                   return (
                     <div
                       key={`${variant.id}:${column.id}`}
-                      className="grid gap-1 lg:flex lg:min-h-7 lg:items-center"
+                      className={cn(
+                        "grid gap-1 lg:flex lg:items-center",
+                        getSpreadsheetCellClassName(),
+                      )}
                     >
                       <Label className="lg:hidden">{column.label}</Label>
-                      <span className="text-[11px] text-foreground lg:text-[10px]">
+                      <span className="px-2 text-[11px] text-foreground lg:px-2.5 lg:text-[10px]">
                         {option?.value?.trim() ? option.value.toUpperCase() : "-"}
                       </span>
                     </div>
                   );
                 })}
-                <div className="grid gap-1">
+                <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
                   <Label className="lg:hidden">SKU</Label>
                   <Input
                     {...getCellDataAttributes(variant.id, "sku")}
                     data-variant-grid-cell={`${variant.id}:sku`}
-                    className={denseInputClassName}
+                    className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
                     value={variant.sku}
                     disabled={isReadOnly}
                     onFocus={() => handleCellFocus(variant.id, "sku")}
@@ -502,12 +550,12 @@ export function ItemVariantCardsEditor({
                     placeholder="Variant SKU"
                   />
                 </div>
-                <div className="grid gap-1">
+                <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
                   <Label className="lg:hidden">Barcode</Label>
                   <Input
                     {...getCellDataAttributes(variant.id, "barcode")}
                     data-variant-grid-cell={`${variant.id}:barcode`}
-                    className={denseInputClassName}
+                    className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
                     value={variant.barcode}
                     disabled={isReadOnly}
                     onFocus={() => handleCellFocus(variant.id, "barcode")}
@@ -524,12 +572,15 @@ export function ItemVariantCardsEditor({
                   />
                 </div>
                 {showPricingFields ? (
-                  <div className="grid gap-1">
+                  <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
                     <Label className="lg:hidden">Sales</Label>
                     <Input
                       {...getCellDataAttributes(variant.id, "salesPrice")}
                       data-variant-grid-cell={`${variant.id}:salesPrice`}
-                      className={denseInputClassName}
+                      className={cn(
+                        denseInputClassName,
+                        getDesktopInputClassName({ numeric: true }),
+                      )}
                       value={variant.salesPrice ?? ""}
                       disabled={isReadOnly}
                       onFocus={() => handleCellFocus(variant.id, "salesPrice")}
@@ -548,12 +599,15 @@ export function ItemVariantCardsEditor({
                   </div>
                 ) : null}
                 {showPricingFields && showPurchasePrice ? (
-                  <div className="grid gap-1">
+                  <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
                     <Label className="lg:hidden">Purchase</Label>
                     <Input
                       {...getCellDataAttributes(variant.id, "purchasePrice")}
                       data-variant-grid-cell={`${variant.id}:purchasePrice`}
-                      className={denseInputClassName}
+                      className={cn(
+                        denseInputClassName,
+                        getDesktopInputClassName({ numeric: true }),
+                      )}
                       value={variant.purchasePrice ?? ""}
                       disabled={isReadOnly}
                       onFocus={() => handleCellFocus(variant.id, "purchasePrice")}
@@ -574,12 +628,12 @@ export function ItemVariantCardsEditor({
                   </div>
                 ) : null}
                 {showPricingFields || showGstSlabField ? (
-                  <div className="grid gap-1">
+                  <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
                     <Label className="lg:hidden">GST %</Label>
                     <GstSlabSelect
                       {...getCellDataAttributes(variant.id, "gstSlab")}
                       data-variant-grid-cell={`${variant.id}:gstSlab`}
-                      className={denseInputClassName}
+                      className={cn(denseInputClassName, getDesktopInputClassName({ select: true }))}
                       value={variant.gstSlab ?? ""}
                       disabled={isReadOnly}
                       onFocus={() => handleCellFocus(variant.id, "gstSlab")}
@@ -595,7 +649,12 @@ export function ItemVariantCardsEditor({
                     />
                   </div>
                 ) : null}
-                <div className="grid gap-1 lg:justify-items-center">
+                <div
+                  className={cn(
+                    "grid gap-1 lg:justify-items-center",
+                    getSpreadsheetCellClassName({ align: "center" }),
+                  )}
+                >
                   <Label className="lg:hidden">Active</Label>
                   {showActiveToggle ? (
                     <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground lg:text-[10px]">

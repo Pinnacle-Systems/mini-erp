@@ -6,6 +6,11 @@ import { Label } from "../../design-system/atoms/Label";
 import { LookupDropdownInput } from "../../design-system/molecules/LookupDropdownInput";
 import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
 import {
+  spreadsheetCellControlClassName,
+  spreadsheetCellNumericClassName,
+  spreadsheetCellSelectClassName,
+} from "../../design-system/molecules/spreadsheetStyles";
+import {
   DenseTable,
   DenseTableBody,
   DenseTableCell,
@@ -15,6 +20,7 @@ import {
 } from "../../design-system/molecules/DenseTable";
 import { useSpreadsheetNavigation } from "../../design-system/molecules/useSpreadsheetNavigation";
 import { normalizeGstSlab } from "../../lib/gst-slabs";
+import { cn } from "../../lib/utils";
 import { SalesItemOptionContent } from "./SalesItemOptionContent";
 import {
   formatCurrency,
@@ -400,7 +406,7 @@ export function SalesDocumentLineEditor({
               <DenseTableHeaderCell className="w-[10%] px-1.5 lg:px-2.5">
                 Qty
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[10%] px-1.5 lg:px-2.5">
+              <DenseTableHeaderCell className="w-[10%] px-1.5 text-right lg:px-2.5">
                 Rate
               </DenseTableHeaderCell>
               <DenseTableHeaderCell className="w-[12%] px-1.5 lg:px-2.5">
@@ -417,7 +423,7 @@ export function SalesDocumentLineEditor({
               <DenseTableHeaderCell className="w-[9%] px-1.5 text-right lg:px-2.5">
                 Total
               </DenseTableHeaderCell>
-              <DenseTableHeaderCell className={`${isPosMode ? "w-[6%]" : "w-[4%]"} px-2 text-right lg:px-3`}>
+              <DenseTableHeaderCell className={`${isPosMode ? "w-[6%]" : "w-[4%]"} px-2 text-center lg:px-2`}>
                 {" "}
               </DenseTableHeaderCell>
             </tr>
@@ -472,7 +478,11 @@ export function SalesDocumentLineEditor({
                             renderOption={(option) => (
                               <SalesItemOptionContent option={option} />
                             )}
-                            inputClassName={isPosMode ? "pr-8 lg:pr-10" : "pr-10 lg:pr-12"}
+                            inputClassName={cn(
+                              spreadsheetCellControlClassName,
+                              "lg:pl-2.5",
+                              isPosMode ? "pr-8 lg:pr-10" : "pr-10 lg:pr-12",
+                            )}
                             inputProps={{
                               ...getCellDataAttributes(line.id, "description"),
                               onKeyDown: (event) =>
@@ -514,7 +524,11 @@ export function SalesDocumentLineEditor({
                       <Input
                         {...getCellDataAttributes(line.id, "quantity")}
                         data-sales-line-cell={`${line.id}:quantity`}
-                        className="!w-[2.75rem] shrink-0 px-1 text-right tabular-nums lg:!w-[3rem]"
+                        className={cn(
+                          spreadsheetCellControlClassName,
+                          spreadsheetCellNumericClassName,
+                          "!w-[2.75rem] shrink-0 px-1 lg:!w-[3rem]",
+                        )}
                         value={line.quantity}
                         max={getLinkedLineCap(line) ?? undefined}
                         readOnly={isViewingPostedDocument}
@@ -535,7 +549,11 @@ export function SalesDocumentLineEditor({
                     <Input
                       {...getCellDataAttributes(line.id, "unitPrice")}
                       data-sales-line-cell={`${line.id}:unitPrice`}
-                      className="min-w-0 px-1.5 text-right tabular-nums lg:px-2"
+                      className={cn(
+                        spreadsheetCellControlClassName,
+                        spreadsheetCellNumericClassName,
+                        "min-w-0 px-1.5 lg:px-2",
+                      )}
                       value={line.unitPrice}
                       readOnly={isViewingPostedDocument}
                       disabled={isViewingPostedDocument}
@@ -551,7 +569,10 @@ export function SalesDocumentLineEditor({
                     <GstSlabSelect
                       {...getCellDataAttributes(line.id, "taxRate")}
                       data-sales-line-cell={`${line.id}:taxRate`}
-                      className="h-8 min-w-0 bg-white px-1 text-left text-[11px] lg:px-2 lg:text-xs"
+                      className={cn(
+                        spreadsheetCellSelectClassName,
+                        "min-w-0 px-1 text-left text-[11px] lg:px-2 lg:text-xs",
+                      )}
                       value={normalizeGstSlab(line.taxRate) || ""}
                       disabled={isViewingPostedDocument}
                       onChange={(e) =>
@@ -570,7 +591,7 @@ export function SalesDocumentLineEditor({
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 w-full min-w-0 border-border/70 px-0 text-[11px] text-muted-foreground lg:text-xs"
+                        className="h-6 w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[11px] text-muted-foreground shadow-none hover:bg-slate-50 lg:text-xs"
                         disabled={isViewingPostedDocument}
                         onClick={() =>
                           onUpdateLine(
@@ -596,12 +617,12 @@ export function SalesDocumentLineEditor({
                       {formatCurrency(lineTotals.total)}
                     </div>
                   </DenseTableCell>
-                  <DenseTableCell className="px-2 py-1.5 text-right lg:px-3">
+                  <DenseTableCell className="px-2 py-1.5 text-center lg:px-2">
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600 lg:h-8 lg:w-8"
+                      className="h-6 w-6 rounded-none p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600 lg:h-6 lg:w-6"
                       onClick={() => onRemoveLine(line.id)}
                       title="Remove line"
                       disabled={isViewingPostedDocument}

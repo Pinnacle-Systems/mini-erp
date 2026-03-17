@@ -30,7 +30,11 @@ const hasExplicitDisplayClass = (className?: string) => {
   if (!className) return false;
   return className
     .split(/\s+/)
-    .some((token) => /(?:^|:)(?:hidden|block|inline|inline-block|flex|inline-flex|grid|inline-grid)$/.test(token));
+    .some((token) =>
+      /(?:^|:)(?:block|inline|inline-block|flex|inline-flex|grid|inline-grid)$/.test(
+        token,
+      ),
+    );
 };
 
 export function Button({ className, variant = "default", size = "md", children, ...props }: ButtonProps) {
