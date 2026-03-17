@@ -32,8 +32,11 @@ type SalesDocumentLineEditorProps = {
   itemOptions: SalesItemOption[];
   lookupLoading: boolean;
   isViewingPostedDocument: boolean;
+  isPosMode: boolean;
   shouldShowOriginBadges: boolean;
+  activeLineId?: string | null;
   lineHeaderSlot?: ReactNode;
+  onActiveLineChange?: (lineId: string) => void;
   onAppendLine: () => void;
   onApplyLineItem: (lineId: string, option: SalesItemOption) => void;
   onUpdateLine: (
@@ -59,8 +62,11 @@ export function SalesDocumentLineEditor({
   itemOptions,
   lookupLoading,
   isViewingPostedDocument,
+  isPosMode,
   shouldShowOriginBadges,
+  activeLineId,
   lineHeaderSlot,
+  onActiveLineChange,
   onAppendLine,
   onApplyLineItem,
   onUpdateLine,
@@ -98,7 +104,13 @@ export function SalesDocumentLineEditor({
             <div
               key={line.id}
               data-bill-line-id={line.id}
-              className="rounded-lg border border-border/80 bg-slate-50 p-2"
+              className={`rounded-lg border p-2 ${
+                isPosMode && activeLineId === line.id
+                  ? "border-[#8fb6e2] bg-[#edf5ff]"
+                  : "border-border/80 bg-slate-50"
+              }`}
+              onClick={() => onActiveLineChange?.(line.id)}
+              onFocusCapture={() => onActiveLineChange?.(line.id)}
             >
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-xs font-semibold text-foreground">
@@ -314,7 +326,13 @@ export function SalesDocumentLineEditor({
                 <DenseTableRow
                   key={line.id}
                   data-bill-line-id={line.id}
-                  className="align-middle"
+                  className={`align-middle ${
+                    isPosMode && activeLineId === line.id
+                      ? "bg-[#edf5ff] shadow-[inset_3px_0_0_0_#4a8dd9]"
+                      : ""
+                  }`}
+                  onClick={() => onActiveLineChange?.(line.id)}
+                  onFocusCapture={() => onActiveLineChange?.(line.id)}
                 >
                   <DenseTableCell className="py-1.5">
                     <div className="min-w-0 flex-1">

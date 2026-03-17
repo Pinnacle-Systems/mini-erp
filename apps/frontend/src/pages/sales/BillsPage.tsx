@@ -12,6 +12,8 @@ import {
   FloatingActionMenu,
 } from "../../design-system/organisms/FloatingActionMenu";
 import { useSessionStore } from "../../features/auth/session-business";
+import { useToast } from "../../features/toast/useToast";
+import { useState } from "react";
 import {
   type SalesDocumentType,
 } from "./sales-invoices-api";
@@ -20,6 +22,7 @@ import { SalesDocumentLineEditor } from "./SalesDocumentLineEditor";
 import { PosQuickAddBar } from "./PosQuickAddBar";
 import { SalesDocumentSummaryPanel } from "./SalesDocumentSummaryPanel";
 import { SalesDocumentWorkspaceHeader } from "./SalesDocumentWorkspaceHeader";
+import { usePosHotkeys } from "./usePosHotkeys";
 import {
   normalizeLines,
   type SalesDocumentPageConfig,
@@ -321,6 +324,79 @@ function SalesDocumentWorkspace({
     config,
     conversionConfig: SALES_DOCUMENT_CONVERSION_CONFIG,
   });
+  const { showToast } = useToast();
+  const [activeLineId, setActiveLineId] = useState<string | null>(null);
+  const [posQuickAddFocusSignal, setPosQuickAddFocusSignal] = useState(0);
+  const effectiveActiveLineId =
+    activeLineId && lines.some((line) => line.id === activeLineId)
+      ? activeLineId
+      : lines[0]?.id ?? null;
+
+  const focusPosQuickAdd = () => {
+    setPosQuickAddFocusSignal((current) => current + 1);
+  };
+
+  const handleAppendLine = () => {
+    const nextLineId = appendLine();
+    if (isPosMode && nextLineId) {
+      setActiveLineId(nextLineId);
+    }
+  };
+
+  const handleQuickAddLineItem = (option: (typeof itemOptions)[number]) => {
+    const targetLineId = quickAddLineItem(option);
+    if (isPosMode && targetLineId) {
+      setActiveLineId(targetLineId);
+    }
+  };
+
+  const handleSaveDraft = () => {
+    void saveDraft();
+  };
+
+  const handlePostDraft = () => {
+    void postDraft();
+  };
+
+  const handleOpenPosPayment = () => {
+    showToast({
+      title: "Payment step next",
+      description: "Payment modal hotkey is wired. Checkout UI lands in Phase 3.",
+      durationMs: 2400,
+      dedupeKey: "sales-pos-payment-hotkey",
+    });
+  };
+
+  const handleRemoveActivePosLine = () => {
+    if (!isPosMode || isViewingPostedDocument || !effectiveActiveLineId) {
+      return;
+    }
+
+    const currentIndex = lines.findIndex((line) => line.id === effectiveActiveLineId);
+    const fallbackLineId =
+      lines[currentIndex + 1]?.id ??
+      lines[currentIndex - 1]?.id ??
+      null;
+    removeLine(effectiveActiveLineId);
+    setActiveLineId(fallbackLineId);
+  };
+
+  const handleClearPosSearch = () => {
+    if (!isPosMode) {
+      return;
+    }
+
+    setQuickAddItemQuery("");
+    focusPosQuickAdd();
+  };
+
+  usePosHotkeys({
+    enabled: isPosMode && viewMode === "editor" && !isViewingPostedDocument,
+    onSaveDraft: handleSaveDraft,
+    onOpenPayment: handleOpenPosPayment,
+    onClearSearch: handleClearPosSearch,
+    onRemoveActiveLine: handleRemoveActivePosLine,
+  });
 
   if (viewMode === "list") {
     return (
@@ -362,8 +438,9 @@ function SalesDocumentWorkspace({
         linesCount={normalizeLines(lines).length}
         subTotal={totals.subTotal}
         grandTotal={totals.grandTotal}
+        focusSignal={posQuickAddFocusSignal}
         onValueChange={setQuickAddItemQuery}
-        onAddItem={quickAddLineItem}
+        onAddItem={handleQuickAddLineItem}
       />
     ) : null;
 
@@ -380,13 +457,11 @@ function SalesDocumentWorkspace({
           draftMutationLoading={draftMutationLoading}
           linesCount={normalizeLines(lines).length}
           postValidationMessage={postValidationMessage}
+          saveShortcutHint={isPosMode ? "Ctrl/Cmd+S" : undefined}
+          postShortcutHint={isPosMode ? "Ctrl/Cmd+Enter" : undefined}
           onOpenList={() => setViewMode("list")}
-          onSaveDraft={() => {
-            void saveDraft();
-          }}
-          onPostDraft={() => {
-            void postDraft();
-          }}
+          onSaveDraft={handleSaveDraft}
+          onPostDraft={handlePostDraft}
         />
 
         {duplicateMeta ? (
@@ -711,12 +786,25 @@ function SalesDocumentWorkspace({
             itemOptions={itemOptions}
             lookupLoading={lookupLoading}
             isViewingPostedDocument={isViewingPostedDocument}
+            isPosMode={isPosMode}
             shouldShowOriginBadges={shouldShowOriginBadges}
+            activeLineId={effectiveActiveLineId}
             lineHeaderSlot={posLineHeader}
-            onAppendLine={appendLine}
+            onActiveLineChange={setActiveLineId}
+            onAppendLine={handleAppendLine}
             onApplyLineItem={applyLineItem}
             onUpdateLine={updateLine}
-            onRemoveLine={removeLine}
+            onRemoveLine={(lineId) => {
+              const currentIndex = lines.findIndex((line) => line.id === lineId);
+              const fallbackLineId =
+                lines[currentIndex + 1]?.id ??
+                lines[currentIndex - 1]?.id ??
+                null;
+              removeLine(lineId);
+              if (lineId === effectiveActiveLineId) {
+                setActiveLineId(fallbackLineId);
+              }
+            }}
             onHandleLineNavigation={handleSalesLineNavigation}
             getLinkedLineCap={getLinkedLineCap}
             getLineOriginTitle={getLineOriginTitle}
