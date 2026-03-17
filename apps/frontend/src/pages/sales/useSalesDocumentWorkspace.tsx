@@ -133,6 +133,14 @@ export type SalesLineFieldKey =
   | "taxRate"
   | "taxMode";
 
+type PostDraftOptions = {
+  notesOverride?: string;
+};
+
+export type PostDraftResult =
+  | { ok: true }
+  | { ok: false; errorMessage: string };
+
 export const getSalesLineDescriptionInputId = (lineId: string) =>
   `sales-line-desktop-description-${lineId}`;
 
@@ -2193,19 +2201,24 @@ export function useSalesDocumentWorkspace({
     });
   };
 
-  const postDraft = async () => {
+  const postDraft = async (options?: PostDraftOptions): Promise<PostDraftResult> => {
     if (postValidationMessage) {
       setSaveMessage(postValidationMessage);
       showPostErrorToast(postValidationMessage);
-      return;
+      return { ok: false, errorMessage: postValidationMessage };
     }
 
     setDraftMutationLoading(true);
     setSaveMessage(null);
     setNumberConflict(null);
     try {
-      const localDraft = buildNormalizedDraft();
+      const normalizedDraft = buildNormalizedDraft();
+      const localDraft = {
+        ...normalizedDraft,
+        notes: options?.notesOverride ?? normalizedDraft.notes,
+      };
       await submitPostedDraft(localDraft, activeStore!);
+      return { ok: true };
     } catch (error) {
       console.error(error);
       if (
@@ -2221,9 +2234,9 @@ export function useSalesDocumentWorkspace({
         setSaveMessage(
           `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`,
         );
-        showPostErrorToast(
-          `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`,
-        );
+        const message = `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`;
+        showPostErrorToast(message);
+        return { ok: false, errorMessage: message };
       } else {
         const message =
           error instanceof Error
@@ -2231,6 +2244,7 @@ export function useSalesDocumentWorkspace({
             : `Unable to post ${config.singularLabel}.`;
         setSaveMessage(message);
         showPostErrorToast(message);
+        return { ok: false, errorMessage: message };
       }
     } finally {
       setDraftMutationLoading(false);

@@ -20,9 +20,11 @@ type SalesDocumentSummaryPanelProps = {
   dispatchReference: string;
   dispatchCarrier: string;
   isPosMode: boolean;
+  isPosting?: boolean;
   invoiceRows: InvoiceListRow[];
   onOpenInvoiceRow: (row: InvoiceListRow) => void;
   onOpenList: () => void;
+  onOpenPosPayment?: () => void;
 };
 
 export function SalesDocumentSummaryPanel({
@@ -35,9 +37,11 @@ export function SalesDocumentSummaryPanel({
   dispatchReference,
   dispatchCarrier,
   isPosMode,
+  isPosting = false,
   invoiceRows,
   onOpenInvoiceRow,
   onOpenList,
+  onOpenPosPayment,
 }: SalesDocumentSummaryPanelProps) {
   return (
     <div className="w-full border-t border-border/70 pt-2 md:w-[320px] md:border-l md:border-t-0 md:pl-4 md:pt-0">
@@ -107,6 +111,20 @@ export function SalesDocumentSummaryPanel({
         </div>
         {isPosMode ? (
           <div className="space-y-2 border-t border-border/70 pt-2">
+            {onOpenPosPayment ? (
+              <Button
+                type="button"
+                size="sm"
+                className="w-full justify-between"
+                onClick={onOpenPosPayment}
+                disabled={isPosting}
+              >
+                <span>{isPosting ? "Working..." : "Pay Now"}</span>
+                <span className="rounded border border-white/40 bg-white/10 px-1 py-0 text-[10px] font-medium text-white/90">
+                  Ctrl/Cmd+Enter
+                </span>
+              </Button>
+            ) : null}
             <div className="flex items-center justify-between text-[11px]">
               <span className="font-semibold text-foreground">Recent sales</span>
               <Button

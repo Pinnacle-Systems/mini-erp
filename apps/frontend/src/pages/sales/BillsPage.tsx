@@ -12,7 +12,6 @@ import {
   FloatingActionMenu,
 } from "../../design-system/organisms/FloatingActionMenu";
 import { useSessionStore } from "../../features/auth/session-business";
-import { useToast } from "../../features/toast/useToast";
 import { useState } from "react";
 import {
   type SalesDocumentType,
@@ -20,10 +19,12 @@ import {
 import { SalesDocumentListView } from "./SalesDocumentListView";
 import { SalesDocumentLineEditor } from "./SalesDocumentLineEditor";
 import { PosQuickAddBar } from "./PosQuickAddBar";
+import { PosPaymentModal } from "./PosPaymentModal";
 import { SalesDocumentSummaryPanel } from "./SalesDocumentSummaryPanel";
 import { SalesDocumentWorkspaceHeader } from "./SalesDocumentWorkspaceHeader";
 import { usePosHotkeys } from "./usePosHotkeys";
 import {
+  formatCurrency,
   normalizeLines,
   type SalesDocumentPageConfig,
   usesTransactionType,
@@ -324,13 +325,21 @@ function SalesDocumentWorkspace({
     config,
     conversionConfig: SALES_DOCUMENT_CONVERSION_CONFIG,
   });
-  const { showToast } = useToast();
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   const [posQuickAddFocusSignal, setPosQuickAddFocusSignal] = useState(0);
+  const [isPosPaymentOpen, setIsPosPaymentOpen] = useState(false);
+  const [posPaymentError, setPosPaymentError] = useState<string | null>(null);
   const effectiveActiveLineId =
     activeLineId && lines.some((line) => line.id === activeLineId)
       ? activeLineId
       : lines[0]?.id ?? null;
+
+  const buildPosCheckoutNotes = (amountTendered: number) => {
+    const paymentSnapshot = `[POS Checkout] Cash Tendered: ${formatCurrency(
+      amountTendered,
+    )} | Change: ${formatCurrency(Math.max(0, amountTendered - totals.grandTotal))}`;
+    return notes.trim() ? `${notes.trim()}\n${paymentSnapshot}` : paymentSnapshot;
+  };
 
   const focusPosQuickAdd = () => {
     setPosQuickAddFocusSignal((current) => current + 1);
@@ -355,16 +364,42 @@ function SalesDocumentWorkspace({
   };
 
   const handlePostDraft = () => {
+    if (isPosMode) {
+      setPosPaymentError(null);
+      setIsPosPaymentOpen(true);
+      return;
+    }
     void postDraft();
   };
 
   const handleOpenPosPayment = () => {
-    showToast({
-      title: "Payment step next",
-      description: "Payment modal hotkey is wired. Checkout UI lands in Phase 3.",
-      durationMs: 2400,
-      dedupeKey: "sales-pos-payment-hotkey",
+    if (!isPosMode) {
+      return;
+    }
+
+    setPosPaymentError(null);
+    setIsPosPaymentOpen(true);
+  };
+
+  const handleClosePosPayment = () => {
+    setIsPosPaymentOpen(false);
+    setPosPaymentError(null);
+    focusPosQuickAdd();
+  };
+
+  const handleCompletePosPayment = async (amountTendered: number) => {
+    const result = await postDraft({
+      notesOverride: buildPosCheckoutNotes(amountTendered),
     });
+
+    if (result.ok) {
+      setIsPosPaymentOpen(false);
+      setPosPaymentError(null);
+      focusPosQuickAdd();
+      return;
+    }
+
+    setPosPaymentError(result.errorMessage);
   };
 
   const handleRemoveActivePosLine = () => {
@@ -383,6 +418,11 @@ function SalesDocumentWorkspace({
 
   const handleClearPosSearch = () => {
     if (!isPosMode) {
+      return;
+    }
+
+    if (isPosPaymentOpen) {
+      handleClosePosPayment();
       return;
     }
 
@@ -866,17 +906,19 @@ function SalesDocumentWorkspace({
               linesCountSource={lines}
               validUntil={validUntil}
               dispatchDate={dispatchDate}
-              dispatchReference={dispatchReference}
-              dispatchCarrier={dispatchCarrier}
-              isPosMode={isPosMode}
-              invoiceRows={invoiceRows}
-              onOpenInvoiceRow={(row) =>
-                row.source === "local"
-                  ? loadDraft(row.draft)
-                  : loadServerDraft(row.invoice)
-              }
-              onOpenList={() => setViewMode("list")}
-            />
+          dispatchReference={dispatchReference}
+          dispatchCarrier={dispatchCarrier}
+          isPosMode={isPosMode}
+          isPosting={draftMutationLoading}
+          invoiceRows={invoiceRows}
+          onOpenInvoiceRow={(row) =>
+            row.source === "local"
+              ? loadDraft(row.draft)
+              : loadServerDraft(row.invoice)
+          }
+          onOpenList={() => setViewMode("list")}
+          onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}
+        />
           </div>
         </div>
       </div>
@@ -891,6 +933,17 @@ function SalesDocumentWorkspace({
         />
       ) : null}
       {pendingActionDialogs}
+      {isPosMode && isPosPaymentOpen ? (
+        <PosPaymentModal
+          total={totals.grandTotal}
+          posting={draftMutationLoading}
+          errorMessage={posPaymentError}
+          onClose={handleClosePosPayment}
+          onComplete={(amountTendered) => {
+            void handleCompletePosPayment(amountTendered);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
