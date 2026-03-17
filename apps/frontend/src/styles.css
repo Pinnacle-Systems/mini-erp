@@ -230,3 +230,89 @@
 .row-flash > th {
   animation: row-flash 1.4s ease-out;
 }
+
+.pos-receipt-container {
+  position: fixed;
+  left: -200vw;
+  top: 0;
+  width: 80mm;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.pos-receipt {
+  background: white;
+  color: black;
+  font-family: "Courier New", "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  padding: 8px 10px 12px;
+}
+
+.pos-receipt__header,
+.pos-receipt__footer {
+  text-align: center;
+}
+
+.pos-receipt__business {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pos-receipt__divider {
+  border-top: 1px dashed black;
+  margin: 8px 0;
+}
+
+.pos-receipt__lines {
+  display: grid;
+  gap: 6px;
+}
+
+.pos-receipt__line-title {
+  font-weight: 700;
+}
+
+.pos-receipt__line-meta,
+.pos-receipt__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pos-receipt__totals {
+  display: grid;
+  gap: 4px;
+}
+
+.pos-receipt__row--strong {
+  font-weight: 700;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .pos-receipt-container,
+  .pos-receipt-container * {
+    visibility: visible;
+  }
+
+  .pos-receipt-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    opacity: 1;
+  }
+
+  .pos-receipt {
+    padding: 6mm 5mm 8mm;
+  }
+
+  @page {
+    margin: 0;
+    size: 80mm auto;
+  }
+}

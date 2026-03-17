@@ -138,7 +138,19 @@ type PostDraftOptions = {
 };
 
 export type PostDraftResult =
-  | { ok: true }
+  | {
+      ok: true;
+      receipt: {
+        billNumber: string;
+        customerName: string;
+        locationId: string | null;
+        postedAt: string;
+        lines: BillLine[];
+        subTotal: number;
+        taxTotal: number;
+        grandTotal: number;
+      };
+    }
   | { ok: false; errorMessage: string };
 
 export const getSalesLineDescriptionInputId = (lineId: string) =>
@@ -2133,6 +2145,7 @@ export function useSalesDocumentWorkspace({
     localDraft: SavedBillDraft,
     tenantId: string,
   ) => {
+    const postedAt = new Date().toISOString();
     const serverDraft =
       activeDraftSource === "server" && activeDraftId
         ? await updateSalesDocumentDraft(activeDraftId, {
@@ -2175,7 +2188,7 @@ export function useSalesDocumentWorkspace({
           });
     await postSalesDocumentDraft(serverDraft.id, tenantId, config.documentType);
     setServerInvoices((current) => [
-      { ...serverDraft, status: "OPEN", postedAt: new Date().toISOString() },
+      { ...serverDraft, status: "OPEN", postedAt },
       ...current.filter((invoice) => invoice.id !== serverDraft.id),
     ]);
 
@@ -2190,6 +2203,26 @@ export function useSalesDocumentWorkspace({
         ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted. Ready for the next sale.`
         : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted.`,
     );
+
+    const receiptTotals = localDraft.lines.reduce(
+      (summary, line) => {
+        const lineTotals = getLineTotals(line);
+        summary.subTotal += lineTotals.subTotal;
+        summary.taxTotal += lineTotals.taxTotal;
+        summary.grandTotal += lineTotals.total;
+        return summary;
+      },
+      { subTotal: 0, taxTotal: 0, grandTotal: 0 },
+    );
+
+    return {
+      billNumber: serverDraft.billNumber,
+      customerName: serverDraft.customerName,
+      locationId: serverDraft.locationId ?? null,
+      postedAt,
+      lines: localDraft.lines.map((line) => ({ ...line })),
+      ...receiptTotals,
+    };
   };
 
   const showPostErrorToast = (message: string) => {
@@ -2217,8 +2250,8 @@ export function useSalesDocumentWorkspace({
         ...normalizedDraft,
         notes: options?.notesOverride ?? normalizedDraft.notes,
       };
-      await submitPostedDraft(localDraft, activeStore!);
-      return { ok: true };
+      const receipt = await submitPostedDraft(localDraft, activeStore!);
+      return { ok: true, receipt };
     } catch (error) {
       console.error(error);
       if (

@@ -121,7 +121,7 @@ export function SalesDocumentSummaryPanel({
               >
                 <span>{isPosting ? "Working..." : "Pay Now"}</span>
                 <span className="rounded border border-white/40 bg-white/10 px-1 py-0 text-[10px] font-medium text-white/90">
-                  Ctrl/Cmd+Enter
+                  Ctrl+Enter
                 </span>
               </Button>
             ) : null}
