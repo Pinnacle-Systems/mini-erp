@@ -2,7 +2,7 @@
 
 This checklist tracks implementation order and task status for [RFC: Sales Engine V2](/home/ajay/workspace/mini-erp/docs/rfcs/sales-engine-v2.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: updated against tracked repository state on 2026-03-14. The Phase 1 schema is present in the current `init` migration, local migration application was user-confirmed via DB reset, and the generated Prisma client in `apps/backend/generated/prisma` includes the new Phase 1 model and fields. Backend Vitest coverage is now in place for the Phase 2 sales services, with focused service coverage above 80% branches and above 98% statements. A live over-conversion regression caused by reversed `DocumentLineLink` traversal in the balance reader was fixed the same day and manually revalidated against posted estimate-to-order conversion. Mixed-origin conversion drafts are now supported with explicit `sourceLineId` semantics, linked-line quantity caps in the shared workspace, and line-aware stock deduction for ad-hoc invoice lines on challan-backed invoices.
+Status review note: updated against tracked repository state on 2026-03-17. The Phase 1 schema remains present in the current `init` migration, including `documents.DocumentLineLink`, the supporting indexes, and `inventory.StockLedger.location_id`. The backend sales services and policy wiring are present in `apps/backend/src/modules/sales`, and the shared sales workspace consumes the backend conversion-balance endpoint with explicit `sourceLineId` handling for linked versus ad-hoc rows. Focused backend Vitest coverage exists for document linking, balance calculations, inventory responsibility, stock posting, and posted-document policy guards. Manual acceptance runs are still not represented in the repository and remain open.
 
 ## Phase 1: Data Foundation
 
@@ -69,7 +69,7 @@ Goal: make the correct document perform stock movement.
 - [x] On challan post, validate location and write negative `StockLedger` rows
 - [x] On direct/order-linked invoice post, validate location and write negative `StockLedger` rows
 - [x] On sales return post, validate location and write positive `StockLedger` rows
-- [ ] On challan-linked sales return post, validate location and write positive `StockLedger` rows using the challan fulfillment context
+- [x] On challan-linked sales return post, validate location and write positive `StockLedger` rows using the challan fulfillment context
 - [x] Apply stock effects only for `PRODUCT` lines
 - [x] Skip stock validation and stock ledger writes for `SERVICE` lines
 - [x] Make invoice stock responsibility line-aware for mixed-origin challan-backed invoices
@@ -154,10 +154,10 @@ Goal: verify the RFC end to end.
 
 ## Notes
 
-- [ ] Keep controllers thin; place business rules in services and policies
+- [x] Keep controllers thin; place business rules in services and policies
 - [x] Keep all posting side effects inside a single Prisma transaction
 - [x] Validate first, mark document posted last within the transaction
-- [ ] Do not implement order reservation in this phase
-- [ ] Do not add `parent_type`
-- [ ] Do not move conversion math into the frontend
+- [x] Do not implement order reservation in this phase
+- [x] Do not add `parent_type`
+- [x] Do not move conversion math into the frontend
 - [x] Keep parent consumption line-driven via `sourceLineId` / `DocumentLineLink`, not document totals
