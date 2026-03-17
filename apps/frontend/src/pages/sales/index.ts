@@ -3,5 +3,6 @@ export {
   DeliveryChallansPage,
   EstimatesPage,
   OrdersPage,
+  PosPage,
   ReturnsPage,
 } from "./BillsPage";

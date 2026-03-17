@@ -207,12 +207,14 @@ Keep those sections focused on stable rules that should apply to future work in 
 ## Sales
 
 - Sales quotations/estimates, sales orders, delivery challans, sales invoices, and sales returns should reuse one dense document workspace pattern instead of diverging into unrelated screen families.
+- POS may use a streamlined sales-invoice variant for faster checkout, but it must still produce the same sales invoice document type and reuse the shared customer, line-entry, totals, and posting rules.
 - The primary browse surface for these sales documents should be a dense combined table on desktop, with status distinguishing draft and posted records.
 - Draft and posted records for the same sales document type may appear together in one list when that improves review continuity, but actions must still reflect the real document state.
 - When online, `Save Draft` should persist a backend draft for the active sales document type. Offline draft save may remain device-local as a fallback, but the UI should treat backend drafts as first-class editable records once available.
 - Draft-only actions such as open/edit or delete must remain unavailable for posted records.
 - When a posted sales document supports a post-state workflow such as cancel, void, or reopen, expose that as an explicit labeled action in the list instead of overloading draft actions or hiding the transition behind status text.
 - Shared customer, item lookup, line-entry, totals, and posting patterns should stay aligned across sales document types unless a feature-specific rule documents a justified exception.
+- The POS invoice variant should default to cash, keep item search and cart editing visible at the same time, and surface recent sales as a secondary pane instead of making the cashier leave the active sale.
 - Type-specific metadata required for downstream sales conversions should live inside the shared sales workspace instead of being deferred to hidden follow-up steps. At minimum, estimates should surface validity and delivery challans should surface dispatch details in the main form.
 
 ## Catalog

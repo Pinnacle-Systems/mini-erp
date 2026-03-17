@@ -26,6 +26,7 @@ import {
   DeliveryChallansPage,
   EstimatesPage,
   OrdersPage,
+  PosPage,
   ReturnsPage,
 } from "../pages/sales";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
@@ -43,40 +44,6 @@ function AppEntryRoute() {
 
   if (role === "PLATFORM_ADMIN") return <Navigate to="/app/businesses" replace />;
   return <AppHomePage />;
-}
-
-function SalesPosRoute() {
-  const [isOnline, setIsOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
-  const [isMobileViewport, setIsMobileViewport] = useState(() =>
-    typeof window === "undefined"
-      ? false
-      : window.matchMedia("(max-width: 1023px)").matches,
-  );
-
-  useEffect(() => {
-    const setOnline = () => setIsOnline(true);
-    const setOffline = () => setIsOnline(false);
-    const mediaQuery = window.matchMedia("(max-width: 1023px)");
-    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
-
-    window.addEventListener("online", setOnline);
-    window.addEventListener("offline", setOffline);
-    mediaQuery.addEventListener("change", updateViewport);
-
-    return () => {
-      window.removeEventListener("online", setOnline);
-      window.removeEventListener("offline", setOffline);
-      mediaQuery.removeEventListener("change", updateViewport);
-    };
-  }, []);
-
-  if (!isOnline || isMobileViewport) {
-    return <Navigate to="/app/sales-bills" replace />;
-  }
-
-  return <AppFeaturePlaceholderPage sectionTitle="Sales" appLabel="POS" />;
 }
 
 function AppLayout({ onLogout }: { onLogout: () => void }) {
@@ -236,7 +203,7 @@ export function AppRoutes() {
                       <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
                       <Route element={<RequireCapability capability="TXN_SALE_CREATE" />}>
                         <Route path="sales-estimates" element={<EstimatesPage />} />
-                        <Route path="sales-pos" element={<SalesPosRoute />} />
+                        <Route path="sales-pos" element={<PosPage />} />
                         <Route path="sales-bills" element={<BillsPage />} />
                         <Route path="sales-orders" element={<OrdersPage />} />
                         <Route path="delivery-challans" element={<DeliveryChallansPage />} />
