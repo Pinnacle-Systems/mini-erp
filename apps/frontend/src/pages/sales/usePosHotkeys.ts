@@ -34,7 +34,7 @@ export function usePosHotkeys({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      const hasPrimaryModifier = event.ctrlKey || event.metaKey;
+      const hasPrimaryModifier = event.ctrlKey;
       const isEditable = isEditableTarget(event.target);
 
       if (hasPrimaryModifier && event.key.toLowerCase() === "s") {

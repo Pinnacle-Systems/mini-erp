@@ -12,7 +12,8 @@ import {
   FloatingActionMenu,
 } from "../../design-system/organisms/FloatingActionMenu";
 import { useSessionStore } from "../../features/auth/session-business";
-import { useState } from "react";
+import { useToast } from "../../features/toast/useToast";
+import { useEffect, useState } from "react";
 import {
   type SalesDocumentType,
 } from "./sales-invoices-api";
@@ -20,11 +21,16 @@ import { SalesDocumentListView } from "./SalesDocumentListView";
 import { SalesDocumentLineEditor } from "./SalesDocumentLineEditor";
 import { PosQuickAddBar } from "./PosQuickAddBar";
 import { PosPaymentModal } from "./PosPaymentModal";
+import {
+  PrintableReceipt,
+  type PrintableReceiptData,
+} from "./PrintableReceipt";
 import { SalesDocumentSummaryPanel } from "./SalesDocumentSummaryPanel";
 import { SalesDocumentWorkspaceHeader } from "./SalesDocumentWorkspaceHeader";
 import { usePosHotkeys } from "./usePosHotkeys";
 import {
   formatCurrency,
+  getLineTotals,
   normalizeLines,
   type SalesDocumentPageConfig,
   usesTransactionType,
@@ -232,6 +238,7 @@ function SalesDocumentWorkspace({
   activeLocationId: string | null;
   config: SalesDocumentPageConfig;
 }) {
+  const { showToast } = useToast();
   const {
     activeBusiness,
     activeBusinessName,
@@ -329,6 +336,14 @@ function SalesDocumentWorkspace({
   const [posQuickAddFocusSignal, setPosQuickAddFocusSignal] = useState(0);
   const [isPosPaymentOpen, setIsPosPaymentOpen] = useState(false);
   const [posPaymentError, setPosPaymentError] = useState<string | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<PrintableReceiptData | null>(null);
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.localStorage.getItem("pos_autoprint") === "true";
+  });
   const effectiveActiveLineId =
     activeLineId && lines.some((line) => line.id === activeLineId)
       ? activeLineId
@@ -344,6 +359,14 @@ function SalesDocumentWorkspace({
   const focusPosQuickAdd = () => {
     setPosQuickAddFocusSignal((current) => current + 1);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem("pos_autoprint", String(autoPrintEnabled));
+  }, [autoPrintEnabled]);
 
   const handleAppendLine = () => {
     const nextLineId = appendLine();
@@ -393,9 +416,46 @@ function SalesDocumentWorkspace({
     });
 
     if (result.ok) {
+      const locationName =
+        result.receipt.locationId && activeBusiness?.locations
+          ? (activeBusiness.locations.find(
+              (location) => location.id === result.receipt.locationId,
+            )?.name ?? null)
+          : null;
+      const changeDue = Math.max(0, amountTendered - result.receipt.grandTotal);
+      setLastReceipt({
+        businessName: activeBusinessName,
+        billNumber: result.receipt.billNumber,
+        postedAt: result.receipt.postedAt,
+        customerName: result.receipt.customerName,
+        locationName,
+        lines: result.receipt.lines.map((line) => ({
+          id: line.id,
+          description: line.description || "Untitled item",
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          total: getLineTotals(line).total,
+        })),
+        subTotal: result.receipt.subTotal,
+        taxTotal: result.receipt.taxTotal,
+        grandTotal: result.receipt.grandTotal,
+        amountTendered,
+        changeDue,
+      });
       setIsPosPaymentOpen(false);
       setPosPaymentError(null);
       focusPosQuickAdd();
+      showToast({
+        title: `Sale completed: ${result.receipt.billNumber}`,
+        description: `Change due ${formatCurrency(changeDue)}.`,
+        durationMs: 3000,
+        dedupeKey: `sales-pos-success:${result.receipt.billNumber}`,
+      });
+      if (autoPrintEnabled) {
+        window.setTimeout(() => {
+          window.print();
+        }, 100);
+      }
       return;
     }
 
@@ -497,8 +557,8 @@ function SalesDocumentWorkspace({
           draftMutationLoading={draftMutationLoading}
           linesCount={normalizeLines(lines).length}
           postValidationMessage={postValidationMessage}
-          saveShortcutHint={isPosMode ? "Ctrl/Cmd+S" : undefined}
-          postShortcutHint={isPosMode ? "Ctrl/Cmd+Enter" : undefined}
+          saveShortcutHint={isPosMode ? "Ctrl+S" : undefined}
+          postShortcutHint={isPosMode ? "Ctrl+Enter" : undefined}
           onOpenList={() => setViewMode("list")}
           onSaveDraft={handleSaveDraft}
           onPostDraft={handlePostDraft}
@@ -933,12 +993,15 @@ function SalesDocumentWorkspace({
         />
       ) : null}
       {pendingActionDialogs}
+      <PrintableReceipt receipt={lastReceipt} />
       {isPosMode && isPosPaymentOpen ? (
         <PosPaymentModal
           total={totals.grandTotal}
           posting={draftMutationLoading}
           errorMessage={posPaymentError}
+          autoPrintEnabled={autoPrintEnabled}
           onClose={handleClosePosPayment}
+          onAutoPrintChange={setAutoPrintEnabled}
           onComplete={(amountTendered) => {
             void handleCompletePosPayment(amountTendered);
           }}

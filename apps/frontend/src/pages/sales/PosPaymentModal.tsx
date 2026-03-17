@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
+import { Switch } from "../../design-system/atoms/Switch";
 import { Card } from "../../design-system/molecules/Card";
 import { cn } from "../../lib/utils";
 import { formatCurrency } from "./useSalesDocumentWorkspace";
@@ -12,7 +13,9 @@ type PosPaymentModalProps = {
   total: number;
   posting: boolean;
   errorMessage?: string | null;
+  autoPrintEnabled: boolean;
   onClose: () => void;
+  onAutoPrintChange: (enabled: boolean) => void;
   onComplete: (amountTendered: number) => void;
 };
 
@@ -45,7 +48,9 @@ export function PosPaymentModal({
   total,
   posting,
   errorMessage = null,
+  autoPrintEnabled,
   onClose,
+  onAutoPrintChange,
   onComplete,
 }: PosPaymentModalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -164,6 +169,23 @@ export function PosPaymentModal({
                 );
               })}
             </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-3 py-2">
+            <div className="space-y-0.5">
+              <div className="text-[11px] font-semibold text-foreground">
+                Auto-print receipt
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                Remember this setting on this register.
+              </div>
+            </div>
+            <Switch
+              checked={autoPrintEnabled}
+              onCheckedChange={onAutoPrintChange}
+              disabled={posting}
+              aria-label="Toggle auto-print receipt"
+            />
           </div>
 
           <div className="grid gap-2 rounded-lg border border-border/70 bg-slate-50 p-3 sm:grid-cols-2">
