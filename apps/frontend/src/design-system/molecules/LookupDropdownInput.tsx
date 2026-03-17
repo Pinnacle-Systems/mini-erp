@@ -153,9 +153,14 @@ export function LookupDropdownInput<T>({
 
   const selectOption = (option: T) => {
     onOptionSelect(option);
-    setIsFocused(false);
     setActiveOptionIndex(-1);
     setDropdownStyle(null);
+    window.requestAnimationFrame(() => {
+      const stillFocused =
+        typeof document !== "undefined" &&
+        containerRef.current?.contains(document.activeElement);
+      setIsFocused(Boolean(stillFocused));
+    });
   };
 
   return (
@@ -189,7 +194,11 @@ export function LookupDropdownInput<T>({
             setDropdownStyle(null);
           }, 100);
         }}
-        onChange={(event) => onValueChange(event.target.value)}
+        onChange={(event) => {
+          setIsFocused(true);
+          setActiveOptionIndex(-1);
+          onValueChange(event.target.value);
+        }}
         onKeyDown={(event) => {
           mergedInputProps.onKeyDown?.(event);
           if (event.defaultPrevented || disabled || filteredOptions.length === 0) {

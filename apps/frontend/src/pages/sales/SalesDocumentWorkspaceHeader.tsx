@@ -11,9 +11,13 @@ type SalesDocumentWorkspaceHeaderProps = {
   draftMutationLoading: boolean;
   linesCount: number;
   postValidationMessage: string | null;
+  postActionLabel?: string;
   saveShortcutHint?: string;
   postShortcutHint?: string;
+  showNewSaleAction?: boolean;
+  newSaleActionLabel?: string;
   onOpenList: () => void;
+  onOpenNewSale?: () => void;
   onSaveDraft: () => void;
   onPostDraft: () => void;
 };
@@ -28,14 +32,22 @@ export function SalesDocumentWorkspaceHeader({
   draftMutationLoading,
   linesCount,
   postValidationMessage,
+  postActionLabel,
   saveShortcutHint,
   postShortcutHint,
+  showNewSaleAction = false,
+  newSaleActionLabel = "Start New Sale",
   onOpenList,
+  onOpenNewSale,
   onSaveDraft,
   onPostDraft,
 }: SalesDocumentWorkspaceHeaderProps) {
   return (
-    <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
+    <div
+      className={`flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between ${
+        isPosMode ? "lg:min-h-10 lg:py-1" : ""
+      }`}
+    >
       <div className="space-y-1">
         <h1 className="text-sm font-semibold text-foreground">
           {isViewingPostedDocument
@@ -44,7 +56,7 @@ export function SalesDocumentWorkspaceHeader({
               ? `Edit ${config.createTitle.replace("Create ", "")}`
               : config.createTitle}
         </h1>
-        <p className="text-xs text-muted-foreground">
+        <p className={`text-xs text-muted-foreground ${isPosMode ? "lg:text-[11px]" : ""}`}>
           {isViewingPostedDocument
             ? "Posted documents open here in read-only mode for review."
             : isPosMode
@@ -72,6 +84,15 @@ export function SalesDocumentWorkspaceHeader({
           >
             {isPosMode ? "Recent Sales" : "Back to Recent"}
           </Button>
+          {showNewSaleAction && onOpenNewSale ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onOpenNewSale}
+            >
+              {newSaleActionLabel}
+            </Button>
+          ) : null}
           {!isViewingPostedDocument ? (
             <>
               <Button
@@ -97,13 +118,13 @@ export function SalesDocumentWorkspaceHeader({
                 size="sm"
                 onClick={onPostDraft}
                 disabled={draftMutationLoading}
-                title={postValidationMessage ?? config.postActionLabel}
+                title={postValidationMessage ?? postActionLabel ?? config.postActionLabel}
               >
                 <span>
                   {draftMutationLoading
                     ? "Working..."
                     : !postValidationMessage
-                      ? config.postActionLabel
+                      ? postActionLabel ?? config.postActionLabel
                       : "Review Posting Issues"}
                 </span>
                 {!draftMutationLoading && postShortcutHint ? (

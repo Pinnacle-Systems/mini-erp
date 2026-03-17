@@ -25,6 +25,7 @@ type SalesDocumentSummaryPanelProps = {
   onOpenInvoiceRow: (row: InvoiceListRow) => void;
   onOpenList: () => void;
   onOpenPosPayment?: () => void;
+  className?: string;
 };
 
 export function SalesDocumentSummaryPanel({
@@ -42,9 +43,21 @@ export function SalesDocumentSummaryPanel({
   onOpenInvoiceRow,
   onOpenList,
   onOpenPosPayment,
+  className,
 }: SalesDocumentSummaryPanelProps) {
   return (
-    <div className="w-full border-t border-border/70 pt-2 md:w-[320px] md:border-l md:border-t-0 md:pl-4 md:pt-0">
+    <div
+      className={`w-full border-t border-border/70 pt-2 md:w-[320px] md:border-l md:border-t-0 md:pl-4 md:pt-0 ${
+        isPosMode ? "md:self-stretch" : ""
+      } ${className ?? ""}`}
+    >
+      <div
+        className={`rounded-xl border px-3 py-3 ${
+          isPosMode
+            ? "border-[#c9dcf2] bg-[#f4f8ff]"
+            : "border-transparent bg-transparent px-0 py-0"
+        }`}
+      >
       <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
         <span className="shrink-0 font-semibold text-foreground">
           {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Summary`}
@@ -103,12 +116,23 @@ export function SalesDocumentSummaryPanel({
             ) : null}
           </>
         ) : null}
-        <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
-          <span className="font-semibold text-foreground">Grand total</span>
-          <span className="font-semibold text-foreground">
-            {formatCurrency(totals.grandTotal)}
-          </span>
-        </div>
+        {isPosMode ? (
+          <div className="rounded-lg border border-[#8fb6e2] bg-white px-3 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#355a84]">
+              Total payable
+            </div>
+            <div className="mt-1 text-4xl font-semibold tracking-[-0.03em] text-foreground">
+              {formatCurrency(totals.grandTotal)}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
+            <span className="font-semibold text-foreground">Grand total</span>
+            <span className="font-semibold text-foreground">
+              {formatCurrency(totals.grandTotal)}
+            </span>
+          </div>
+        )}
         {isPosMode ? (
           <div className="space-y-2 border-t border-border/70 pt-2">
             {onOpenPosPayment ? (
@@ -168,6 +192,7 @@ export function SalesDocumentSummaryPanel({
             </div>
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   );
