@@ -11,6 +11,8 @@ type SalesDocumentWorkspaceHeaderProps = {
   draftMutationLoading: boolean;
   linesCount: number;
   postValidationMessage: string | null;
+  saveShortcutHint?: string;
+  postShortcutHint?: string;
   onOpenList: () => void;
   onSaveDraft: () => void;
   onPostDraft: () => void;
@@ -26,6 +28,8 @@ export function SalesDocumentWorkspaceHeader({
   draftMutationLoading,
   linesCount,
   postValidationMessage,
+  saveShortcutHint,
+  postShortcutHint,
   onOpenList,
   onSaveDraft,
   onPostDraft,
@@ -77,9 +81,16 @@ export function SalesDocumentWorkspaceHeader({
                 onClick={onSaveDraft}
                 disabled={draftMutationLoading}
               >
-                {draftMutationLoading
-                  ? "Saving..."
-                  : `Save Draft (${linesCount || 1})`}
+                <span>
+                  {draftMutationLoading
+                    ? "Saving..."
+                    : `Save Draft (${linesCount || 1})`}
+                </span>
+                {!draftMutationLoading && saveShortcutHint ? (
+                  <span className="ml-2 rounded border border-border/80 bg-slate-50 px-1 py-0 text-[10px] font-medium text-muted-foreground">
+                    {saveShortcutHint}
+                  </span>
+                ) : null}
               </Button>
               <Button
                 type="button"
@@ -88,11 +99,18 @@ export function SalesDocumentWorkspaceHeader({
                 disabled={draftMutationLoading}
                 title={postValidationMessage ?? config.postActionLabel}
               >
-                {draftMutationLoading
-                  ? "Working..."
-                  : !postValidationMessage
-                    ? config.postActionLabel
-                    : "Review Posting Issues"}
+                <span>
+                  {draftMutationLoading
+                    ? "Working..."
+                    : !postValidationMessage
+                      ? config.postActionLabel
+                      : "Review Posting Issues"}
+                </span>
+                {!draftMutationLoading && postShortcutHint ? (
+                  <span className="ml-2 rounded border border-white/40 bg-white/10 px-1 py-0 text-[10px] font-medium text-white/90">
+                    {postShortcutHint}
+                  </span>
+                ) : null}
               </Button>
             </>
           ) : null}

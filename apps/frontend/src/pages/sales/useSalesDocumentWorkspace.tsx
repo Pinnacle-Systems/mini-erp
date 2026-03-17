@@ -1964,9 +1964,15 @@ export function useSalesDocumentWorkspace({
     setQuickAddItemQuery("");
     const reusableLine =
       lines.find((line) => !hasLineContent(line) && !line.sourceLineId) ?? null;
+    const matchingLine =
+      lines.find(
+        (line) =>
+          line.variantId === option.variantId && !line.sourceLineId,
+      ) ?? null;
+
     if (reusableLine) {
       applyLineItem(reusableLine.id, option);
-      return;
+      return matchingLine?.id ?? reusableLine.id;
     }
 
     const nextLine = createLine();
@@ -1975,6 +1981,7 @@ export function useSalesDocumentWorkspace({
     window.requestAnimationFrame(() => {
       applyLineItem(nextLine.id, option);
     });
+    return matchingLine?.id ?? nextLine.id;
   };
 
   const removeLine = (lineId: string) => {
@@ -1998,12 +2005,13 @@ export function useSalesDocumentWorkspace({
 
   const appendLine = () => {
     if (isViewingPostedDocument) {
-      return;
+      return null;
     }
 
     const nextLine = createLine();
     pendingAppendedLineIdRef.current = nextLine.id;
     setLines((currentLines) => [...currentLines, nextLine]);
+    return nextLine.id;
   };
 
   const getEditableLineFields = (line: BillLine): SalesLineFieldKey[] => {

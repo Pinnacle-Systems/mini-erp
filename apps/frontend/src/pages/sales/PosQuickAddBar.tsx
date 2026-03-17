@@ -12,6 +12,7 @@ type PosQuickAddBarProps = {
   linesCount: number;
   subTotal: number;
   grandTotal: number;
+  focusSignal?: number;
   onValueChange: (value: string) => void;
   onAddItem: (option: SalesItemOption) => void;
 };
@@ -39,6 +40,7 @@ export function PosQuickAddBar({
   linesCount,
   subTotal,
   grandTotal,
+  focusSignal = 0,
   onValueChange,
   onAddItem,
 }: PosQuickAddBarProps) {
@@ -73,7 +75,7 @@ export function PosQuickAddBar({
     }
 
     focusInput();
-  }, [disabled]);
+  }, [disabled, focusSignal]);
 
   useEffect(() => {
     if (disabled) {
