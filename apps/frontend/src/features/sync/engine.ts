@@ -1493,6 +1493,7 @@ export type StockVariantOption = {
   itemId: string;
   label: string;
   sku: string;
+  barcode: string;
   unit: string;
 };
 
@@ -1878,6 +1879,7 @@ export const getLocalStockVariantOptions = async (
             itemId: variant.itemId,
             label: buildStockVariantOptionLabel(itemName, variant.name),
             sku: variant.sku,
+            barcode: variant.barcode,
             unit: String(record.data.unit ?? "PCS"),
           } satisfies StockVariantOption;
         });
