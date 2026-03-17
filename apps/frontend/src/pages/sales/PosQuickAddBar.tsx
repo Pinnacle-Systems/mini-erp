@@ -119,9 +119,14 @@ export function PosQuickAddBar({
   }, [disabled, onValueChange, value]);
 
   return (
-    <div className="grid gap-2 rounded-xl border border-border/80 bg-slate-50 p-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+    <div className="grid gap-2 rounded-xl border border-[#8fb6e2] bg-[#f4f8ff] p-2 shadow-[inset_0_0_0_1px_rgba(143,182,226,0.18)] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
       <div className="space-y-1">
-        <Label htmlFor="sales-pos-quick-add">Quick add item</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="sales-pos-quick-add">Quick add item</Label>
+          <span className="text-[10px] font-medium uppercase tracking-[0.05em] text-[#355a84]">
+            Scanner focus
+          </span>
+        </div>
         <LookupDropdownInput
           id="sales-pos-quick-add"
           inputRef={inputRef}
@@ -138,7 +143,7 @@ export function PosQuickAddBar({
             `${option.label} ${option.sku} ${option.barcode} ${option.gstLabel}`
           }
           renderOption={(option) => <SalesItemOptionContent option={option} />}
-          inputClassName="h-10 text-sm lg:h-9"
+          inputClassName="h-10 border-[#6fa2db] bg-white text-sm shadow-[0_0_0_1px_rgba(111,162,219,0.12)] lg:h-9"
           inputProps={{
             onKeyDown: (event) => {
               if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) {

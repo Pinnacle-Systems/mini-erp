@@ -76,8 +76,28 @@ Design should support long-term workflows in a small-business operations tool.
 - In normal operational entity lists and detail screens, `Status` should map to business lifecycle state (`is_active` / `deleted_at` semantics exposed as `isActive` / `deletedAt`), not sync queue or transport state.
 - Sync queue or connection state should appear only in admin, diagnostics, utility, or clearly offline-specific UI, not as the default entity status label.
 
+## Spreadsheet-Like Tables
+
+Use a "spreadsheet-like" UX as a cross-cutting desktop interaction pattern for repeated operational rows. Prefer spreadsheet-like layouts when the workflow is primarily repeated-row entry or comparison, not merely because the data can be tabular. This supports high-frequency data entry, side-by-side comparison, and workflows where users think in rows and columns rather than one record at a time.
+
+- Best candidates: Item variants, sales line items, purchase line items, stock adjustments, bulk pricing review, and batch ledger-like review screens.
+- Where to avoid it: Customer creation/editing, business setup, forms with lots of conditional fields/explanatory context, or workflows where each row needs many rich interactions or long text.
+- Required traits for spreadsheet-like UX:
+  Keyboard-first movement (fast tab and arrow key navigation).
+  Inline editing directly within the layout.
+  Clear row and column structure.
+  Column density that preserves readable numeric alignment and adequately sized editable hit areas.
+  Optimized for batch entry speed.
+  Validation should stay inline and row-local where possible so users can correct errors without losing context.
+- Anti-patterns (what it should NOT mean):
+  Tiny, unreadable controls.
+  Hidden or deferred validation.
+  Imitating Excel purely for its own sake.
+  Letting every cell become arbitrarily editable without workflow rules.
+
 ## Form Design
 
+- Keep standard forms focused on flows where full-record contexts are justified (setup, detail workflows, explicit single-record exceptions) rather than forcing them into high-frequency operational batch views.
 - Labels must be clear and domain-specific.
 - Inputs should prefer sensible defaults when they reduce friction.
 - Validation messages should explain what is wrong and what the user should do next.
@@ -208,13 +228,16 @@ Keep those sections focused on stable rules that should apply to future work in 
 
 - Sales quotations/estimates, sales orders, delivery challans, sales invoices, and sales returns should reuse one dense document workspace pattern instead of diverging into unrelated screen families.
 - POS may use a streamlined sales-invoice variant for faster checkout, but it must still produce the same sales invoice document type and reuse the shared customer, line-entry, totals, and posting rules.
+- For the POS variant specifically, use a hybrid entry pattern: a scanner-first quick-add input at the top, with a spreadsheet-like editable cart below. The POS interface must maintain a single dominant item-entry surface and a single dominant checkout action to prevent cashier confusion. A pure spreadsheet is not sufficient because it scatters the entry focus.
+- On the active POS screen, keep the primary checkout action near the payable total and avoid duplicating that final checkout trigger in multiple competing locations.
+- Keep recent sales available to POS as a secondary utility without displacing the active checkout flow.
 - The primary browse surface for these sales documents should be a dense combined table on desktop, with status distinguishing draft and posted records.
 - Draft and posted records for the same sales document type may appear together in one list when that improves review continuity, but actions must still reflect the real document state.
 - When online, `Save Draft` should persist a backend draft for the active sales document type. Offline draft save may remain device-local as a fallback, but the UI should treat backend drafts as first-class editable records once available.
 - Draft-only actions such as open/edit or delete must remain unavailable for posted records.
 - When a posted sales document supports a post-state workflow such as cancel, void, or reopen, expose that as an explicit labeled action in the list instead of overloading draft actions or hiding the transition behind status text.
 - Shared customer, item lookup, line-entry, totals, and posting patterns should stay aligned across sales document types unless a feature-specific rule documents a justified exception.
-- The POS invoice variant should default to cash, keep item search and cart editing visible at the same time, and surface recent sales as a secondary pane instead of making the cashier leave the active sale.
+- The POS invoice variant should default to cash and keep item search and cart editing visible at the same time.
 - Type-specific metadata required for downstream sales conversions should live inside the shared sales workspace instead of being deferred to hidden follow-up steps. At minimum, estimates should surface validity and delivery challans should surface dispatch details in the main form.
 
 ## Catalog

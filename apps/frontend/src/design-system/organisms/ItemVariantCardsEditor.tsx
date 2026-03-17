@@ -5,13 +5,13 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
 } from "react";
 import { Button } from "../atoms/Button";
 import { Checkbox } from "../atoms/Checkbox";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
 import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
+import { useSpreadsheetNavigation } from "../../design-system/molecules/useSpreadsheetNavigation";
 
 export type VariantOptionRowDraft = {
   id: string;
@@ -248,6 +248,24 @@ export function ItemVariantCardsEditor({
     () => variants.filter((variant) => !disabled && !variant.isLocked).map((variant) => variant.id),
     [disabled, variants],
   );
+  const {
+    focusCell,
+    getCellDataAttributes,
+    handleCellFocus,
+    handleCellKeyDown,
+  } = useSpreadsheetNavigation<EditableFieldKey>({
+    containerRef,
+    getRowOrder: () => editableVariantIds,
+    getFieldOrderForRow: () => editableFieldOrder,
+    canAppendFromRow: (variantId) => {
+      const currentVariant = variants.find((variant) => variant.id === variantId);
+      return Boolean(currentVariant && !isVariantRowEmpty(currentVariant));
+    },
+    onRequestAppendRow: () => {
+      setPendingAppendedRowFocus(true);
+      onAddVariant();
+    },
+  });
 
   useEffect(() => {
     if (!pendingAppendedRowFocus) {
@@ -263,13 +281,10 @@ export function ItemVariantCardsEditor({
       return;
     }
 
-    const focusTarget = containerRef.current?.querySelector<HTMLElement>(
-      `[data-variant-grid-cell="${appendedVariant.id}:${FIRST_EDITABLE_FIELD}"]`,
-    );
-    focusTarget?.focus();
+    focusCell(appendedVariant.id, FIRST_EDITABLE_FIELD);
     setHighlightedVariantId(appendedVariant.id);
     setPendingAppendedRowFocus(false);
-  }, [pendingAppendedRowFocus, variants]);
+  }, [focusCell, pendingAppendedRowFocus, variants]);
 
   useEffect(() => {
     if (!highlightedVariantId) {
@@ -284,56 +299,6 @@ export function ItemVariantCardsEditor({
       window.clearTimeout(timeout);
     };
   }, [highlightedVariantId]);
-
-  const focusEditableCell = (variantId: string, field: EditableFieldKey) => {
-    containerRef.current
-      ?.querySelector<HTMLElement>(`[data-variant-grid-cell="${variantId}:${field}"]`)
-      ?.focus();
-  };
-
-  const handleGridNavigation = (
-    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
-    variantId: string,
-    field: EditableFieldKey,
-  ) => {
-    if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const rowIndex = editableVariantIds.indexOf(variantId);
-    const fieldIndex = editableFieldOrder.indexOf(field);
-    if (rowIndex === -1 || fieldIndex === -1) {
-      return;
-    }
-
-    const step = event.shiftKey ? -1 : 1;
-    const nextFieldIndex = fieldIndex + step;
-
-    if (nextFieldIndex >= 0 && nextFieldIndex < editableFieldOrder.length) {
-      focusEditableCell(variantId, editableFieldOrder[nextFieldIndex]);
-      return;
-    }
-
-    const nextRowIndex = rowIndex + step;
-    if (nextRowIndex >= 0 && nextRowIndex < editableVariantIds.length) {
-      const targetField =
-        step > 0 ? editableFieldOrder[0] : editableFieldOrder[editableFieldOrder.length - 1];
-      focusEditableCell(editableVariantIds[nextRowIndex], targetField);
-      return;
-    }
-
-    if (!event.shiftKey && rowIndex === editableVariantIds.length - 1) {
-      const currentVariant = variants.find((variant) => variant.id === variantId);
-      if (!currentVariant || isVariantRowEmpty(currentVariant)) {
-        return;
-      }
-
-      setPendingAppendedRowFocus(true);
-      onAddVariant();
-    }
-  };
 
   return (
     <div
@@ -480,11 +445,13 @@ export function ItemVariantCardsEditor({
                 <div className="grid gap-1">
                   <Label className="lg:hidden">Name</Label>
                   <Input
+                    {...getCellDataAttributes(variant.id, "name")}
                     data-variant-grid-cell={`${variant.id}:name`}
                     className={denseInputClassName}
                     value={variant.name}
                     disabled={isReadOnly}
-                    onKeyDown={(event) => handleGridNavigation(event, variant.id, "name")}
+                    onFocus={() => handleCellFocus(variant.id, "name")}
+                    onKeyDown={(event) => handleCellKeyDown(event, variant.id, "name")}
                     onChange={(event) =>
                       onVariantNameChange
                         ? onVariantNameChange(variant.id, event.target.value)
@@ -515,11 +482,13 @@ export function ItemVariantCardsEditor({
                 <div className="grid gap-1">
                   <Label className="lg:hidden">SKU</Label>
                   <Input
+                    {...getCellDataAttributes(variant.id, "sku")}
                     data-variant-grid-cell={`${variant.id}:sku`}
                     className={denseInputClassName}
                     value={variant.sku}
                     disabled={isReadOnly}
-                    onKeyDown={(event) => handleGridNavigation(event, variant.id, "sku")}
+                    onFocus={() => handleCellFocus(variant.id, "sku")}
+                    onKeyDown={(event) => handleCellKeyDown(event, variant.id, "sku")}
                     onChange={(event) =>
                       onVariantSkuChange
                         ? onVariantSkuChange(variant.id, event.target.value)
@@ -536,11 +505,13 @@ export function ItemVariantCardsEditor({
                 <div className="grid gap-1">
                   <Label className="lg:hidden">Barcode</Label>
                   <Input
+                    {...getCellDataAttributes(variant.id, "barcode")}
                     data-variant-grid-cell={`${variant.id}:barcode`}
                     className={denseInputClassName}
                     value={variant.barcode}
                     disabled={isReadOnly}
-                    onKeyDown={(event) => handleGridNavigation(event, variant.id, "barcode")}
+                    onFocus={() => handleCellFocus(variant.id, "barcode")}
+                    onKeyDown={(event) => handleCellKeyDown(event, variant.id, "barcode")}
                     onChange={(event) =>
                       onVariantsChange(
                         updateVariant(variants, variant.id, (entry) => ({
@@ -556,11 +527,13 @@ export function ItemVariantCardsEditor({
                   <div className="grid gap-1">
                     <Label className="lg:hidden">Sales</Label>
                     <Input
+                      {...getCellDataAttributes(variant.id, "salesPrice")}
                       data-variant-grid-cell={`${variant.id}:salesPrice`}
                       className={denseInputClassName}
                       value={variant.salesPrice ?? ""}
                       disabled={isReadOnly}
-                      onKeyDown={(event) => handleGridNavigation(event, variant.id, "salesPrice")}
+                      onFocus={() => handleCellFocus(variant.id, "salesPrice")}
+                      onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
                       onChange={(event) =>
                         onVariantsChange(
                           updateVariant(variants, variant.id, (entry) => ({
@@ -578,11 +551,15 @@ export function ItemVariantCardsEditor({
                   <div className="grid gap-1">
                     <Label className="lg:hidden">Purchase</Label>
                     <Input
+                      {...getCellDataAttributes(variant.id, "purchasePrice")}
                       data-variant-grid-cell={`${variant.id}:purchasePrice`}
                       className={denseInputClassName}
                       value={variant.purchasePrice ?? ""}
                       disabled={isReadOnly}
-                      onKeyDown={(event) => handleGridNavigation(event, variant.id, "purchasePrice")}
+                      onFocus={() => handleCellFocus(variant.id, "purchasePrice")}
+                      onKeyDown={(event) =>
+                        handleCellKeyDown(event, variant.id, "purchasePrice")
+                      }
                       onChange={(event) =>
                         onVariantsChange(
                           updateVariant(variants, variant.id, (entry) => ({
@@ -600,11 +577,13 @@ export function ItemVariantCardsEditor({
                   <div className="grid gap-1">
                     <Label className="lg:hidden">GST %</Label>
                     <GstSlabSelect
+                      {...getCellDataAttributes(variant.id, "gstSlab")}
                       data-variant-grid-cell={`${variant.id}:gstSlab`}
                       className={denseInputClassName}
                       value={variant.gstSlab ?? ""}
                       disabled={isReadOnly}
-                      onKeyDown={(event) => handleGridNavigation(event, variant.id, "gstSlab")}
+                      onFocus={() => handleCellFocus(variant.id, "gstSlab")}
+                      onKeyDown={(event) => handleCellKeyDown(event, variant.id, "gstSlab")}
                       onChange={(event) =>
                         onVariantsChange(
                           updateVariant(variants, variant.id, (entry) => ({
