@@ -1,5 +1,13 @@
 import { Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../../design-system/atoms/Button";
 import { IconButton } from "../../../design-system/atoms/IconButton";
@@ -17,7 +25,16 @@ import {
 import { GstSlabSelect } from "../../../design-system/molecules/GstSlabSelect";
 import { LookupDropdownInput } from "../../../design-system/molecules/LookupDropdownInput";
 import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
+import {
+  getSpreadsheetCellClassName,
+  spreadsheetCellControlClassName,
+  spreadsheetCellNumericClassName,
+  spreadsheetCellSelectClassName,
+  spreadsheetGridClassName,
+  spreadsheetHeaderCellClassName,
+} from "../../../design-system/molecules/spreadsheetStyles";
 import { TokenizerInput } from "../../../design-system/molecules/TokenizerInput";
+import { useSpreadsheetNavigation } from "../../../design-system/molecules/useSpreadsheetNavigation";
 import {
   ItemVariantCardsEditor,
   type ItemVariantDraft,
@@ -38,6 +55,7 @@ import {
 import { useToast } from "../../../features/toast/useToast";
 import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-utils";
 import { normalizeGstSlab } from "../../../lib/gst-slabs";
+import { cn } from "../../../lib/utils";
 
 const UNIT_GROUPS = [
   {
@@ -117,6 +135,42 @@ const parsePriceDraft = (value: string) => {
     return { amount: undefined, error: "Price must be a non-negative number." };
   }
   return { amount: Number(parsed.toFixed(2)), error: null };
+};
+
+const hasQuickRowContent = (row: QuickItemDraft) =>
+  Boolean(
+    row.name.trim() ||
+      row.sku.trim() ||
+      row.hsnSac.trim() ||
+      row.gstSlab.trim() ||
+      row.salesPrice.trim() ||
+      row.purchasePrice.trim() ||
+      row.category.trim() ||
+      row.unit !== "PCS",
+  );
+
+const validateTaxCodeDraft = (
+  itemType: "PRODUCT" | "SERVICE",
+  value: string,
+) => {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return itemType === "SERVICE"
+      ? "SAC must contain digits only."
+      : "HSN must contain digits only.";
+  }
+
+  if (itemType === "SERVICE") {
+    return normalized.length === 6 ? null : "SAC must be 6 digits.";
+  }
+
+  return normalized.length >= 4 && normalized.length <= 8
+    ? null
+    : "HSN must be 4 to 8 digits.";
 };
 
 const sanitizeSkuChunk = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -244,6 +298,18 @@ type QuickItemDraft = {
   unit: UnitOption;
 };
 
+type QuickEntryFieldKey =
+  | "name"
+  | "sku"
+  | "hsnSac"
+  | "salesPrice"
+  | "purchasePrice"
+  | "gstSlab"
+  | "unit"
+  | "category";
+
+type QuickRowErrors = Partial<Record<QuickEntryFieldKey, string>>;
+
 type AddItemPageProps = {
   itemType: "PRODUCT" | "SERVICE";
   title: string;
@@ -358,6 +424,14 @@ export function AddItemPage({
   const [savedCategories, setSavedCategories] = useState<string[]>([]);
   const [reservedSkus, setReservedSkus] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [isDesktopQuickEntry, setIsDesktopQuickEntry] = useState(() =>
+    typeof window === "undefined"
+      ? true
+      : window.matchMedia("(min-width: 1024px)").matches,
+  );
+  const [pendingQuickRowFocus, setPendingQuickRowFocus] = useState(false);
+  const quickEntryContainerRef = useRef<HTMLDivElement | null>(null);
+  const previousQuickRowIdsRef = useRef<string[]>([]);
   const showPurchasePrice = forcedItemType !== "SERVICE";
   const taxCodeLabel = forcedItemType === "SERVICE" ? "SAC" : "HSN";
   const taxCodePlaceholder =
@@ -369,6 +443,22 @@ export function AddItemPage({
     () => getOrderedUnitGroups(forcedItemType),
     [forcedItemType],
   );
+  const quickEntryFieldOrder = useMemo<QuickEntryFieldKey[]>(
+    () =>
+      showPurchasePrice
+        ? [
+            "name",
+            "sku",
+            "hsnSac",
+            "salesPrice",
+            "purchasePrice",
+            "gstSlab",
+            "unit",
+            "category",
+          ]
+        : ["name", "sku", "hsnSac", "salesPrice", "gstSlab", "unit", "category"],
+    [showPurchasePrice],
+  );
   const reportError = (message: string) => {
     showToast({
       title: "Unable to save",
@@ -377,6 +467,82 @@ export function AddItemPage({
       dedupeKey: `add-item-error:${message}`,
     });
   };
+  const appendQuickRow = (focusNewRow = false) => {
+    if (focusNewRow) {
+      setPendingQuickRowFocus(true);
+    }
+    setQuickRows((current) => [...current, EMPTY_QUICK_ROW()]);
+  };
+  const getQuickRowErrors = useCallback((row: QuickItemDraft): QuickRowErrors => {
+    const nextErrors: QuickRowErrors = {};
+    const rowHasContent = hasQuickRowContent(row);
+
+    if (rowHasContent && row.name.trim().length === 0) {
+      nextErrors.name = "Item name is required.";
+    }
+
+    const taxCodeError = validateTaxCodeDraft(forcedItemType, row.hsnSac);
+    if (taxCodeError) {
+      nextErrors.hsnSac = taxCodeError;
+    }
+
+    const salesPrice = parsePriceDraft(row.salesPrice);
+    if (salesPrice.error) {
+      nextErrors.salesPrice = salesPrice.error;
+    }
+
+    if (showPurchasePrice) {
+      const purchasePrice = parsePriceDraft(row.purchasePrice);
+      if (purchasePrice.error) {
+        nextErrors.purchasePrice = purchasePrice.error;
+      }
+    }
+
+    return nextErrors;
+  }, [forcedItemType, showPurchasePrice]);
+  const duplicateQuickSkus = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of quickRows) {
+      const normalizedSku = toComparableSku(row.sku);
+      if (!normalizedSku) {
+        continue;
+      }
+      counts.set(normalizedSku, (counts.get(normalizedSku) ?? 0) + 1);
+    }
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([sku]) => sku),
+    );
+  }, [quickRows]);
+  const quickRowErrorsById = useMemo(() => {
+    const entries = quickRows.map((row) => {
+      const rowErrors = getQuickRowErrors(row);
+      const normalizedSku = toComparableSku(row.sku);
+      if (normalizedSku && duplicateQuickSkus.has(normalizedSku)) {
+        rowErrors.sku = "SKU must be unique within this quick-entry batch.";
+      }
+      return [row.id, rowErrors] as const;
+    });
+    return new Map<string, QuickRowErrors>(entries);
+  }, [duplicateQuickSkus, getQuickRowErrors, quickRows]);
+  const {
+    focusCell: focusQuickRowCell,
+    getCellDataAttributes: getQuickRowCellDataAttributes,
+    handleCellFocus: handleQuickRowCellFocus,
+    handleCellKeyDown: handleQuickRowCellKeyDown,
+  } = useSpreadsheetNavigation<QuickEntryFieldKey>({
+    containerRef: quickEntryContainerRef,
+    getRowOrder: () => quickRows.map((row) => row.id),
+    getFieldOrderForRow: () => quickEntryFieldOrder,
+    canAppendFromRow: (rowId) => {
+      const row = quickRows.find((entry) => entry.id === rowId);
+      return Boolean(row && row.name.trim().length > 0);
+    },
+    onRequestAppendRow: () => {
+      appendQuickRow(true);
+    },
+  });
 
   const optionKeySuggestions = useMemo(() => {
     const fromVariants = variants
@@ -492,6 +658,7 @@ export function AddItemPage({
     const desktopMedia = window.matchMedia("(min-width: 1024px)");
 
     const syncQuickRowDefaults = () => {
+      setIsDesktopQuickEntry(desktopMedia.matches);
       setQuickRows((current) => {
         const isPristine = current.every(
           (row) =>
@@ -522,7 +689,27 @@ export function AddItemPage({
     return () => {
       desktopMedia.removeEventListener("change", syncQuickRowDefaults);
     };
-  }, [forcedItemType]);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingQuickRowFocus) {
+      previousQuickRowIdsRef.current = quickRows.map((row) => row.id);
+      return;
+    }
+
+    const previousIds = new Set(previousQuickRowIdsRef.current);
+    const appendedRow = quickRows.find((row) => !previousIds.has(row.id));
+    previousQuickRowIdsRef.current = quickRows.map((row) => row.id);
+
+    if (!appendedRow) {
+      return;
+    }
+
+    if (isDesktopQuickEntry) {
+      focusQuickRowCell(appendedRow.id, "name");
+    }
+    setPendingQuickRowFocus(false);
+  }, [focusQuickRowCell, isDesktopQuickEntry, pendingQuickRowFocus, quickRows]);
 
   useEffect(() => {
     if (!activeStore) return;
@@ -879,6 +1066,15 @@ export function AddItemPage({
           return;
         }
 
+        const hasInlineRowErrors = rowsToCreate.some((row) => {
+          const rowErrors = quickRowErrorsById.get(row.id) ?? {};
+          return Object.keys(rowErrors).length > 0;
+        });
+        if (hasInlineRowErrors) {
+          reportError("Fix the highlighted quick-entry cells before saving.");
+          return;
+        }
+
         const quickEntryPreflightError = await runLocalItemPreflightChecks(
           activeStore,
           rowsToCreate.map((row) => ({
@@ -893,22 +1089,6 @@ export function AddItemPage({
         if (quickEntryPreflightError) {
           reportError(quickEntryPreflightError);
           return;
-        }
-
-        for (let index = 0; index < rowsToCreate.length; index += 1) {
-          const row = rowsToCreate[index];
-          const salesPrice = parsePriceDraft(row.salesPrice);
-          if (salesPrice.error) {
-            reportError(`Row ${index + 1}: Sales price must be a non-negative number.`);
-            return;
-          }
-          const purchasePrice = showPurchasePrice
-            ? parsePriceDraft(row.purchasePrice)
-            : { amount: undefined, error: null };
-          if (showPurchasePrice && purchasePrice.error) {
-            reportError(`Row ${index + 1}: Purchase price must be a non-negative number.`);
-            return;
-          }
         }
 
         for (const row of rowsToCreate) {
@@ -1077,6 +1257,77 @@ export function AddItemPage({
     }
   };
 
+  const getQuickRowLabelBase = (row: QuickItemDraft, index: number) =>
+    row.name.trim() || `${singularLabel.toLowerCase()} ${index + 1}`;
+
+  const getQuickRowAriaLabel = (
+    row: QuickItemDraft,
+    index: number,
+    label: string,
+  ) => `${label} for ${getQuickRowLabelBase(row, index)}`;
+
+  const getQuickEntryFieldClassName = (
+    rowId: string,
+    field: QuickEntryFieldKey,
+    mobileClassName?: string,
+    desktopClassName?: string,
+  ) =>
+    cn(
+      isDesktopQuickEntry
+        ? field === "gstSlab" || field === "unit"
+          ? spreadsheetCellSelectClassName
+          : spreadsheetCellControlClassName
+        : mobileClassName,
+      isDesktopQuickEntry ? desktopClassName : undefined,
+      !isDesktopQuickEntry && quickRowErrorsById.get(rowId)?.[field]
+        ? "border-red-500 bg-red-50/60 focus:border-red-500 focus:ring-red-500/20"
+        : undefined,
+    );
+
+  const getQuickEntryCellClassName = (
+    rowId: string,
+    field: QuickEntryFieldKey,
+    options?: {
+      align?: "start" | "center" | "end";
+    },
+  ) =>
+    isDesktopQuickEntry
+      ? getSpreadsheetCellClassName({
+          error: Boolean(quickRowErrorsById.get(rowId)?.[field]),
+          align: options?.align,
+        })
+      : undefined;
+
+  const handleQuickEntryFieldFocus = (
+    rowId: string,
+    field: QuickEntryFieldKey,
+  ) => {
+    if (!isDesktopQuickEntry) {
+      return;
+    }
+    handleQuickRowCellFocus(rowId, field);
+  };
+
+  const handleQuickEntryFieldKeyDown = (
+    event: KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>,
+    rowId: string,
+    field: QuickEntryFieldKey,
+  ) => {
+    if (!isDesktopQuickEntry) {
+      return;
+    }
+    handleQuickRowCellKeyDown(event, rowId, field);
+  };
+
+  const handleNumericFieldFocus = (
+    event: FocusEvent<HTMLInputElement>,
+    rowId: string,
+    field: Extract<QuickEntryFieldKey, "salesPrice" | "purchasePrice">,
+  ) => {
+    handleQuickEntryFieldFocus(rowId, field);
+    event.currentTarget.select();
+  };
+
   const quickRowsWithName = quickRows.filter((row) => row.name.trim().length > 0).length;
 
   return (
@@ -1209,186 +1460,434 @@ export function AddItemPage({
 
             <div className="space-y-1.5 lg:flex-1 lg:min-h-0 lg:space-y-1">
               {!hasVariants ? (
-              <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
+              <div
+                ref={quickEntryContainerRef}
+                className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1"
+              >
                 <div className="overflow-visible rounded-lg border border-border/80 bg-white lg:flex lg:min-h-0 lg:flex-col">
-                  <div className={`hidden gap-1.5 border-b border-border/70 bg-slate-50/95 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0 ${quickEntryDesktopGridClass}`}>
-                    <span>Name</span>
-                    <span>SKU</span>
-                    <span>{taxCodeLabel}</span>
-                    <span>Sales</span>
-                    {showPurchasePrice ? <span>Purchase</span> : null}
-                    <span>GST %</span>
-                    <span>Unit</span>
-                    <span>Category</span>
-                    <span className="text-right">Actions</span>
+                  <div
+                    className={cn(
+                      "hidden border-b border-border/70 p-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0",
+                      quickEntryDesktopGridClass,
+                      spreadsheetGridClassName,
+                    )}
+                  >
+                    <span className={spreadsheetHeaderCellClassName}>Name</span>
+                    <span className={spreadsheetHeaderCellClassName}>SKU</span>
+                    <span className={spreadsheetHeaderCellClassName}>{taxCodeLabel}</span>
+                    <span className={cn(spreadsheetHeaderCellClassName, "justify-end text-right")}>
+                      Sales
+                    </span>
+                    {showPurchasePrice ? (
+                      <span
+                        className={cn(
+                          spreadsheetHeaderCellClassName,
+                          "justify-end text-right",
+                        )}
+                      >
+                        Purchase
+                      </span>
+                    ) : null}
+                    <span className={spreadsheetHeaderCellClassName}>GST %</span>
+                    <span className={spreadsheetHeaderCellClassName}>Unit</span>
+                    <span className={spreadsheetHeaderCellClassName}>Category</span>
+                    <span
+                      className={cn(
+                        spreadsheetHeaderCellClassName,
+                        "justify-end text-right",
+                      )}
+                    >
+                      Actions
+                    </span>
                   </div>
 
-                  <div className="grid gap-1.5 p-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-                    {quickRows.map((row, index) => (
+                  <div
+                    className={cn(
+                      "grid gap-1.5 p-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto",
+                      isDesktopQuickEntry ? spreadsheetGridClassName : undefined,
+                    )}
+                  >
+                    {quickRows.map((row, index) => {
+                      const rowErrors = quickRowErrorsById.get(row.id) ?? {};
+                      return (
                       <div
                         key={row.id}
-                        className={`grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:items-center lg:border-0 lg:bg-transparent lg:p-0 ${quickEntryDesktopGridClass}`}
+                        className={cn(
+                          "grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:items-center lg:border-0 lg:bg-transparent lg:p-0",
+                          quickEntryDesktopGridClass,
+                          isDesktopQuickEntry ? spreadsheetGridClassName : undefined,
+                        )}
                       >
-                        <Input
-                          className={QUICK_ENTRY_INPUT_CLASS}
-                          value={row.name}
-                          onChange={(event) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? { ...entry, name: event.target.value }
-                                  : entry,
-                              ),
-                            )
-                          }
-                          placeholder={`Item ${index + 1} name`}
-                        />
-                        <Input
-                          className={QUICK_ENTRY_INPUT_CLASS}
-                          value={row.sku}
-                          onChange={(event) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? {
-                                      ...entry,
-                                      sku: event.target.value,
-                                      skuManuallyEdited:
-                                        event.target.value.trim().length > 0 &&
-                                        event.target.value.trim().toUpperCase() !==
-                                          deriveBaseSkuFromItemName(entry.name),
-                                    }
-                                  : entry,
-                              ),
-                            )
-                          }
-                          placeholder="SKU (optional)"
-                        />
-                        <Input
-                          className={QUICK_ENTRY_INPUT_CLASS}
-                          value={row.hsnSac}
-                          onChange={(event) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? { ...entry, hsnSac: event.target.value }
-                                  : entry,
-                              ),
-                            )
-                          }
-                          placeholder={taxCodePlaceholder}
-                        />
-                        <Input
-                          className={QUICK_ENTRY_INPUT_CLASS}
-                          value={row.salesPrice}
-                          onChange={(event) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? { ...entry, salesPrice: event.target.value }
-                                  : entry,
-                              ),
-                            )
-                          }
-                          placeholder="Sales price"
-                          inputMode="decimal"
-                        />
-                        {showPurchasePrice ? (
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            getQuickEntryCellClassName(row.id, "name"),
+                          )}
+                        >
+                          <Label className="lg:hidden">Name</Label>
                           <Input
-                            className={QUICK_ENTRY_INPUT_CLASS}
-                            value={row.purchasePrice}
+                            {...(isDesktopQuickEntry
+                              ? getQuickRowCellDataAttributes(row.id, "name")
+                              : {})}
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "name",
+                              QUICK_ENTRY_INPUT_CLASS,
+                              "lg:pl-2.5",
+                            )}
+                            value={row.name}
                             onChange={(event) =>
                               setQuickRows((current) =>
                                 current.map((entry) =>
                                   entry.id === row.id
-                                    ? { ...entry, purchasePrice: event.target.value }
+                                    ? { ...entry, name: event.target.value }
                                     : entry,
                                 ),
                               )
                             }
-                            placeholder="Purchase price"
-                            inputMode="decimal"
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "name")}
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "name")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "Name")}
+                            aria-invalid={rowErrors.name ? true : undefined}
+                            title={rowErrors.name}
+                            placeholder={isDesktopQuickEntry ? "Name" : undefined}
                           />
-                        ) : null}
-                        <GstSlabSelect
-                          className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
-                          value={row.gstSlab}
-                          onChange={(event) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? { ...entry, gstSlab: event.target.value }
-                                  : entry,
-                              ),
-                            )
-                          }
-                          placeholderOption="GST %"
-                        />
-                        <Select
-                          className={`${QUICK_ENTRY_SELECT_CLASS} w-full`}
-                          value={row.unit}
-                          onChange={(event) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? {
-                                      ...entry,
-                                      unit: event.target.value as UnitOption,
-                                    }
-                                  : entry,
-                              ),
-                            )
-                          }
-                        >
-                          {orderedUnitGroups.map((group) => (
-                            <optgroup key={group.label} label={group.label}>
-                              {group.options.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </Select>
-                        <LookupDropdownInput
-                          value={row.category}
-                          onValueChange={(value) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? { ...entry, category: value }
-                                  : entry,
-                              ),
-                            )
-                          }
-                          placeholder="Category"
-                          options={categorySuggestions}
-                          getOptionKey={(categoryValue) => categoryValue}
-                          getOptionSearchText={(categoryValue) => categoryValue}
-                          onOptionSelect={(categoryValue) =>
-                            setQuickRows((current) =>
-                              current.map((entry) =>
-                                entry.id === row.id
-                                  ? { ...entry, category: categoryValue }
-                                  : entry,
-                              ),
-                            )
-                          }
-                          renderOption={(categoryValue) => (
-                            <div className="truncate font-medium">{categoryValue}</div>
+                        </div>
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            getQuickEntryCellClassName(row.id, "sku"),
                           )}
-                          maxVisibleOptions={10}
-                          inputClassName={QUICK_ENTRY_INPUT_CLASS}
-                          optionClassName="text-[10px]"
-                        />
-                        <div className="flex justify-end">
+                        >
+                          <Label className="lg:hidden">SKU</Label>
+                          <Input
+                            {...(isDesktopQuickEntry
+                              ? getQuickRowCellDataAttributes(row.id, "sku")
+                              : {})}
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "sku",
+                              QUICK_ENTRY_INPUT_CLASS,
+                              "lg:pl-2.5",
+                            )}
+                            value={row.sku}
+                            onChange={(event) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? {
+                                        ...entry,
+                                        sku: event.target.value,
+                                        skuManuallyEdited:
+                                          event.target.value.trim().length > 0 &&
+                                          event.target.value.trim().toUpperCase() !==
+                                            deriveBaseSkuFromItemName(entry.name),
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "sku")}
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "sku")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "SKU")}
+                            aria-invalid={rowErrors.sku ? true : undefined}
+                            title={rowErrors.sku}
+                            placeholder={isDesktopQuickEntry ? "SKU" : undefined}
+                          />
+                        </div>
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            getQuickEntryCellClassName(row.id, "hsnSac"),
+                          )}
+                        >
+                          <Label className="lg:hidden">{taxCodeLabel}</Label>
+                          <Input
+                            {...(isDesktopQuickEntry
+                              ? getQuickRowCellDataAttributes(row.id, "hsnSac")
+                              : {})}
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "hsnSac",
+                              QUICK_ENTRY_INPUT_CLASS,
+                              "lg:pl-2.5",
+                            )}
+                            value={row.hsnSac}
+                            onChange={(event) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? { ...entry, hsnSac: event.target.value }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "hsnSac")}
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "hsnSac")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, taxCodeLabel)}
+                            aria-invalid={rowErrors.hsnSac ? true : undefined}
+                            title={rowErrors.hsnSac ?? taxCodePlaceholder}
+                            inputMode="numeric"
+                            placeholder={isDesktopQuickEntry ? taxCodeLabel : undefined}
+                          />
+                        </div>
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            getQuickEntryCellClassName(row.id, "salesPrice"),
+                          )}
+                        >
+                          <Label className="lg:hidden">Sales price</Label>
+                          <Input
+                            {...(isDesktopQuickEntry
+                              ? getQuickRowCellDataAttributes(row.id, "salesPrice")
+                              : {})}
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "salesPrice",
+                              QUICK_ENTRY_INPUT_CLASS,
+                              spreadsheetCellNumericClassName,
+                            )}
+                            value={row.salesPrice}
+                            onChange={(event) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? { ...entry, salesPrice: event.target.value }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={(event) =>
+                              handleNumericFieldFocus(event, row.id, "salesPrice")
+                            }
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "salesPrice")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "Sales price")}
+                            aria-invalid={rowErrors.salesPrice ? true : undefined}
+                            title={rowErrors.salesPrice}
+                            inputMode="decimal"
+                            placeholder={isDesktopQuickEntry ? "0.00" : undefined}
+                          />
+                        </div>
+                        {showPurchasePrice ? (
+                          <div
+                            className={cn(
+                              "grid gap-1",
+                              getQuickEntryCellClassName(
+                                row.id,
+                                "purchasePrice",
+                              ),
+                            )}
+                          >
+                            <Label className="lg:hidden">Purchase price</Label>
+                            <Input
+                              {...(isDesktopQuickEntry
+                                ? getQuickRowCellDataAttributes(row.id, "purchasePrice")
+                                : {})}
+                              className={getQuickEntryFieldClassName(
+                                row.id,
+                                "purchasePrice",
+                                QUICK_ENTRY_INPUT_CLASS,
+                                spreadsheetCellNumericClassName,
+                              )}
+                              value={row.purchasePrice}
+                              onChange={(event) =>
+                                setQuickRows((current) =>
+                                  current.map((entry) =>
+                                    entry.id === row.id
+                                      ? { ...entry, purchasePrice: event.target.value }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                              onFocus={(event) =>
+                                handleNumericFieldFocus(event, row.id, "purchasePrice")
+                              }
+                              onKeyDown={(event) =>
+                                handleQuickEntryFieldKeyDown(
+                                  event,
+                                  row.id,
+                                  "purchasePrice",
+                                )
+                              }
+                              aria-label={getQuickRowAriaLabel(
+                                row,
+                                index,
+                                "Purchase price",
+                              )}
+                              aria-invalid={
+                                rowErrors.purchasePrice ? true : undefined
+                              }
+                              title={rowErrors.purchasePrice}
+                              inputMode="decimal"
+                              placeholder={isDesktopQuickEntry ? "0.00" : undefined}
+                            />
+                          </div>
+                        ) : null}
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            getQuickEntryCellClassName(row.id, "gstSlab"),
+                          )}
+                        >
+                          <Label className="lg:hidden">GST %</Label>
+                          <GstSlabSelect
+                            {...(isDesktopQuickEntry
+                              ? getQuickRowCellDataAttributes(row.id, "gstSlab")
+                              : {})}
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "gstSlab",
+                              `${QUICK_ENTRY_SELECT_CLASS} w-full`,
+                            )}
+                            value={row.gstSlab}
+                            onChange={(event) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? { ...entry, gstSlab: event.target.value }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "gstSlab")}
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "gstSlab")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "GST")}
+                            placeholderOption="GST %"
+                          />
+                        </div>
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            getQuickEntryCellClassName(row.id, "unit"),
+                          )}
+                        >
+                          <Label className="lg:hidden">Unit</Label>
+                          <Select
+                            {...(isDesktopQuickEntry
+                              ? getQuickRowCellDataAttributes(row.id, "unit")
+                              : {})}
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "unit",
+                              `${QUICK_ENTRY_SELECT_CLASS} w-full`,
+                            )}
+                            value={row.unit}
+                            onChange={(event) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? {
+                                        ...entry,
+                                        unit: event.target.value as UnitOption,
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "unit")}
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "unit")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "Unit")}
+                          >
+                            {orderedUnitGroups.map((group) => (
+                              <optgroup key={group.label} label={group.label}>
+                                {group.options.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </Select>
+                        </div>
+                        <div
+                          className={cn(
+                            "grid gap-1",
+                            getQuickEntryCellClassName(row.id, "category"),
+                          )}
+                        >
+                          <Label className="lg:hidden">Category</Label>
+                          <LookupDropdownInput
+                            inputProps={{
+                              ...(isDesktopQuickEntry
+                                ? getQuickRowCellDataAttributes(row.id, "category")
+                                : {}),
+                              onFocus: () => handleQuickEntryFieldFocus(row.id, "category"),
+                              onKeyDown: (event) =>
+                                handleQuickEntryFieldKeyDown(
+                                  event,
+                                  row.id,
+                                  "category",
+                                ),
+                              "aria-label": getQuickRowAriaLabel(
+                                row,
+                                index,
+                                "Category",
+                              ),
+                            }}
+                            value={row.category}
+                            onValueChange={(value) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? { ...entry, category: value }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            placeholder={isDesktopQuickEntry ? "Category" : undefined}
+                            options={categorySuggestions}
+                            getOptionKey={(categoryValue) => categoryValue}
+                            getOptionSearchText={(categoryValue) => categoryValue}
+                            onOptionSelect={(categoryValue) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? { ...entry, category: categoryValue }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            renderOption={(categoryValue) => (
+                              <div className="truncate font-medium">{categoryValue}</div>
+                            )}
+                            maxVisibleOptions={10}
+                            inputClassName={getQuickEntryFieldClassName(
+                              row.id,
+                              "category",
+                              QUICK_ENTRY_INPUT_CLASS,
+                              "lg:pl-2.5",
+                            )}
+                            optionClassName="text-[10px]"
+                          />
+                        </div>
+                        <div
+                          className={cn(
+                            isDesktopQuickEntry
+                              ? getSpreadsheetCellClassName({ align: "center" })
+                              : undefined,
+                            "p-0.5 lg:p-0",
+                          )}
+                        >
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             aria-label="Delete item row"
                             title="Delete row"
-                            className="h-8 gap-1.5 px-2 text-[#8a2b2b] hover:bg-[#fff5f5] hover:text-[#7a1f1f] lg:hidden"
+                            className="h-8 whitespace-nowrap gap-1.5 px-2 text-[#8a2b2b] hover:bg-[#fff5f5] hover:text-[#7a1f1f] lg:hidden"
                             disabled={quickRows.length <= 1}
                             onClick={() =>
                               setQuickRows((current) =>
@@ -1405,7 +1904,7 @@ export function AddItemPage({
                             variant="ghost"
                             aria-label="Delete item row"
                             title="Delete row"
-                            className="hidden h-8 w-8 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
+                            className="hidden h-full w-full rounded-none border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
                             disabled={quickRows.length <= 1}
                             onClick={() =>
                               setQuickRows((current) =>
@@ -1416,7 +1915,7 @@ export function AddItemPage({
                           />
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </div>
 
@@ -1432,9 +1931,7 @@ export function AddItemPage({
                       variant="outline"
                       size="sm"
                       className="h-7 px-2"
-                      onClick={() =>
-                        setQuickRows((current) => [...current, EMPTY_QUICK_ROW()])
-                      }
+                      onClick={() => appendQuickRow(false)}
                     >
                       Add Row
                     </Button>
