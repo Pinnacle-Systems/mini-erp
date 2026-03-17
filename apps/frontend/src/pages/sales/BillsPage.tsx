@@ -17,11 +17,10 @@ import {
 } from "./sales-invoices-api";
 import { SalesDocumentListView } from "./SalesDocumentListView";
 import { SalesDocumentLineEditor } from "./SalesDocumentLineEditor";
+import { PosQuickAddBar } from "./PosQuickAddBar";
 import { SalesDocumentSummaryPanel } from "./SalesDocumentSummaryPanel";
 import { SalesDocumentWorkspaceHeader } from "./SalesDocumentWorkspaceHeader";
-import { SalesItemOptionContent } from "./SalesItemOptionContent";
 import {
-  formatCurrency,
   normalizeLines,
   type SalesDocumentPageConfig,
   usesTransactionType,
@@ -355,47 +354,17 @@ function SalesDocumentWorkspace({
 
   const posLineHeader =
     isPosMode ? (
-      <div className="grid gap-2 rounded-xl border border-border/80 bg-slate-50 p-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <div className="space-y-1">
-          <Label htmlFor="sales-pos-quick-add">Quick add item</Label>
-          <LookupDropdownInput
-            id="sales-pos-quick-add"
-            value={quickAddItemQuery}
-            disabled={isViewingPostedDocument}
-            onValueChange={setQuickAddItemQuery}
-            options={itemOptions}
-            loading={lookupLoading}
-            loadingLabel="Loading items"
-            placeholder="Search item, SKU, or service"
-            onOptionSelect={quickAddLineItem}
-            getOptionKey={(option) => option.variantId}
-            getOptionSearchText={(option) =>
-              `${option.label} ${option.sku} ${option.gstLabel}`
-            }
-            renderOption={(option) => <SalesItemOptionContent option={option} />}
-          />
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground lg:min-w-[18rem]">
-          <div className="rounded-lg border border-border/70 bg-white px-2 py-1.5">
-            <div>Lines</div>
-            <div className="text-sm font-semibold text-foreground">
-              {normalizeLines(lines).length || 1}
-            </div>
-          </div>
-          <div className="rounded-lg border border-border/70 bg-white px-2 py-1.5">
-            <div>Subtotal</div>
-            <div className="text-sm font-semibold text-foreground">
-              {formatCurrency(totals.subTotal)}
-            </div>
-          </div>
-          <div className="rounded-lg border border-[#8fb6e2] bg-[#edf5ff] px-2 py-1.5">
-            <div>Total</div>
-            <div className="text-sm font-semibold text-foreground">
-              {formatCurrency(totals.grandTotal)}
-            </div>
-          </div>
-        </div>
-      </div>
+      <PosQuickAddBar
+        value={quickAddItemQuery}
+        disabled={isViewingPostedDocument}
+        lookupLoading={lookupLoading}
+        itemOptions={itemOptions}
+        linesCount={normalizeLines(lines).length}
+        subTotal={totals.subTotal}
+        grandTotal={totals.grandTotal}
+        onValueChange={setQuickAddItemQuery}
+        onAddItem={quickAddLineItem}
+      />
     ) : null;
 
   return (

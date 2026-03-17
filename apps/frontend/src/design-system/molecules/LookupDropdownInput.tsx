@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type Ref,
   type CSSProperties,
   type InputHTMLAttributes,
   type ReactNode,
@@ -29,6 +30,7 @@ type LookupDropdownInputProps<T> = {
   inputClassName?: string;
   dropdownClassName?: string;
   optionClassName?: string;
+  inputRef?: Ref<HTMLInputElement>;
   inputProps?: Omit<
     InputHTMLAttributes<HTMLInputElement>,
     "id" | "value" | "onChange" | "disabled"
@@ -52,6 +54,7 @@ export function LookupDropdownInput<T>({
   inputClassName,
   dropdownClassName,
   optionClassName,
+  inputRef,
   inputProps,
 }: LookupDropdownInputProps<T>) {
   const [isFocused, setIsFocused] = useState(false);
@@ -159,6 +162,7 @@ export function LookupDropdownInput<T>({
     <div ref={containerRef} className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
       <Input
         {...mergedInputProps}
+        ref={inputRef}
         id={id}
         value={value}
         placeholder={placeholder}
