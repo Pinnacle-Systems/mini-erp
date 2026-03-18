@@ -61,6 +61,29 @@ const shouldKeepNativeHorizontalArrow = (
   return false;
 };
 
+const isActiveComboboxTarget = (
+  event: KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>,
+) => {
+  if (!(event.currentTarget instanceof HTMLInputElement)) {
+    return false;
+  }
+
+  if (event.currentTarget.getAttribute("role") !== "combobox") {
+    return false;
+  }
+
+  return (
+    event.currentTarget.getAttribute("aria-expanded") === "true" ||
+    event.currentTarget.hasAttribute("aria-activedescendant")
+  );
+};
+
+const isComboboxOptionHighlighted = (
+  event: KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>,
+) =>
+  event.currentTarget instanceof HTMLInputElement &&
+  event.currentTarget.hasAttribute("aria-activedescendant");
+
 const getComparableField = <FieldKey extends string>(
   currentField: FieldKey,
   currentFields: FieldKey[],
@@ -199,8 +222,9 @@ export function useSpreadsheetNavigation<FieldKey extends string>({
     }
 
     if (
-      event.currentTarget instanceof HTMLInputElement &&
-      event.currentTarget.getAttribute("aria-activedescendant")
+      isActiveComboboxTarget(event) &&
+      ((event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Escape") ||
+        (event.key === "Enter" && isComboboxOptionHighlighted(event)))
     ) {
       return;
     }
