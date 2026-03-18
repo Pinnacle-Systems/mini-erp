@@ -166,7 +166,7 @@ export function SalesDocumentListView({
               {config.listEmptyMessage}
             </div>
           ) : (
-            <DenseTable className="mt-2 rounded-xl border-border/80">
+            <DenseTable className="mt-2">
               <DenseTableHead>
                 <tr>
                   <DenseTableHeaderCell className="w-[14%]">

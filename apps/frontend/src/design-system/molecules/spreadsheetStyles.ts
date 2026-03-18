@@ -1,6 +1,9 @@
 import { cn } from "../../lib/utils";
+import {
+  tabularHeaderCellClassName,
+} from "./tabularTokens";
 
-const SPREADSHEET_GRID_LINE_COLOR = "bg-[#c9d3df]";
+const SPREADSHEET_GRID_LINE_COLOR = "bg-[var(--tabular-grid-line-color)]";
 
 export const spreadsheetGridClassName = cn(
   "lg:gap-px",
@@ -8,18 +11,22 @@ export const spreadsheetGridClassName = cn(
 );
 
 export const spreadsheetHeaderCellClassName = cn(
-  "flex min-h-6 items-center bg-slate-50 px-2 py-1",
+  tabularHeaderCellClassName,
+  "flex min-h-6 items-center bg-[var(--tabular-header-bg)]",
 );
 
 export const spreadsheetCellControlClassName = cn(
-  "h-8 w-full rounded-none border-0 bg-transparent px-2.5 text-[11px] shadow-none placeholder:text-[#8ea0b3] lg:h-6 lg:px-2 lg:text-[10px]",
+  "h-full min-h-0 w-full rounded-none border-0 bg-transparent px-2.5 py-0 text-[11px] leading-none shadow-none placeholder:text-[#8ea0b3] transition-colors lg:px-2 lg:text-[10px]",
   "focus:border-transparent focus:bg-transparent focus:outline-none focus:ring-0",
   "disabled:bg-transparent",
 );
 
 export const spreadsheetCellSelectClassName = cn(
   spreadsheetCellControlClassName,
-  "pr-7",
+  "appearance-none pr-6 bg-[length:12px_12px] bg-[position:right_6px_center] bg-no-repeat",
+  "bg-[image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%2364758b' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")]",
+  "hover:bg-[image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%23475569' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")]",
+  "focus:bg-[image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' stroke='%23475569' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")]",
 );
 
 export const spreadsheetCellNumericClassName = "text-right tabular-nums";
@@ -36,19 +43,17 @@ export function getSpreadsheetCellClassName({
   align = "start",
 }: SpreadsheetCellClassNameOptions = {}) {
   return cn(
-    "relative min-h-8 border border-transparent bg-white shadow-[inset_0_0_0_1px_rgba(201,211,223,0.7)] transition-none",
-    "lg:min-h-6",
-    !readOnly
-      ? "hover:bg-slate-50/75 hover:shadow-[inset_0_0_0_1px_rgba(173,184,197,0.9)]"
-      : "bg-slate-50/85 text-muted-foreground",
-    align === "center" ? "flex items-center justify-center" : undefined,
-    align === "end" ? "flex items-center justify-end" : undefined,
+    "relative min-h-[var(--tabular-row-height)] justify-start rounded-none transition-colors transition-shadow",
+    !readOnly ? "bg-white hover:bg-slate-50/55" : "bg-transparent text-muted-foreground",
+    "items-center leading-none",
+    align === "center" ? "flex justify-center" : undefined,
+    align === "end" ? "flex justify-end" : undefined,
+    align === "start" ? "flex" : undefined,
     error
-      ? "bg-red-50/85 text-[#7f1d1d] shadow-[inset_0_0_0_1px_rgba(239,68,68,0.55)] hover:bg-red-50 focus-within:border-red-500 focus-within:bg-red-50 focus-within:shadow-[inset_0_0_0_1px_rgba(239,68,68,0.7)]"
-      : "focus-within:bg-white",
-    "focus-within:z-10",
+      ? "z-20 bg-red-50/70 text-[#7f1d1d] outline outline-2 outline-[rgba(239,68,68,0.72)] [outline-offset:-2px]"
+      : "focus-within:bg-white focus-within:z-10 focus-within:outline focus-within:outline-2 focus-within:outline-[#4f8dd8] focus-within:[outline-offset:-2px]",
     error
       ? undefined
-      : "focus-within:border-[#4f8dd8] focus-within:shadow-[inset_0_0_0_1px_rgba(79,141,216,0.75)]",
+      : undefined,
   );
 }

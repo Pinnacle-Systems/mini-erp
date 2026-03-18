@@ -7,7 +7,9 @@ import {
   FolderKanban,
   HandCoins,
   History,
+  LayoutGrid,
   MoreHorizontal,
+  PanelLeft,
   Package,
   PackageSearch,
   Percent,
@@ -89,6 +91,14 @@ type UserFolderApp = {
   label: string;
   Icon: LucideIcon;
   requiredAnyCapability?: BusinessCapability[];
+};
+
+type UserFolderNavEntry = {
+  key: string;
+  label: string;
+  Icon: LucideIcon;
+  appId?: UserAppId;
+  isHome?: boolean;
 };
 
 const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
@@ -414,7 +424,6 @@ export function AppHomePage() {
     [activeBusiness],
   );
   const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(null);
-  const [pendingFolderId, setPendingFolderId] = useState<UserFolderId | null>(null);
   const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   const [mobileVisibleFolderCount, setMobileVisibleFolderCount] = useState(1);
@@ -427,8 +436,23 @@ export function AppHomePage() {
       : window.matchMedia("(max-width: 1023px)").matches,
   );
   const appTabsScrollRef = useRef<HTMLDivElement | null>(null);
+  const desktopSidebarRef = useRef<HTMLDivElement | null>(null);
+  const previousRouteDrivenAppIdRef = useRef<UserAppId | null>(null);
   const [showAppTabsLeftFade, setShowAppTabsLeftFade] = useState(false);
   const [showAppTabsRightFade, setShowAppTabsRightFade] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    const initialActiveStore = useSessionStore.getState().activeStore;
+    return (
+      window.localStorage.getItem(
+        `user-shell-sidebar-collapsed:${initialActiveStore ?? "global"}`,
+      ) === "true"
+    );
+  });
+  const [showCollapsedFolderFlyout, setShowCollapsedFolderFlyout] = useState(false);
   const enabledModules = useMemo(
     () =>
       activeBusinessModules ?? {
@@ -438,6 +462,10 @@ export function AppHomePage() {
         pricing: true,
       },
     [activeBusinessModules],
+  );
+  const desktopSidebarStorageKey = useMemo(
+    () => `user-shell-sidebar-collapsed:${activeStore ?? "global"}`,
+    [activeStore],
   );
 
   useEffect(() => {
@@ -464,6 +492,29 @@ export function AppHomePage() {
       mediaQuery.removeEventListener("change", updateViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const storedValue = window.localStorage.getItem(desktopSidebarStorageKey);
+      setIsDesktopSidebarCollapsed(storedValue === "true");
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [desktopSidebarStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(desktopSidebarStorageKey, String(isDesktopSidebarCollapsed));
+  }, [desktopSidebarStorageKey, isDesktopSidebarCollapsed]);
 
   const visibleFolders = useMemo(
     () =>
@@ -505,6 +556,28 @@ export function AppHomePage() {
     () => visibleFolders.find((folder) => folder.id === activeFolderId) ?? null,
     [activeFolderId, visibleFolders],
   );
+  const activeFolderNavEntries = useMemo<UserFolderNavEntry[]>(
+    () =>
+      activeFolder
+        ? [
+            {
+              key: `${activeFolder.id}-home`,
+              label: `${activeFolder.label} Home`,
+              Icon: LayoutGrid,
+              isHome: true,
+            },
+            ...activeFolder.apps.map((app) => ({
+              key: app.id,
+              label: app.label,
+              Icon: app.Icon,
+              appId: app.id,
+            })),
+          ]
+        : [],
+    [activeFolder],
+  );
+  const shouldShowCollapsedFolderFlyout =
+    isDesktopSidebarCollapsed && showCollapsedFolderFlyout && Boolean(activeFolder);
   const mobileVisibleFolders = useMemo(
     () => {
       if (visibleFolders.length <= mobileVisibleFolderCount) {
@@ -581,7 +654,10 @@ export function AppHomePage() {
   }, [activeFolderId, visibleFolders]);
 
   useEffect(() => {
-    if (!routeDrivenAppId) {
+    const previousRouteDrivenAppId = previousRouteDrivenAppIdRef.current;
+    previousRouteDrivenAppIdRef.current = routeDrivenAppId;
+
+    if (!routeDrivenAppId || routeDrivenAppId === previousRouteDrivenAppId) {
       return;
     }
     const matchedFolder = visibleFolders.find((folder) =>
@@ -593,15 +669,6 @@ export function AppHomePage() {
       });
     }
   }, [activeFolderId, routeDrivenAppId, visibleFolders]);
-
-  useEffect(() => {
-    if (!pendingFolderId) return;
-    if (routeDrivenAppId) return;
-    queueMicrotask(() => {
-      setActiveFolderId(pendingFolderId);
-      setPendingFolderId(null);
-    });
-  }, [pendingFolderId, routeDrivenAppId]);
 
   useEffect(() => {
     const initialFrameId = window.requestAnimationFrame(() => {
@@ -642,6 +709,23 @@ export function AppHomePage() {
       setShowSessionMenu(false);
     });
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isDesktopSidebarCollapsed) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!desktopSidebarRef.current?.contains(event.target as Node)) {
+        setShowCollapsedFolderFlyout(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isDesktopSidebarCollapsed]);
 
   useEffect(() => {
     const updateMobileVisibleFolderCount = () => {
@@ -691,18 +775,29 @@ export function AppHomePage() {
   }, [activeStore]);
 
   const handleAppSelect = (appId: UserAppId) => {
+    setShowCollapsedFolderFlyout(false);
     navigate(`/app/${APP_ROUTE_SEGMENT_BY_ID[appId]}`);
+  };
+
+  const handleFolderHomeSelect = (folderId: UserFolderId) => {
+    setActiveFolderId(folderId);
+    setShowCollapsedFolderFlyout(false);
+    navigate("/app");
   };
 
   const handleFolderSelect = (folderId: UserFolderId) => {
     setShowSessionMenu(false);
-    if (routeDrivenAppId) {
-      setPendingFolderId(folderId);
-      navigate("/app");
-      return;
+    if (isDesktopSidebarCollapsed) {
+      setShowCollapsedFolderFlyout(
+        activeFolderId === folderId ? (current) => !current : true,
+      );
     }
-
     setActiveFolderId(folderId);
+  };
+
+  const toggleDesktopSidebar = () => {
+    setIsDesktopSidebarCollapsed((current) => !current);
+    setShowCollapsedFolderFlyout(false);
   };
 
   const renderLandingPlaceholder = () => {
@@ -822,81 +917,205 @@ export function AppHomePage() {
 
   return (
     <main className="h-auto w-full pb-20 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
-      <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="hidden rounded-xl border border-border/75 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[132px_minmax(0,1fr)] lg:gap-2 lg:overflow-hidden">
-          <div className="min-h-0 border-r border-border/70 pr-2">
-            <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Navigation
-            </p>
-            <div className="space-y-1.5">
-              {visibleFolders.map((folder) => (
-                <AppNavButton
-                  key={folder.id}
-                  type="button"
-                  onClick={() => handleFolderSelect(folder.id)}
-                  Icon={folder.Icon}
-                  label={folder.label}
-                  active={activeFolder?.id === folder.id}
-                  aria-current={activeFolder?.id === folder.id ? "page" : undefined}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="flex min-h-0 flex-col pl-0.5">
-            <p className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-              {activeFolder?.label ?? "App"} Apps
-            </p>
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-              <div className="space-y-1.5">
-                {activeFolder?.apps.map((app) => (
-                  <AppTabButton
-                    key={app.id}
+      <div
+        className={`grid w-full gap-2 lg:h-full ${isDesktopSidebarCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[300px_minmax(0,1fr)]"}`}
+      >
+        <aside
+          ref={desktopSidebarRef}
+          className={`relative hidden rounded-xl border border-border/75 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex lg:h-full lg:min-h-0 ${isDesktopSidebarCollapsed ? "lg:overflow-visible" : "lg:overflow-hidden"}`}
+        >
+          {isDesktopSidebarCollapsed ? (
+            <div className="flex h-full w-10 flex-col items-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mb-2 h-9 w-9 shrink-0 px-0"
+                onClick={toggleDesktopSidebar}
+                aria-label="Expand navigation"
+                title="Expand navigation"
+              >
+                <PanelLeft className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <div className="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto">
+                {visibleFolders.map((folder) => (
+                  <AppNavButton
+                    key={folder.id}
                     type="button"
-                    onClick={() => handleAppSelect(app.id)}
-                    Icon={app.Icon}
-                    label={app.label}
-                    active={routeDrivenAppId === app.id}
-                    stacked
-                    className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
+                    onClick={() => handleFolderSelect(folder.id)}
+                    Icon={folder.Icon}
+                    label={folder.label}
+                    active={activeFolder?.id === folder.id}
+                    iconOnly
+                    aria-current={activeFolder?.id === folder.id ? "page" : undefined}
                   />
                 ))}
               </div>
-            </div>
-            <div className="mt-2 border-t border-border/70 pt-2">
-              <p className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                Session
-              </p>
-              <div className="grid gap-1.5">
+              <div className="mt-2 grid gap-1.5 border-t border-border/70 pt-2">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-[11px]"
+                  className="h-9 w-9 px-0"
                   onClick={() => {
                     void onSyncNow();
                   }}
                   disabled={isSyncing}
-                  >
-                    <RefreshCcw
-                      className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
-                      aria-hidden="true"
-                    />
-                    {isSyncing ? "Syncing..." : "Sync"}
+                  aria-label={isSyncing ? "Syncing" : "Sync"}
+                  title={isSyncing ? "Syncing" : "Sync"}
+                >
+                  <RefreshCcw
+                    className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
+                    aria-hidden="true"
+                  />
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-[11px]"
+                  className="h-9 w-9 px-0"
                   onClick={() => void onLogout()}
+                  aria-label="Logout"
+                  title="Logout"
                 >
                   <LogOut className="h-4 w-4" aria-hidden="true" />
-                  Logout
                 </Button>
               </div>
+              {shouldShowCollapsedFolderFlyout && activeFolder ? (
+                <div className="absolute left-[3.6rem] top-2 z-30 flex w-56 max-w-[calc(100vw-7rem)] flex-col rounded-xl border border-border/80 bg-white p-2 shadow-[0_12px_24px_-12px_rgba(15,23,42,0.28)]">
+                  <div className="border-b border-border/70 px-1 pb-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      {activeFolder.label}
+                    </p>
+                    <p className="pt-0.5 text-[11px] text-muted-foreground">
+                      Choose an app to continue.
+                    </p>
+                  </div>
+                  <div className="mt-2 max-h-[min(60vh,32rem)] overflow-y-auto overflow-x-hidden">
+                    <div className="space-y-1.5">
+                      {activeFolderNavEntries.map((entry) => (
+                        <AppTabButton
+                          key={entry.key}
+                          type="button"
+                          onClick={() => {
+                            if (entry.isHome && activeFolder) {
+                              handleFolderHomeSelect(activeFolder.id);
+                              return;
+                            }
+                            if (entry.appId) {
+                              handleAppSelect(entry.appId);
+                            }
+                          }}
+                          Icon={entry.Icon}
+                          label={entry.label}
+                          active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
+                          stacked
+                          className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </div>
+          ) : (
+            <div className="grid h-full min-h-0 w-full grid-cols-[132px_minmax(0,1fr)] gap-2">
+              <div className="min-h-0 border-r border-border/70 pr-2">
+                <div className="flex items-center justify-between px-1 pb-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    Navigation
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 px-0"
+                    onClick={toggleDesktopSidebar}
+                    aria-label="Collapse navigation"
+                    title="Collapse navigation"
+                  >
+                    <PanelLeft className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  {visibleFolders.map((folder) => (
+                    <AppNavButton
+                      key={folder.id}
+                      type="button"
+                      onClick={() => handleFolderSelect(folder.id)}
+                      Icon={folder.Icon}
+                      label={folder.label}
+                      active={activeFolder?.id === folder.id}
+                      aria-current={activeFolder?.id === folder.id ? "page" : undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex min-h-0 flex-col pl-0.5">
+                <p className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  {activeFolder?.label ?? "App"} Apps
+                </p>
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+                  <div className="space-y-1.5">
+                    {activeFolderNavEntries.map((entry) => (
+                      <AppTabButton
+                        key={entry.key}
+                        type="button"
+                        onClick={() => {
+                          if (entry.isHome && activeFolder) {
+                            handleFolderHomeSelect(activeFolder.id);
+                            return;
+                          }
+                          if (entry.appId) {
+                            handleAppSelect(entry.appId);
+                          }
+                        }}
+                        Icon={entry.Icon}
+                        label={entry.label}
+                        active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
+                        stacked
+                        className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-2 border-t border-border/70 pt-2">
+                  <p className="px-1 pb-2 text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                    Session
+                  </p>
+                  <div className="grid gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 justify-start gap-2 px-2 text-[11px]"
+                      onClick={() => {
+                        void onSyncNow();
+                      }}
+                      disabled={isSyncing}
+                    >
+                      <RefreshCcw
+                        className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
+                        aria-hidden="true"
+                      />
+                      {isSyncing ? "Syncing..." : "Sync"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 justify-start gap-2 px-2 text-[11px]"
+                      onClick={() => void onLogout()}
+                    >
+                      <LogOut className="h-4 w-4" aria-hidden="true" />
+                      Logout
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </aside>
 
         <section className="min-w-0 space-y-2 lg:flex lg:min-h-0 lg:flex-col">
@@ -915,15 +1134,23 @@ export function AppHomePage() {
                 onScroll={updateAppTabsOverflow}
                 className="flex w-full max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1"
               >
-                {activeFolder?.apps.map((app) => (
+                {activeFolderNavEntries.map((entry) => (
                   <AppTabButton
-                    key={app.id}
-                    data-app-id={app.id}
+                    key={entry.key}
+                    data-app-id={entry.appId ?? entry.key}
                     type="button"
-                    onClick={() => handleAppSelect(app.id)}
-                    Icon={app.Icon}
-                    label={app.label}
-                    active={routeDrivenAppId === app.id}
+                    onClick={() => {
+                      if (entry.isHome && activeFolder) {
+                        handleFolderHomeSelect(activeFolder.id);
+                        return;
+                      }
+                      if (entry.appId) {
+                        handleAppSelect(entry.appId);
+                      }
+                    }}
+                    Icon={entry.Icon}
+                    label={entry.label}
+                    active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
                   />
                 ))}
               </div>

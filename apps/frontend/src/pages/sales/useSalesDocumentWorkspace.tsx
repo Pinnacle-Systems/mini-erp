@@ -30,6 +30,10 @@ import {
 import { useToast } from "../../features/toast/useToast";
 import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
 import {
+  DESKTOP_GROW_AS_NEEDED_STARTER_ROWS,
+  MOBILE_GROW_AS_NEEDED_STARTER_ROWS,
+} from "../../design-system/molecules/useSpreadsheetNavigation";
+import {
   createSalesDocumentDraft,
   deleteSalesDocumentDraft,
   getSalesConversionBalance,
@@ -226,6 +230,19 @@ const createLine = (): BillLine => ({
   unit: "PCS",
   stockOnHand: null,
 });
+
+const getDefaultStarterLineCount = () => {
+  if (typeof window === "undefined") {
+    return DESKTOP_GROW_AS_NEEDED_STARTER_ROWS;
+  }
+
+  return window.matchMedia("(min-width: 1024px)").matches
+    ? DESKTOP_GROW_AS_NEEDED_STARTER_ROWS
+    : MOBILE_GROW_AS_NEEDED_STARTER_ROWS;
+};
+
+const buildStarterLines = (count = getDefaultStarterLineCount()) =>
+  Array.from({ length: count }, () => createLine());
 
 const INVOICE_NUMBER_DIGITS = 4;
 
@@ -644,7 +661,7 @@ const loadStoredDrafts = (
           typeof draft.savedAt === "string" && draft.savedAt.trim()
             ? draft.savedAt
             : new Date().toISOString(),
-        lines: lines.length > 0 ? lines : [createLine()],
+        lines: lines.length > 0 ? lines : buildStarterLines(),
         duplicateMeta: normalizeEstimateDuplicateMeta(draft.duplicateMeta),
       } satisfies SavedBillDraft;
     });
@@ -706,7 +723,7 @@ export function useSalesDocumentWorkspace({
   const [dispatchCarrier, setDispatchCarrier] = useState("");
   const [dispatchReference, setDispatchReference] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<BillLine[]>([createLine()]);
+  const [lines, setLines] = useState<BillLine[]>(() => buildStarterLines());
   const [saveMessage, setSaveMessage] = useState<string | null>(
     activeStore ? null : `Select a business to start a ${config.singularLabel}.`,
   );
@@ -1612,7 +1629,8 @@ export function useSalesDocumentWorkspace({
   };
 
   const resetEditor = (options?: { focusFirstLine?: boolean }) => {
-    const nextLine = createLine();
+    const starterLines = buildStarterLines();
+    const nextLine = starterLines[0] ?? createLine();
     setActiveDraftId(null);
     setActiveDraftSource(null);
     assignAutoBillNumber(nextBillNumber);
@@ -1629,7 +1647,7 @@ export function useSalesDocumentWorkspace({
     setDispatchCarrier("");
     setDispatchReference("");
     setNotes("");
-    setLines([nextLine]);
+    setLines(starterLines);
     setQuickAddItemQuery("");
     setNumberConflict(null);
     setDuplicateMeta(null);
@@ -2052,7 +2070,7 @@ export function useSalesDocumentWorkspace({
 
     setLines((currentLines) => {
       if (currentLines.length === 1) {
-        return [createLine()];
+        return buildStarterLines();
       }
       return currentLines.filter((line) => line.id !== lineId);
     });

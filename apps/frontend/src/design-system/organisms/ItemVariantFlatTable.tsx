@@ -3,14 +3,14 @@ import { Eye, type LucideIcon } from "lucide-react";
 import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
 import {
-  DenseTable,
-  DenseTableBody,
-  DenseTableCell,
-  DenseTableHead,
-  DenseTableHeaderCell,
-  DenseTableRow,
-} from "../molecules/DenseTable";
-import { DENSE_TABLE_COLUMN_WIDTHS } from "../molecules/denseTableColumns";
+  TabularBody,
+  TabularCell,
+  TabularFooter,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../molecules/TabularSurface";
+import { tabularNumericClassName } from "../molecules/tabularTokens";
 import {
   getLocalItemDetailForDisplay,
   getLocalItemPricingRowsForDisplay,
@@ -79,8 +79,6 @@ const getPrimaryName = (row: ItemVariantFlatRow) => {
   return hasMultipleVariants ? row.variantName : row.itemName;
 };
 
-const ITEMS_LIST_SKU_COLUMN_WIDTH = "w-[18%]";
-const ITEMS_LIST_PRICE_COLUMN_WIDTH = "w-28";
 const getGstSlabDisplay = (value: string | null | undefined) => formatGstSlabLabel(value) || "-";
 
 export function ItemVariantFlatTable({
@@ -114,6 +112,21 @@ export function ItemVariantFlatTable({
   >({});
   const { lastSyncCompletedAt } = useSyncActions();
   const hasAction = Boolean(onAction || onOpenItem);
+  const desktopGridTemplate = useMemo(() => {
+    const tracks = [
+      showCategory ? "minmax(0, 14%)" : null,
+      "minmax(0, 28%)",
+      "minmax(0, 18%)",
+      showUnit ? "5rem" : null,
+      showCommercialFields ? "6rem" : null,
+      showCommercialFields ? "7rem" : null,
+      showCommercialFields && showPurchasePrice ? "7rem" : null,
+      showCommercialFields ? "6rem" : null,
+      showStatus ? "minmax(0, 12%)" : null,
+      hasAction ? "3.5rem" : null,
+    ].filter(Boolean);
+    return tracks.join(" ");
+  }, [hasAction, showCategory, showCommercialFields, showPurchasePrice, showStatus, showUnit]);
 
   useEffect(() => {
     if (rows) return;
@@ -415,106 +428,86 @@ export function ItemVariantFlatTable({
         )}
       </div>
 
-      <DenseTable tableClassName="text-xs">
-        <DenseTableHead className="bg-slate-50/95">
-          <tr>
-            {showCategory ? (
-              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.category} px-2`}>Category</DenseTableHeaderCell>
-            ) : null}
-            <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.item} px-2`}>Name</DenseTableHeaderCell>
-            <DenseTableHeaderCell className={`${ITEMS_LIST_SKU_COLUMN_WIDTH} px-2`}>SKU</DenseTableHeaderCell>
-            {showUnit ? (
-              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.unit} px-2`}>Unit</DenseTableHeaderCell>
-            ) : null}
-            {showCommercialFields ? (
-              <DenseTableHeaderCell className="w-24 px-2">{taxCodeLabel}</DenseTableHeaderCell>
-            ) : null}
-            {showCommercialFields ? (
-              <DenseTableHeaderCell className={ITEMS_LIST_PRICE_COLUMN_WIDTH}>Sales</DenseTableHeaderCell>
-            ) : null}
+      <TabularSurface
+        role="grid"
+        aria-label="Item list"
+        className="hidden overflow-hidden bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+      >
+        <TabularHeader>
+          <TabularRow columns={desktopGridTemplate}>
+            {showCategory ? <TabularCell variant="header">Category</TabularCell> : null}
+            <TabularCell variant="header">Name</TabularCell>
+            <TabularCell variant="header">SKU</TabularCell>
+            {showUnit ? <TabularCell variant="header">Unit</TabularCell> : null}
+            {showCommercialFields ? <TabularCell variant="header">{taxCodeLabel}</TabularCell> : null}
+            {showCommercialFields ? <TabularCell variant="header" align="end">Sales</TabularCell> : null}
             {showCommercialFields && showPurchasePrice ? (
-              <DenseTableHeaderCell className={ITEMS_LIST_PRICE_COLUMN_WIDTH}>Purchase</DenseTableHeaderCell>
+              <TabularCell variant="header" align="end">Purchase</TabularCell>
             ) : null}
-            {showCommercialFields ? (
-              <DenseTableHeaderCell className="w-24 px-2">GST %</DenseTableHeaderCell>
-            ) : null}
-            {showStatus ? (
-              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.status} px-2`}>Status</DenseTableHeaderCell>
-            ) : null}
-            {hasAction ? (
-              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.action} text-right`}>Actions</DenseTableHeaderCell>
-            ) : null}
-          </tr>
-        </DenseTableHead>
-        <DenseTableBody>
+            {showCommercialFields ? <TabularCell variant="header">GST %</TabularCell> : null}
+            {showStatus ? <TabularCell variant="header">Status</TabularCell> : null}
+            {hasAction ? <TabularCell variant="header" align="center">Actions</TabularCell> : null}
+          </TabularRow>
+        </TabularHeader>
+        <TabularBody className="overflow-y-auto">
           {loading ? (
-            <DenseTableRow>
-              <DenseTableCell
-                className="px-2 py-3 text-muted-foreground"
-                colSpan={
-                  (showCommercialFields ? (showPurchasePrice ? 4 : 3) : 0) +
-                  (showUnit ? 1 : 0) +
-                  (showCategory ? 1 : 0) +
-                  (showStatus ? 1 : 0) +
-                  (hasAction ? 1 : 0) +
-                  2
-                }
-              >
-                Loading variants...
-              </DenseTableCell>
-            </DenseTableRow>
+            <TabularRow columns="minmax(0, 1fr)">
+              <TabularCell className="text-muted-foreground">Loading variants...</TabularCell>
+            </TabularRow>
           ) : (
             visibleRows.map((row) => (
-              <DenseTableRow
+              <TabularRow
                 key={row.key}
-                className={`align-top ${
-                  highlightInactiveRows && !row.isActive ? "bg-amber-100" : ""
-                }`}
+                columns={desktopGridTemplate}
+                interactive
+                className={highlightInactiveRows && !row.isActive ? "[&>div]:!bg-amber-100" : undefined}
               >
                 {showCategory ? (
-                  <DenseTableCell className="truncate" title={row.category || "-"}>
+                  <TabularCell className="truncate font-normal" title={row.category || "-"}>
                     {row.category || "-"}
-                  </DenseTableCell>
+                  </TabularCell>
                 ) : null}
-                <DenseTableCell className="truncate font-medium text-foreground" title={getPrimaryName(row)}>
+                <TabularCell className="truncate font-normal text-foreground" title={getPrimaryName(row)}>
                   {getPrimaryName(row)}
-                </DenseTableCell>
-                <DenseTableCell className="truncate font-mono text-[11px]" title={row.sku || "-"}>
+                </TabularCell>
+                <TabularCell className="truncate font-mono text-[11px]" title={row.sku || "-"}>
                   {row.sku || "-"}
-                </DenseTableCell>
+                </TabularCell>
                 {showUnit ? (
-                  <DenseTableCell className="truncate" title={row.unit || "-"}>
+                  <TabularCell align="center" className="truncate" title={row.unit || "-"}>
                     {row.unit || "-"}
-                  </DenseTableCell>
+                  </TabularCell>
                 ) : null}
                 {showCommercialFields ? (
-                  <DenseTableCell className="truncate" title={row.hsnSac || "-"}>
+                  <TabularCell className="truncate font-mono [font-feature-settings:var(--tabular-num-features)]" title={row.hsnSac || "-"}>
                     {row.hsnSac || "-"}
-                  </DenseTableCell>
+                  </TabularCell>
                 ) : null}
                 {showCommercialFields ? (
-                  <DenseTableCell
-                    className="truncate"
+                  <TabularCell
+                    align="end"
+                    className={tabularNumericClassName}
                     title={formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                   >
                     {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
-                  </DenseTableCell>
+                  </TabularCell>
                 ) : null}
                 {showCommercialFields && showPurchasePrice ? (
-                  <DenseTableCell
-                    className="truncate"
+                  <TabularCell
+                    align="end"
+                    className={tabularNumericClassName}
                     title={formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
                   >
                     {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
-                  </DenseTableCell>
+                  </TabularCell>
                 ) : null}
                 {showCommercialFields ? (
-                  <DenseTableCell className="truncate" title={getGstSlabDisplay(row.gstSlab)}>
+                  <TabularCell align="center" title={getGstSlabDisplay(row.gstSlab)}>
                     {getGstSlabDisplay(row.gstSlab)}
-                  </DenseTableCell>
+                  </TabularCell>
                 ) : null}
                 {showStatus ? (
-                  <DenseTableCell>
+                  <TabularCell>
                     <div className="inline-flex items-center gap-2">
                       <span
                         className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
@@ -524,29 +517,36 @@ export function ItemVariantFlatTable({
                         {row.isActive ? "Active" : "Inactive"}
                       </span>
                     </div>
-                  </DenseTableCell>
+                  </TabularCell>
                 ) : null}
                 {hasAction ? (
-                  <DenseTableCell className="text-right">
-                    <IconButton
-                      type="button"
-                      icon={actionIcon}
-                      variant="ghost"
-                      onClick={() => handleAction(row)}
-                      className={
-                        actionClassName ??
-                        "h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
-                      }
-                      aria-label={`${actionLabel} ${getPrimaryName(row)}`}
-                      title={actionLabel}
-                    />
-                  </DenseTableCell>
+                  <TabularCell align="center">
+                    <div className="flex justify-center">
+                      <IconButton
+                        type="button"
+                        icon={actionIcon}
+                        variant="ghost"
+                        onClick={() => handleAction(row)}
+                        className={
+                          actionClassName ??
+                          "h-7 w-7 rounded-none border-none bg-transparent p-0 text-[#1f4167] hover:bg-slate-50"
+                        }
+                        aria-label={`${actionLabel} ${getPrimaryName(row)}`}
+                        title={actionLabel}
+                      />
+                    </div>
+                  </TabularCell>
                 ) : null}
-              </DenseTableRow>
+              </TabularRow>
             ))
           )}
-        </DenseTableBody>
-      </DenseTable>
+        </TabularBody>
+        <TabularFooter className="border-t border-[var(--tabular-grid-line-color)] px-2">
+          <span>
+            {loading ? "Loading items..." : `${visibleRows.length} ${visibleRows.length === 1 ? "item" : "items"}`}
+          </span>
+        </TabularFooter>
+      </TabularSurface>
     </>
   );
 }

@@ -19,7 +19,10 @@ import {
   spreadsheetGridClassName,
   spreadsheetHeaderCellClassName,
 } from "../../design-system/molecules/spreadsheetStyles";
-import { useSpreadsheetNavigation } from "../../design-system/molecules/useSpreadsheetNavigation";
+import {
+  useSpreadsheetNavigation,
+  type SpreadsheetAppendMode,
+} from "../../design-system/molecules/useSpreadsheetNavigation";
 import { cn } from "../../lib/utils";
 
 export type VariantOptionRowDraft = {
@@ -52,6 +55,9 @@ type ItemVariantCardsEditorProps = {
   onVariantNameChange?: (variantId: string, name: string) => void;
   onVariantSkuChange?: (variantId: string, sku: string) => void;
   onAddVariant: () => void;
+  appendMode?: SpreadsheetAppendMode;
+  generatedVariantMode?: boolean;
+  onResetGeneratedVariants?: () => void;
   showAddVariantAction?: boolean;
   addVariantLabel?: string;
   denseInputClassName?: string;
@@ -90,6 +96,9 @@ export function ItemVariantCardsEditor({
   onVariantNameChange,
   onVariantSkuChange,
   onAddVariant,
+  appendMode = "grow-as-needed",
+  generatedVariantMode = false,
+  onResetGeneratedVariants,
   showAddVariantAction = true,
   addVariantLabel = "Add Variant",
   denseInputClassName = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]",
@@ -131,16 +140,19 @@ export function ItemVariantCardsEditor({
     selectableVariantIds.length > 0 &&
     selectedEditableVariantIds.length === selectableVariantIds.length;
   const hasSelectedVariants = selectedEditableVariantIds.length > 0;
+  const showManualAddAction = showAddVariantAction && !generatedVariantMode;
   const canBulkDelete =
     hasSelectedVariants &&
-    selectedEditableVariantIds.length < variants.length &&
+    (generatedVariantMode || selectedEditableVariantIds.length < variants.length) &&
     selectedEditableVariantIds.every(
       (variantId) =>
         variantId.startsWith("temp-") || Boolean(onBulkVariantPurge || onVariantPurge),
     );
   const bulkDeleteDisabledReason = !hasSelectedVariants
-    ? "Select one or more variants first."
-    : selectedEditableVariantIds.length === variants.length
+    ? generatedVariantMode
+      ? "Select one or more combinations first."
+      : "Select one or more variants first."
+    : !generatedVariantMode && selectedEditableVariantIds.length === variants.length
       ? "At least one variant must remain."
       : !selectedEditableVariantIds.every(
             (variantId) =>
@@ -247,7 +259,7 @@ export function ItemVariantCardsEditor({
     cn(
       options?.select ? spreadsheetCellSelectClassName : spreadsheetCellControlClassName,
       options?.numeric ? spreadsheetCellNumericClassName : undefined,
-      options?.textPadding ? "lg:pl-2.5" : undefined,
+      options?.textPadding ? "lg:pl-2" : undefined,
     );
 
   const editableFieldOrder = useMemo<EditableFieldKey[]>(() => {
@@ -277,14 +289,18 @@ export function ItemVariantCardsEditor({
     containerRef,
     getRowOrder: () => editableVariantIds,
     getFieldOrderForRow: () => editableFieldOrder,
+    appendMode,
     canAppendFromRow: (variantId) => {
       const currentVariant = variants.find((variant) => variant.id === variantId);
       return Boolean(currentVariant && !isVariantRowEmpty(currentVariant));
     },
-    onRequestAppendRow: () => {
-      setPendingAppendedRowFocus(true);
-      onAddVariant();
-    },
+    onRequestAppendRow:
+      appendMode === "grow-as-needed"
+        ? () => {
+            setPendingAppendedRowFocus(true);
+            onAddVariant();
+          }
+        : undefined,
   });
 
   useEffect(() => {
@@ -383,18 +399,30 @@ export function ItemVariantCardsEditor({
                       onClick={handleBulkDelete}
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      Delete selected
+                      {generatedVariantMode ? "Remove selected" : "Delete selected"}
                     </Button>
                   </div>
                 </div>
               </div>
             ) : null}
           </div>
+          {generatedVariantMode && onResetGeneratedVariants ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2"
+              disabled={disabled}
+              onClick={onResetGeneratedVariants}
+            >
+              Reset to all combinations
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className={`hidden h-7 px-2 lg:inline-flex ${showAddVariantAction ? "" : "lg:hidden"}`}
+            className={`hidden h-7 px-2 lg:inline-flex ${showManualAddAction ? "" : "lg:hidden"}`}
             onClick={onAddVariant}
             disabled={disabled}
           >
@@ -405,18 +433,35 @@ export function ItemVariantCardsEditor({
 
       <div
         className={cn(
-          "grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:p-0",
+          "grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:p-0",
           spreadsheetGridClassName,
         )}
       >
+        {generatedVariantMode && variants.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border/80 bg-slate-50 px-3 py-4 text-sm text-muted-foreground lg:mx-1">
+            <div>All generated combinations are currently excluded.</div>
+            {onResetGeneratedVariants ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 px-2"
+                disabled={disabled}
+                onClick={onResetGeneratedVariants}
+              >
+                Reset to all combinations
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         <div
           className={cn(
-            "hidden lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:border-b lg:border-border/70 lg:p-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground",
+            "hidden lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:border-b lg:border-border/70 lg:px-0 lg:py-0 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground",
             spreadsheetGridClassName,
           )}
           style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
         >
-          <span className={cn(spreadsheetHeaderCellClassName, "justify-center")}>
+          <span className={cn(spreadsheetHeaderCellClassName, "justify-center px-0")}>
             <Checkbox
               checked={allSelectableSelected}
               disabled={selectableVariantIds.length === 0}
@@ -521,7 +566,7 @@ export function ItemVariantCardsEditor({
                       )}
                     >
                       <Label className="lg:hidden">{column.label}</Label>
-                      <span className="px-2 text-[11px] text-foreground lg:px-2.5 lg:text-[10px]">
+                      <span className="px-2 text-[11px] text-foreground lg:px-2 lg:text-[10px]">
                         {option?.value?.trim() ? option.value.toUpperCase() : "-"}
                       </span>
                     </div>
@@ -683,7 +728,7 @@ export function ItemVariantCardsEditor({
           );
         })}
         <div className="pt-0.5 lg:hidden">
-          {showAddVariantAction ? (
+          {showManualAddAction ? (
             <Button
               type="button"
               variant="outline"

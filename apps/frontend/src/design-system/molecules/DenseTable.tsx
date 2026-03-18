@@ -4,13 +4,35 @@ import type {
   ThHTMLAttributes,
 } from "react";
 import { cn } from "../../lib/utils";
+import {
+  tabularCellBoxClassName,
+  tabularFrameClassName,
+  tabularHeaderCellClassName,
+  tabularHeaderSectionClassName,
+} from "./tabularTokens";
+
+const denseTableSurfaceClassName = tabularFrameClassName;
+
+const denseTableHeaderSectionClassName = tabularHeaderSectionClassName;
+
+const denseTableHeaderCellClassName = cn(
+  tabularHeaderCellClassName,
+  "h-[var(--tabular-row-height)] border-r border-b last:border-r-0 [border-color:var(--tabular-grid-line-color)]",
+);
+
+const denseTableCellClassName = cn(
+  tabularCellBoxClassName,
+  "bg-[var(--tabular-cell-bg)] last:border-r-0 first:border-l-0",
+);
 
 type DenseTableProps = HTMLAttributes<HTMLDivElement> & {
+  framed?: boolean;
   tableClassName?: string;
 };
 
 export function DenseTable({
   className,
+  framed = true,
   tableClassName,
   children,
   ...props
@@ -18,12 +40,18 @@ export function DenseTable({
   return (
     <div
       className={cn(
-        "hidden rounded-lg border border-border/85 bg-white lg:block lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto",
+        "hidden lg:block lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-y-auto",
+        framed ? denseTableSurfaceClassName : undefined,
         className,
       )}
       {...props}
     >
-      <table className={cn("w-full table-fixed border-collapse text-left text-[11px]", tableClassName)}>
+      <table
+        className={cn(
+          "w-full table-fixed border-collapse text-left text-[11px]",
+          tableClassName,
+        )}
+      >
         {children}
       </table>
     </div>
@@ -38,7 +66,7 @@ export function DenseTableHead({
   return (
     <thead
       className={cn(
-        "sticky top-0 z-10 bg-slate-100 text-[11px] uppercase tracking-wide text-muted-foreground",
+        denseTableHeaderSectionClassName,
         className,
       )}
       {...props}
@@ -66,7 +94,13 @@ export function DenseTableRow({
   ...props
 }: HTMLAttributes<HTMLTableRowElement>) {
   return (
-    <tr className={cn("border-t border-border/70 align-middle", className)} {...props}>
+    <tr
+      className={cn(
+        "align-middle [&:hover>td]:bg-[var(--tabular-cell-hover-bg)] [&>td]:h-[var(--tabular-row-height)]",
+        className,
+      )}
+      {...props}
+    >
       {children}
     </tr>
   );
@@ -78,7 +112,7 @@ export function DenseTableHeaderCell({
   ...props
 }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <th className={cn("px-2.5 py-2 font-semibold", className)} {...props}>
+    <th className={cn(denseTableHeaderCellClassName, className)} {...props}>
       {children}
     </th>
   );
@@ -90,7 +124,7 @@ export function DenseTableCell({
   ...props
 }: TdHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <td className={cn("px-2.5 py-0 align-middle", className)} {...props}>
+    <td className={cn(denseTableCellClassName, className)} {...props}>
       {children}
     </td>
   );
