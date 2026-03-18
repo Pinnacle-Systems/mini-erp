@@ -37,6 +37,20 @@
     --border: 220 12% 74%;
     --input: 220 12% 74%;
     --ring: 210 100% 45%;
+    --tabular-frame-border-color: #c9d3df;
+    --tabular-frame-border-width: 1px;
+    --tabular-frame-radius: 0.125rem;
+    --tabular-header-bg: #f1f5f9;
+    --tabular-header-text: #52657c;
+    --tabular-grid-line-color: #e2e8f0;
+    --tabular-cell-padding-x: 0.5rem;
+    --tabular-cell-padding-y: 0.25rem;
+    --tabular-row-height: 2.25rem;
+    --tabular-footer-height: 1.5rem;
+    --tabular-footer-button-height: 1.25rem;
+    --tabular-num-features: "tnum";
+    --tabular-cell-bg: #ffffff;
+    --tabular-cell-hover-bg: #f8fafc;
 
     font-family:
       -apple-system,
@@ -142,6 +156,31 @@
   }
 
   @media (min-width: 1024px) {
+    .app-filter-panel {
+      border-radius: 0.125rem;
+      border-color: var(--tabular-frame-border-color);
+      background: var(--tabular-header-bg);
+      padding: 0.375rem 0.5rem;
+    }
+
+    .app-filter-legend {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
+    .app-filter-row {
+      gap: 0.375rem;
+      align-items: center;
+      flex-wrap: nowrap;
+    }
+
     .app-page-density .gap-2 {
       gap: 0.375rem;
     }

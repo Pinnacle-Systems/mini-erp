@@ -123,6 +123,7 @@ export function SalesDocumentLineEditor({
     containerRef: desktopTableRef,
     getRowOrder: () => lines.map((line) => line.id),
     getFieldOrderForRow: getLineFieldOrder,
+    appendMode: "grow-as-needed",
     canAppendFromRow: (lineId) => {
       if (isPosMode) {
         return false;
@@ -395,7 +396,7 @@ export function SalesDocumentLineEditor({
           </div>
         ) : null}
         <DenseTable
-          className="md:block overflow-x-hidden rounded-xl border-border/80 bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)]"
+          className="overflow-x-hidden md:block"
           tableClassName="text-[10px] lg:text-[11px]"
         >
           <DenseTableHead>

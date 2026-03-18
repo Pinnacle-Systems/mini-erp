@@ -7,6 +7,7 @@ type AppNavButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children
   label: string;
   active?: boolean;
   compact?: boolean;
+  iconOnly?: boolean;
 };
 
 export function AppNavButton({
@@ -14,6 +15,7 @@ export function AppNavButton({
   label,
   active = false,
   compact = false,
+  iconOnly = false,
   className,
   ...props
 }: AppNavButtonProps) {
@@ -31,6 +33,23 @@ export function AppNavButton({
       >
         <Icon className="h-4 w-4" />
         <span className="text-center">{label}</span>
+      </button>
+    );
+  }
+
+  if (iconOnly) {
+    return (
+      <button
+        className={cn(
+          "flex h-10 w-10 items-center justify-center rounded-lg text-left transition",
+          active ? "bg-[#e8f2ff] text-[#163a63]" : "text-foreground/80 hover:bg-white/70",
+          className,
+        )}
+        title={label}
+        aria-label={label}
+        {...props}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
       </button>
     );
   }

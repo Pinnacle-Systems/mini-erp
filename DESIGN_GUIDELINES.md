@@ -80,6 +80,9 @@ Design should support long-term workflows in a small-business operations tool.
 
 Use a "spreadsheet-like" UX as a cross-cutting desktop interaction pattern for repeated operational rows. Prefer spreadsheet-like layouts when the workflow is primarily repeated-row entry or comparison, not merely because the data can be tabular. This supports high-frequency data entry, side-by-side comparison, and workflows where users think in rows and columns rather than one record at a time.
 
+- Read-only desktop tables should still reuse the same dense spreadsheet-like visual language where possible: tight headers, compact rows, strong column structure, and aligned numeric/data cells. Do not infer from that rule that read-only tables must also adopt spreadsheet keyboard navigation or edit-mode behavior.
+- When desktop read-only and editable tabular surfaces are intended to feel like the same instrument, prefer one shared grid-based tabular primitive instead of mixing semantic table rendering for one surface and custom grid rendering for another. Keep interaction differences in cell behavior and focus state, not in the base desktop rendering engine.
+
 - Best candidates: Item variants, sales line items, purchase line items, stock adjustments, bulk pricing review, and batch ledger-like review screens.
 - Where to avoid it: Customer creation/editing, business setup, forms with lots of conditional fields/explanatory context, or workflows where each row needs many rich interactions or long text.
 - Required traits for spreadsheet-like UX:

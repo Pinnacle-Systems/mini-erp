@@ -5,6 +5,14 @@ import { IconButton } from "../atoms/IconButton";
 import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
 import { Switch } from "../atoms/Switch";
+import {
+  DenseTable,
+  DenseTableBody,
+  DenseTableCell,
+  DenseTableHead,
+  DenseTableHeaderCell,
+  DenseTableRow,
+} from "../molecules/DenseTable";
 import type {
   AdminStore,
   AdminBusinessesPagination,
@@ -184,89 +192,85 @@ export function BusinessManagementListView({
         })}
       </div>
 
-      <div className="hidden overflow-x-auto rounded-xl border border-border/80 bg-white min-[860px]:block">
-        <table className="w-full min-w-[760px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border/70 bg-muted/40 text-left text-[10px] uppercase tracking-[0.05em] text-muted-foreground">
-              <th className="px-2 py-1.5 font-semibold">Business</th>
-              <th className="px-2 py-1.5 font-semibold">Owner</th>
-              <th className="px-2 py-1.5 font-semibold">Type / Category</th>
-              <th className="px-2 py-1.5 font-semibold">License Dates</th>
-              <th className="px-2 py-1.5 font-semibold">Status</th>
-              <th className="px-2 py-1.5 text-right font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {businesses.map((business) => {
-              const isDeleted = Boolean(business.deletedAt);
-              const ownerDisplay = business.owner?.name?.trim() || business.owner?.phone || "-";
-              const licenseDates = business.license
-                ? `${business.license.beginsOn} to ${business.license.endsOn}`
-                : "Not configured";
-              return (
-                <tr
-                  key={business.id}
-                  className={`h-9 border-b border-white/60 align-middle transition-colors last:border-b-0 ${
-                    isDeleted ? "bg-[#fff7f7]" : "hover:bg-white/70"
-                  }`}
-                >
-                  <td className="px-2 py-0 align-middle">
-                    <p
-                      className={`text-xs font-semibold ${
-                        isDeleted ? "text-[#8a2b2b]" : "text-foreground"
-                      }`}
+      <DenseTable className="hidden min-[860px]:block">
+        <DenseTableHead>
+          <DenseTableRow>
+            <DenseTableHeaderCell className="w-[22%]">Business</DenseTableHeaderCell>
+            <DenseTableHeaderCell className="w-[18%]">Owner</DenseTableHeaderCell>
+            <DenseTableHeaderCell className="w-[20%]">Type / Category</DenseTableHeaderCell>
+            <DenseTableHeaderCell className="w-[22%]">License Dates</DenseTableHeaderCell>
+            <DenseTableHeaderCell className="w-[10%]">Status</DenseTableHeaderCell>
+            <DenseTableHeaderCell className="w-[8%] text-right">Action</DenseTableHeaderCell>
+          </DenseTableRow>
+        </DenseTableHead>
+        <DenseTableBody>
+          {businesses.map((business) => {
+            const isDeleted = Boolean(business.deletedAt);
+            const ownerDisplay = business.owner?.name?.trim() || business.owner?.phone || "-";
+            const licenseDates = business.license
+              ? `${business.license.beginsOn} to ${business.license.endsOn}`
+              : "Not configured";
+            return (
+              <DenseTableRow
+                key={business.id}
+                className={isDeleted ? "bg-[#fff7f7]" : "hover:bg-slate-50/70"}
+              >
+                <DenseTableCell>
+                  <p
+                    className={`text-xs font-semibold ${
+                      isDeleted ? "text-[#8a2b2b]" : "text-foreground"
+                    }`}
+                  >
+                    {business.name}
+                  </p>
+                </DenseTableCell>
+                <DenseTableCell className="text-xs">
+                  {business.ownerId ? (
+                    <Link
+                      to={`/app/users/${business.ownerId}`}
+                      className="text-[#24507e] underline underline-offset-2 transition hover:text-[#1f4167]"
                     >
-                      {business.name}
-                    </p>
-                  </td>
-                  <td className="px-2 py-0 align-middle text-xs">
-                    {business.ownerId ? (
-                      <Link
-                        to={`/app/users/${business.ownerId}`}
-                        className="text-[#24507e] underline underline-offset-2 transition hover:text-[#1f4167]"
-                      >
-                        {ownerDisplay}
-                      </Link>
-                    ) : (
-                      <span className="text-foreground/90">{ownerDisplay}</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-0 align-middle text-xs text-foreground/90">
-                    {(business.businessType || "-") + " / " + (business.businessCategory || "-")}
-                  </td>
-                  <td className="px-2 py-0 align-middle text-xs text-foreground/90">
-                    {licenseDates}
-                  </td>
-                  <td className="px-2 py-0 align-middle">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        isDeleted
-                          ? "bg-[#fce8e8] text-[#8a2b2b]"
-                          : "bg-[#e8f2ff] text-[#24507e]"
-                      }`}
-                    >
-                      {isDeleted ? "Inactive" : "Active"}
-                    </span>
-                  </td>
-                  <td className="px-2 py-0 align-middle">
-                    <div className="flex justify-end">
-                      <IconButton
-                        icon={Eye}
-                        variant="ghost"
-                        onClick={() => onOpenStore(business)}
-                        disabled={loading}
-                        className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
-                        aria-label={`View details for ${business.name}`}
-                        title="View details"
-                      />
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      {ownerDisplay}
+                    </Link>
+                  ) : (
+                    <span className="text-foreground/90">{ownerDisplay}</span>
+                  )}
+                </DenseTableCell>
+                <DenseTableCell className="text-xs text-foreground/90">
+                  {(business.businessType || "-") + " / " + (business.businessCategory || "-")}
+                </DenseTableCell>
+                <DenseTableCell className="text-xs text-foreground/90">
+                  {licenseDates}
+                </DenseTableCell>
+                <DenseTableCell>
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      isDeleted
+                        ? "bg-[#fce8e8] text-[#8a2b2b]"
+                        : "bg-[#e8f2ff] text-[#24507e]"
+                    }`}
+                  >
+                    {isDeleted ? "Inactive" : "Active"}
+                  </span>
+                </DenseTableCell>
+                <DenseTableCell className="text-right">
+                  <div className="flex justify-end">
+                    <IconButton
+                      icon={Eye}
+                      variant="ghost"
+                      onClick={() => onOpenStore(business)}
+                      disabled={loading}
+                      className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                      aria-label={`View details for ${business.name}`}
+                      title="View details"
+                    />
+                  </div>
+                </DenseTableCell>
+              </DenseTableRow>
+            );
+          })}
+        </DenseTableBody>
+      </DenseTable>
 
       {businesses.length === 0 ? (
         <div className="rounded-xl border border-border/80 bg-white p-3">

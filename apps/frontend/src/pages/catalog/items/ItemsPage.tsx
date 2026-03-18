@@ -107,12 +107,12 @@ export function ItemsPage({
 
   return (
     <section className="h-auto w-full lg:h-full lg:min-h-0">
-      <Card className="h-auto w-full p-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
-        <CardHeader className="p-0 pb-1.5 lg:shrink-0 lg:pb-0">
+      <Card className="h-auto w-full p-2 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+        <CardHeader className="p-0 pb-1.5 lg:mb-1 lg:shrink-0 lg:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-1.5">
             <div>
               <CardTitle className="text-sm">{title}</CardTitle>
-              <CardDescription className="text-[11px] lg:text-[10px]">
+              <CardDescription className="text-[11px] lg:hidden">
                 Browse, filter, and expand variants for catalog {title.toLowerCase()}.
               </CardDescription>
             </div>
@@ -127,18 +127,21 @@ export function ItemsPage({
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-1.5 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+        <CardContent className="space-y-1.5 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:space-y-px">
           <fieldset className="app-filter-panel lg:shrink-0">
             <legend className="app-filter-legend">
               Filters
             </legend>
-            <p className="app-filter-help">
+            <p className="app-filter-help lg:hidden">
               Refine {title.toLowerCase()} by search text and active status.
             </p>
-            <Label htmlFor="items-search" className="text-[11px] font-medium lg:text-[10px]">
-              Search {title.toLowerCase()}
-            </Label>
             <div className="app-filter-row">
+              <Label
+                htmlFor="items-search"
+                className="text-[11px] font-medium lg:shrink-0 lg:text-[10px] lg:leading-none"
+              >
+                Search {title.toLowerCase()}
+              </Label>
               <Input
                 id="items-search"
                 className={`${DENSE_INPUT_CLASS} w-full min-[642px]:flex-1 min-[642px]:min-w-[12rem]`}
@@ -175,7 +178,7 @@ export function ItemsPage({
             </div>
           </fieldset>
 
-          <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1">
+          <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:space-y-1 lg:pr-0">
             {hasVisibleInactiveRows ? (
               <div className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-100 px-2 py-1.5 text-[11px] text-amber-950 lg:shrink-0 lg:text-[10px]">
                 <span className="inline-block h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300" aria-hidden="true" />

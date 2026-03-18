@@ -9,12 +9,18 @@ export type SpreadsheetCell<FieldKey extends string> = {
   field: FieldKey;
 };
 
+export type SpreadsheetAppendMode = "grow-as-needed" | "restricted";
+
+export const DESKTOP_GROW_AS_NEEDED_STARTER_ROWS = 5;
+export const MOBILE_GROW_AS_NEEDED_STARTER_ROWS = 1;
+
 type SpreadsheetDirection = "previous" | "next" | "up" | "down";
 
 type SpreadsheetNavigationOptions<FieldKey extends string> = {
   containerRef: RefObject<HTMLElement | null>;
   getRowOrder: () => string[];
   getFieldOrderForRow: (rowId: string) => FieldKey[];
+  appendMode?: SpreadsheetAppendMode;
   canAppendFromRow?: (rowId: string) => boolean;
   onRequestAppendRow?: (cell: SpreadsheetCell<FieldKey>) => void;
 };
@@ -105,6 +111,7 @@ export function useSpreadsheetNavigation<FieldKey extends string>({
   containerRef,
   getRowOrder,
   getFieldOrderForRow,
+  appendMode = "restricted",
   canAppendFromRow,
   onRequestAppendRow,
 }: SpreadsheetNavigationOptions<FieldKey>) {
@@ -176,6 +183,7 @@ export function useSpreadsheetNavigation<FieldKey extends string>({
     }
 
     if (
+      appendMode === "grow-as-needed" &&
       direction === "next" &&
       appendRowRef.current &&
       (canAppendFromRowRef.current?.(rowId) ?? true)

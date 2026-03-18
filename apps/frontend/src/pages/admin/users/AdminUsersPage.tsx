@@ -11,6 +11,14 @@ import {
   CardContent,
 } from "../../../design-system/molecules/Card";
 import {
+  DenseTable,
+  DenseTableBody,
+  DenseTableCell,
+  DenseTableHead,
+  DenseTableHeaderCell,
+  DenseTableRow,
+} from "../../../design-system/molecules/DenseTable";
+import {
   listAdminUsers,
   type AdminUser,
   type AdminUsersPagination,
@@ -246,64 +254,60 @@ export function AdminUsersPage() {
             })}
           </div>
 
-          <div className="hidden overflow-x-auto rounded-xl border border-border/80 bg-white min-[860px]:block">
-            <table className="w-full min-w-[760px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border/70 bg-muted/40 text-left text-xs uppercase tracking-[0.05em] text-muted-foreground">
-                  <th className="px-3 py-2 font-semibold">User</th>
-                  <th className="px-3 py-2 font-semibold">Phone</th>
-                  <th className="px-3 py-2 font-semibold">Email</th>
-                  <th className="px-3 py-2 font-semibold">Role</th>
-                  <th className="px-3 py-2 font-semibold">Businesses</th>
-                  <th className="px-3 py-2 text-right font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => {
-                  const isDeleted = Boolean(user.deletedAt);
-                  return (
-                    <tr
-                      key={user.id}
-                      className={`h-9 border-b border-white/60 align-middle transition-colors last:border-b-0 ${
-                        isDeleted ? "bg-[#fff7f7]" : "hover:bg-white/70"
-                      }`}
-                    >
-                      <td className="px-3 py-0 align-middle font-semibold">
-                        {user.name?.trim() || "Unnamed user"}
-                      </td>
-                      <td className="px-3 py-0 align-middle">{user.phone || "-"}</td>
-                      <td className="px-3 py-0 align-middle">{user.email || "-"}</td>
-                      <td className="px-3 py-0 align-middle">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                            isDeleted
-                              ? "bg-[#fce8e8] text-[#8a2b2b]"
-                              : "bg-[#e8f2ff] text-[#24507e]"
-                          }`}
-                        >
-                          {isDeleted ? "Deleted" : user.systemRole}
-                        </span>
-                      </td>
-                      <td className="px-3 py-0 align-middle">{user.businessCount}</td>
-                      <td className="px-3 py-0 align-middle">
-                        <div className="flex justify-end">
-                          <IconButton
-                            icon={Eye}
-                            variant="ghost"
-                            onClick={() => navigate(`/app/users/${user.id}`)}
-                            disabled={loading}
-                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
-                            aria-label={`View details for ${user.name?.trim() || "Unnamed user"}`}
-                            title="View details"
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DenseTable className="hidden min-[860px]:block">
+            <DenseTableHead>
+              <DenseTableRow>
+                <DenseTableHeaderCell className="w-[24%]">User</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[18%]">Phone</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[24%]">Email</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[14%]">Role</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[12%]">Businesses</DenseTableHeaderCell>
+                <DenseTableHeaderCell className="w-[8%] text-right">Action</DenseTableHeaderCell>
+              </DenseTableRow>
+            </DenseTableHead>
+            <DenseTableBody>
+              {users.map((user) => {
+                const isDeleted = Boolean(user.deletedAt);
+                return (
+                  <DenseTableRow
+                    key={user.id}
+                    className={isDeleted ? "bg-[#fff7f7]" : "hover:bg-slate-50/70"}
+                  >
+                    <DenseTableCell className="font-semibold">
+                      {user.name?.trim() || "Unnamed user"}
+                    </DenseTableCell>
+                    <DenseTableCell>{user.phone || "-"}</DenseTableCell>
+                    <DenseTableCell>{user.email || "-"}</DenseTableCell>
+                    <DenseTableCell>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          isDeleted
+                            ? "bg-[#fce8e8] text-[#8a2b2b]"
+                            : "bg-[#e8f2ff] text-[#24507e]"
+                        }`}
+                      >
+                        {isDeleted ? "Deleted" : user.systemRole}
+                      </span>
+                    </DenseTableCell>
+                    <DenseTableCell>{user.businessCount}</DenseTableCell>
+                    <DenseTableCell className="text-right">
+                      <div className="flex justify-end">
+                        <IconButton
+                          icon={Eye}
+                          variant="ghost"
+                          onClick={() => navigate(`/app/users/${user.id}`)}
+                          disabled={loading}
+                          className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                          aria-label={`View details for ${user.name?.trim() || "Unnamed user"}`}
+                          title="View details"
+                        />
+                      </div>
+                    </DenseTableCell>
+                  </DenseTableRow>
+                );
+              })}
+            </DenseTableBody>
+          </DenseTable>
 
           {users.length === 0 ? (
             <div className="rounded-xl border border-border/80 bg-white p-3">

@@ -298,6 +298,13 @@ const buildOptionCombinations = (
   );
 };
 
+const collectGeneratedVariantSignatures = (variants: DraftVariant[]) =>
+  sortUnique(
+    variants
+      .map((variant) => buildVariantOptionSignature(variant.optionRows))
+      .filter((signature) => signature.length > 0),
+  );
+
 const EMPTY_BULK_OPTION = (): BulkOptionDraft => ({
   id: crypto.randomUUID(),
   key: "",
@@ -476,6 +483,7 @@ export function ItemDetailsPage({
   const [isEditing, setIsEditing] = useState(false);
   const [showVariantEditor, setShowVariantEditor] = useState(true);
   const [baseSkuManuallyEdited, setBaseSkuManuallyEdited] = useState(false);
+  const [excludedVariantSignatures, setExcludedVariantSignatures] = useState<string[]>([]);
   const [bulkOptions, setBulkOptions] = useState<BulkOptionDraft[]>([
     EMPTY_BULK_OPTION(),
   ]);
@@ -560,6 +568,7 @@ export function ItemDetailsPage({
       setItem(draft);
       setInitialItem(draft);
       setBaseSkuManuallyEdited(false);
+      setExcludedVariantSignatures([]);
       setBulkOptions(buildBulkOptionsFromVariants(draft.variants));
       setIsEditing(false);
       setShowVariantEditor(shouldShowVariantEditorByDefault(draft));
@@ -633,9 +642,9 @@ export function ItemDetailsPage({
   }, [activeStore, itemId]);
 
   useEffect(() => {
-    if (!initialItem) return;
+    if (!initialItem || excludedVariantSignatures.length > 0) return;
     setBulkOptions(buildBulkOptionsFromVariants(initialItem.variants));
-  }, [initialItem]);
+  }, [excludedVariantSignatures.length, initialItem]);
 
   useEffect(() => {
     if (!item || !showVariantEditor) return;
@@ -875,7 +884,7 @@ export function ItemDetailsPage({
     return window.confirm(messageLines.join("\n\n"));
   };
 
-  const applyBulkOptionsToVariants = () => {
+  const applyBulkOptionsToVariants = (options?: { resetExcluded?: boolean }) => {
     if (!item) return;
 
     const normalizedOptions = bulkOptions
@@ -899,6 +908,13 @@ export function ItemDetailsPage({
       return;
     }
 
+    const possibleSignatures = combinations.map((combination) =>
+      buildVariantOptionSignature(combination),
+    );
+    const nextExcludedSignatures = (options?.resetExcluded ? [] : excludedVariantSignatures).filter(
+      (signature) => possibleSignatures.includes(signature),
+    );
+    const excludedSignatureSet = new Set(nextExcludedSignatures);
     const existingBySignature = new Map(
       item.variants.map((variant) => [
         buildVariantOptionSignature(variant.optionRows),
@@ -915,8 +931,11 @@ export function ItemDetailsPage({
         : null;
     let reusableSimpleVariantConsumed = false;
 
-    const nextVariants = combinations.map((combination) => {
+    const nextVariants = combinations.flatMap((combination) => {
       const signature = buildVariantOptionSignature(combination);
+      if (excludedSignatureSet.has(signature)) {
+        return [];
+      }
       const existing = existingBySignature.get(signature);
       const optionRows = combination.map((entry) => ({
         id: crypto.randomUUID(),
@@ -932,12 +951,12 @@ export function ItemDetailsPage({
         if (variantToReuse.id === reusableSimpleVariant?.id) {
           reusableSimpleVariantConsumed = true;
         }
-        return {
+        return [{
           ...variantToReuse,
           optionRows,
-        };
+        }];
       }
-      return {
+      return [{
         id: `temp-${crypto.randomUUID()}`,
         name: buildAutoVariantName(item.name, optionRows),
         nameManuallyEdited: false,
@@ -959,9 +978,10 @@ export function ItemDetailsPage({
         purchaseServerVersion: 0,
         salesTaxMode: "EXCLUSIVE" as const,
         purchaseTaxMode: "EXCLUSIVE" as const,
-      } satisfies DraftVariant;
+      } satisfies DraftVariant];
     });
 
+    setExcludedVariantSignatures(nextExcludedSignatures);
     setItem({
       ...item,
       variants: nextVariants,
@@ -995,6 +1015,33 @@ export function ItemDetailsPage({
         next[option.key] = sortUnique([...existingValues, ...option.values]);
       }
       return next;
+    });
+  };
+
+  const resetGeneratedVariants = () => {
+    applyBulkOptionsToVariants({ resetExcluded: true });
+  };
+
+  const handleVariantTableChange = (nextVariants: DraftVariant[]) => {
+    setItem((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextVariantIds = new Set(nextVariants.map((variant) => variant.id));
+      const removedSignatures = collectGeneratedVariantSignatures(
+        current.variants.filter((variant) => !nextVariantIds.has(variant.id)),
+      );
+      if (removedSignatures.length > 0) {
+        setExcludedVariantSignatures((currentExcluded) =>
+          sortUnique([...currentExcluded, ...removedSignatures]),
+        );
+      }
+
+      return {
+        ...current,
+        variants: nextVariants,
+      };
     });
   };
 
@@ -1295,6 +1342,7 @@ export function ItemDetailsPage({
       );
       setItem(refreshedDraft);
       setInitialItem(refreshedDraft);
+      setExcludedVariantSignatures([]);
       setIsEditing(false);
       setShowVariantEditor(shouldShowVariantEditorByDefault(refreshedDraft));
     } catch (error) {
@@ -1338,6 +1386,7 @@ export function ItemDetailsPage({
     if (!item || !activeStore || !identityId || !isBusinessSelected || loading) return;
     const targetVariant = item.variants.find((variant) => variant.id === variantId);
     if (!targetVariant || targetVariant.id.startsWith("temp-")) return;
+    const removedSignature = buildVariantOptionSignature(targetVariant.optionRows);
     const confirmed = window.confirm(
       `Delete variant '${targetVariant.name || targetVariant.sku || "Untitled Variant"}'? If the server finds no usage history it will be permanently deleted. Otherwise archive it to preserve history. Unsaved edits on this screen will be discarded.`,
     );
@@ -1397,7 +1446,11 @@ export function ItemDetailsPage({
       );
       setItem(refreshedDraft);
       setInitialItem(refreshedDraft);
-      setBulkOptions(buildBulkOptionsFromVariants(refreshedDraft.variants));
+      if (removedSignature) {
+        setExcludedVariantSignatures((current) =>
+          sortUnique([...current, removedSignature]),
+        );
+      }
       setBaseSkuManuallyEdited(false);
       setIsEditing(false);
       setShowVariantEditor(shouldShowVariantEditorByDefault(refreshedDraft));
@@ -1414,6 +1467,9 @@ export function ItemDetailsPage({
 
     const persistedVariantIds = variantIds.filter((variantId) => !variantId.startsWith("temp-"));
     const tempVariantIds = variantIds.filter((variantId) => variantId.startsWith("temp-"));
+    const removedSignatures = collectGeneratedVariantSignatures(
+      item.variants.filter((variant) => variantIds.includes(variant.id)),
+    );
 
     if (persistedVariantIds.length === 0) {
       if (tempVariantIds.length === 0) return;
@@ -1421,6 +1477,11 @@ export function ItemDetailsPage({
         ...item,
         variants: item.variants.filter((variant) => !tempVariantIds.includes(variant.id)),
       });
+      if (removedSignatures.length > 0) {
+        setExcludedVariantSignatures((current) =>
+          sortUnique([...current, ...removedSignatures]),
+        );
+      }
       return;
     }
 
@@ -1487,6 +1548,11 @@ export function ItemDetailsPage({
       );
       setItem(nextDraft);
       setInitialItem(nextDraft);
+      if (removedSignatures.length > 0) {
+        setExcludedVariantSignatures((current) =>
+          sortUnique([...current, ...removedSignatures]),
+        );
+      }
       setIsEditing(false);
     } catch (error) {
       console.error(error);
@@ -1565,6 +1631,7 @@ export function ItemDetailsPage({
                   onSecondaryClick={() => {
                     if (!initialItem) return;
                     setItem(initialItem);
+                    setExcludedVariantSignatures([]);
                     setBulkOptions(
                       buildBulkOptionsFromVariants(initialItem.variants),
                     );
@@ -2064,7 +2131,7 @@ export function ItemDetailsPage({
                         size="sm"
                         className="h-7 px-2"
                         disabled={!isEditing || loading}
-                        onClick={applyBulkOptionsToVariants}
+                        onClick={() => applyBulkOptionsToVariants()}
                       >
                         Apply Options
                       </Button>
@@ -2075,10 +2142,7 @@ export function ItemDetailsPage({
                 <ItemVariantCardsEditor
                   variants={item.variants}
                   onVariantsChange={(next) =>
-                    setItem({
-                      ...item,
-                      variants: next as DraftVariant[],
-                    })
+                    handleVariantTableChange(next as DraftVariant[])
                   }
                   onVariantNameChange={(variantId, variantName) =>
                     setItem({
@@ -2108,46 +2172,17 @@ export function ItemDetailsPage({
                       ),
                     })
                   }
-                  onAddVariant={() => {
-                    if (!isEditing || loading) return;
-                    setItem({
-                      ...item,
-                      variants: [
-                        ...item.variants,
-                        {
-                          id: `temp-${crypto.randomUUID()}`,
-                          name: "",
-                          nameManuallyEdited: false,
-                          sku: "",
-                          skuManuallyEdited: false,
-                          barcode: "",
-                          gstSlab: "",
-                          isActive: itemActiveState,
-                          optionRows: [],
-                          usageCount: 0,
-                          isLocked: false,
-                          salesPriceAmount: null,
-                          purchasePriceAmount: null,
-                          salesPrice: "",
-                          purchasePrice: "",
-                          salesCurrency: "INR",
-                          purchaseCurrency: "INR",
-                          salesServerVersion: 0,
-                          purchaseServerVersion: 0,
-                          salesTaxMode: "EXCLUSIVE",
-                          purchaseTaxMode: "EXCLUSIVE",
-                        },
-                      ],
-                    });
-                    setShowVariantEditor(true);
-                  }}
+                  onAddVariant={() => undefined}
+                  appendMode="restricted"
+                  generatedVariantMode
+                  onResetGeneratedVariants={resetGeneratedVariants}
                   onVariantPurge={(variantId) => {
                     void onDeleteVariant(variantId);
                   }}
                   onBulkVariantPurge={(variantIds) => {
                     void onDeleteVariants(variantIds);
                   }}
-                  addVariantLabel="Add Row"
+                  showAddVariantAction={false}
                   denseInputClassName={DENSE_INPUT_CLASS}
                   showActiveToggle
                   showPricingFields
