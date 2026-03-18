@@ -163,6 +163,15 @@ export function LookupDropdownInput<T>({
     });
   };
 
+  const closeDropdown = () => {
+    setIsFocused(false);
+    setActiveOptionIndex(-1);
+    setDropdownStyle(null);
+  };
+
+  const isDropdownOwnedKey = (key: string) =>
+    key === "ArrowDown" || key === "ArrowUp" || key === "Enter" || key === "Escape";
+
   return (
     <div ref={containerRef} className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
       <Input
@@ -200,26 +209,43 @@ export function LookupDropdownInput<T>({
           onValueChange(event.target.value);
         }}
         onKeyDown={(event) => {
+          const hasResults = filteredOptions.length > 0;
+          const ownsKey = isDropdownOwnedKey(event.key);
+
+          if (ownsKey && !disabled && hasResults) {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setIsFocused(true);
+              setActiveOptionIndex((current) =>
+                current < filteredOptions.length - 1 ? current + 1 : 0,
+              );
+              return;
+            }
+
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setIsFocused(true);
+              setActiveOptionIndex((current) =>
+                current > 0 ? current - 1 : filteredOptions.length - 1,
+              );
+              return;
+            }
+
+            if (event.key === "Enter" && highlightedOptionIndex >= 0) {
+              event.preventDefault();
+              selectOption(filteredOptions[highlightedOptionIndex]);
+              return;
+            }
+
+            if (event.key === "Escape" && isDropdownOpen) {
+              event.preventDefault();
+              closeDropdown();
+              return;
+            }
+          }
+
           mergedInputProps.onKeyDown?.(event);
-          if (event.defaultPrevented || disabled || filteredOptions.length === 0) {
-            return;
-          }
-
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            setIsFocused(true);
-            setActiveOptionIndex((current) =>
-              current < filteredOptions.length - 1 ? current + 1 : 0,
-            );
-            return;
-          }
-
-          if (event.key === "ArrowUp") {
-            event.preventDefault();
-            setIsFocused(true);
-            setActiveOptionIndex((current) =>
-              current > 0 ? current - 1 : filteredOptions.length - 1,
-            );
+          if (event.defaultPrevented || disabled || !hasResults) {
             return;
           }
 
@@ -231,9 +257,7 @@ export function LookupDropdownInput<T>({
 
           if (event.key === "Escape" && isDropdownOpen) {
             event.preventDefault();
-            setIsFocused(false);
-            setActiveOptionIndex(-1);
-            setDropdownStyle(null);
+            closeDropdown();
           }
         }}
         className={inputClassName}
