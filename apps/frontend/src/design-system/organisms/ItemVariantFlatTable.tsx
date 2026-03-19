@@ -463,23 +463,31 @@ export function ItemVariantFlatTable({
                 className={highlightInactiveRows && !row.isActive ? "[&>div]:!bg-amber-100" : undefined}
               >
                 {showCategory ? (
-                  <TabularCell className="truncate font-normal" title={row.category || "-"}>
+                  <TabularCell truncate hoverTitle={row.category || "-"} className="font-normal">
                     {row.category || "-"}
                   </TabularCell>
                 ) : null}
-                <TabularCell className="truncate font-normal text-foreground" title={getPrimaryName(row)}>
+                <TabularCell truncate hoverTitle={getPrimaryName(row)} className="font-normal text-foreground">
                   {getPrimaryName(row)}
                 </TabularCell>
-                <TabularCell className="truncate font-mono text-[11px]" title={row.sku || "-"}>
+                <TabularCell
+                  truncate
+                  hoverTitle={row.sku || "-"}
+                  className="font-normal [font-feature-settings:var(--tabular-num-features)]"
+                >
                   {row.sku || "-"}
                 </TabularCell>
                 {showUnit ? (
-                  <TabularCell align="center" className="truncate" title={row.unit || "-"}>
+                  <TabularCell truncate hoverTitle={row.unit || "-"} align="center">
                     {row.unit || "-"}
                   </TabularCell>
                 ) : null}
                 {showCommercialFields ? (
-                  <TabularCell className="truncate font-mono [font-feature-settings:var(--tabular-num-features)]" title={row.hsnSac || "-"}>
+                  <TabularCell
+                    truncate
+                    hoverTitle={row.hsnSac || "-"}
+                    className="font-normal [font-feature-settings:var(--tabular-num-features)]"
+                  >
                     {row.hsnSac || "-"}
                   </TabularCell>
                 ) : null}

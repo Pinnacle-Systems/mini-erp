@@ -4,6 +4,7 @@ import { GST_SLAB_OPTIONS } from "../../lib/gst-slabs";
 
 export type GstSlabSelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "children"> & {
   placeholderOption?: string;
+  unstyled?: boolean;
 };
 
 export function GstSlabSelect({

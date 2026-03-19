@@ -1523,7 +1523,7 @@ export function AddItemPage({
             <div className="space-y-1.5 lg:flex-1 lg:min-h-0 lg:space-y-px">
               {!hasVariants ? (
               <>
-              <div ref={quickEntryContainerRef} className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0.5">
+              <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0.5">
               <div className="space-y-1.5 lg:hidden">
                 <div className="overflow-visible rounded-lg border border-border/80 bg-white lg:flex lg:min-h-0 lg:flex-col lg:rounded-[var(--tabular-frame-radius)]">
                   <div
@@ -1994,7 +1994,7 @@ export function AddItemPage({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className={cn("h-7 px-2", tabularFooterButtonClassName)}
+                      className={cn("px-2", tabularFooterButtonClassName)}
                       onClick={() => appendQuickRow(false)}
                     >
                       Add Row
@@ -2003,7 +2003,7 @@ export function AddItemPage({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className={cn("h-7 px-2", tabularFooterButtonClassName)}
+                      className={cn("px-2", tabularFooterButtonClassName)}
                       onClick={() => setQuickRows(buildInitialRows())}
                     >
                       Reset
@@ -2012,6 +2012,7 @@ export function AddItemPage({
                 </div>
               </div>
               <TabularSurface
+                ref={quickEntryContainerRef}
                 role="grid"
                 aria-label="Quick add items"
                 className="hidden overflow-hidden bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
@@ -2038,6 +2039,7 @@ export function AddItemPage({
                       <TabularRow key={row.id} columns={quickEntryDesktopGridTemplate} interactive>
                         <TabularCell variant="editable" error={Boolean(rowErrors.name)}>
                           <Input
+                            unstyled
                             {...getQuickRowCellDataAttributes(row.id, "name")}
                             className={getQuickEntryFieldClassName(row.id, "name", undefined, "lg:pl-2.5")}
                             value={row.name}
@@ -2058,6 +2060,7 @@ export function AddItemPage({
                         </TabularCell>
                         <TabularCell variant="editable" error={Boolean(rowErrors.sku)}>
                           <Input
+                            unstyled
                             {...getQuickRowCellDataAttributes(row.id, "sku")}
                             className={getQuickEntryFieldClassName(row.id, "sku", undefined, "lg:pl-2.5")}
                             value={row.sku}
@@ -2086,6 +2089,7 @@ export function AddItemPage({
                         </TabularCell>
                         <TabularCell variant="editable" error={Boolean(rowErrors.hsnSac)}>
                           <Input
+                            unstyled
                             {...getQuickRowCellDataAttributes(row.id, "hsnSac")}
                             className={getQuickEntryFieldClassName(row.id, "hsnSac", undefined, "lg:pl-2.5")}
                             value={row.hsnSac}
@@ -2107,6 +2111,7 @@ export function AddItemPage({
                         </TabularCell>
                         <TabularCell variant="editable" align="end" error={Boolean(rowErrors.salesPrice)}>
                           <Input
+                            unstyled
                             {...getQuickRowCellDataAttributes(row.id, "salesPrice")}
                             className={getQuickEntryFieldClassName(
                               row.id,
@@ -2134,6 +2139,7 @@ export function AddItemPage({
                         {showPurchasePrice ? (
                           <TabularCell variant="editable" align="end" error={Boolean(rowErrors.purchasePrice)}>
                             <Input
+                              unstyled
                               {...getQuickRowCellDataAttributes(row.id, "purchasePrice")}
                               className={getQuickEntryFieldClassName(
                                 row.id,
@@ -2161,6 +2167,7 @@ export function AddItemPage({
                         ) : null}
                         <TabularCell variant="editable">
                           <GstSlabSelect
+                            unstyled
                             {...getQuickRowCellDataAttributes(row.id, "gstSlab")}
                             className={getQuickEntryFieldClassName(row.id, "gstSlab", undefined, `${QUICK_ENTRY_SELECT_CLASS} w-full`)}
                             value={row.gstSlab}
@@ -2179,6 +2186,7 @@ export function AddItemPage({
                         </TabularCell>
                         <TabularCell variant="editable">
                           <Select
+                            unstyled
                             {...getQuickRowCellDataAttributes(row.id, "unit")}
                             className={getQuickEntryFieldClassName(row.id, "unit", undefined, `${QUICK_ENTRY_SELECT_CLASS} w-full`)}
                             value={row.unit}
@@ -2238,6 +2246,7 @@ export function AddItemPage({
                             )}
                             maxVisibleOptions={10}
                             inputClassName={getQuickEntryFieldClassName(row.id, "category", undefined, "lg:pl-2.5")}
+                            inputUnstyled
                             optionClassName="text-[10px]"
                           />
                         </TabularCell>
@@ -2271,7 +2280,7 @@ export function AddItemPage({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className={cn("h-7 px-2", tabularFooterButtonClassName)}
+                      className={cn("px-2", tabularFooterButtonClassName)}
                       onClick={() => appendQuickRow(false)}
                     >
                       Add Row
@@ -2280,7 +2289,7 @@ export function AddItemPage({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className={cn("h-7 px-2", tabularFooterButtonClassName)}
+                      className={cn("px-2", tabularFooterButtonClassName)}
                       onClick={() => setQuickRows(buildInitialRows())}
                     >
                       Reset

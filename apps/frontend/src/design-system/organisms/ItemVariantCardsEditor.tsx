@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import { Button } from "../atoms/Button";
 import { Checkbox } from "../atoms/Checkbox";
@@ -12,13 +11,23 @@ import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
 import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
 import {
+  TabularBody,
+  TabularCell,
+  TabularFooter,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../molecules/TabularSurface";
+import {
   getSpreadsheetCellClassName,
   spreadsheetCellControlClassName,
   spreadsheetCellNumericClassName,
   spreadsheetCellSelectClassName,
-  spreadsheetGridClassName,
-  spreadsheetHeaderCellClassName,
 } from "../../design-system/molecules/spreadsheetStyles";
+import {
+  tabularFooterButtonClassName,
+  tabularNumericClassName,
+} from "../molecules/tabularTokens";
 import {
   useSpreadsheetNavigation,
   type SpreadsheetAppendMode,
@@ -228,8 +237,8 @@ export function ItemVariantCardsEditor({
         ? [
             "minmax(0, 1.6fr)",
             "minmax(0, 1.3fr)",
-            "minmax(0, 1.6fr)",
-            "minmax(0, 1.1fr)",
+            "minmax(0, 1.35fr)",
+            "minmax(0, 1.35fr)",
             "minmax(0, 1.3fr)",
           ]
         : [
@@ -247,7 +256,7 @@ export function ItemVariantCardsEditor({
       "minmax(0, 1.8fr)",
       ...optionColumnWidths,
       ...columnsAfterName,
-      "4.25rem",
+      ...(showActiveToggle ? ["4.25rem"] : []),
     ].join(" ");
   })();
 
@@ -337,10 +346,7 @@ export function ItemVariantCardsEditor({
   }, [highlightedVariantId]);
 
   return (
-    <div
-      ref={containerRef}
-      className="grid w-full gap-1.5 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card"
-    >
+    <div className="grid w-full gap-1.5 lg:gap-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
       <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
         <div className="flex items-center gap-2">
           <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
@@ -431,317 +437,563 @@ export function ItemVariantCardsEditor({
         </div>
       </div>
 
-      <div
-        className={cn(
-          "grid gap-1 lg:max-h-[22rem] lg:min-h-0 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:p-0",
-          spreadsheetGridClassName,
-        )}
-      >
-        {generatedVariantMode && variants.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/80 bg-slate-50 px-3 py-4 text-sm text-muted-foreground lg:mx-1">
-            <div>All generated combinations are currently excluded.</div>
-            {onResetGeneratedVariants ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2 h-7 px-2"
-                disabled={disabled}
-                onClick={onResetGeneratedVariants}
-              >
-                Reset to all combinations
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-        <div
-          className={cn(
-            "hidden lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center lg:border-b lg:border-border/70 lg:px-0 lg:py-0 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground",
-            spreadsheetGridClassName,
-          )}
-          style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
-        >
-          <span className={cn(spreadsheetHeaderCellClassName, "justify-center px-0")}>
-            <Checkbox
-              checked={allSelectableSelected}
-              disabled={selectableVariantIds.length === 0}
-              aria-label="Select all variants"
-              onChange={(event) => handleToggleSelectAll(event.target.checked)}
-            />
-          </span>
-          <span className={spreadsheetHeaderCellClassName}>Name</span>
-          {optionColumns.map((column) => (
-            <span key={column.id} className={spreadsheetHeaderCellClassName}>
-              {column.label}
-            </span>
-          ))}
-          <span className={spreadsheetHeaderCellClassName}>SKU</span>
-          <span className={spreadsheetHeaderCellClassName}>Barcode</span>
-          {showPricingFields ? (
-            <span className={cn(spreadsheetHeaderCellClassName, "justify-end text-right")}>
-              Sales
-            </span>
-          ) : null}
-          {showPricingFields && showPurchasePrice ? (
-            <span className={cn(spreadsheetHeaderCellClassName, "justify-end text-right")}>
-              Purchase
-            </span>
-          ) : null}
-          {showPricingFields || showGstSlabField ? (
-            <span className={spreadsheetHeaderCellClassName}>GST %</span>
-          ) : null}
-          <span className={cn(spreadsheetHeaderCellClassName, "justify-center text-center")}>
-            {showActiveToggle ? "Active" : ""}
-          </span>
-        </div>
-        {variants.map((variant) => {
-          const isLocked = Boolean(variant.isLocked);
-          const isReadOnly = disabled || isLocked;
-          const optionByColumn = new Map(
-            variant.optionRows.map((option) => [normalizeOptionKey(option.key), option] as const),
-          );
-          return (
-            <div
-              key={variant.id}
-              className={`rounded-xl border border-border/70 p-1.5 transition-colors duration-700 lg:rounded-none lg:border-0 lg:px-0 lg:py-0 last:lg:border-b-0 ${
-                highlightedVariantId === variant.id ? "bg-sky-50/90" : "bg-white/90 lg:bg-transparent"
-              }`}
-            >
-              {isLocked ? (
-                <p className="mb-1 text-[10px] font-medium text-muted-foreground">
-                  Used in {variant.usageCount ?? 0} record
-                  {(variant.usageCount ?? 0) === 1 ? "" : "s"}: SKU, name, barcode, options,
-                  and delete are locked.
-                </p>
-              ) : null}
-              <div
-                className={cn(
-                  "grid gap-1.5 lg:grid lg:[grid-template-columns:var(--variant-grid-cols)] lg:items-center",
-                  spreadsheetGridClassName,
-                )}
-                style={{ "--variant-grid-cols": desktopGridTemplate } as CSSProperties}
-              >
-                <div className={cn("grid gap-1 lg:justify-items-center", getSpreadsheetCellClassName({ align: "center" }))}>
-                  <Label className="lg:hidden">Select</Label>
-                  <Checkbox
-                    checked={selectedVariantIds.includes(variant.id)}
-                    disabled={isReadOnly}
-                    aria-label={`Select ${variant.name || variant.sku || "variant"}`}
-                    onChange={(event) =>
-                      handleToggleSelection(variant.id, event.target.checked)
-                    }
-                  />
-                </div>
-                <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
-                  <Label className="lg:hidden">Name</Label>
-                  <Input
-                    {...getCellDataAttributes(variant.id, "name")}
-                    data-variant-grid-cell={`${variant.id}:name`}
-                    className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
-                    value={variant.name}
-                    disabled={isReadOnly}
-                    onFocus={() => handleCellFocus(variant.id, "name")}
-                    onKeyDown={(event) => handleCellKeyDown(event, variant.id, "name")}
-                    onChange={(event) =>
-                      onVariantNameChange
-                        ? onVariantNameChange(variant.id, event.target.value)
-                        : onVariantsChange(
-                            updateVariant(variants, variant.id, (entry) => ({
-                              ...entry,
-                              name: event.target.value,
-                            })),
-                          )
-                    }
-                    placeholder="Variant name"
-                  />
-                </div>
-                {optionColumns.map((column) => {
-                  const option = optionByColumn.get(column.id);
-                  return (
-                    <div
-                      key={`${variant.id}:${column.id}`}
-                      className={cn(
-                        "grid gap-1 lg:flex lg:items-center",
-                        getSpreadsheetCellClassName(),
-                      )}
-                    >
-                      <Label className="lg:hidden">{column.label}</Label>
-                      <span className="px-2 text-[11px] text-foreground lg:px-2 lg:text-[10px]">
-                        {option?.value?.trim() ? option.value.toUpperCase() : "-"}
-                      </span>
-                    </div>
-                  );
-                })}
-                <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
-                  <Label className="lg:hidden">SKU</Label>
-                  <Input
-                    {...getCellDataAttributes(variant.id, "sku")}
-                    data-variant-grid-cell={`${variant.id}:sku`}
-                    className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
-                    value={variant.sku}
-                    disabled={isReadOnly}
-                    onFocus={() => handleCellFocus(variant.id, "sku")}
-                    onKeyDown={(event) => handleCellKeyDown(event, variant.id, "sku")}
-                    onChange={(event) =>
-                      onVariantSkuChange
-                        ? onVariantSkuChange(variant.id, event.target.value)
-                        : onVariantsChange(
-                            updateVariant(variants, variant.id, (entry) => ({
-                              ...entry,
-                              sku: event.target.value,
-                            })),
-                          )
-                    }
-                    placeholder="Variant SKU"
-                  />
-                </div>
-                <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
-                  <Label className="lg:hidden">Barcode</Label>
-                  <Input
-                    {...getCellDataAttributes(variant.id, "barcode")}
-                    data-variant-grid-cell={`${variant.id}:barcode`}
-                    className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
-                    value={variant.barcode}
-                    disabled={isReadOnly}
-                    onFocus={() => handleCellFocus(variant.id, "barcode")}
-                    onKeyDown={(event) => handleCellKeyDown(event, variant.id, "barcode")}
-                    onChange={(event) =>
-                      onVariantsChange(
-                        updateVariant(variants, variant.id, (entry) => ({
-                          ...entry,
-                          barcode: event.target.value,
-                        })),
-                      )
-                    }
-                    placeholder="Optional barcode"
-                  />
-                </div>
-                {showPricingFields ? (
-                  <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
-                    <Label className="lg:hidden">Sales</Label>
-                    <Input
-                      {...getCellDataAttributes(variant.id, "salesPrice")}
-                      data-variant-grid-cell={`${variant.id}:salesPrice`}
-                      className={cn(
-                        denseInputClassName,
-                        getDesktopInputClassName({ numeric: true }),
-                      )}
-                      value={variant.salesPrice ?? ""}
-                      disabled={isReadOnly}
-                      onFocus={() => handleCellFocus(variant.id, "salesPrice")}
-                      onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
-                      onChange={(event) =>
-                        onVariantsChange(
-                          updateVariant(variants, variant.id, (entry) => ({
-                            ...entry,
-                            salesPrice: event.target.value,
-                          })),
-                        )
-                      }
-                      placeholder="Sales price"
-                      inputMode="decimal"
-                    />
-                  </div>
-                ) : null}
-                {showPricingFields && showPurchasePrice ? (
-                  <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
-                    <Label className="lg:hidden">Purchase</Label>
-                    <Input
-                      {...getCellDataAttributes(variant.id, "purchasePrice")}
-                      data-variant-grid-cell={`${variant.id}:purchasePrice`}
-                      className={cn(
-                        denseInputClassName,
-                        getDesktopInputClassName({ numeric: true }),
-                      )}
-                      value={variant.purchasePrice ?? ""}
-                      disabled={isReadOnly}
-                      onFocus={() => handleCellFocus(variant.id, "purchasePrice")}
-                      onKeyDown={(event) =>
-                        handleCellKeyDown(event, variant.id, "purchasePrice")
-                      }
-                      onChange={(event) =>
-                        onVariantsChange(
-                          updateVariant(variants, variant.id, (entry) => ({
-                            ...entry,
-                            purchasePrice: event.target.value,
-                          })),
-                        )
-                      }
-                      placeholder="Purchase price"
-                      inputMode="decimal"
-                    />
-                  </div>
-                ) : null}
-                {showPricingFields || showGstSlabField ? (
-                  <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
-                    <Label className="lg:hidden">GST %</Label>
-                    <GstSlabSelect
-                      {...getCellDataAttributes(variant.id, "gstSlab")}
-                      data-variant-grid-cell={`${variant.id}:gstSlab`}
-                      className={cn(denseInputClassName, getDesktopInputClassName({ select: true }))}
-                      value={variant.gstSlab ?? ""}
-                      disabled={isReadOnly}
-                      onFocus={() => handleCellFocus(variant.id, "gstSlab")}
-                      onKeyDown={(event) => handleCellKeyDown(event, variant.id, "gstSlab")}
-                      onChange={(event) =>
-                        onVariantsChange(
-                          updateVariant(variants, variant.id, (entry) => ({
-                            ...entry,
-                            gstSlab: event.target.value,
-                          })),
-                        )
-                      }
-                    />
-                  </div>
-                ) : null}
-                <div
-                  className={cn(
-                    "grid gap-1 lg:justify-items-center",
-                    getSpreadsheetCellClassName({ align: "center" }),
-                  )}
-                >
-                  <Label className="lg:hidden">Active</Label>
-                  {showActiveToggle ? (
-                    <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground lg:text-[10px]">
-                      <input
-                        type="checkbox"
-                        checked={variant.isActive ?? true}
-                        disabled={isReadOnly}
-                        aria-label={`Active state for ${variant.name || "variant"}`}
-                        onChange={(event) =>
-                          onVariantsChange(
-                            updateVariant(variants, variant.id, (entry) => ({
-                              ...entry,
-                              isActive: event.target.checked,
-                            })),
-                          )
-                        }
-                      />
-                      <span className="lg:hidden">Active</span>
-                    </label>
-                  ) : (
-                    <span className="hidden lg:block" aria-hidden="true" />
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div className="pt-0.5 lg:hidden">
-          {showManualAddAction ? (
+      {generatedVariantMode && variants.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/80 bg-slate-50 px-3 py-4 text-sm text-muted-foreground lg:mx-1">
+          <div>All generated combinations are currently excluded.</div>
+          {onResetGeneratedVariants ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 w-full"
-              onClick={onAddVariant}
+              className="mt-2 h-7 px-2"
               disabled={disabled}
+              onClick={onResetGeneratedVariants}
             >
-              {addVariantLabel}
+              Reset to all combinations
             </Button>
           ) : null}
         </div>
-      </div>
+      ) : null}
+
+      {variants.length > 0 ? (
+        <>
+          <div className="grid gap-1 lg:hidden">
+            {variants.map((variant) => {
+              const isLocked = Boolean(variant.isLocked);
+              const isReadOnly = disabled || isLocked;
+              const optionByColumn = new Map(
+                variant.optionRows.map((option) => [normalizeOptionKey(option.key), option] as const),
+              );
+
+              return (
+                <div
+                  key={variant.id}
+                  className={`rounded-xl border border-border/70 p-1.5 transition-colors duration-700 ${
+                    highlightedVariantId === variant.id ? "bg-sky-50/90" : "bg-white/90"
+                  }`}
+                >
+                  {isLocked ? (
+                    <p className="mb-1 text-[10px] font-medium text-muted-foreground">
+                      Used in {variant.usageCount ?? 0} record
+                      {(variant.usageCount ?? 0) === 1 ? "" : "s"}: SKU, name, barcode, options,
+                      and delete are locked.
+                    </p>
+                  ) : null}
+                  <div className="grid gap-1.5">
+                    <div className={cn("grid gap-1", getSpreadsheetCellClassName({ align: "center" }))}>
+                      <Label>Select</Label>
+                      <Checkbox
+                        checked={selectedVariantIds.includes(variant.id)}
+                        disabled={isReadOnly}
+                        aria-label={`Select ${variant.name || variant.sku || "variant"}`}
+                        onChange={(event) =>
+                          handleToggleSelection(variant.id, event.target.checked)
+                        }
+                      />
+                    </div>
+                    <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                      <Label>Name</Label>
+                      <Input
+                        {...getCellDataAttributes(variant.id, "name")}
+                        data-variant-grid-cell={`${variant.id}:name`}
+                        className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
+                        value={variant.name}
+                        disabled={isReadOnly}
+                        onFocus={() => handleCellFocus(variant.id, "name")}
+                        onKeyDown={(event) => handleCellKeyDown(event, variant.id, "name")}
+                        onChange={(event) =>
+                          onVariantNameChange
+                            ? onVariantNameChange(variant.id, event.target.value)
+                            : onVariantsChange(
+                                updateVariant(variants, variant.id, (entry) => ({
+                                  ...entry,
+                                  name: event.target.value,
+                                })),
+                              )
+                        }
+                        placeholder="Variant name"
+                      />
+                    </div>
+                    {optionColumns.map((column) => {
+                      const option = optionByColumn.get(column.id);
+                      return (
+                        <div
+                          key={`${variant.id}:${column.id}`}
+                          className={cn("grid gap-1", getSpreadsheetCellClassName())}
+                        >
+                          <Label>{column.label}</Label>
+                          <span className="px-2 text-[11px] text-foreground">
+                            {option?.value?.trim() ? option.value.toUpperCase() : "-"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                      <Label>SKU</Label>
+                      <Input
+                        {...getCellDataAttributes(variant.id, "sku")}
+                        data-variant-grid-cell={`${variant.id}:sku`}
+                        className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
+                        value={variant.sku}
+                        disabled={isReadOnly}
+                        onFocus={() => handleCellFocus(variant.id, "sku")}
+                        onKeyDown={(event) => handleCellKeyDown(event, variant.id, "sku")}
+                        onChange={(event) =>
+                          onVariantSkuChange
+                            ? onVariantSkuChange(variant.id, event.target.value)
+                            : onVariantsChange(
+                                updateVariant(variants, variant.id, (entry) => ({
+                                  ...entry,
+                                  sku: event.target.value,
+                                })),
+                              )
+                        }
+                        placeholder="Variant SKU"
+                      />
+                    </div>
+                    <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                      <Label>Barcode</Label>
+                      <Input
+                        {...getCellDataAttributes(variant.id, "barcode")}
+                        data-variant-grid-cell={`${variant.id}:barcode`}
+                        className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
+                        value={variant.barcode}
+                        disabled={isReadOnly}
+                        onFocus={() => handleCellFocus(variant.id, "barcode")}
+                        onKeyDown={(event) => handleCellKeyDown(event, variant.id, "barcode")}
+                        onChange={(event) =>
+                          onVariantsChange(
+                            updateVariant(variants, variant.id, (entry) => ({
+                              ...entry,
+                              barcode: event.target.value,
+                            })),
+                          )
+                        }
+                        placeholder="Optional barcode"
+                      />
+                    </div>
+                    {showPricingFields ? (
+                      <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                        <Label>Sales</Label>
+                        <Input
+                          {...getCellDataAttributes(variant.id, "salesPrice")}
+                          data-variant-grid-cell={`${variant.id}:salesPrice`}
+                          className={cn(
+                            denseInputClassName,
+                            getDesktopInputClassName({ numeric: true }),
+                          )}
+                          value={variant.salesPrice ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "salesPrice")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesPrice: event.target.value,
+                              })),
+                            )
+                          }
+                          placeholder="Sales price"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    ) : null}
+                    {showPricingFields && showPurchasePrice ? (
+                      <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                        <Label>Purchase</Label>
+                        <Input
+                          {...getCellDataAttributes(variant.id, "purchasePrice")}
+                          data-variant-grid-cell={`${variant.id}:purchasePrice`}
+                          className={cn(
+                            denseInputClassName,
+                            getDesktopInputClassName({ numeric: true }),
+                          )}
+                          value={variant.purchasePrice ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "purchasePrice")}
+                          onKeyDown={(event) =>
+                            handleCellKeyDown(event, variant.id, "purchasePrice")
+                          }
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                purchasePrice: event.target.value,
+                              })),
+                            )
+                          }
+                          placeholder="Purchase price"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    ) : null}
+                    {showPricingFields || showGstSlabField ? (
+                      <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                        <Label>GST %</Label>
+                        <GstSlabSelect
+                          {...getCellDataAttributes(variant.id, "gstSlab")}
+                          data-variant-grid-cell={`${variant.id}:gstSlab`}
+                          className={cn(denseInputClassName, getDesktopInputClassName({ select: true }))}
+                          value={variant.gstSlab ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "gstSlab")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "gstSlab")}
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                gstSlab: event.target.value,
+                              })),
+                            )
+                          }
+                        />
+                      </div>
+                    ) : null}
+                    <div
+                      className={cn(
+                        "grid gap-1",
+                        getSpreadsheetCellClassName({ align: "center" }),
+                      )}
+                    >
+                      <Label>Active</Label>
+                      {showActiveToggle ? (
+                        <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={variant.isActive ?? true}
+                            disabled={isReadOnly}
+                            aria-label={`Active state for ${variant.name || "variant"}`}
+                            onChange={(event) =>
+                              onVariantsChange(
+                                updateVariant(variants, variant.id, (entry) => ({
+                                  ...entry,
+                                  isActive: event.target.checked,
+                                })),
+                              )
+                            }
+                          />
+                          <span>Active</span>
+                        </label>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="pt-0.5">
+              {showManualAddAction ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-full"
+                  onClick={onAddVariant}
+                  disabled={disabled}
+                >
+                  {addVariantLabel}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          <TabularSurface
+            ref={containerRef}
+            role="grid"
+            aria-label="Variants"
+            className="hidden lg:flex lg:max-h-[22rem] lg:min-h-0 lg:flex-1"
+          >
+            <TabularHeader>
+              <TabularRow columns={desktopGridTemplate}>
+                <TabularCell variant="header" align="center" className="px-0">
+                  <Checkbox
+                    className="mx-auto"
+                    checked={allSelectableSelected}
+                    disabled={selectableVariantIds.length === 0}
+                    aria-label="Select all variants"
+                    onChange={(event) => handleToggleSelectAll(event.target.checked)}
+                  />
+                </TabularCell>
+                <TabularCell variant="header">Name</TabularCell>
+                {optionColumns.map((column) => (
+                  <TabularCell key={column.id} variant="header">
+                    {column.label}
+                  </TabularCell>
+                ))}
+                <TabularCell variant="header">SKU</TabularCell>
+                <TabularCell variant="header">Barcode</TabularCell>
+                {showPricingFields ? (
+                  <TabularCell variant="header" align="end">
+                    Sales
+                  </TabularCell>
+                ) : null}
+                {showPricingFields && showPurchasePrice ? (
+                  <TabularCell variant="header" align="end">
+                    Purchase
+                  </TabularCell>
+                ) : null}
+                {showPricingFields || showGstSlabField ? (
+                  <TabularCell variant="header">GST %</TabularCell>
+                ) : null}
+                {showActiveToggle ? (
+                  <TabularCell variant="header" align="center">
+                    Active
+                  </TabularCell>
+                ) : null}
+              </TabularRow>
+            </TabularHeader>
+
+            <TabularBody>
+              {variants.map((variant) => {
+                const isLocked = Boolean(variant.isLocked);
+                const isReadOnly = disabled || isLocked;
+                const optionByColumn = new Map(
+                  variant.optionRows.map((option) => [normalizeOptionKey(option.key), option] as const),
+                );
+
+                return (
+                  <TabularRow
+                    key={variant.id}
+                    columns={desktopGridTemplate}
+                    interactive
+                    className={cn(
+                      highlightedVariantId === variant.id ? "bg-sky-50/80" : undefined,
+                    )}
+                    title={
+                      isLocked
+                        ? `Used in ${variant.usageCount ?? 0} record${(variant.usageCount ?? 0) === 1 ? "" : "s"}: SKU, name, barcode, options, and delete are locked.`
+                        : undefined
+                    }
+                  >
+                    <TabularCell variant="editable" align="center" className="px-0">
+                      <Checkbox
+                        className="mx-auto"
+                        checked={selectedVariantIds.includes(variant.id)}
+                        disabled={isReadOnly}
+                        aria-label={`Select ${variant.name || variant.sku || "variant"}`}
+                        onChange={(event) =>
+                          handleToggleSelection(variant.id, event.target.checked)
+                        }
+                      />
+                    </TabularCell>
+                    <TabularCell variant="editable" className="px-[var(--tabular-cell-padding-x)]">
+                      <Input
+                        unstyled
+                        {...getCellDataAttributes(variant.id, "name")}
+                        data-variant-grid-cell={`${variant.id}:name`}
+                        className={cn(
+                          "w-full",
+                          getDesktopInputClassName(),
+                        )}
+                        title={variant.name}
+                        value={variant.name}
+                        disabled={isReadOnly}
+                        onFocus={() => handleCellFocus(variant.id, "name")}
+                        onKeyDown={(event) => handleCellKeyDown(event, variant.id, "name")}
+                        onChange={(event) =>
+                          onVariantNameChange
+                            ? onVariantNameChange(variant.id, event.target.value)
+                            : onVariantsChange(
+                                updateVariant(variants, variant.id, (entry) => ({
+                                  ...entry,
+                                  name: event.target.value,
+                                })),
+                              )
+                        }
+                        placeholder="Variant name"
+                      />
+                    </TabularCell>
+                    {optionColumns.map((column) => {
+                      const option = optionByColumn.get(column.id);
+                      const optionDisplay = option?.value?.trim() ? option.value.toUpperCase() : "-";
+                      return (
+                        <TabularCell
+                          key={`${variant.id}:${column.id}`}
+                          truncate
+                          hoverTitle={optionDisplay}
+                        >
+                          {optionDisplay}
+                        </TabularCell>
+                      );
+                    })}
+                    <TabularCell variant="editable" className="px-[var(--tabular-cell-padding-x)]">
+                      <Input
+                        unstyled
+                        {...getCellDataAttributes(variant.id, "sku")}
+                        data-variant-grid-cell={`${variant.id}:sku`}
+                        className={cn(
+                          "w-full",
+                          getDesktopInputClassName(),
+                        )}
+                        title={variant.sku}
+                        value={variant.sku}
+                        disabled={isReadOnly}
+                        onFocus={() => handleCellFocus(variant.id, "sku")}
+                        onKeyDown={(event) => handleCellKeyDown(event, variant.id, "sku")}
+                        onChange={(event) =>
+                          onVariantSkuChange
+                            ? onVariantSkuChange(variant.id, event.target.value)
+                            : onVariantsChange(
+                                updateVariant(variants, variant.id, (entry) => ({
+                                  ...entry,
+                                  sku: event.target.value,
+                                })),
+                              )
+                        }
+                        placeholder="Variant SKU"
+                      />
+                    </TabularCell>
+                    <TabularCell variant="editable" className="px-[var(--tabular-cell-padding-x)]">
+                      <Input
+                        unstyled
+                        {...getCellDataAttributes(variant.id, "barcode")}
+                        data-variant-grid-cell={`${variant.id}:barcode`}
+                        className={cn(
+                          "w-full",
+                          getDesktopInputClassName(),
+                        )}
+                        title={variant.barcode}
+                        value={variant.barcode}
+                        disabled={isReadOnly}
+                        onFocus={() => handleCellFocus(variant.id, "barcode")}
+                        onKeyDown={(event) => handleCellKeyDown(event, variant.id, "barcode")}
+                        onChange={(event) =>
+                          onVariantsChange(
+                            updateVariant(variants, variant.id, (entry) => ({
+                              ...entry,
+                              barcode: event.target.value,
+                            })),
+                          )
+                        }
+                        placeholder="Optional barcode"
+                      />
+                    </TabularCell>
+                    {showPricingFields ? (
+                      <TabularCell variant="editable" align="end">
+                        <Input
+                          unstyled
+                          {...getCellDataAttributes(variant.id, "salesPrice")}
+                          data-variant-grid-cell={`${variant.id}:salesPrice`}
+                          className={cn(
+                            "w-full",
+                            getDesktopInputClassName({ numeric: true }),
+                            tabularNumericClassName,
+                          )}
+                          value={variant.salesPrice ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "salesPrice")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesPrice: event.target.value,
+                              })),
+                            )
+                          }
+                          placeholder="Sales price"
+                          inputMode="decimal"
+                        />
+                      </TabularCell>
+                    ) : null}
+                    {showPricingFields && showPurchasePrice ? (
+                      <TabularCell variant="editable" align="end">
+                        <Input
+                          unstyled
+                          {...getCellDataAttributes(variant.id, "purchasePrice")}
+                          data-variant-grid-cell={`${variant.id}:purchasePrice`}
+                          className={cn(
+                            "w-full",
+                            getDesktopInputClassName({ numeric: true }),
+                            tabularNumericClassName,
+                          )}
+                          value={variant.purchasePrice ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "purchasePrice")}
+                          onKeyDown={(event) =>
+                            handleCellKeyDown(event, variant.id, "purchasePrice")
+                          }
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                purchasePrice: event.target.value,
+                              })),
+                            )
+                          }
+                          placeholder="Purchase price"
+                          inputMode="decimal"
+                        />
+                      </TabularCell>
+                    ) : null}
+                    {showPricingFields || showGstSlabField ? (
+                      <TabularCell variant="editable">
+                        <GstSlabSelect
+                          unstyled
+                          {...getCellDataAttributes(variant.id, "gstSlab")}
+                          data-variant-grid-cell={`${variant.id}:gstSlab`}
+                          className={cn("w-full", getDesktopInputClassName({ select: true }))}
+                          value={variant.gstSlab ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "gstSlab")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "gstSlab")}
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                gstSlab: event.target.value,
+                              })),
+                            )
+                          }
+                        />
+                      </TabularCell>
+                    ) : null}
+                    {showActiveToggle ? (
+                      <TabularCell variant="editable" align="center">
+                        <label className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={variant.isActive ?? true}
+                            disabled={isReadOnly}
+                            aria-label={`Active state for ${variant.name || "variant"}`}
+                            onChange={(event) =>
+                              onVariantsChange(
+                                updateVariant(variants, variant.id, (entry) => ({
+                                  ...entry,
+                                  isActive: event.target.checked,
+                                })),
+                              )
+                            }
+                          />
+                        </label>
+                      </TabularCell>
+                    ) : null}
+                  </TabularRow>
+                );
+              })}
+            </TabularBody>
+
+            <TabularFooter>
+              <p className="text-[10px] leading-none text-muted-foreground">
+                {variants.length} variant{variants.length === 1 ? "" : "s"}
+              </p>
+              {showManualAddAction ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn("px-2", tabularFooterButtonClassName)}
+                  onClick={onAddVariant}
+                  disabled={disabled}
+                >
+                  {addVariantLabel}
+                </Button>
+              ) : <span />}
+            </TabularFooter>
+          </TabularSurface>
+        </>
+      ) : null}
     </div>
   );
 }

@@ -127,7 +127,7 @@ export function ItemsPage({
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-1.5 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:space-y-px">
+        <CardContent className="space-y-1.5 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:space-y-0">
           <fieldset className="app-filter-panel lg:shrink-0">
             <legend className="app-filter-legend">
               Filters
@@ -178,7 +178,7 @@ export function ItemsPage({
             </div>
           </fieldset>
 
-          <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:space-y-1 lg:pr-0">
+          <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:space-y-px lg:pr-0">
             {hasVisibleInactiveRows ? (
               <div className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-100 px-2 py-1.5 text-[11px] text-amber-950 lg:shrink-0 lg:text-[10px]">
                 <span className="inline-block h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300" aria-hidden="true" />
