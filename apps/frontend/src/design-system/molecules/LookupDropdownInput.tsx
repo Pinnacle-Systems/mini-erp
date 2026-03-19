@@ -28,6 +28,7 @@ type LookupDropdownInputProps<T> = {
   loadingLabel?: string;
   maxVisibleOptions?: number;
   inputClassName?: string;
+  inputUnstyled?: boolean;
   dropdownClassName?: string;
   optionClassName?: string;
   inputRef?: Ref<HTMLInputElement>;
@@ -52,6 +53,7 @@ export function LookupDropdownInput<T>({
   loadingLabel,
   maxVisibleOptions = 8,
   inputClassName,
+  inputUnstyled = false,
   dropdownClassName,
   optionClassName,
   inputRef,
@@ -176,6 +178,7 @@ export function LookupDropdownInput<T>({
     <div ref={containerRef} className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
       <Input
         {...mergedInputProps}
+        unstyled={inputUnstyled}
         ref={inputRef}
         id={id}
         value={value}
