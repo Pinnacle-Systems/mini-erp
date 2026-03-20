@@ -12,6 +12,10 @@ export const createPurchaseTxMock = () => ({
     createMany: vi.fn(),
     deleteMany: vi.fn(),
   },
+  documentLineLink: {
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
+  },
   documentHistory: {
     create: vi.fn(),
     findMany: vi.fn(),
