@@ -21,16 +21,16 @@ Goal: prepare the shared document model for both sales and purchases without cre
 
 Goal: add a dedicated server-authoritative purchase API family parallel to sales.
 
-- [ ] Create `apps/backend/src/modules/purchases`
-- [ ] Add `purchases.routes.ts`
-- [ ] Add `purchases.controller.ts`
-- [ ] Add `purchases.schema.ts`
-- [ ] Add `purchases.types.ts`
-- [ ] Register purchase routes in the backend app router
-- [ ] Add explicit response mappers for purchase document payloads
-- [ ] Enforce `PARTIES_SUPPLIERS` capability checks
-- [ ] Enforce `TXN_PURCHASE_CREATE` for purchase orders, GRNs, and purchase invoices
-- [ ] Enforce `TXN_PURCHASE_RETURN` for purchase returns
+- [x] Create `apps/backend/src/modules/purchases`
+- [x] Add `purchases.routes.ts`
+- [x] Add `purchases.controller.ts`
+- [x] Add `purchases.schema.ts`
+- [x] Add `purchases.types.ts`
+- [x] Register purchase routes in the backend app router
+- [x] Add explicit response mappers for purchase document payloads
+- [x] Enforce `PARTIES_SUPPLIERS` capability checks
+- [x] Enforce `TXN_PURCHASE_CREATE` for purchase orders, GRNs, and purchase invoices
+- [x] Enforce `TXN_PURCHASE_RETURN` for purchase returns
 
 ## Phase 3: Purchase Numbering and Draft Lifecycle
 
