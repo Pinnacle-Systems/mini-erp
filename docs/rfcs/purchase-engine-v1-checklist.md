@@ -36,19 +36,19 @@ Goal: add a dedicated server-authoritative purchase API family parallel to sales
 
 Goal: make draft create, update, delete, and post flows work for purchase documents.
 
-- [ ] Define purchase document metadata for `PURCHASE_ORDER`
-- [ ] Define purchase document metadata for `GOODS_RECEIPT_NOTE`
-- [ ] Define purchase document metadata for `PURCHASE_INVOICE`
-- [ ] Define purchase document metadata for `PURCHASE_RETURN`
-- [ ] Implement backend-generated suggested document numbers
-- [ ] Validate per-type number uniqueness within a business
-- [ ] Implement create draft flow
-- [ ] Implement update draft flow
-- [ ] Implement delete draft flow
-- [ ] Implement list documents flow
-- [ ] Implement document history read flow
-- [ ] Implement post draft flow
-- [ ] Implement action transition flow for `CANCEL`, `VOID`, and `REOPEN`
+- [x] Define purchase document metadata for `PURCHASE_ORDER`
+- [x] Define purchase document metadata for `GOODS_RECEIPT_NOTE`
+- [x] Define purchase document metadata for `PURCHASE_INVOICE`
+- [x] Define purchase document metadata for `PURCHASE_RETURN`
+- [x] Implement backend-generated suggested document numbers
+- [x] Validate per-type number uniqueness within a business
+- [x] Implement create draft flow
+- [x] Implement update draft flow
+- [x] Implement delete draft flow
+- [x] Implement list documents flow
+- [x] Implement document history read flow
+- [x] Implement post draft flow
+- [x] Implement action transition flow for `CANCEL`, `VOID`, and `REOPEN`
 
 ## Phase 4: Purchase Line-Link and Balance Engine
 
