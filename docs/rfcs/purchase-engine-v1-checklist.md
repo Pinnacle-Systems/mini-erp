@@ -93,19 +93,19 @@ Goal: make the correct purchase document own each stock movement.
 
 Goal: enforce posted-document rules and reversible stock effects.
 
-- [ ] Block `VOID` when `posted_at != null`
-- [ ] Keep draft-only edit/delete behavior unchanged
-- [ ] Require `PURCHASE_RETURN` to point to a posted `PURCHASE_INVOICE` or posted `GOODS_RECEIPT_NOTE`
-- [ ] Cap purchase return quantity to backend-authored return ceiling
-- [ ] Default purchase return `location_id` from parent GRN or purchase invoice
-- [ ] Store purchase return `location_id` independently on the return document
-- [ ] On cancelling posted GRN, write negative reversal stock rows
-- [ ] On cancelling stock-responsible purchase invoice, write negative reversal stock rows
-- [ ] On cancelling posted purchase return, write positive reversal stock rows
-- [ ] On reopening posted GRN, reapply positive stock rows
-- [ ] On reopening stock-responsible purchase invoice, reapply positive stock rows
-- [ ] On reopening posted purchase return, reapply negative stock rows
-- [ ] Ensure cancelled and voided purchase docs no longer contribute to active balance
+- [x] Block `VOID` when `posted_at != null`
+- [x] Keep draft-only edit/delete behavior unchanged
+- [x] Require `PURCHASE_RETURN` to point to a posted `PURCHASE_INVOICE` or posted `GOODS_RECEIPT_NOTE`
+- [x] Cap purchase return quantity to backend-authored return ceiling
+- [x] Default purchase return `location_id` from parent GRN or purchase invoice
+- [x] Store purchase return `location_id` independently on the return document
+- [x] On cancelling posted GRN, write negative reversal stock rows
+- [x] On cancelling stock-responsible purchase invoice, write negative reversal stock rows
+- [x] On cancelling posted purchase return, write positive reversal stock rows
+- [x] On reopening posted GRN, reapply positive stock rows
+- [x] On reopening stock-responsible purchase invoice, reapply positive stock rows
+- [x] On reopening posted purchase return, reapply negative stock rows
+- [x] Ensure cancelled and voided purchase docs no longer contribute to active balance
 
 ## Phase 7: Frontend Module and Route Gating
 
@@ -166,19 +166,19 @@ Goal: verify the purchase engine end to end.
 - [ ] Test GRN-backed mixed-origin purchase invoice adds stock only for stock-responsible rows
 - [ ] Test purchase return from GRN deducts stock
 - [ ] Test purchase return from purchase invoice deducts stock
-- [ ] Test purchase return respects return ceiling
+- [x] Test purchase return respects return ceiling
 - [ ] Test purchase return is blocked when it would make stock negative and `ALLOW_NEGATIVE_STOCK=false`
 - [ ] Test purchase return is allowed when `ALLOW_NEGATIVE_STOCK=true`
 - [ ] Test service lines skip stock movement
 - [ ] Test invalid explicit `sourceLineId` values are rejected
-- [ ] Test cancelled purchase docs no longer count as active links
-- [ ] Test posted purchase docs cannot be voided
-- [ ] Test cancelling posted GRN creates negative reversal rows
-- [ ] Test cancelling stock-responsible purchase invoice creates negative reversal rows
-- [ ] Test cancelling posted purchase return creates positive reversal rows
-- [ ] Test reopening GRN reapplies stock-in rows
-- [ ] Test reopening stock-responsible purchase invoice reapplies stock-in rows
-- [ ] Test reopening purchase return reapplies stock-out rows
+- [x] Test cancelled purchase docs no longer count as active links
+- [x] Test posted purchase docs cannot be voided
+- [x] Test cancelling posted GRN creates negative reversal rows
+- [x] Test cancelling stock-responsible purchase invoice creates negative reversal rows
+- [x] Test cancelling posted purchase return creates positive reversal rows
+- [x] Test reopening GRN reapplies stock-in rows
+- [x] Test reopening stock-responsible purchase invoice reapplies stock-in rows
+- [x] Test reopening purchase return reapplies stock-out rows
 - [ ] Manual run: Standalone GRN -> post -> stock increased
 - [ ] Manual run: PO -> GRN -> post -> stock increased at GRN stage
 - [ ] Manual run: PO -> purchase invoice -> post -> stock increased at invoice stage

@@ -399,6 +399,12 @@ const getParentDocumentReference = async (
   parentId?: string | null,
 ) => {
   if (!parentId) {
+    if (documentType === "PURCHASE_RETURN") {
+      throw new BadRequestError(
+        "Purchase return must reference a posted purchase invoice or goods receipt note",
+      );
+    }
+
     return null;
   }
 
@@ -415,6 +421,7 @@ const getParentDocumentReference = async (
       id: true,
       type: true,
       location_id: true,
+      posted_at: true,
     },
   });
 
@@ -426,6 +433,12 @@ const getParentDocumentReference = async (
   if (!allowedChildren?.includes(documentType)) {
     throw new BadRequestError(
       `${PURCHASE_DOCUMENT_META[documentType].singularLabel} cannot be converted from this source document`,
+    );
+  }
+
+  if (documentType === "PURCHASE_RETURN" && !parent.posted_at) {
+    throw new BadRequestError(
+      "Purchase return must reference a posted purchase invoice or goods receipt note",
     );
   }
 
@@ -977,6 +990,8 @@ export const transitionPurchaseDocumentState = async (
       throw new BadRequestError("Cancel reason is required");
     }
 
+    await purchaseStockPostingService.applyCancellationEffects(tx, tenantId, documentId);
+
     await tx.document.update({
       where: { id: documentId },
       data: {
@@ -1047,6 +1062,8 @@ export const transitionPurchaseDocumentState = async (
       `Only posted ${PURCHASE_DOCUMENT_META[documentType].singularLabel}s can be reopened`,
     );
   }
+
+  await purchaseStockPostingService.applyReopenEffects(tx, tenantId, documentId);
 
   await tx.document.update({
     where: { id: documentId },

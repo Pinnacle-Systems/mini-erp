@@ -176,4 +176,61 @@ describe("purchaseDocumentLinkService", () => {
       }),
     ).rejects.toThrow("Unable to link line Widget to the selected parent line");
   });
+
+  it("rejects purchase return quantities above the backend-authored return ceiling", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst.mockImplementation(async ({ where }) => {
+      if (where.id === "return-1") {
+        return {
+          id: "return-1",
+          type: "PURCHASE_RETURN",
+          parent_id: "invoice-1",
+          posted_at: new Date("2026-03-20T00:00:00.000Z"),
+          lineItems: [
+            {
+              id: "return-line-1",
+              variant_id: "variant-1",
+              description_snapshot: "Widget",
+              description: "Widget",
+              quantity: "3.000",
+              unit_price: "100.00",
+              tax_rate: "18.00",
+            },
+          ],
+        };
+      }
+
+      return {
+        id: "invoice-1",
+        type: "PURCHASE_INVOICE",
+        posted_at: new Date("2026-03-19T00:00:00.000Z"),
+        lineItems: [
+          {
+            id: "invoice-line-1",
+            variant_id: "variant-1",
+            description_snapshot: "Widget",
+            description: "Widget",
+            quantity: "5.000",
+            unit_price: "100.00",
+            tax_rate: "18.00",
+          },
+        ],
+      };
+    });
+    vi.spyOn(purchaseBalanceService, "getLineBalances").mockResolvedValue([
+      makeLineBalance({
+        sourceDocumentId: "invoice-1",
+        sourceDocumentType: "PURCHASE_INVOICE",
+        sourceDocumentNumber: "PINV-0001",
+        sourceLineId: "invoice-line-1",
+        returnableQuantity: 2,
+      }),
+    ]);
+
+    await expect(
+      purchaseDocumentLinkService.upsertLinksForDocument(tx as never, "tenant-1", "return-1", {
+        "return-line-1": "invoice-line-1",
+      }),
+    ).rejects.toThrow("Converted quantity exceeds available returnable quantity for line Widget");
+  });
 });
