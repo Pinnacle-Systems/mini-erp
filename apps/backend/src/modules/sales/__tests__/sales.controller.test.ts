@@ -104,8 +104,14 @@ describe("sales.controller transitionDocumentState", () => {
           cancel_reason: null,
           doc_number: "DC-0001",
           parent_id: "order-1",
-          customer_name_snapshot: "Customer",
-          transaction_type: "CASH",
+          party_snapshot: {
+            role: "customer",
+            name: "Customer",
+            phone: null,
+            address: null,
+            taxId: null,
+          },
+          settlement_mode: "CASH",
           grand_total: "100.00",
           children: [],
           lineItems: [
@@ -128,6 +134,8 @@ describe("sales.controller transitionDocumentState", () => {
           cancel_reason: null,
           doc_number: "SO-0001",
           parent_id: null,
+          party_snapshot: null,
+          settlement_mode: null,
           grand_total: "100.00",
           children: [],
           lineItems: [],
@@ -167,5 +175,86 @@ describe("sales.controller transitionDocumentState", () => {
 
     upsertSpy.mockRestore();
     stockSpy.mockRestore();
+  });
+
+  it("requires customer details from party_snapshot for non-invoice drafts before posting", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst.mockResolvedValue({
+      id: "challan-1",
+      business_id: "tenant-1",
+      type: "DELIVERY_CHALLAN",
+      status: "DRAFT",
+      posted_at: null,
+      deleted_at: null,
+      cancel_reason: null,
+      doc_number: "DC-0002",
+      parent_id: null,
+      party_snapshot: null,
+      settlement_mode: null,
+      children: [],
+      lineItems: [
+        {
+          id: "line-1",
+          target_links: [],
+        },
+      ],
+    });
+
+    await expect(
+      postDraftDocument(
+        tx as never,
+        "tenant-1",
+        "DELIVERY_CHALLAN",
+        "challan-1",
+        {
+          userId: "user-1",
+          name: "Test User",
+        },
+      ),
+    ).rejects.toThrow("delivery challan requires customer details");
+  });
+
+  it("requires an existing customer for credit invoices using settlement_mode", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst.mockResolvedValue({
+      id: "invoice-2",
+      business_id: "tenant-1",
+      type: "SALES_INVOICE",
+      status: "DRAFT",
+      posted_at: null,
+      deleted_at: null,
+      cancel_reason: null,
+      doc_number: "INV-0002",
+      parent_id: null,
+      party_id: null,
+      party_snapshot: {
+        role: "customer",
+        name: "Walk-in",
+        phone: null,
+        address: null,
+        taxId: null,
+      },
+      settlement_mode: "CREDIT",
+      children: [],
+      lineItems: [
+        {
+          id: "line-1",
+          target_links: [],
+        },
+      ],
+    });
+
+    await expect(
+      postDraftDocument(
+        tx as never,
+        "tenant-1",
+        "SALES_INVOICE",
+        "invoice-2",
+        {
+          userId: "user-1",
+          name: "Test User",
+        },
+      ),
+    ).rejects.toThrow("invoice requires an existing customer for credit transactions");
   });
 });
