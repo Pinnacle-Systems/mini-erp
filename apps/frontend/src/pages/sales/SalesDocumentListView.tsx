@@ -7,8 +7,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
 import { useToast } from "../../features/toast/useToast";
 import {
   formatCurrency,
@@ -48,8 +51,9 @@ export function SalesDocumentListView({
 }: SalesDocumentListViewProps) {
   const { showToast } = useToast();
   const lastSaveMessageRef = useRef<string | null>(null);
-  const desktopGridTemplate =
-    "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1.1fr) minmax(0,1.3fr) 3rem";
+  const desktopGridTemplate = withTabularSerialNumberColumn(
+    "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1.1fr) minmax(0,1.3fr) 3rem",
+  );
 
   useEffect(() => {
     if (!saveMessage || saveMessage === lastSaveMessageRef.current) {
@@ -179,6 +183,7 @@ export function SalesDocumentListView({
               <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
                 <TabularHeader>
                   <TabularRow columns={desktopGridTemplate}>
+                    <TabularSerialNumberHeaderCell />
                     <TabularCell variant="header">Number</TabularCell>
                     <TabularCell variant="header">Customer</TabularCell>
                     <TabularCell variant="header">Status</TabularCell>
@@ -189,8 +194,9 @@ export function SalesDocumentListView({
                   </TabularRow>
                 </TabularHeader>
                 <TabularBody className="overflow-y-auto">
-                {invoiceRows.map((row) => (
+                {invoiceRows.map((row, index) => (
                   <TabularRow key={`${row.source}:${row.id}`} columns={desktopGridTemplate} interactive>
+                    <TabularSerialNumberCell index={index} />
                     <TabularCell truncate hoverTitle={row.billNumber} className="font-semibold text-foreground">
                       {row.billNumber}
                     </TabularCell>

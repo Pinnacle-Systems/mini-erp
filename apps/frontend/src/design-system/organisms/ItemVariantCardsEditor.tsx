@@ -16,8 +16,11 @@ import {
   TabularFooter,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../molecules/tabularSerialNumbers";
 import {
   getSpreadsheetCellClassName,
   spreadsheetCellControlClassName,
@@ -251,13 +254,15 @@ export function ItemVariantCardsEditor({
         ? ["minmax(0, 2fr)", "minmax(0, 2fr)", "minmax(0, 1.25fr)"]
       : ["minmax(0, 2fr)", "minmax(0, 2fr)"];
     const optionColumnWidths = optionColumns.map(() => "minmax(0, 1.3fr)");
-    return [
-      "2rem",
-      "minmax(0, 1.8fr)",
-      ...optionColumnWidths,
-      ...columnsAfterName,
-      ...(showActiveToggle ? ["4.25rem"] : []),
-    ].join(" ");
+    return withTabularSerialNumberColumn(
+      [
+        "2rem",
+        "minmax(0, 1.8fr)",
+        ...optionColumnWidths,
+        ...columnsAfterName,
+        ...(showActiveToggle ? ["4.25rem"] : []),
+      ].join(" "),
+    );
   })();
 
   const getDesktopInputClassName = (options?: {
@@ -706,6 +711,7 @@ export function ItemVariantCardsEditor({
           >
             <TabularHeader>
               <TabularRow columns={desktopGridTemplate}>
+                <TabularSerialNumberHeaderCell />
                 <TabularCell variant="header" align="center" className="px-0">
                   <Checkbox
                     className="mx-auto"
@@ -745,7 +751,7 @@ export function ItemVariantCardsEditor({
             </TabularHeader>
 
             <TabularBody>
-              {variants.map((variant) => {
+              {variants.map((variant, index) => {
                 const isLocked = Boolean(variant.isLocked);
                 const isReadOnly = disabled || isLocked;
                 const optionByColumn = new Map(
@@ -766,6 +772,7 @@ export function ItemVariantCardsEditor({
                         : undefined
                     }
                   >
+                    <TabularSerialNumberCell index={index} />
                     <TabularCell variant="editable" align="center" className="px-0">
                       <Checkbox
                         className="mx-auto"

@@ -36,8 +36,11 @@ import {
   TabularFooter,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../../design-system/molecules/tabularSerialNumbers";
 import {
   tabularFooterBarClassName,
   tabularFooterButtonClassName,
@@ -456,8 +459,12 @@ export function AddItemPage({
   const taxCodePlaceholder =
     forcedItemType === "SERVICE" ? "SAC (6 digits)" : "HSN (4-8 digits)";
   const quickEntryDesktopGridTemplate = showPurchasePrice
-    ? "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem"
-    : "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem";
+    ? withTabularSerialNumberColumn(
+        "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem",
+      )
+    : withTabularSerialNumberColumn(
+        "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem",
+      );
   const orderedUnitGroups = useMemo(
     () => getOrderedUnitGroups(forcedItemType),
     [forcedItemType],
@@ -1825,6 +1832,7 @@ export function AddItemPage({
               >
                 <TabularHeader>
                   <TabularRow columns={quickEntryDesktopGridTemplate}>
+                    <TabularSerialNumberHeaderCell />
                     <TabularCell variant="header">Name</TabularCell>
                     <TabularCell variant="header">SKU</TabularCell>
                     <TabularCell variant="header">{taxCodeLabel}</TabularCell>
@@ -1843,6 +1851,7 @@ export function AddItemPage({
                     const rowErrors = quickRowErrorsById.get(row.id) ?? {};
                     return (
                       <TabularRow key={row.id} columns={quickEntryDesktopGridTemplate} interactive>
+                        <TabularSerialNumberCell index={index} />
                         <TabularCell variant="editable" error={Boolean(rowErrors.name)}>
                           <Input
                             unstyled

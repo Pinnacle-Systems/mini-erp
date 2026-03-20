@@ -8,8 +8,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
 import {
   Card,
   CardContent,
@@ -147,8 +150,9 @@ export function HistoryPage() {
       }),
     [movementFilter, normalizedQuery, rows],
   );
-  const desktopGridTemplate =
-    "minmax(0,1.35fr) minmax(0,1.55fr) minmax(0,1.25fr) minmax(0,0.9fr) minmax(0,0.95fr) minmax(0,0.65fr) minmax(0,0.5fr) minmax(0,0.8fr)";
+  const desktopGridTemplate = withTabularSerialNumberColumn(
+    "minmax(0,1.35fr) minmax(0,1.55fr) minmax(0,1.25fr) minmax(0,0.9fr) minmax(0,0.95fr) minmax(0,0.65fr) minmax(0,0.5fr) minmax(0,0.8fr)",
+  );
 
   return (
     <Card className="lg:h-full lg:min-h-0">
@@ -230,6 +234,7 @@ export function HistoryPage() {
           <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
             <TabularHeader>
               <TabularRow columns={desktopGridTemplate}>
+                <TabularSerialNumberHeaderCell />
                 <TabularCell variant="header">When</TabularCell>
                 <TabularCell variant="header">Item</TabularCell>
                 <TabularCell variant="header">Variant</TabularCell>
@@ -245,8 +250,9 @@ export function HistoryPage() {
               </TabularRow>
             </TabularHeader>
             <TabularBody className="overflow-y-auto">
-              {filteredRows.map((row) => (
+              {filteredRows.map((row, index) => (
                 <TabularRow key={row.entityId} columns={desktopGridTemplate} interactive>
+                  <TabularSerialNumberCell index={index} />
                   <TabularCell truncate hoverTitle={formatTimestamp(row.createdAt)}>
                     {formatTimestamp(row.createdAt)}
                   </TabularCell>
@@ -280,7 +286,7 @@ export function HistoryPage() {
               ))}
               {filteredRows.length === 0 && !loading ? (
                 <TabularRow columns={desktopGridTemplate}>
-                  <TabularCell className="col-span-8 text-muted-foreground">
+                  <TabularCell className="col-span-9 text-muted-foreground">
                     Recent stock movements will appear here after inventory changes are recorded.
                   </TabularCell>
                 </TabularRow>

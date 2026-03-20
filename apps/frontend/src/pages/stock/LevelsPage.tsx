@@ -7,8 +7,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
 import {
   Card,
   CardContent,
@@ -156,8 +159,9 @@ export function LevelsPage() {
   });
 
   const uniqueItems = new Set(filteredRows.map((row) => row.itemId)).size;
-  const desktopGridTemplate =
-    "minmax(0,1.65fr) minmax(0,1.35fr) minmax(0,0.85fr) minmax(0,0.6fr) minmax(0,0.55fr)";
+  const desktopGridTemplate = withTabularSerialNumberColumn(
+    "minmax(0,1.65fr) minmax(0,1.35fr) minmax(0,0.85fr) minmax(0,0.6fr) minmax(0,0.55fr)",
+  );
 
   return (
     <Card className="lg:h-full lg:min-h-0">
@@ -221,6 +225,7 @@ export function LevelsPage() {
           <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
             <TabularHeader>
               <TabularRow columns={desktopGridTemplate}>
+                <TabularSerialNumberHeaderCell />
                 <TabularCell variant="header">Item</TabularCell>
                 <TabularCell variant="header">Variant</TabularCell>
                 <TabularCell variant="header">SKU</TabularCell>
@@ -231,8 +236,9 @@ export function LevelsPage() {
               </TabularRow>
             </TabularHeader>
             <TabularBody className="overflow-y-auto">
-              {filteredRows.map((row) => (
+              {filteredRows.map((row, index) => (
                 <TabularRow key={row.key} columns={desktopGridTemplate} interactive>
+                  <TabularSerialNumberCell index={index} />
                   <TabularCell>
                     <p className="truncate font-semibold text-foreground" title={row.itemName}>
                       {row.itemName}
@@ -252,7 +258,7 @@ export function LevelsPage() {
               ))}
               {filteredRows.length === 0 && !loading ? (
                 <TabularRow columns={desktopGridTemplate}>
-                  <TabularCell className="col-span-5 text-muted-foreground">
+                  <TabularCell className="col-span-6 text-muted-foreground">
                     Stock will appear here after product movements sync to this device.
                   </TabularCell>
                 </TabularRow>

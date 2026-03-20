@@ -10,8 +10,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../molecules/tabularSerialNumbers";
 import type {
   AdminStore,
   AdminBusinessesPagination,
@@ -55,8 +58,9 @@ export function BusinessManagementListView({
   onReload,
 }: BusinessManagementListViewProps) {
   const navigate = useNavigate();
-  const desktopGridTemplate =
-    "minmax(0,2fr) minmax(0,1.55fr) minmax(0,1.7fr) minmax(0,1.85fr) minmax(0,0.9fr) 3rem";
+  const desktopGridTemplate = withTabularSerialNumberColumn(
+    "minmax(0,2fr) minmax(0,1.55fr) minmax(0,1.7fr) minmax(0,1.85fr) minmax(0,0.9fr) 3rem",
+  );
 
   return (
     <>
@@ -197,6 +201,7 @@ export function BusinessManagementListView({
         <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
           <TabularHeader>
             <TabularRow columns={desktopGridTemplate}>
+              <TabularSerialNumberHeaderCell />
               <TabularCell variant="header">Business</TabularCell>
               <TabularCell variant="header">Owner</TabularCell>
               <TabularCell variant="header">Type / Category</TabularCell>
@@ -206,7 +211,7 @@ export function BusinessManagementListView({
             </TabularRow>
           </TabularHeader>
           <TabularBody className="overflow-y-auto">
-          {businesses.map((business) => {
+          {businesses.map((business, index) => {
             const isDeleted = Boolean(business.deletedAt);
             const ownerDisplay = business.owner?.name?.trim() || business.owner?.phone || "-";
             const licenseDates = business.license
@@ -219,6 +224,7 @@ export function BusinessManagementListView({
                 interactive
                 className={isDeleted ? "bg-[#fff7f7]" : undefined}
               >
+                <TabularSerialNumberCell index={index} />
                 <TabularCell
                   className={isDeleted ? "font-semibold text-[#8a2b2b]" : "font-semibold"}
                   truncate

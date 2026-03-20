@@ -18,8 +18,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
 import {
   hasAssignedStoreCapability,
   useSessionStore,
@@ -101,9 +104,11 @@ export function PeopleListPage({
   );
   const desktopGridTemplate = useMemo(
     () =>
-      secondaryRole && canManageSecondaryRole
-        ? "minmax(0,2.2fr) minmax(0,1.6fr) minmax(0,2fr) minmax(0,1.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.9fr) 3rem"
-        : "minmax(0,2.3fr) minmax(0,1.7fr) minmax(0,2.1fr) minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.9fr) 3rem",
+      withTabularSerialNumberColumn(
+        secondaryRole && canManageSecondaryRole
+          ? "minmax(0,2.2fr) minmax(0,1.6fr) minmax(0,2fr) minmax(0,1.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.9fr) 3rem"
+          : "minmax(0,2.3fr) minmax(0,1.7fr) minmax(0,2.1fr) minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.9fr) 3rem",
+      ),
     [canManageSecondaryRole, secondaryRole],
   );
 
@@ -413,6 +418,7 @@ export function PeopleListPage({
                   <TabularSurface className="overflow-hidden bg-white lg:min-h-0 lg:flex-1 lg:flex-col">
                   <TabularHeader>
                     <TabularRow columns={desktopGridTemplate}>
+                      <TabularSerialNumberHeaderCell />
                       <TabularCell variant="header">Name</TabularCell>
                       <TabularCell variant="header">Phone</TabularCell>
                       <TabularCell variant="header">Email</TabularCell>
@@ -426,7 +432,7 @@ export function PeopleListPage({
                     </TabularRow>
                   </TabularHeader>
                   <TabularBody className="overflow-y-auto">
-                    {filteredRows.map((row) => {
+                    {filteredRows.map((row, index) => {
                       const hasSecondaryRole = secondaryRoleIds.has(row.entityId);
                       return (
                         <TabularRow
@@ -434,6 +440,7 @@ export function PeopleListPage({
                           columns={desktopGridTemplate}
                           interactive
                         >
+                          <TabularSerialNumberCell index={index} />
                           <TabularCell truncate hoverTitle={row.name} className="font-normal text-foreground">
                             {row.name}
                           </TabularCell>

@@ -15,8 +15,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../../design-system/molecules/tabularSerialNumbers";
 import {
   listAdminUsers,
   type AdminUser,
@@ -40,8 +43,9 @@ type UserFilters = {
 
 export function AdminUsersPage() {
   const navigate = useNavigate();
-  const desktopGridTemplate =
-    "minmax(0,2fr) minmax(0,1.4fr) minmax(0,2fr) minmax(0,1.1fr) minmax(0,0.9fr) 3rem";
+  const desktopGridTemplate = withTabularSerialNumberColumn(
+    "minmax(0,2fr) minmax(0,1.4fr) minmax(0,2fr) minmax(0,1.1fr) minmax(0,0.9fr) 3rem",
+  );
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -259,6 +263,7 @@ export function AdminUsersPage() {
             <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
               <TabularHeader>
                 <TabularRow columns={desktopGridTemplate}>
+                  <TabularSerialNumberHeaderCell />
                   <TabularCell variant="header">User</TabularCell>
                   <TabularCell variant="header">Phone</TabularCell>
                   <TabularCell variant="header">Email</TabularCell>
@@ -268,7 +273,7 @@ export function AdminUsersPage() {
                 </TabularRow>
               </TabularHeader>
               <TabularBody className="overflow-y-auto">
-                {users.map((user) => {
+                {users.map((user, index) => {
                   const isDeleted = Boolean(user.deletedAt);
                   const displayName = user.name?.trim() || "Unnamed user";
                   return (
@@ -278,6 +283,7 @@ export function AdminUsersPage() {
                       interactive
                       className={isDeleted ? "bg-[#fff7f7]" : undefined}
                     >
+                      <TabularSerialNumberCell index={index} />
                       <TabularCell className="font-semibold" truncate hoverTitle={displayName}>
                         {displayName}
                       </TabularCell>

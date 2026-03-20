@@ -8,8 +8,11 @@ import {
   TabularFooter,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../molecules/tabularSerialNumbers";
 import { tabularNumericClassName } from "../molecules/tabularTokens";
 import {
   getLocalItemDetailForDisplay,
@@ -125,7 +128,7 @@ export function ItemVariantFlatTable({
       showStatus ? "minmax(0, 12%)" : null,
       hasAction ? "3.5rem" : null,
     ].filter(Boolean);
-    return tracks.join(" ");
+    return withTabularSerialNumberColumn(tracks.join(" "));
   }, [hasAction, showCategory, showCommercialFields, showPurchasePrice, showStatus, showUnit]);
 
   useEffect(() => {
@@ -435,6 +438,7 @@ export function ItemVariantFlatTable({
       >
         <TabularHeader>
           <TabularRow columns={desktopGridTemplate}>
+            <TabularSerialNumberHeaderCell />
             {showCategory ? <TabularCell variant="header">Category</TabularCell> : null}
             <TabularCell variant="header">Name</TabularCell>
             <TabularCell variant="header">SKU</TabularCell>
@@ -455,13 +459,14 @@ export function ItemVariantFlatTable({
               <TabularCell className="text-muted-foreground">Loading variants...</TabularCell>
             </TabularRow>
           ) : (
-            visibleRows.map((row) => (
+            visibleRows.map((row, index) => (
               <TabularRow
                 key={row.key}
                 columns={desktopGridTemplate}
                 interactive
                 className={highlightInactiveRows && !row.isActive ? "[&>div]:!bg-amber-100" : undefined}
               >
+                <TabularSerialNumberCell index={index} />
                 {showCategory ? (
                   <TabularCell truncate hoverTitle={row.category || "-"} className="font-normal">
                     {row.category || "-"}

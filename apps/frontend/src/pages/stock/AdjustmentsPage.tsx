@@ -13,8 +13,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
 import {
   spreadsheetCellControlClassName,
   spreadsheetCellNumericClassName,
@@ -154,8 +157,9 @@ export function AdjustmentsPage() {
       parsedQuantity > 0
     );
   }).length;
-  const desktopGridTemplate =
-    "minmax(0,3fr) minmax(0,1.2fr) minmax(0,1.1fr) 3.5rem";
+  const desktopGridTemplate = withTabularSerialNumberColumn(
+    "minmax(0,3fr) minmax(0,1.2fr) minmax(0,1.1fr) 3.5rem",
+  );
   const getVariantLookupValue = (row: AdjustmentDraftRow) =>
     row.variantId && optionByVariantId.get(row.variantId)?.label
       ? (optionByVariantId.get(row.variantId)?.label ?? row.variantQuery)
@@ -602,6 +606,7 @@ export function AdjustmentsPage() {
                 <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
                   <TabularHeader>
                     <TabularRow columns={desktopGridTemplate}>
+                      <TabularSerialNumberHeaderCell />
                       <TabularCell variant="header">Item Variant</TabularCell>
                       <TabularCell variant="header">Movement</TabularCell>
                       <TabularCell variant="header" align="end">
@@ -613,8 +618,9 @@ export function AdjustmentsPage() {
                     </TabularRow>
                   </TabularHeader>
                   <TabularBody className="overflow-y-auto">
-                    {rows.map((row) => (
+                    {rows.map((row, index) => (
                       <TabularRow key={row.id} columns={desktopGridTemplate} interactive>
+                        <TabularSerialNumberCell index={index} />
                         <TabularCell variant="editable">
                           <LookupDropdownInput
                             id={`stock-desktop-variant-${row.id}`}

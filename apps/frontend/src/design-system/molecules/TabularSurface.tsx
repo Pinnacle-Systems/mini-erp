@@ -31,6 +31,10 @@ type TabularCellProps = HTMLAttributes<HTMLDivElement> & {
   hoverTitle?: string | boolean;
 };
 
+type TabularSerialNumberCellProps = Omit<TabularCellProps, "children"> & {
+  index: number;
+};
+
 const tabularReadOnlyCellClassName =
   "h-[var(--tabular-row-height)] bg-[var(--tabular-cell-bg)] text-[11px] font-normal leading-none transition-colors group-hover/tabular-row:bg-[var(--tabular-cell-hover-bg)] lg:text-[10px]";
 
@@ -218,6 +222,35 @@ export function TabularCell({
     >
       {children}
     </div>
+  );
+}
+
+export function TabularSerialNumberHeaderCell({
+  className,
+  children = "S/N",
+  ...props
+}: Omit<TabularCellProps, "variant" | "align">) {
+  return (
+    <TabularCell variant="header" align="center" className={className} {...props}>
+      {children}
+    </TabularCell>
+  );
+}
+
+export function TabularSerialNumberCell({
+  index,
+  className,
+  ...props
+}: TabularSerialNumberCellProps) {
+  return (
+    <TabularCell
+      align="center"
+      className={cn("font-medium text-muted-foreground", className)}
+      hoverTitle={`Row ${index + 1}`}
+      {...props}
+    >
+      {index + 1}
+    </TabularCell>
   );
 }
 

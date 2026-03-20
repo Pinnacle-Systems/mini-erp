@@ -15,8 +15,11 @@ import {
   TabularCell,
   TabularHeader,
   TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
 import { tabularNumericClassName } from "../../design-system/molecules/tabularTokens";
 import { useSpreadsheetNavigation } from "../../design-system/molecules/useSpreadsheetNavigation";
 import { normalizeGstSlab } from "../../lib/gst-slabs";
@@ -115,16 +118,18 @@ export function SalesDocumentLineEditor({
     }
     return fields;
   };
-  const desktopGridTemplate = [
-    isPosMode ? "minmax(0, 3.4fr)" : "minmax(0, 2.8fr)",
-    "minmax(4.25rem, 1fr)",
-    "minmax(4.5rem, 1fr)",
-    "minmax(5rem, 1.2fr)",
-    ...(!isPosMode ? ["minmax(3.75rem, 0.8fr)"] : []),
-    "minmax(4.5rem, 0.95fr)",
-    "minmax(5rem, 1fr)",
-    ...(!isViewingPostedDocument ? [isPosMode ? "2.75rem" : "2.25rem"] : []),
-  ].join(" ");
+  const desktopGridTemplate = withTabularSerialNumberColumn(
+    [
+      isPosMode ? "minmax(0, 3.4fr)" : "minmax(0, 2.8fr)",
+      "minmax(4.25rem, 1fr)",
+      "minmax(4.5rem, 1fr)",
+      "minmax(5rem, 1.2fr)",
+      ...(!isPosMode ? ["minmax(3.75rem, 0.8fr)"] : []),
+      "minmax(4.5rem, 0.95fr)",
+      "minmax(5rem, 1fr)",
+      ...(!isViewingPostedDocument ? [isPosMode ? "2.75rem" : "2.25rem"] : []),
+    ].join(" "),
+  );
   const {
     getCellDataAttributes,
     handleCellFocus,
@@ -409,6 +414,7 @@ export function SalesDocumentLineEditor({
           >
             <TabularHeader>
               <TabularRow columns={desktopGridTemplate}>
+                <TabularSerialNumberHeaderCell />
                 <TabularCell variant="header">Item</TabularCell>
                 <TabularCell variant="header" align="end">Qty</TabularCell>
                 <TabularCell variant="header" align="end">Rate</TabularCell>
@@ -424,7 +430,7 @@ export function SalesDocumentLineEditor({
               </TabularRow>
             </TabularHeader>
             <TabularBody>
-              {lines.map((line) => {
+              {lines.map((line, index) => {
                 const lineTotals = getLineTotals(line);
                 return (
                   <TabularRow
@@ -440,6 +446,7 @@ export function SalesDocumentLineEditor({
                     onClick={() => onActiveLineChange?.(line.id)}
                     onFocusCapture={() => onActiveLineChange?.(line.id)}
                   >
+                    <TabularSerialNumberCell index={index} />
                     <TabularCell variant="editable">
                       <div className="relative min-w-0 flex-1">
                         <LookupDropdownInput
