@@ -10,6 +10,7 @@ import {
 } from "../sales/document-history.service.js";
 import { purchaseBalanceService } from "./purchase-balance.service.js";
 import { purchaseDocumentLinkService } from "./purchase-document-link.service.js";
+import { purchaseStockPostingService } from "./purchase-stock-posting.service.js";
 import {
   toPurchaseConversionBalanceView,
   toPurchaseDocumentHistoryView,
@@ -884,6 +885,7 @@ export const postDraftPurchaseDocument = async (
     documentId,
     buildSourceLineMap(document),
   );
+  await purchaseStockPostingService.applyPostingEffects(tx, tenantId, documentId);
 
   await tx.document.update({
     where: { id: documentId },
