@@ -1,14 +1,15 @@
+import { useEffect, useRef } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
 import {
-  DenseTable,
-  DenseTableBody,
-  DenseTableCell,
-  DenseTableHead,
-  DenseTableHeaderCell,
-  DenseTableRow,
-} from "../../design-system/molecules/DenseTable";
+  TabularBody,
+  TabularCell,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../../design-system/molecules/TabularSurface";
+import { useToast } from "../../features/toast/useToast";
 import {
   formatCurrency,
   formatDateTime,
@@ -45,6 +46,24 @@ export function SalesDocumentListView({
   onToggleRowMenu,
   getRowMenuActions,
 }: SalesDocumentListViewProps) {
+  const { showToast } = useToast();
+  const lastSaveMessageRef = useRef<string | null>(null);
+  const desktopGridTemplate =
+    "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1.1fr) minmax(0,1.3fr) 3rem";
+
+  useEffect(() => {
+    if (!saveMessage || saveMessage === lastSaveMessageRef.current) {
+      return;
+    }
+
+    lastSaveMessageRef.current = saveMessage;
+    showToast({
+      title: saveMessage,
+      tone: "success",
+      dedupeKey: `sales-document-list:${saveMessage}`,
+    });
+  }, [saveMessage, showToast]);
+
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
       <div className="flex flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:min-h-0 lg:flex-1">
@@ -65,11 +84,6 @@ export function SalesDocumentListView({
         </div>
 
         <div className="space-y-2 pt-2 lg:hidden">
-          {saveMessage ? (
-            <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-[11px] text-muted-foreground">
-              {saveMessage}
-            </div>
-          ) : null}
           {serverInvoicesError ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
               {serverInvoicesError}
@@ -145,12 +159,7 @@ export function SalesDocumentListView({
           )}
         </div>
 
-        <div className="hidden lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-          {saveMessage ? (
-            <div className="mt-2 rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-[11px] text-muted-foreground">
-              {saveMessage}
-            </div>
-          ) : null}
+        <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
           {serverInvoicesError ? (
             <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
               {serverInvoicesError}
@@ -166,49 +175,40 @@ export function SalesDocumentListView({
               {config.listEmptyMessage}
             </div>
           ) : (
-            <DenseTable className="mt-2">
-              <DenseTableHead>
-                <tr>
-                  <DenseTableHeaderCell className="w-[14%]">
-                    Number
-                  </DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[22%]">
-                    Customer
-                  </DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[10%]">
-                    Status
-                  </DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[10%]">
-                    Lines
-                  </DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[14%]">
-                    Total
-                  </DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[18%]">
-                    Updated
-                  </DenseTableHeaderCell>
-                  <DenseTableHeaderCell className="w-[12%] text-right">
-                    Actions
-                  </DenseTableHeaderCell>
-                </tr>
-              </DenseTableHead>
-              <DenseTableBody>
+            <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+                <TabularHeader>
+                  <TabularRow columns={desktopGridTemplate}>
+                    <TabularCell variant="header">Number</TabularCell>
+                    <TabularCell variant="header">Customer</TabularCell>
+                    <TabularCell variant="header">Status</TabularCell>
+                    <TabularCell variant="header">Lines</TabularCell>
+                    <TabularCell variant="header" align="end">Total</TabularCell>
+                    <TabularCell variant="header">Updated</TabularCell>
+                    <TabularCell variant="header" align="center">Actions</TabularCell>
+                  </TabularRow>
+                </TabularHeader>
+                <TabularBody className="overflow-y-auto">
                 {invoiceRows.map((row) => (
-                  <DenseTableRow key={`${row.source}:${row.id}`}>
-                    <DenseTableCell className="font-semibold text-foreground">
+                  <TabularRow key={`${row.source}:${row.id}`} columns={desktopGridTemplate} interactive>
+                    <TabularCell truncate hoverTitle={row.billNumber} className="font-semibold text-foreground">
                       {row.billNumber}
-                    </DenseTableCell>
-                    <DenseTableCell>{row.customerName}</DenseTableCell>
-                    <DenseTableCell>{row.status}</DenseTableCell>
-                    <DenseTableCell>
+                    </TabularCell>
+                    <TabularCell truncate hoverTitle={row.customerName}>
+                      {row.customerName}
+                    </TabularCell>
+                    <TabularCell>{row.status}</TabularCell>
+                    <TabularCell>
                       {row.lines.length} line
                       {row.lines.length === 1 ? "" : "s"}
-                    </DenseTableCell>
-                    <DenseTableCell className="font-semibold text-foreground">
+                    </TabularCell>
+                    <TabularCell align="end" className="font-semibold text-foreground">
                       {formatCurrency(row.total)}
-                    </DenseTableCell>
-                    <DenseTableCell>{formatDateTime(row.timestamp)}</DenseTableCell>
-                    <DenseTableCell className="text-right">
+                    </TabularCell>
+                    <TabularCell truncate hoverTitle={formatDateTime(row.timestamp)}>
+                      {formatDateTime(row.timestamp)}
+                    </TabularCell>
+                    <TabularCell align="center">
                       {(() => {
                         const actions = getRowMenuActions(row);
                         if (actions.length === 0) {
@@ -239,11 +239,12 @@ export function SalesDocumentListView({
                           </div>
                         );
                       })()}
-                    </DenseTableCell>
-                  </DenseTableRow>
+                    </TabularCell>
+                  </TabularRow>
                 ))}
-              </DenseTableBody>
-            </DenseTable>
+                </TabularBody>
+              </TabularSurface>
+            </div>
           )}
         </div>
       </div>

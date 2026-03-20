@@ -22,6 +22,7 @@ type SalesDocumentSummaryPanelProps = {
   isPosting?: boolean;
   canCheckout?: boolean;
   onOpenPosPayment?: () => void;
+  desktopRailInset?: boolean;
   className?: string;
 };
 
@@ -38,13 +39,16 @@ export function SalesDocumentSummaryPanel({
   isPosting = false,
   canCheckout = true,
   onOpenPosPayment,
+  desktopRailInset = true,
   className,
 }: SalesDocumentSummaryPanelProps) {
   const normalizedLineCount = normalizeLines(linesCountSource).length;
 
   return (
     <div
-      className={`w-full border-t border-border/70 pt-2 md:w-[280px] md:border-l md:border-t-0 md:pl-4 md:pt-0 ${
+      className={`w-full border-t border-border/70 pt-2 md:w-[280px] md:border-t-0 md:pt-0 ${
+        desktopRailInset ? "md:border-l md:pl-4" : ""
+      } ${
         isPosMode ? "md:self-stretch" : ""
       } ${className ?? ""}`}
     >

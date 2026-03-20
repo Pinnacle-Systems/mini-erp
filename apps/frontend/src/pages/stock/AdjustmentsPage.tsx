@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
 import { RotateCcw, Trash2 } from "lucide-react";
+import { cn } from "../../lib/utils";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
 import { Select } from "../../design-system/atoms/Select";
 import { Card, CardContent, CardHeader, CardTitle } from "../../design-system/molecules/Card";
+import { LookupDropdownInput } from "../../design-system/molecules/LookupDropdownInput";
 import {
-  DenseTable,
-  DenseTableBody,
-  DenseTableCell,
-  DenseTableHead,
-  DenseTableHeaderCell,
-  DenseTableRow,
-} from "../../design-system/molecules/DenseTable";
+  TabularBody,
+  TabularCell,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../../design-system/molecules/TabularSurface";
+import {
+  spreadsheetCellControlClassName,
+  spreadsheetCellNumericClassName,
+  spreadsheetCellSelectClassName,
+} from "../../design-system/molecules/spreadsheetStyles";
 import { useSessionStore } from "../../features/auth/session-business";
 import { hasAssignedStoreCapability } from "../../features/auth/session-business";
 import {
@@ -37,12 +43,10 @@ const STOCK_REASON_OPTIONS: Array<{
 
 const DESKTOP_ROW_COUNT = 5;
 const MOBILE_ROW_COUNT = 1;
-const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
-const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
-
 type AdjustmentDraftRow = {
   id: string;
   variantId: string;
+  variantQuery: string;
   reason: StockAdjustmentReason | "";
   quantity: string;
 };
@@ -54,6 +58,7 @@ type ReadyAdjustmentDraftRow = AdjustmentDraftRow & {
 const buildEmptyRow = (variantId = ""): AdjustmentDraftRow => ({
   id: crypto.randomUUID(),
   variantId,
+  variantQuery: "",
   reason: "",
   quantity: "",
 });
@@ -96,7 +101,8 @@ const toUserStockErrorMessage = (error: unknown) => {
 const isRowPristine = (row: AdjustmentDraftRow) =>
   row.quantity.trim().length === 0 &&
   row.reason === "" &&
-  row.variantId === "";
+  row.variantId === "" &&
+  row.variantQuery.trim().length === 0;
 
 export function AdjustmentsPage() {
   const identityId = useSessionStore((state) => state.identityId);
@@ -148,6 +154,12 @@ export function AdjustmentsPage() {
       parsedQuantity > 0
     );
   }).length;
+  const desktopGridTemplate =
+    "minmax(0,3fr) minmax(0,1.2fr) minmax(0,1.1fr) 3.5rem";
+  const getVariantLookupValue = (row: AdjustmentDraftRow) =>
+    row.variantId && optionByVariantId.get(row.variantId)?.label
+      ? (optionByVariantId.get(row.variantId)?.label ?? row.variantQuery)
+      : row.variantQuery;
 
   useEffect(() => {
     const desktopMedia = window.matchMedia("(min-width: 1024px)");
@@ -199,6 +211,10 @@ export function AdjustmentsPage() {
             variantId: nextOptions.some((option) => option.variantId === row.variantId)
               ? row.variantId
               : "",
+            variantQuery: nextOptions.some((option) => option.variantId === row.variantId)
+              ? (nextOptions.find((option) => option.variantId === row.variantId)?.label ??
+                  row.variantQuery)
+              : row.variantQuery,
           })),
         );
         setError(null);
@@ -429,7 +445,7 @@ export function AdjustmentsPage() {
                       {activeLocation?.name ?? "Default location"}
                     </span>
                   )}
-                  <span>(adjustments recorded here)</span>
+                  <span>Stock changes will be recorded here.</span>
                 </div>
               ) : null}
             </div>
@@ -486,21 +502,34 @@ export function AdjustmentsPage() {
                     </p>
                     <div className="space-y-1">
                       <Label htmlFor={`stock-variant-${row.id}`}>Item Variant</Label>
-                      <Select
+                      <LookupDropdownInput
                         id={`stock-mobile-variant-${row.id}`}
-                        value={row.variantId}
-                        onChange={(event) => updateRow(row.id, { variantId: event.target.value })}
+                        value={getVariantLookupValue(row)}
                         disabled={isBusy}
-                      >
-                        <option value="" disabled>
-                          Select item variant
-                        </option>
-                        {options.map((option) => (
-                          <option key={option.variantId} value={option.variantId}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </Select>
+                        onValueChange={(value) =>
+                          updateRow(row.id, { variantId: "", variantQuery: value })
+                        }
+                        options={options}
+                        placeholder="Search item variant"
+                        onOptionSelect={(option) =>
+                          updateRow(row.id, {
+                            variantId: option.variantId,
+                            variantQuery: option.label,
+                          })
+                        }
+                        getOptionKey={(option) => option.variantId}
+                        getOptionSearchText={(option) => `${option.label} ${option.unit}`}
+                        renderOption={(option) => (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate">{option.label}</span>
+                            <span className="shrink-0 text-[10px] text-muted-foreground">
+                              {option.unit}
+                            </span>
+                          </div>
+                        )}
+                        containerClassName="w-full"
+                        inputProps={{ "aria-label": "Search item variant" }}
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor={`stock-reason-${row.id}`}>Movement Type</Label>
@@ -569,112 +598,141 @@ export function AdjustmentsPage() {
                 ))}
               </div>
 
-              <DenseTable className="mt-1 lg:flex-1">
-                <DenseTableHead>
-                  <tr>
-                    <DenseTableHeaderCell className="w-[56%] pl-3">Item Variant</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[18%] pl-3">Movement</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[14%] pr-3 text-right">Quantity</DenseTableHeaderCell>
-                    <DenseTableHeaderCell className="w-[12%] text-right">Actions</DenseTableHeaderCell>
-                  </tr>
-                </DenseTableHead>
-                <DenseTableBody>
-                  {rows.map((row) => (
-                    <DenseTableRow key={row.id}>
-                      <DenseTableCell>
-                        <Select
-                          id={`stock-desktop-variant-${row.id}`}
-                          className={DENSE_SELECT_CLASS}
-                          value={row.variantId}
-                          onChange={(event) => updateRow(row.id, { variantId: event.target.value })}
-                          disabled={isBusy}
-                        >
-                          <option value="" disabled>
-                            Select item variant
-                          </option>
-                          {options.map((option) => (
-                            <option key={option.variantId} value={option.variantId}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </Select>
-                      </DenseTableCell>
-                      <DenseTableCell>
-                        <Select
-                          id={`stock-desktop-reason-${row.id}`}
-                          className={DENSE_SELECT_CLASS}
-                          value={row.reason}
-                          onChange={(event) =>
-                            updateRow(row.id, {
-                              reason: event.target.value as StockAdjustmentReason | "",
-                            })
-                          }
-                          disabled={isBusy}
-                        >
-                          <option value="" disabled>
-                            Select movement type
-                          </option>
-                          {STOCK_REASON_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </Select>
-                      </DenseTableCell>
-                      <DenseTableCell className="text-right">
-                        <div className="ml-auto flex w-[8.75rem] items-center justify-end">
-                          <Input
-                            id={`stock-desktop-quantity-${row.id}`}
-                            className={`${DENSE_INPUT_CLASS} w-[6rem] rounded-r-none border-r-0 px-2 text-right`}
-                            inputMode="decimal"
-                            value={row.quantity}
-                            onChange={(event) => updateRow(row.id, { quantity: event.target.value })}
-                            placeholder=""
+              <div className="mt-1 hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+                <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+                  <TabularHeader>
+                    <TabularRow columns={desktopGridTemplate}>
+                      <TabularCell variant="header">Item Variant</TabularCell>
+                      <TabularCell variant="header">Movement</TabularCell>
+                      <TabularCell variant="header" align="end">
+                        Quantity
+                      </TabularCell>
+                      <TabularCell variant="header" align="center">
+                        Actions
+                      </TabularCell>
+                    </TabularRow>
+                  </TabularHeader>
+                  <TabularBody className="overflow-y-auto">
+                    {rows.map((row) => (
+                      <TabularRow key={row.id} columns={desktopGridTemplate} interactive>
+                        <TabularCell variant="editable">
+                          <LookupDropdownInput
+                            id={`stock-desktop-variant-${row.id}`}
+                            value={getVariantLookupValue(row)}
                             disabled={isBusy}
-                            onKeyDown={(event) => {
-                              if (event.key === "Tab" && !event.shiftKey) {
-                                event.preventDefault();
-                                moveToNextRowFromQuantity(row.id);
-                              }
-                            }}
+                            containerClassName="h-full w-full"
+                            inputUnstyled
+                            inputClassName={cn(
+                              spreadsheetCellSelectClassName,
+                              row.variantId ? "text-foreground" : "text-[#8ea0b3]",
+                            )}
+                            dropdownClassName="max-h-56"
+                            onValueChange={(value) =>
+                              updateRow(row.id, { variantId: "", variantQuery: value })
+                            }
+                            options={options}
+                            placeholder="Search item variant"
+                            onOptionSelect={(option) =>
+                              updateRow(row.id, {
+                                variantId: option.variantId,
+                                variantQuery: option.label,
+                              })
+                            }
+                            getOptionKey={(option) => option.variantId}
+                            getOptionSearchText={(option) => `${option.label} ${option.unit}`}
+                            renderOption={(option) => (
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate">{option.label}</span>
+                                <span className="shrink-0 text-[10px] text-muted-foreground">
+                                  {option.unit}
+                                </span>
+                              </div>
+                            )}
+                            inputProps={{ "aria-label": "Search item variant" }}
                           />
-                          <div className="flex h-7 min-w-[2.75rem] items-center justify-center rounded-r-lg border border-l-0 border-[#9fb5cd] bg-[#f7f9fb] px-2 text-[10px] text-muted-foreground lg:h-7">
-                            {row.variantId && optionByVariantId.get(row.variantId)?.unit
-                              ? optionByVariantId.get(row.variantId)?.unit
-                              : ""}
+                        </TabularCell>
+                        <TabularCell variant="editable">
+                          <Select
+                            id={`stock-desktop-reason-${row.id}`}
+                            unstyled
+                            className={cn(
+                              spreadsheetCellSelectClassName,
+                              row.reason ? "text-foreground" : "text-[#8ea0b3]",
+                            )}
+                            value={row.reason}
+                            onChange={(event) =>
+                              updateRow(row.id, {
+                                reason: event.target.value as StockAdjustmentReason | "",
+                              })
+                            }
+                            disabled={isBusy}
+                          >
+                            <option value="" disabled>
+                              Select movement type
+                            </option>
+                            {STOCK_REASON_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </Select>
+                        </TabularCell>
+                        <TabularCell variant="editable" align="end">
+                          <div className="relative flex h-full w-full items-center pr-11">
+                            <Input
+                              id={`stock-desktop-quantity-${row.id}`}
+                              unstyled
+                              className={`${spreadsheetCellControlClassName} ${spreadsheetCellNumericClassName} w-full px-0 pr-0`}
+                              inputMode="decimal"
+                              value={row.quantity}
+                              onChange={(event) => updateRow(row.id, { quantity: event.target.value })}
+                              placeholder=""
+                              disabled={isBusy}
+                              onKeyDown={(event) => {
+                                if (event.key === "Tab" && !event.shiftKey) {
+                                  event.preventDefault();
+                                  moveToNextRowFromQuantity(row.id);
+                                }
+                              }}
+                            />
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                              {row.variantId && optionByVariantId.get(row.variantId)?.unit
+                                ? optionByVariantId.get(row.variantId)?.unit
+                                : ""}
+                            </span>
                           </div>
-                        </div>
-                      </DenseTableCell>
-                      <DenseTableCell>
-                        <div className="flex justify-end gap-1">
-                          <IconButton
-                            type="button"
-                            variant="ghost"
-                            className="h-7 w-7 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
-                            icon={RotateCcw}
-                            iconSize={14}
-                            title="Clear row"
-                            aria-label="Clear row"
-                            onClick={() => clearRow(row.id)}
-                            disabled={isBusy}
-                          />
-                          <IconButton
-                            type="button"
-                            variant="ghost"
-                            className="h-7 w-7 text-muted-foreground hover:bg-red-50 hover:text-red-700"
-                            icon={Trash2}
-                            iconSize={14}
-                            title="Remove row"
-                            aria-label="Remove row"
-                            onClick={() => removeRow(row.id)}
-                            disabled={isBusy}
-                          />
-                        </div>
-                      </DenseTableCell>
-                    </DenseTableRow>
-                  ))}
-                </DenseTableBody>
-              </DenseTable>
+                        </TabularCell>
+                        <TabularCell align="center">
+                          <div className="inline-flex items-center justify-center gap-1">
+                            <IconButton
+                              type="button"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+                              icon={RotateCcw}
+                              iconSize={14}
+                              title="Clear row"
+                              aria-label="Clear row"
+                              onClick={() => clearRow(row.id)}
+                              disabled={isBusy}
+                            />
+                            <IconButton
+                              type="button"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:bg-red-50 hover:text-red-700"
+                              icon={Trash2}
+                              iconSize={14}
+                              title="Remove row"
+                              aria-label="Remove row"
+                              onClick={() => removeRow(row.id)}
+                              disabled={isBusy}
+                            />
+                          </div>
+                        </TabularCell>
+                      </TabularRow>
+                    ))}
+                  </TabularBody>
+                </TabularSurface>
+              </div>
             </>
           )}
 

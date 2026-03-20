@@ -3,14 +3,12 @@ import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
 import {
-  DenseTable,
-  DenseTableBody,
-  DenseTableCell,
-  DenseTableHead,
-  DenseTableHeaderCell,
-  DenseTableRow,
-} from "../../design-system/molecules/DenseTable";
-import { DENSE_TABLE_COLUMN_WIDTHS } from "../../design-system/molecules/denseTableColumns";
+  TabularBody,
+  TabularCell,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../../design-system/molecules/TabularSurface";
 import {
   Card,
   CardContent,
@@ -158,15 +156,16 @@ export function LevelsPage() {
   });
 
   const uniqueItems = new Set(filteredRows.map((row) => row.itemId)).size;
-  const totalQuantity = filteredRows.reduce((sum, row) => sum + row.quantityOnHand, 0);
+  const desktopGridTemplate =
+    "minmax(0,1.65fr) minmax(0,1.35fr) minmax(0,0.85fr) minmax(0,0.6fr) minmax(0,0.55fr)";
 
   return (
     <Card className="lg:h-full lg:min-h-0">
       <CardHeader>
         <CardTitle>Stock Levels</CardTitle>
         <CardDescription>
-          Review business-level on-hand stock from synced `stock_level` snapshots. Quantities
-          are grouped by item variant across the business.
+          Review the total stock currently available across your business. Quantities are
+          grouped by item variant.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 lg:flex lg:min-h-0 lg:flex-col">
@@ -211,9 +210,6 @@ export function LevelsPage() {
               ? "No stock rows match the current filter."
               : `${filteredRows.length} variant row${filteredRows.length === 1 ? "" : "s"} across ${uniqueItems} item${uniqueItems === 1 ? "" : "s"}.`}
           </p>
-          <p className="text-xs text-muted-foreground">
-            Total quantity in view: {formatQuantity(totalQuantity)}
-          </p>
         </div>
 
         {error ? <p className="text-xs text-red-700">{error}</p> : null}
@@ -221,44 +217,49 @@ export function LevelsPage() {
           <p className="text-xs text-muted-foreground">Loading stock levels...</p>
         ) : null}
 
-        <DenseTable className="lg:flex-1">
-          <DenseTableHead>
-            <DenseTableRow>
-              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.item}>Item</DenseTableHeaderCell>
-              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.variant}>Variant</DenseTableHeaderCell>
-              <DenseTableHeaderCell className={DENSE_TABLE_COLUMN_WIDTHS.sku}>SKU</DenseTableHeaderCell>
-              <DenseTableHeaderCell className={`${DENSE_TABLE_COLUMN_WIDTHS.quantity} text-right`}>Qty</DenseTableHeaderCell>
-            </DenseTableRow>
-          </DenseTableHead>
-          <DenseTableBody>
-            {filteredRows.map((row) => (
-              <DenseTableRow key={row.key}>
-                <DenseTableCell>
-                  <div>
-                    <p className="font-semibold text-foreground">{row.itemName}</p>
-                    <p className="text-[10px] text-muted-foreground">{row.unit}</p>
-                  </div>
-                </DenseTableCell>
-                <DenseTableCell className="text-muted-foreground">
-                  {row.variantName || "Default variant"}
-                </DenseTableCell>
-                <DenseTableCell className="text-muted-foreground">
-                  {row.sku || "—"}
-                </DenseTableCell>
-                <DenseTableCell className="text-right font-semibold text-foreground">
-                  {formatQuantity(row.quantityOnHand)}
-                </DenseTableCell>
-              </DenseTableRow>
-            ))}
-            {filteredRows.length === 0 && !loading ? (
-              <DenseTableRow>
-                <DenseTableCell colSpan={4} className="text-muted-foreground">
-                  Stock will appear here after product movements sync to this device.
-                </DenseTableCell>
-              </DenseTableRow>
-            ) : null}
-          </DenseTableBody>
-        </DenseTable>
+        <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+          <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+            <TabularHeader>
+              <TabularRow columns={desktopGridTemplate}>
+                <TabularCell variant="header">Item</TabularCell>
+                <TabularCell variant="header">Variant</TabularCell>
+                <TabularCell variant="header">SKU</TabularCell>
+                <TabularCell variant="header" align="end">
+                  Qty
+                </TabularCell>
+                <TabularCell variant="header">UOM</TabularCell>
+              </TabularRow>
+            </TabularHeader>
+            <TabularBody className="overflow-y-auto">
+              {filteredRows.map((row) => (
+                <TabularRow key={row.key} columns={desktopGridTemplate} interactive>
+                  <TabularCell>
+                    <p className="truncate font-semibold text-foreground" title={row.itemName}>
+                      {row.itemName}
+                    </p>
+                  </TabularCell>
+                  <TabularCell truncate hoverTitle={row.variantName || "Default variant"}>
+                    {row.variantName || "Default variant"}
+                  </TabularCell>
+                  <TabularCell truncate hoverTitle={row.sku || "—"}>
+                    {row.sku || "—"}
+                  </TabularCell>
+                  <TabularCell align="end" className="font-semibold text-foreground">
+                    {formatQuantity(row.quantityOnHand)}
+                  </TabularCell>
+                  <TabularCell>{row.unit || "—"}</TabularCell>
+                </TabularRow>
+              ))}
+              {filteredRows.length === 0 && !loading ? (
+                <TabularRow columns={desktopGridTemplate}>
+                  <TabularCell className="col-span-5 text-muted-foreground">
+                    Stock will appear here after product movements sync to this device.
+                  </TabularCell>
+                </TabularRow>
+              ) : null}
+            </TabularBody>
+          </TabularSurface>
+        </div>
 
         <div className="space-y-2 lg:hidden">
           {filteredRows.length === 0 && !loading ? (
