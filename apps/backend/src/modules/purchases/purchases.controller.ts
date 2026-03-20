@@ -8,6 +8,8 @@ import {
   recordDocumentHistory,
   type DocumentHistoryActor,
 } from "../sales/document-history.service.js";
+import { purchaseBalanceService } from "./purchase-balance.service.js";
+import { purchaseDocumentLinkService } from "./purchase-document-link.service.js";
 import {
   toPurchaseConversionBalanceView,
   toPurchaseDocumentHistoryView,
@@ -76,6 +78,14 @@ const PURCHASE_DOCUMENT_META: Record<
     notFoundLabel: "Purchase return not found",
     duplicateLabel: "Purchase return number already exists",
   },
+};
+
+const PURCHASE_DOCUMENT_CONVERSION_RULES: Partial<
+  Record<PurchaseDocumentType, PurchaseDocumentType[]>
+> = {
+  PURCHASE_ORDER: ["GOODS_RECEIPT_NOTE", "PURCHASE_INVOICE"],
+  GOODS_RECEIPT_NOTE: ["PURCHASE_INVOICE", "PURCHASE_RETURN"],
+  PURCHASE_INVOICE: ["PURCHASE_RETURN"],
 };
 
 const usesSettlementMode = (documentType: PurchaseDocumentType) =>
@@ -381,6 +391,46 @@ const getSupplierReference = async (
   };
 };
 
+const getParentDocumentReference = async (
+  tx: Pick<typeof prisma, "document">,
+  tenantId: string,
+  documentType: PurchaseDocumentType,
+  parentId?: string | null,
+) => {
+  if (!parentId) {
+    return null;
+  }
+
+  const parent = await tx.document.findFirst({
+    where: {
+      id: parentId,
+      business_id: tenantId,
+      deleted_at: null,
+      type: {
+        in: ["PURCHASE_ORDER", "GOODS_RECEIPT_NOTE", "PURCHASE_INVOICE"],
+      },
+    },
+    select: {
+      id: true,
+      type: true,
+      location_id: true,
+    },
+  });
+
+  if (!parent) {
+    throw new BadRequestError("Selected source document is no longer available");
+  }
+
+  const allowedChildren = PURCHASE_DOCUMENT_CONVERSION_RULES[parent.type as PurchaseDocumentType];
+  if (!allowedChildren?.includes(documentType)) {
+    throw new BadRequestError(
+      `${PURCHASE_DOCUMENT_META[documentType].singularLabel} cannot be converted from this source document`,
+    );
+  }
+
+  return parent;
+};
+
 const getDocumentLocationReference = async (
   tenantId: string,
   locationId?: string | null,
@@ -563,6 +613,11 @@ const mapPurchaseDocuments = (documents: PurchaseDocumentRecord[]) =>
     };
   });
 
+const buildSourceLineMap = (document: PurchaseDocumentRecord) =>
+  Object.fromEntries(
+    document.lineItems.map((line) => [line.id, line.target_links[0]?.source_line_id ?? null]),
+  );
+
 export const saveDraftPurchaseDocument = async (
   tx: PurchaseTransactionClient,
   documentId: string | null,
@@ -583,10 +638,16 @@ export const saveDraftPurchaseDocument = async (
     documentId ?? undefined,
   );
 
+  const parentRef = await getParentDocumentReference(
+    tx,
+    input.tenantId,
+    input.documentType,
+    input.parentId,
+  );
   const [supplierRef, variantMap, locationRef] = await Promise.all([
     getSupplierReference(tx, input.tenantId, input),
     getVariantSnapshotMap(tx, input.tenantId, input.lines),
-    getDocumentLocationReference(input.tenantId, input.locationId),
+    getDocumentLocationReference(input.tenantId, input.locationId ?? parentRef?.location_id ?? null),
   ]);
   const partySnapshot = buildPartySnapshot({
     role: "supplier",
@@ -653,7 +714,7 @@ export const saveDraftPurchaseDocument = async (
         doc_number: trimmedBillNumber,
         location_id: locationRef.locationId,
         location_name_snapshot: locationRef.locationName,
-        parent_id: input.parentId ?? null,
+        parent_id: parentRef?.id ?? null,
         party_id: supplierRef.partyId,
         party_snapshot: partySnapshot,
         currency: "INR",
@@ -696,6 +757,10 @@ export const saveDraftPurchaseDocument = async (
       })),
     });
 
+    await purchaseDocumentLinkService.upsertLinksForDocument(tx, input.tenantId, documentId, {
+      ...Object.fromEntries(input.lines.map((line) => [line.id, line.sourceLineId ?? null])),
+    });
+
     await recordDocumentHistory(tx, {
       tenantId: input.tenantId,
       documentId,
@@ -705,7 +770,7 @@ export const saveDraftPurchaseDocument = async (
       toStatus: existing.status,
       metadata: {
         lineCount: normalizedLines.length,
-        parentDocumentId: input.parentId ?? null,
+        parentDocumentId: parentRef?.id ?? null,
         locationId: locationRef.locationId,
       },
     });
@@ -724,7 +789,7 @@ export const saveDraftPurchaseDocument = async (
       doc_number: trimmedBillNumber,
       location_id: locationRef.locationId,
       location_name_snapshot: locationRef.locationName,
-      parent_id: input.parentId ?? null,
+      parent_id: parentRef?.id ?? null,
       party_id: supplierRef.partyId,
       party_snapshot: partySnapshot,
       currency: "INR",
@@ -759,7 +824,11 @@ export const saveDraftPurchaseDocument = async (
       tax_amount: line.taxAmount,
       gross_amount: line.grossAmount,
       total: line.total,
-    })),
+      })),
+    });
+
+  await purchaseDocumentLinkService.upsertLinksForDocument(tx, input.tenantId, created.id, {
+    ...Object.fromEntries(input.lines.map((line) => [line.id, line.sourceLineId ?? null])),
   });
 
   await recordDocumentHistory(tx, {
@@ -770,7 +839,7 @@ export const saveDraftPurchaseDocument = async (
     toStatus: "DRAFT",
     metadata: {
       lineCount: normalizedLines.length,
-      parentDocumentId: input.parentId ?? null,
+      parentDocumentId: parentRef?.id ?? null,
       locationId: locationRef.locationId,
     },
   });
@@ -808,6 +877,13 @@ export const postDraftPurchaseDocument = async (
       `${PURCHASE_DOCUMENT_META[documentType].singularLabel} requires an existing supplier for credit transactions`,
     );
   }
+
+  await purchaseDocumentLinkService.upsertLinksForDocument(
+    tx,
+    tenantId,
+    documentId,
+    buildSourceLineMap(document),
+  );
 
   await tx.document.update({
     where: { id: documentId },
@@ -1076,10 +1152,11 @@ export const getPurchaseConversionBalance = catchAsync(async (req, res) => {
       business_id: tenantId,
       deleted_at: null,
       type: {
-        in: ["PURCHASE_ORDER", "GOODS_RECEIPT_NOTE", "PURCHASE_INVOICE", "PURCHASE_RETURN"],
+        in: ["PURCHASE_ORDER", "GOODS_RECEIPT_NOTE", "PURCHASE_INVOICE"],
       },
     },
     select: {
+      id: true,
       type: true,
     },
   });
@@ -1089,8 +1166,30 @@ export const getPurchaseConversionBalance = catchAsync(async (req, res) => {
   }
 
   await assertPurchaseAccess(req.user.id, tenantId, sourceDocument.type as PurchaseDocumentType);
+  const sourceDocumentType = sourceDocument.type as PurchaseDocumentType;
+  const lineBalances =
+    sourceDocumentType === "PURCHASE_ORDER"
+      ? await purchaseBalanceService.getReceiptLineBalances(prisma, tenantId, sourceDocument.id)
+      : sourceDocumentType === "GOODS_RECEIPT_NOTE"
+        ? await purchaseBalanceService.getInvoiceableLineBalances(prisma, tenantId, sourceDocument.id)
+        : await purchaseBalanceService.getLineBalances(prisma, tenantId, sourceDocument.id, "RETURN");
 
-  res.json(toPurchaseConversionBalanceView([]));
+  res.json(
+    toPurchaseConversionBalanceView(
+      lineBalances.map((line) => ({
+        sourceLineId: line.sourceLineId,
+        itemId: line.itemId,
+        variantId: line.variantId,
+        description: line.description,
+        unitPrice: formatDecimalString(line.unitPrice),
+        taxRate: line.taxRate > 0 ? `${line.taxRate}%` : "0%",
+        taxMode: line.taxMode,
+        unit: line.unit,
+        originalQuantity: formatDecimalString(line.originalQuantity),
+        remainingQuantity: formatDecimalString(line.remainingQuantity),
+      })),
+    ),
+  );
 });
 
 export const createPurchaseDocument = catchAsync(async (req, res) => {

@@ -84,6 +84,23 @@ describe("purchases.controller", () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
         id: "po-1",
+        type: "PURCHASE_INVOICE",
+        parent_id: null,
+        posted_at: null,
+        lineItems: [
+          {
+            id: "line-1",
+            variant_id: "variant-1",
+            description_snapshot: "Primary line",
+            description: "Primary line",
+            quantity: "2.000",
+            unit_price: "50.00",
+            tax_rate: "18.00",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "po-1",
         business_id: "tenant-1",
         type: "PURCHASE_INVOICE",
         status: "DRAFT",
@@ -205,6 +222,7 @@ describe("purchases.controller", () => {
         }),
       }),
     );
+    expect(tx.documentLineLink.deleteMany).not.toHaveBeenCalled();
     expect(document.id).toBe("po-1");
   });
 

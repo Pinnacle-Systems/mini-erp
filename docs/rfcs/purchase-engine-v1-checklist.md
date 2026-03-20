@@ -8,14 +8,14 @@ Status review note: initialized against repository state on 2026-03-20. The shar
 
 Goal: prepare the shared document model for both sales and purchases without creating parallel document tables.
 
-- [ ] Generalize `documents.Document` counterparty fields from customer-biased naming to shared `party_id` + `party_snapshot`
-- [ ] Add `party_snapshot.role` support with values such as `customer` and `supplier`
-- [ ] Replace or generalize `transaction_type` into shared `settlement_mode`
-- [ ] Support `settlement_mode` values `CASH | CREDIT` on invoice-like documents
-- [ ] Preserve current sales behavior while migrating document-header vocabulary
-- [ ] Generate Prisma client
+- [x] Generalize `documents.Document` counterparty fields from customer-biased naming to shared `party_id` + `party_snapshot`
+- [x] Add `party_snapshot.role` support with values such as `customer` and `supplier`
+- [x] Replace or generalize `transaction_type` into shared `settlement_mode`
+- [x] Support `settlement_mode` values `CASH | CREDIT` on invoice-like documents
+- [x] Preserve current sales behavior while migrating document-header vocabulary
+- [x] Generate Prisma client
 - [ ] Create and apply migration locally
-- [ ] Verify sales flows still map document responses correctly after schema generalization
+- [x] Verify sales flows still map document responses correctly after schema generalization
 
 ## Phase 2: Backend Purchase Module
 
@@ -54,19 +54,19 @@ Goal: make draft create, update, delete, and post flows work for purchase docume
 
 Goal: reuse the shared quantity-flow model for purchase conversions.
 
-- [ ] Extend shared or purchase-specific document-link rules for `PURCHASE_ORDER -> GOODS_RECEIPT_NOTE`
-- [ ] Extend shared or purchase-specific document-link rules for `PURCHASE_ORDER -> PURCHASE_INVOICE`
-- [ ] Extend shared or purchase-specific document-link rules for `GOODS_RECEIPT_NOTE -> PURCHASE_INVOICE`
-- [ ] Extend shared or purchase-specific document-link rules for `GOODS_RECEIPT_NOTE -> PURCHASE_RETURN`
-- [ ] Extend shared or purchase-specific document-link rules for `PURCHASE_INVOICE -> PURCHASE_RETURN`
-- [ ] Support explicit `sourceLineId` handling for purchase conversions
-- [ ] Reject invalid `sourceLineId` values that do not belong to the selected `parentId`
-- [ ] Keep `parent_id` as document provenance even when all linked rows are removed
-- [ ] Implement `GET /api/purchases/conversion-balance/:documentId`
-- [ ] Return backend-authored per-line receipt and invoice balance data
-- [ ] Support standalone GRN without a `parent_id`
-- [ ] Support standalone purchase invoice without a `parent_id`
-- [ ] Keep ad-hoc converted lines outside parent balance consumption
+- [x] Extend shared or purchase-specific document-link rules for `PURCHASE_ORDER -> GOODS_RECEIPT_NOTE`
+- [x] Extend shared or purchase-specific document-link rules for `PURCHASE_ORDER -> PURCHASE_INVOICE`
+- [x] Extend shared or purchase-specific document-link rules for `GOODS_RECEIPT_NOTE -> PURCHASE_INVOICE`
+- [x] Extend shared or purchase-specific document-link rules for `GOODS_RECEIPT_NOTE -> PURCHASE_RETURN`
+- [x] Extend shared or purchase-specific document-link rules for `PURCHASE_INVOICE -> PURCHASE_RETURN`
+- [x] Support explicit `sourceLineId` handling for purchase conversions
+- [x] Reject invalid `sourceLineId` values that do not belong to the selected `parentId`
+- [x] Keep `parent_id` as document provenance even when all linked rows are removed
+- [x] Implement `GET /api/purchases/conversion-balance/:documentId`
+- [x] Return backend-authored per-line receipt and invoice balance data
+- [x] Support standalone GRN without a `parent_id`
+- [x] Support standalone purchase invoice without a `parent_id`
+- [x] Keep ad-hoc converted lines outside parent balance consumption
 
 ## Phase 5: Inbound Inventory Responsibility and Stock Posting
 
