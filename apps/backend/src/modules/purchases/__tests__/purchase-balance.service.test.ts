@@ -113,4 +113,65 @@ describe("purchaseBalanceService", () => {
     expect(balance.invoiceableQuantity).toBe(7);
     expect(balance.remainingQuantity).toBe(7);
   });
+
+  it("ignores cancelled target documents when calculating active balances", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst.mockResolvedValue({
+      id: "grn-1",
+      type: "GOODS_RECEIPT_NOTE",
+      doc_number: "GRN-0001",
+      lineItems: [
+        {
+          id: "grn-line-1",
+          item_id: "item-1",
+          variant_id: "variant-1",
+          description_snapshot: "Widget",
+          description: "Widget",
+          quantity: "10.000",
+          unit_price: "100.00",
+          tax_rate: "18.00",
+          tax_mode_snapshot: "EXCLUSIVE",
+          unit_snapshot: "PCS",
+          source_links: [
+            {
+              quantity: "4.000",
+              type: "RETURN",
+              target_line: {
+                document: {
+                  posted_at: new Date("2026-03-21T00:00:00.000Z"),
+                  status: "CANCELLED",
+                  deleted_at: null,
+                  type: "PURCHASE_RETURN",
+                },
+                source_links: [],
+              },
+            },
+            {
+              quantity: "2.000",
+              type: "RETURN",
+              target_line: {
+                document: {
+                  posted_at: new Date("2026-03-22T00:00:00.000Z"),
+                  status: "VOID",
+                  deleted_at: null,
+                  type: "PURCHASE_RETURN",
+                },
+                source_links: [],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const [balance] = await purchaseBalanceService.getInvoiceableLineBalances(
+      tx as never,
+      "tenant-1",
+      "grn-1",
+    );
+
+    expect(balance.returnedQuantity).toBe(0);
+    expect(balance.invoiceableQuantity).toBe(10);
+    expect(balance.remainingQuantity).toBe(10);
+  });
 });

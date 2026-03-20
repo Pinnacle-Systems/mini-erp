@@ -450,4 +450,362 @@ describe("purchaseStockPostingService", () => {
       ],
     });
   });
+
+  it("writes negative reversal rows when cancelling a posted GRN", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "grn-1",
+        type: "GOODS_RECEIPT_NOTE",
+        parent_id: "po-1",
+        location_id: "location-1",
+        location_name_snapshot: "Main Warehouse",
+        lineItems: [
+          {
+            id: "grn-line-1",
+            variant_id: "variant-product",
+            quantity: "4.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "PURCHASE_ORDER",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    tx.stockLedger.findMany.mockResolvedValueOnce([
+      {
+        variant_id: "variant-product",
+        quantity: "10.000",
+      },
+    ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "6.000",
+    });
+
+    await purchaseStockPostingService.applyCancellationEffects(tx as never, "tenant-1", "grn-1");
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "location-1",
+          variant_id: "variant-product",
+          quantity: -4,
+          reason: "PURCHASE_GRN_CANCEL",
+          reference_id: "grn-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("writes negative reversal rows when cancelling a stock-responsible purchase invoice", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "invoice-1",
+        type: "PURCHASE_INVOICE",
+        parent_id: "po-1",
+        location_id: "location-1",
+        location_name_snapshot: "Main Warehouse",
+        lineItems: [
+          {
+            id: "invoice-line-1",
+            variant_id: "variant-product",
+            quantity: "2.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+            target_links: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "PURCHASE_ORDER",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    tx.stockLedger.findMany.mockResolvedValueOnce([
+      {
+        variant_id: "variant-product",
+        quantity: "5.000",
+      },
+    ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "3.000",
+    });
+
+    await purchaseStockPostingService.applyCancellationEffects(
+      tx as never,
+      "tenant-1",
+      "invoice-1",
+    );
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "location-1",
+          variant_id: "variant-product",
+          quantity: -2,
+          reason: "PURCHASE_INVOICE_CANCEL",
+          reference_id: "invoice-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("writes positive reversal rows when cancelling a posted purchase return", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "return-1",
+        type: "PURCHASE_RETURN",
+        parent_id: "invoice-1",
+        location_id: "return-location-1",
+        location_name_snapshot: "Return Bay",
+        lineItems: [
+          {
+            id: "return-line-1",
+            variant_id: "variant-product",
+            quantity: "2.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "PURCHASE_INVOICE",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "return-location-1",
+      locationName: "Return Bay",
+      quantityOnHand: "2.000",
+    });
+
+    await purchaseStockPostingService.applyCancellationEffects(tx as never, "tenant-1", "return-1");
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "return-location-1",
+          variant_id: "variant-product",
+          quantity: 2,
+          reason: "PURCHASE_RETURN_CANCEL",
+          reference_id: "return-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("reapplies stock rows when reopening a cancelled GRN", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "grn-1",
+        type: "GOODS_RECEIPT_NOTE",
+        parent_id: "po-1",
+        location_id: "location-1",
+        location_name_snapshot: "Main Warehouse",
+        lineItems: [
+          {
+            id: "grn-line-1",
+            variant_id: "variant-product",
+            quantity: "3.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "PURCHASE_ORDER",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "3.000",
+    });
+
+    await purchaseStockPostingService.applyReopenEffects(tx as never, "tenant-1", "grn-1");
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "location-1",
+          variant_id: "variant-product",
+          quantity: 3,
+          reason: "PURCHASE_GRN_REOPEN",
+          reference_id: "grn-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("reapplies stock rows when reopening a cancelled stock-responsible purchase invoice", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "invoice-1",
+        type: "PURCHASE_INVOICE",
+        parent_id: "po-1",
+        location_id: "location-1",
+        location_name_snapshot: "Main Warehouse",
+        lineItems: [
+          {
+            id: "invoice-line-1",
+            variant_id: "variant-product",
+            quantity: "2.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+            target_links: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "PURCHASE_ORDER",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "location-1",
+      locationName: "Main Warehouse",
+      quantityOnHand: "2.000",
+    });
+
+    await purchaseStockPostingService.applyReopenEffects(
+      tx as never,
+      "tenant-1",
+      "invoice-1",
+    );
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "location-1",
+          variant_id: "variant-product",
+          quantity: 2,
+          reason: "PURCHASE_INVOICE_REOPEN",
+          reference_id: "invoice-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
+
+  it("reapplies negative stock rows when reopening a cancelled purchase return", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "return-1",
+        type: "PURCHASE_RETURN",
+        parent_id: "invoice-1",
+        location_id: "return-location-1",
+        location_name_snapshot: "Return Bay",
+        lineItems: [
+          {
+            id: "return-line-1",
+            variant_id: "variant-product",
+            quantity: "2.000",
+            description_snapshot: "Product A",
+            description: "Product A",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        type: "PURCHASE_INVOICE",
+      });
+    tx.itemVariant.findMany.mockResolvedValue([
+      {
+        id: "variant-product",
+        item: {
+          item_type: "PRODUCT",
+        },
+      },
+    ]);
+    tx.stockLedger.findMany.mockResolvedValueOnce([
+      {
+        variant_id: "variant-product",
+        quantity: "10.000",
+      },
+    ]);
+    primeStockLevelSyncMocks(tx, {
+      variantId: "variant-product",
+      locationId: "return-location-1",
+      locationName: "Return Bay",
+      quantityOnHand: "8.000",
+    });
+
+    await purchaseStockPostingService.applyReopenEffects(tx as never, "tenant-1", "return-1");
+
+    expect(tx.stockLedger.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          business_id: "tenant-1",
+          location_id: "return-location-1",
+          variant_id: "variant-product",
+          quantity: -2,
+          reason: "PURCHASE_RETURN_REOPEN",
+          reference_id: "return-1",
+          is_active: true,
+          deleted_at: null,
+        },
+      ],
+    });
+  });
 });

@@ -17,6 +17,19 @@ const getPostingReason = (documentType: PurchaseDocumentType) => {
   return "PURCHASE_INVOICE_POST";
 };
 
+const getTransitionReason = (
+  documentType: PurchaseDocumentType,
+  action: "CANCEL" | "REOPEN",
+) => {
+  if (documentType === "GOODS_RECEIPT_NOTE") {
+    return action === "CANCEL" ? "PURCHASE_GRN_CANCEL" : "PURCHASE_GRN_REOPEN";
+  }
+  if (documentType === "PURCHASE_RETURN") {
+    return action === "CANCEL" ? "PURCHASE_RETURN_CANCEL" : "PURCHASE_RETURN_REOPEN";
+  }
+  return action === "CANCEL" ? "PURCHASE_INVOICE_CANCEL" : "PURCHASE_INVOICE_REOPEN";
+};
+
 type StockPostingDocument = {
   id: string;
   type: string;
@@ -447,6 +460,110 @@ class PurchaseStockPostingService {
             ? roundQuantity(Number(line.quantity))
             : -roundQuantity(Number(line.quantity)),
         reason: getPostingReason(document.type as PurchaseDocumentType),
+        reference_id: document.id,
+        is_active: true,
+        deleted_at: null,
+      })),
+    });
+
+    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
+  }
+
+  async applyCancellationEffects(
+    tx: PurchaseTransactionClient,
+    tenantId: string,
+    documentId: string,
+  ): Promise<void> {
+    const { document, parentType } = await this.getDocumentForStockEffects(tx, tenantId, documentId);
+
+    const responsibility = purchaseInventoryResponsibilityService.resolve(
+      document.type as PurchaseDocumentType,
+      parentType,
+    );
+    const stockEffect = document.type === "PURCHASE_INVOICE" ? "ADD" : responsibility.effect;
+
+    if (stockEffect === "NONE") {
+      return;
+    }
+
+    if (!document.location_id) {
+      throw new BadRequestError("Stock-affecting purchase documents require a business location");
+    }
+
+    const productLines = this.getStockEffectiveProductLines(
+      document.type as PurchaseDocumentType,
+      await this.getProductLinesForDocument(tx, tenantId, document),
+    );
+    if (productLines.length === 0) {
+      return;
+    }
+
+    if (stockEffect === "ADD" && !isNegativeStockAllowed()) {
+      await this.assertSufficientStock(tx, tenantId, document.location_id, productLines);
+    }
+
+    await tx.stockLedger.createMany({
+      data: productLines.map((line) => ({
+        business_id: tenantId,
+        location_id: document.location_id,
+        variant_id: line.variant_id,
+        quantity:
+          stockEffect === "ADD"
+            ? -roundQuantity(Number(line.quantity))
+            : roundQuantity(Number(line.quantity)),
+        reason: getTransitionReason(document.type as PurchaseDocumentType, "CANCEL"),
+        reference_id: document.id,
+        is_active: true,
+        deleted_at: null,
+      })),
+    });
+
+    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
+  }
+
+  async applyReopenEffects(
+    tx: PurchaseTransactionClient,
+    tenantId: string,
+    documentId: string,
+  ): Promise<void> {
+    const { document, parentType } = await this.getDocumentForStockEffects(tx, tenantId, documentId);
+
+    const responsibility = purchaseInventoryResponsibilityService.resolve(
+      document.type as PurchaseDocumentType,
+      parentType,
+    );
+    const stockEffect = document.type === "PURCHASE_INVOICE" ? "ADD" : responsibility.effect;
+
+    if (stockEffect === "NONE") {
+      return;
+    }
+
+    if (!document.location_id) {
+      throw new BadRequestError("Stock-affecting purchase documents require a business location");
+    }
+
+    const productLines = this.getStockEffectiveProductLines(
+      document.type as PurchaseDocumentType,
+      await this.getProductLinesForDocument(tx, tenantId, document),
+    );
+    if (productLines.length === 0) {
+      return;
+    }
+
+    if (stockEffect === "DEDUCT" && !isNegativeStockAllowed()) {
+      await this.assertSufficientStock(tx, tenantId, document.location_id, productLines);
+    }
+
+    await tx.stockLedger.createMany({
+      data: productLines.map((line) => ({
+        business_id: tenantId,
+        location_id: document.location_id,
+        variant_id: line.variant_id,
+        quantity:
+          stockEffect === "ADD"
+            ? roundQuantity(Number(line.quantity))
+            : -roundQuantity(Number(line.quantity)),
+        reason: getTransitionReason(document.type as PurchaseDocumentType, "REOPEN"),
         reference_id: document.id,
         is_active: true,
         deleted_at: null,
