@@ -1634,7 +1634,7 @@ export function useSalesDocumentWorkspace({
     setActiveDraftId(null);
     setActiveDraftSource(null);
     assignAutoBillNumber(nextBillNumber);
-    setTransactionType(config.defaultTransactionType ?? "CASH");
+    setTransactionType(config.defaultTransactionType ?? "CREDIT");
     setCustomerId(null);
     setCustomerName("");
     setCustomerPhone("");

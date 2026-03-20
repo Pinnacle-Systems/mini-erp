@@ -4,13 +4,12 @@ import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
 import { Select } from "../../design-system/atoms/Select";
 import {
-  DenseTable,
-  DenseTableBody,
-  DenseTableCell,
-  DenseTableHead,
-  DenseTableHeaderCell,
-  DenseTableRow,
-} from "../../design-system/molecules/DenseTable";
+  TabularBody,
+  TabularCell,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../../design-system/molecules/TabularSurface";
 import {
   Card,
   CardContent,
@@ -148,14 +147,16 @@ export function HistoryPage() {
       }),
     [movementFilter, normalizedQuery, rows],
   );
+  const desktopGridTemplate =
+    "minmax(0,1.35fr) minmax(0,1.55fr) minmax(0,1.25fr) minmax(0,0.9fr) minmax(0,0.95fr) minmax(0,0.65fr) minmax(0,0.5fr) minmax(0,0.8fr)";
 
   return (
     <Card className="lg:h-full lg:min-h-0">
       <CardHeader>
-        <CardTitle>Adjustment History</CardTitle>
+        <CardTitle>Stock History</CardTitle>
         <CardDescription>
-          Review recent stock adjustments synced to this device. History is retained locally as
-          the most recent 10 adjustments per variant.
+          Review recent stock movements for your items, including opening balances, stock in,
+          and stock out entries.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 lg:flex lg:min-h-0 lg:flex-col">
@@ -215,80 +216,83 @@ export function HistoryPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             {filteredRows.length === 0
-              ? "No recent adjustments match the current filters."
-              : `${filteredRows.length} recent adjustment${filteredRows.length === 1 ? "" : "s"} in view.`}
+              ? "No stock movements match the current filters."
+              : `${filteredRows.length} recent movement${filteredRows.length === 1 ? "" : "s"} in view.`}
           </p>
         </div>
 
         {error ? <p className="text-xs text-red-700">{error}</p> : null}
         {loading && rows.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Loading stock adjustment history...</p>
+          <p className="text-xs text-muted-foreground">Loading stock history...</p>
         ) : null}
 
-        <DenseTable className="lg:flex-1">
-          <DenseTableHead>
-            <DenseTableRow>
-              <DenseTableHeaderCell className="w-[22%]">When</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[24%]">Item</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[16%]">Variant</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[12%]">Location</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[12%]">Movement</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[8%] text-right">Qty</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[6%]">Unit</DenseTableHeaderCell>
-              <DenseTableHeaderCell className="w-[10%] text-right">On Hand</DenseTableHeaderCell>
-            </DenseTableRow>
-          </DenseTableHead>
-          <DenseTableBody>
-            {filteredRows.map((row) => (
-              <DenseTableRow key={row.entityId}>
-                <DenseTableCell className="text-muted-foreground">
-                  {formatTimestamp(row.createdAt)}
-                </DenseTableCell>
-                <DenseTableCell>
-                  <div>
-                    <p className="font-semibold text-foreground">{row.itemName}</p>
-                    <p className="text-[10px] text-muted-foreground">{row.sku || "—"}</p>
-                  </div>
-                </DenseTableCell>
-                <DenseTableCell className="text-muted-foreground">
-                  {row.variantName || "Default variant"}
-                </DenseTableCell>
-                <DenseTableCell className="text-muted-foreground">
-                  {row.locationName || "—"}
-                </DenseTableCell>
-                <DenseTableCell className="text-muted-foreground">
-                  {toMovementLabel(row.reason)}
-                </DenseTableCell>
-                <DenseTableCell
-                  className={`text-right font-semibold ${
-                    row.quantity < 0 ? "text-red-700" : "text-foreground"
-                  }`}
-                >
-                  {row.quantity < 0 ? "-" : "+"}
-                  {formatQuantity(row.quantity)}
-                </DenseTableCell>
-                <DenseTableCell className="text-muted-foreground">{row.unit}</DenseTableCell>
-                <DenseTableCell className="text-right font-semibold text-foreground">
-                  {formatQuantity(row.quantityOnHand)}
-                </DenseTableCell>
-              </DenseTableRow>
-            ))}
-            {filteredRows.length === 0 && !loading ? (
-              <DenseTableRow>
-                <DenseTableCell colSpan={8} className="text-muted-foreground">
-                  Recent stock adjustments will appear here after inventory changes sync to this
-                  device.
-                </DenseTableCell>
-              </DenseTableRow>
-            ) : null}
-          </DenseTableBody>
-        </DenseTable>
+        <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+          <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+            <TabularHeader>
+              <TabularRow columns={desktopGridTemplate}>
+                <TabularCell variant="header">When</TabularCell>
+                <TabularCell variant="header">Item</TabularCell>
+                <TabularCell variant="header">Variant</TabularCell>
+                <TabularCell variant="header">Location</TabularCell>
+                <TabularCell variant="header">Movement</TabularCell>
+                <TabularCell variant="header" align="end">
+                  Qty
+                </TabularCell>
+                <TabularCell variant="header">Unit</TabularCell>
+                <TabularCell variant="header" align="end">
+                  On Hand
+                </TabularCell>
+              </TabularRow>
+            </TabularHeader>
+            <TabularBody className="overflow-y-auto">
+              {filteredRows.map((row) => (
+                <TabularRow key={row.entityId} columns={desktopGridTemplate} interactive>
+                  <TabularCell truncate hoverTitle={formatTimestamp(row.createdAt)}>
+                    {formatTimestamp(row.createdAt)}
+                  </TabularCell>
+                  <TabularCell>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground" title={row.itemName}>
+                        {row.itemName}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">{row.sku || "—"}</p>
+                    </div>
+                  </TabularCell>
+                  <TabularCell truncate hoverTitle={row.variantName || "Default variant"}>
+                    {row.variantName || "Default variant"}
+                  </TabularCell>
+                  <TabularCell truncate hoverTitle={row.locationName || "—"}>
+                    {row.locationName || "—"}
+                  </TabularCell>
+                  <TabularCell>{toMovementLabel(row.reason)}</TabularCell>
+                  <TabularCell
+                    align="end"
+                    className={row.quantity < 0 ? "font-semibold text-red-700" : "font-semibold text-foreground"}
+                  >
+                    {row.quantity < 0 ? "-" : "+"}
+                    {formatQuantity(row.quantity)}
+                  </TabularCell>
+                  <TabularCell>{row.unit}</TabularCell>
+                  <TabularCell align="end" className="font-semibold text-foreground">
+                    {formatQuantity(row.quantityOnHand)}
+                  </TabularCell>
+                </TabularRow>
+              ))}
+              {filteredRows.length === 0 && !loading ? (
+                <TabularRow columns={desktopGridTemplate}>
+                  <TabularCell className="col-span-8 text-muted-foreground">
+                    Recent stock movements will appear here after inventory changes are recorded.
+                  </TabularCell>
+                </TabularRow>
+              ) : null}
+            </TabularBody>
+          </TabularSurface>
+        </div>
 
         <div className="space-y-2 lg:hidden">
           {filteredRows.length === 0 && !loading ? (
             <div className="rounded-lg border border-border/80 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
-              Recent stock adjustments will appear here after inventory changes sync to this
-              device.
+              Recent stock movements will appear here after inventory changes are recorded.
             </div>
           ) : null}
           {filteredRows.map((row) => (

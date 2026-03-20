@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type Ref,
   type CSSProperties,
   type InputHTMLAttributes,
@@ -13,12 +14,24 @@ import { createPortal } from "react-dom";
 import { Input } from "../atoms/Input";
 import { cn } from "../../lib/utils";
 
+const assignRef = <T,>(ref: Ref<T> | undefined, value: T | null) => {
+  if (!ref) {
+    return;
+  }
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  (ref as MutableRefObject<T | null>).current = value;
+};
+
 type LookupDropdownInputProps<T> = {
   id?: string;
   value: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  openOnFocus?: boolean;
   options: T[];
   onOptionSelect: (option: T) => void;
   getOptionKey: (option: T) => string;
@@ -27,6 +40,7 @@ type LookupDropdownInputProps<T> = {
   loading?: boolean;
   loadingLabel?: string;
   maxVisibleOptions?: number;
+  containerClassName?: string;
   inputClassName?: string;
   inputUnstyled?: boolean;
   dropdownClassName?: string;
@@ -44,6 +58,7 @@ export function LookupDropdownInput<T>({
   onValueChange,
   placeholder,
   disabled = false,
+  openOnFocus = true,
   options,
   onOptionSelect,
   getOptionKey,
@@ -52,6 +67,7 @@ export function LookupDropdownInput<T>({
   loading = false,
   loadingLabel,
   maxVisibleOptions = 8,
+  containerClassName,
   inputClassName,
   inputUnstyled = false,
   dropdownClassName,
@@ -64,6 +80,7 @@ export function LookupDropdownInput<T>({
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties | null>(null);
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const internalInputRef = useRef<HTMLInputElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const mergedInputProps = {
@@ -85,7 +102,11 @@ export function LookupDropdownInput<T>({
     return filtered.slice(0, maxVisibleOptions);
   }, [getOptionSearchText, maxVisibleOptions, options, value]);
 
-  const isDropdownOpen = isFocused && filteredOptions.length > 0;
+  const hasQuery = value.trim().length > 0;
+  const isDropdownOpen =
+    isFocused &&
+    filteredOptions.length > 0 &&
+    (openOnFocus || hasQuery || activeOptionIndex >= 0);
 
   const highlightedOptionIndex =
     isDropdownOpen && activeOptionIndex >= 0
@@ -155,14 +176,9 @@ export function LookupDropdownInput<T>({
 
   const selectOption = (option: T) => {
     onOptionSelect(option);
+    setIsFocused(false);
     setActiveOptionIndex(-1);
     setDropdownStyle(null);
-    window.requestAnimationFrame(() => {
-      const stillFocused =
-        typeof document !== "undefined" &&
-        containerRef.current?.contains(document.activeElement);
-      setIsFocused(Boolean(stillFocused));
-    });
   };
 
   const closeDropdown = () => {
@@ -175,11 +191,23 @@ export function LookupDropdownInput<T>({
     key === "ArrowDown" || key === "ArrowUp" || key === "Enter" || key === "Escape";
 
   return (
-    <div ref={containerRef} className={cn("relative space-y-1", isFocused ? "z-30" : undefined)}>
+    <div
+      ref={containerRef}
+      className={cn("relative space-y-1", isFocused ? "z-30" : undefined, containerClassName)}
+      onMouseDown={(event) => {
+        if (event.target === containerRef.current) {
+          event.preventDefault();
+          internalInputRef.current?.focus();
+        }
+      }}
+    >
       <Input
         {...mergedInputProps}
         unstyled={inputUnstyled}
-        ref={inputRef}
+        ref={(node) => {
+          internalInputRef.current = node;
+          assignRef(inputRef, node);
+        }}
         id={id}
         value={value}
         placeholder={placeholder}
@@ -195,7 +223,7 @@ export function LookupDropdownInput<T>({
         }
         onFocus={(event) => {
           mergedInputProps.onFocus?.(event);
-          setIsFocused(true);
+          setIsFocused(openOnFocus);
           setActiveOptionIndex(-1);
         }}
         onBlur={(event) => {

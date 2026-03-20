@@ -26,12 +26,9 @@ import { GstSlabSelect } from "../../../design-system/molecules/GstSlabSelect";
 import { LookupDropdownInput } from "../../../design-system/molecules/LookupDropdownInput";
 import { PageActionBar } from "../../../design-system/molecules/PageActionBar";
 import {
-  getSpreadsheetCellClassName,
   spreadsheetCellControlClassName,
   spreadsheetCellNumericClassName,
   spreadsheetCellSelectClassName,
-  spreadsheetGridClassName,
-  spreadsheetHeaderCellClassName,
 } from "../../../design-system/molecules/spreadsheetStyles";
 import {
   TabularBody,
@@ -461,9 +458,6 @@ export function AddItemPage({
   const quickEntryDesktopGridTemplate = showPurchasePrice
     ? "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem"
     : "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem";
-  const quickEntryDesktopGridClass = showPurchasePrice
-    ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,1fr)_92px_minmax(0,1.6fr)_56px]"
-    : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1fr)_92px_minmax(0,1.6fr)_56px]";
   const orderedUnitGroups = useMemo(
     () => getOrderedUnitGroups(forcedItemType),
     [forcedItemType],
@@ -1346,20 +1340,6 @@ export function AddItemPage({
         : undefined,
     );
 
-  const getQuickEntryCellClassName = (
-    rowId: string,
-    field: QuickEntryFieldKey,
-    options?: {
-      align?: "start" | "center" | "end";
-    },
-  ) =>
-    isDesktopQuickEntry
-      ? getSpreadsheetCellClassName({
-          error: Boolean(quickRowErrorsById.get(rowId)?.[field]),
-          align: options?.align,
-        })
-      : undefined;
-
   const handleQuickEntryFieldFocus = (
     rowId: string,
     field: QuickEntryFieldKey,
@@ -1523,79 +1503,19 @@ export function AddItemPage({
             <div className="space-y-1.5 lg:flex-1 lg:min-h-0 lg:space-y-px">
               {!hasVariants ? (
               <>
-              <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0.5">
               <div className="space-y-1.5 lg:hidden">
-                <div className="overflow-visible rounded-lg border border-border/80 bg-white lg:flex lg:min-h-0 lg:flex-col lg:rounded-[var(--tabular-frame-radius)]">
-                  <div
-                    className={cn(
-                      "hidden border-b border-border/70 p-1 text-[10px] font-semibold uppercase tracking-[0.05em] text-muted-foreground lg:grid lg:shrink-0 lg:px-px lg:py-0",
-                      quickEntryDesktopGridClass,
-                      spreadsheetGridClassName,
-                    )}
-                  >
-                    <span className={spreadsheetHeaderCellClassName}>Name</span>
-                    <span className={spreadsheetHeaderCellClassName}>SKU</span>
-                    <span className={spreadsheetHeaderCellClassName}>{taxCodeLabel}</span>
-                    <span className={cn(spreadsheetHeaderCellClassName, "justify-end text-right")}>
-                      Sales
-                    </span>
-                    {showPurchasePrice ? (
-                      <span
-                        className={cn(
-                          spreadsheetHeaderCellClassName,
-                          "justify-end text-right",
-                        )}
-                      >
-                        Purchase
-                      </span>
-                    ) : null}
-                    <span className={spreadsheetHeaderCellClassName}>GST %</span>
-                    <span className={spreadsheetHeaderCellClassName}>Unit</span>
-                    <span className={spreadsheetHeaderCellClassName}>Category</span>
-                    <span
-                      className={cn(
-                        spreadsheetHeaderCellClassName,
-                        "justify-end text-right",
-                      )}
-                    >
-                      Actions
-                    </span>
-                  </div>
-
-                  <div
-                    className={cn(
-                      "grid gap-1.5 p-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:gap-px lg:p-px",
-                      isDesktopQuickEntry ? spreadsheetGridClassName : undefined,
-                    )}
-                  >
-                    {quickRows.map((row, index) => {
-                      const rowErrors = quickRowErrorsById.get(row.id) ?? {};
-                      return (
+                <div className="grid gap-1.5">
+                  {quickRows.map((row, index) => {
+                    const rowErrors = quickRowErrorsById.get(row.id) ?? {};
+                    return (
                       <div
                         key={row.id}
-                        className={cn(
-                          "grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:items-center lg:border-0 lg:bg-transparent lg:p-0",
-                          quickEntryDesktopGridClass,
-                          isDesktopQuickEntry ? spreadsheetGridClassName : undefined,
-                        )}
+                        className="grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5"
                       >
-                        <div
-                          className={cn(
-                            "grid gap-1",
-                            getQuickEntryCellClassName(row.id, "name"),
-                          )}
-                        >
-                          <Label className="lg:hidden">Name</Label>
+                        <div className="grid gap-1">
+                          <Label>Name</Label>
                           <Input
-                            {...(isDesktopQuickEntry
-                              ? getQuickRowCellDataAttributes(row.id, "name")
-                              : {})}
-                            className={getQuickEntryFieldClassName(
-                              row.id,
-                              "name",
-                              QUICK_ENTRY_INPUT_CLASS,
-                              "lg:pl-2.5",
-                            )}
+                            className={getQuickEntryFieldClassName(row.id, "name", QUICK_ENTRY_INPUT_CLASS)}
                             value={row.name}
                             onChange={(event) =>
                               setQuickRows((current) =>
@@ -1613,26 +1533,12 @@ export function AddItemPage({
                             aria-label={getQuickRowAriaLabel(row, index, "Name")}
                             aria-invalid={rowErrors.name ? true : undefined}
                             title={rowErrors.name}
-                            placeholder={isDesktopQuickEntry ? "Name" : undefined}
                           />
                         </div>
-                        <div
-                          className={cn(
-                            "grid gap-1",
-                            getQuickEntryCellClassName(row.id, "sku"),
-                          )}
-                        >
-                          <Label className="lg:hidden">SKU</Label>
+                        <div className="grid gap-1">
+                          <Label>SKU</Label>
                           <Input
-                            {...(isDesktopQuickEntry
-                              ? getQuickRowCellDataAttributes(row.id, "sku")
-                              : {})}
-                            className={getQuickEntryFieldClassName(
-                              row.id,
-                              "sku",
-                              QUICK_ENTRY_INPUT_CLASS,
-                              "lg:pl-2.5",
-                            )}
+                            className={getQuickEntryFieldClassName(row.id, "sku", QUICK_ENTRY_INPUT_CLASS)}
                             value={row.sku}
                             onChange={(event) =>
                               setQuickRows((current) =>
@@ -1657,26 +1563,12 @@ export function AddItemPage({
                             aria-label={getQuickRowAriaLabel(row, index, "SKU")}
                             aria-invalid={rowErrors.sku ? true : undefined}
                             title={rowErrors.sku}
-                            placeholder={isDesktopQuickEntry ? "SKU" : undefined}
                           />
                         </div>
-                        <div
-                          className={cn(
-                            "grid gap-1",
-                            getQuickEntryCellClassName(row.id, "hsnSac"),
-                          )}
-                        >
-                          <Label className="lg:hidden">{taxCodeLabel}</Label>
+                        <div className="grid gap-1">
+                          <Label>{taxCodeLabel}</Label>
                           <Input
-                            {...(isDesktopQuickEntry
-                              ? getQuickRowCellDataAttributes(row.id, "hsnSac")
-                              : {})}
-                            className={getQuickEntryFieldClassName(
-                              row.id,
-                              "hsnSac",
-                              QUICK_ENTRY_INPUT_CLASS,
-                              "lg:pl-2.5",
-                            )}
+                            className={getQuickEntryFieldClassName(row.id, "hsnSac", QUICK_ENTRY_INPUT_CLASS)}
                             value={row.hsnSac}
                             onChange={(event) =>
                               setQuickRows((current) =>
@@ -1695,20 +1587,11 @@ export function AddItemPage({
                             aria-invalid={rowErrors.hsnSac ? true : undefined}
                             title={rowErrors.hsnSac ?? taxCodePlaceholder}
                             inputMode="numeric"
-                            placeholder={isDesktopQuickEntry ? taxCodeLabel : undefined}
                           />
                         </div>
-                        <div
-                          className={cn(
-                            "grid gap-1",
-                            getQuickEntryCellClassName(row.id, "salesPrice"),
-                          )}
-                        >
-                          <Label className="lg:hidden">Sales price</Label>
+                        <div className="grid gap-1">
+                          <Label>Sales price</Label>
                           <Input
-                            {...(isDesktopQuickEntry
-                              ? getQuickRowCellDataAttributes(row.id, "salesPrice")
-                              : {})}
                             className={getQuickEntryFieldClassName(
                               row.id,
                               "salesPrice",
@@ -1735,24 +1618,12 @@ export function AddItemPage({
                             aria-invalid={rowErrors.salesPrice ? true : undefined}
                             title={rowErrors.salesPrice}
                             inputMode="decimal"
-                            placeholder={isDesktopQuickEntry ? "0.00" : undefined}
                           />
                         </div>
                         {showPurchasePrice ? (
-                          <div
-                            className={cn(
-                              "grid gap-1",
-                              getQuickEntryCellClassName(
-                                row.id,
-                                "purchasePrice",
-                              ),
-                            )}
-                          >
-                            <Label className="lg:hidden">Purchase price</Label>
+                          <div className="grid gap-1">
+                            <Label>Purchase price</Label>
                             <Input
-                              {...(isDesktopQuickEntry
-                                ? getQuickRowCellDataAttributes(row.id, "purchasePrice")
-                                : {})}
                               className={getQuickEntryFieldClassName(
                                 row.id,
                                 "purchasePrice",
@@ -1773,37 +1644,18 @@ export function AddItemPage({
                                 handleNumericFieldFocus(event, row.id, "purchasePrice")
                               }
                               onKeyDown={(event) =>
-                                handleQuickEntryFieldKeyDown(
-                                  event,
-                                  row.id,
-                                  "purchasePrice",
-                                )
+                                handleQuickEntryFieldKeyDown(event, row.id, "purchasePrice")
                               }
-                              aria-label={getQuickRowAriaLabel(
-                                row,
-                                index,
-                                "Purchase price",
-                              )}
-                              aria-invalid={
-                                rowErrors.purchasePrice ? true : undefined
-                              }
+                              aria-label={getQuickRowAriaLabel(row, index, "Purchase price")}
+                              aria-invalid={rowErrors.purchasePrice ? true : undefined}
                               title={rowErrors.purchasePrice}
                               inputMode="decimal"
-                              placeholder={isDesktopQuickEntry ? "0.00" : undefined}
                             />
                           </div>
                         ) : null}
-                        <div
-                          className={cn(
-                            "grid gap-1",
-                            getQuickEntryCellClassName(row.id, "gstSlab"),
-                          )}
-                        >
-                          <Label className="lg:hidden">GST %</Label>
+                        <div className="grid gap-1">
+                          <Label>GST %</Label>
                           <GstSlabSelect
-                            {...(isDesktopQuickEntry
-                              ? getQuickRowCellDataAttributes(row.id, "gstSlab")
-                              : {})}
                             className={getQuickEntryFieldClassName(
                               row.id,
                               "gstSlab",
@@ -1827,17 +1679,9 @@ export function AddItemPage({
                             placeholderOption="GST %"
                           />
                         </div>
-                        <div
-                          className={cn(
-                            "grid gap-1",
-                            getQuickEntryCellClassName(row.id, "unit"),
-                          )}
-                        >
-                          <Label className="lg:hidden">Unit</Label>
+                        <div className="grid gap-1">
+                          <Label>Unit</Label>
                           <Select
-                            {...(isDesktopQuickEntry
-                              ? getQuickRowCellDataAttributes(row.id, "unit")
-                              : {})}
                             className={getQuickEntryFieldClassName(
                               row.id,
                               "unit",
@@ -1873,30 +1717,14 @@ export function AddItemPage({
                             ))}
                           </Select>
                         </div>
-                        <div
-                          className={cn(
-                            "grid gap-1",
-                            getQuickEntryCellClassName(row.id, "category"),
-                          )}
-                        >
-                          <Label className="lg:hidden">Category</Label>
+                        <div className="grid gap-1">
+                          <Label>Category</Label>
                           <LookupDropdownInput
                             inputProps={{
-                              ...(isDesktopQuickEntry
-                                ? getQuickRowCellDataAttributes(row.id, "category")
-                                : {}),
                               onFocus: () => handleQuickEntryFieldFocus(row.id, "category"),
                               onKeyDown: (event) =>
-                                handleQuickEntryFieldKeyDown(
-                                  event,
-                                  row.id,
-                                  "category",
-                                ),
-                              "aria-label": getQuickRowAriaLabel(
-                                row,
-                                index,
-                                "Category",
-                              ),
+                                handleQuickEntryFieldKeyDown(event, row.id, "category"),
+                              "aria-label": getQuickRowAriaLabel(row, index, "Category"),
                             }}
                             value={row.category}
                             onValueChange={(value) =>
@@ -1908,7 +1736,6 @@ export function AddItemPage({
                                 ),
                               )
                             }
-                            placeholder={isDesktopQuickEntry ? "Category" : undefined}
                             options={categorySuggestions}
                             getOptionKey={(categoryValue) => categoryValue}
                             getOptionSearchText={(categoryValue) => categoryValue}
@@ -1929,26 +1756,18 @@ export function AddItemPage({
                               row.id,
                               "category",
                               QUICK_ENTRY_INPUT_CLASS,
-                              "lg:pl-2.5",
                             )}
                             optionClassName="text-[10px]"
                           />
                         </div>
-                        <div
-                          className={cn(
-                            isDesktopQuickEntry
-                              ? getSpreadsheetCellClassName({ align: "center" })
-                              : undefined,
-                            "p-0.5 lg:p-0",
-                          )}
-                        >
+                        <div className="p-0.5">
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             aria-label="Delete item row"
                             title="Delete row"
-                            className="h-8 whitespace-nowrap gap-1.5 px-2 text-[#8a2b2b] hover:bg-[#fff5f5] hover:text-[#7a1f1f] lg:hidden"
+                            className="h-8 whitespace-nowrap gap-1.5 px-2 text-[#8a2b2b] hover:bg-[#fff5f5] hover:text-[#7a1f1f]"
                             disabled={quickRows.length <= 1}
                             onClick={() =>
                               setQuickRows((current) =>
@@ -1959,37 +1778,24 @@ export function AddItemPage({
                             <Trash2 aria-hidden="true" />
                             <span>Delete row</span>
                           </Button>
-                          <IconButton
-                            type="button"
-                            icon={Trash2}
-                            variant="ghost"
-                            aria-label="Delete item row"
-                            title="Delete row"
-                            className="hidden h-full w-full rounded-none border-none bg-transparent p-0 text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
-                            disabled={quickRows.length <= 1}
-                            onClick={() =>
-                              setQuickRows((current) =>
-                                current.filter((entry) => entry.id !== row.id),
-                              )
-                            }
-                            iconSize={14}
-                          />
                         </div>
                       </div>
-                    )})}
-                  </div>
+                    );
+                  })}
                 </div>
 
-                <div className={cn(
-                  "flex flex-wrap items-center justify-between gap-1.5 lg:shrink-0 lg:flex-nowrap",
-                  tabularFooterBarClassName,
-                )}>
-                  <p className="text-[11px] text-muted-foreground lg:text-[10px] lg:leading-none">
+                <div
+                  className={cn(
+                    "flex flex-wrap items-center justify-between gap-1.5",
+                    tabularFooterBarClassName,
+                  )}
+                >
+                  <p className="text-[11px] text-muted-foreground">
                     Ready:{" "}
                     <span className="font-semibold text-foreground">{quickRowsWithName}</span>{" "}
                     item{quickRowsWithName === 1 ? "" : "s"}
                   </p>
-                  <div className="flex flex-wrap gap-1 lg:flex-nowrap">
+                  <div className="flex flex-wrap gap-1">
                     <Button
                       type="button"
                       variant="outline"
@@ -2297,7 +2103,6 @@ export function AddItemPage({
                   </div>
                 </TabularFooter>
               </TabularSurface>
-              </div>
               </>
             ) : (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">

@@ -6,13 +6,12 @@ import { Input } from "../atoms/Input";
 import { Label } from "../atoms/Label";
 import { Switch } from "../atoms/Switch";
 import {
-  DenseTable,
-  DenseTableBody,
-  DenseTableCell,
-  DenseTableHead,
-  DenseTableHeaderCell,
-  DenseTableRow,
-} from "../molecules/DenseTable";
+  TabularBody,
+  TabularCell,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../molecules/TabularSurface";
 import type {
   AdminStore,
   AdminBusinessesPagination,
@@ -56,6 +55,8 @@ export function BusinessManagementListView({
   onReload,
 }: BusinessManagementListViewProps) {
   const navigate = useNavigate();
+  const desktopGridTemplate =
+    "minmax(0,2fr) minmax(0,1.55fr) minmax(0,1.7fr) minmax(0,1.85fr) minmax(0,0.9fr) 3rem";
 
   return (
     <>
@@ -192,18 +193,19 @@ export function BusinessManagementListView({
         })}
       </div>
 
-      <DenseTable className="hidden min-[860px]:block">
-        <DenseTableHead>
-          <DenseTableRow>
-            <DenseTableHeaderCell className="w-[22%]">Business</DenseTableHeaderCell>
-            <DenseTableHeaderCell className="w-[18%]">Owner</DenseTableHeaderCell>
-            <DenseTableHeaderCell className="w-[20%]">Type / Category</DenseTableHeaderCell>
-            <DenseTableHeaderCell className="w-[22%]">License Dates</DenseTableHeaderCell>
-            <DenseTableHeaderCell className="w-[10%]">Status</DenseTableHeaderCell>
-            <DenseTableHeaderCell className="w-[8%] text-right">Action</DenseTableHeaderCell>
-          </DenseTableRow>
-        </DenseTableHead>
-        <DenseTableBody>
+      <div className="hidden min-[860px]:flex min-[860px]:min-h-0 min-[860px]:flex-1 min-[860px]:flex-col">
+        <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+          <TabularHeader>
+            <TabularRow columns={desktopGridTemplate}>
+              <TabularCell variant="header">Business</TabularCell>
+              <TabularCell variant="header">Owner</TabularCell>
+              <TabularCell variant="header">Type / Category</TabularCell>
+              <TabularCell variant="header">License Dates</TabularCell>
+              <TabularCell variant="header">Status</TabularCell>
+              <TabularCell variant="header" align="center">Action</TabularCell>
+            </TabularRow>
+          </TabularHeader>
+          <TabularBody className="overflow-y-auto">
           {businesses.map((business) => {
             const isDeleted = Boolean(business.deletedAt);
             const ownerDisplay = business.owner?.name?.trim() || business.owner?.phone || "-";
@@ -211,20 +213,20 @@ export function BusinessManagementListView({
               ? `${business.license.beginsOn} to ${business.license.endsOn}`
               : "Not configured";
             return (
-              <DenseTableRow
+              <TabularRow
                 key={business.id}
-                className={isDeleted ? "bg-[#fff7f7]" : "hover:bg-slate-50/70"}
+                columns={desktopGridTemplate}
+                interactive
+                className={isDeleted ? "bg-[#fff7f7]" : undefined}
               >
-                <DenseTableCell>
-                  <p
-                    className={`text-xs font-semibold ${
-                      isDeleted ? "text-[#8a2b2b]" : "text-foreground"
-                    }`}
-                  >
-                    {business.name}
-                  </p>
-                </DenseTableCell>
-                <DenseTableCell className="text-xs">
+                <TabularCell
+                  className={isDeleted ? "font-semibold text-[#8a2b2b]" : "font-semibold"}
+                  truncate
+                  hoverTitle={business.name}
+                >
+                  {business.name}
+                </TabularCell>
+                <TabularCell truncate hoverTitle={ownerDisplay}>
                   {business.ownerId ? (
                     <Link
                       to={`/app/users/${business.ownerId}`}
@@ -235,26 +237,30 @@ export function BusinessManagementListView({
                   ) : (
                     <span className="text-foreground/90">{ownerDisplay}</span>
                   )}
-                </DenseTableCell>
-                <DenseTableCell className="text-xs text-foreground/90">
+                </TabularCell>
+                <TabularCell
+                  className="text-foreground/90"
+                  truncate
+                  hoverTitle={`${business.businessType || "-"} / ${business.businessCategory || "-"}`}
+                >
                   {(business.businessType || "-") + " / " + (business.businessCategory || "-")}
-                </DenseTableCell>
-                <DenseTableCell className="text-xs text-foreground/90">
+                </TabularCell>
+                <TabularCell className="text-foreground/90" truncate hoverTitle={licenseDates}>
                   {licenseDates}
-                </DenseTableCell>
-                <DenseTableCell>
+                </TabularCell>
+                <TabularCell>
                   <span
                     className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
                       isDeleted
                         ? "bg-[#fce8e8] text-[#8a2b2b]"
                         : "bg-[#e8f2ff] text-[#24507e]"
                     }`}
-                  >
-                    {isDeleted ? "Inactive" : "Active"}
-                  </span>
-                </DenseTableCell>
-                <DenseTableCell className="text-right">
-                  <div className="flex justify-end">
+                    >
+                      {isDeleted ? "Inactive" : "Active"}
+                    </span>
+                </TabularCell>
+                <TabularCell align="center">
+                  <div className="inline-flex">
                     <IconButton
                       icon={Eye}
                       variant="ghost"
@@ -265,12 +271,13 @@ export function BusinessManagementListView({
                       title="View details"
                     />
                   </div>
-                </DenseTableCell>
-              </DenseTableRow>
+                </TabularCell>
+              </TabularRow>
             );
           })}
-        </DenseTableBody>
-      </DenseTable>
+          </TabularBody>
+        </TabularSurface>
+      </div>
 
       {businesses.length === 0 ? (
         <div className="rounded-xl border border-border/80 bg-white p-3">

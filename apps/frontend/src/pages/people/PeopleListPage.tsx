@@ -14,13 +14,12 @@ import {
   CardTitle,
 } from "../../design-system/molecules/Card";
 import {
-  DenseTable,
-  DenseTableBody,
-  DenseTableCell,
-  DenseTableHead,
-  DenseTableHeaderCell,
-  DenseTableRow,
-} from "../../design-system/molecules/DenseTable";
+  TabularBody,
+  TabularCell,
+  TabularHeader,
+  TabularRow,
+  TabularSurface,
+} from "../../design-system/molecules/TabularSurface";
 import {
   hasAssignedStoreCapability,
   useSessionStore,
@@ -99,6 +98,13 @@ export function PeopleListPage({
         );
       }),
     [normalizedQuery, rows],
+  );
+  const desktopGridTemplate = useMemo(
+    () =>
+      secondaryRole && canManageSecondaryRole
+        ? "minmax(0,2.2fr) minmax(0,1.6fr) minmax(0,2fr) minmax(0,1.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.9fr) 3rem"
+        : "minmax(0,2.3fr) minmax(0,1.7fr) minmax(0,2.1fr) minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.9fr) 3rem",
+    [canManageSecondaryRole, secondaryRole],
   );
 
   useEffect(() => {
@@ -326,7 +332,7 @@ export function PeopleListPage({
             </div>
           </fieldset>
 
-          <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:pr-1">
+          <div className="space-y-2 lg:flex lg:h-full lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pr-1">
             {error ? <div className="card text-sm text-red-600">{error}</div> : null}
             {loading ? (
               <div className="card text-sm text-muted-foreground">
@@ -342,7 +348,7 @@ export function PeopleListPage({
               </div>
             ) : (
               <>
-                <div className="space-y-2 lg:hidden">
+                <div className="space-y-2 pb-16 lg:hidden">
                   {filteredRows.map((row) => {
                     const hasSecondaryRole = secondaryRoleIds.has(row.entityId);
                     return (
@@ -403,45 +409,48 @@ export function PeopleListPage({
                   })}
                 </div>
 
-                <DenseTable className="hidden lg:block">
-                  <DenseTableHead>
-                    <DenseTableRow>
-                      <DenseTableHeaderCell className="w-[22%]">Name</DenseTableHeaderCell>
-                      <DenseTableHeaderCell className="w-[16%]">Phone</DenseTableHeaderCell>
-                      <DenseTableHeaderCell className="w-[20%]">Email</DenseTableHeaderCell>
-                      <DenseTableHeaderCell className="w-[18%]">Address</DenseTableHeaderCell>
-                      <DenseTableHeaderCell className="w-[10%]">GST No</DenseTableHeaderCell>
+                <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+                  <TabularSurface className="overflow-hidden bg-white lg:min-h-0 lg:flex-1 lg:flex-col">
+                  <TabularHeader>
+                    <TabularRow columns={desktopGridTemplate}>
+                      <TabularCell variant="header">Name</TabularCell>
+                      <TabularCell variant="header">Phone</TabularCell>
+                      <TabularCell variant="header">Email</TabularCell>
+                      <TabularCell variant="header">Address</TabularCell>
+                      <TabularCell variant="header">GST No</TabularCell>
                       {secondaryRole && canManageSecondaryRole ? (
-                        <DenseTableHeaderCell className="w-[10%]">
-                          {secondaryRole.headerLabel}
-                        </DenseTableHeaderCell>
+                        <TabularCell variant="header">{secondaryRole.headerLabel}</TabularCell>
                       ) : null}
-                      <DenseTableHeaderCell className="w-[8%]">Status</DenseTableHeaderCell>
-                      <DenseTableHeaderCell className="w-[8%] text-right">Actions</DenseTableHeaderCell>
-                    </DenseTableRow>
-                  </DenseTableHead>
-                  <DenseTableBody>
+                      <TabularCell variant="header">Status</TabularCell>
+                      <TabularCell variant="header" align="center">Actions</TabularCell>
+                    </TabularRow>
+                  </TabularHeader>
+                  <TabularBody className="overflow-y-auto">
                     {filteredRows.map((row) => {
                       const hasSecondaryRole = secondaryRoleIds.has(row.entityId);
                       return (
-                        <DenseTableRow key={row.entityId} className="hover:bg-slate-50">
-                          <DenseTableCell className="font-medium text-foreground">
+                        <TabularRow
+                          key={row.entityId}
+                          columns={desktopGridTemplate}
+                          interactive
+                        >
+                          <TabularCell truncate hoverTitle={row.name} className="font-normal text-foreground">
                             {row.name}
-                          </DenseTableCell>
-                          <DenseTableCell className="truncate text-muted-foreground">
+                          </TabularCell>
+                          <TabularCell truncate hoverTitle={row.phone || "-"} className="text-muted-foreground">
                             {row.phone || "-"}
-                          </DenseTableCell>
-                          <DenseTableCell className="truncate text-muted-foreground">
+                          </TabularCell>
+                          <TabularCell truncate hoverTitle={row.email || "-"} className="text-muted-foreground">
                             {row.email || "-"}
-                          </DenseTableCell>
-                          <DenseTableCell className="truncate text-muted-foreground">
+                          </TabularCell>
+                          <TabularCell truncate hoverTitle={row.address || "-"} className="text-muted-foreground">
                             {row.address || "-"}
-                          </DenseTableCell>
-                          <DenseTableCell className="truncate text-muted-foreground">
+                          </TabularCell>
+                          <TabularCell truncate hoverTitle={row.gstNo || "-"} className="text-muted-foreground">
                             {row.gstNo || "-"}
-                          </DenseTableCell>
+                          </TabularCell>
                           {secondaryRole && canManageSecondaryRole ? (
-                            <DenseTableCell className="px-2 py-2.5">
+                            <TabularCell>
                               <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                                 <Checkbox
                                   aria-label={`Also use ${row.name} as a ${secondaryRole.label.toLowerCase()}`}
@@ -453,9 +462,9 @@ export function PeopleListPage({
                                 />
                                 <span>{hasSecondaryRole ? "Yes" : "No"}</span>
                               </div>
-                            </DenseTableCell>
+                            </TabularCell>
                           ) : null}
-                          <DenseTableCell className="px-2 py-2.5">
+                          <TabularCell>
                             <span
                               className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
                                 row.isActive
@@ -465,25 +474,24 @@ export function PeopleListPage({
                             >
                               {row.isActive ? "Active" : "Inactive"}
                             </span>
-                          </DenseTableCell>
-                          <DenseTableCell>
-                            <div className="flex justify-end">
-                              <IconButton
-                                type="button"
-                                icon={Eye}
-                                variant="ghost"
-                                onClick={() => openDetails(row.entityId)}
-                                className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
-                                aria-label={`View details for ${row.name}`}
-                                title="View details"
-                              />
-                            </div>
-                          </DenseTableCell>
-                        </DenseTableRow>
+                          </TabularCell>
+                          <TabularCell align="center">
+                            <IconButton
+                              type="button"
+                              icon={Eye}
+                              variant="ghost"
+                              onClick={() => openDetails(row.entityId)}
+                              className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                              aria-label={`View details for ${row.name}`}
+                              title="View details"
+                            />
+                          </TabularCell>
+                        </TabularRow>
                       );
                     })}
-                  </DenseTableBody>
-                </DenseTable>
+                  </TabularBody>
+                  </TabularSurface>
+                </div>
               </>
             )}
           </div>
