@@ -28,6 +28,13 @@ import type {
 } from "./sales.types.js";
 
 type SalesDocumentRecord = Awaited<ReturnType<typeof getDocumentOrThrow>>;
+type PartySnapshot = {
+  role: "customer" | "supplier";
+  name: string;
+  phone: string | null;
+  address: string | null;
+  taxId: string | null;
+};
 
 const SALES_DOCUMENT_META: Record<
   SalesDocumentType,
@@ -87,6 +94,56 @@ const SALES_DOCUMENT_CONVERSION_RULES: Partial<
 
 const usesTransactionType = (documentType: SalesDocumentType) =>
   documentType === "SALES_INVOICE";
+
+const buildPartySnapshot = (input: {
+  role: PartySnapshot["role"];
+  name: string;
+  phone: string;
+  address: string;
+  taxId: string;
+}): PartySnapshot | null => {
+  const name = input.name.trim();
+  const phone = input.phone.trim();
+  const address = input.address.trim();
+  const taxId = input.taxId.trim();
+
+  if (!name && !phone && !address && !taxId) {
+    return null;
+  }
+
+  return {
+    role: input.role,
+    name,
+    phone: phone || null,
+    address: address || null,
+    taxId: taxId || null,
+  };
+};
+
+const parsePartySnapshot = (value: unknown): PartySnapshot | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const role = raw.role;
+  const name = typeof raw.name === "string" ? raw.name : "";
+  const phone = typeof raw.phone === "string" ? raw.phone : null;
+  const address = typeof raw.address === "string" ? raw.address : null;
+  const taxId = typeof raw.taxId === "string" ? raw.taxId : null;
+
+  if ((role !== "customer" && role !== "supplier") || !name.trim()) {
+    return null;
+  }
+
+  return {
+    role,
+    name: name.trim(),
+    phone,
+    address,
+    taxId,
+  };
+};
 
 const requiresCustomerDetails = (documentType: SalesDocumentType) =>
   documentType !== "SALES_INVOICE";
@@ -694,42 +751,46 @@ const syncParentConversionStatus = async (
 };
 
 const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
-  documents.map((document) => ({
-    id: document.id,
-    documentType: document.type as SalesDocumentType,
-    parentId: document.parent_id ?? null,
-    childIds: document.children.map((child) => child.id),
-    status: document.status,
-    cancelReason: document.cancel_reason ?? null,
-    postedAt: document.posted_at?.toISOString() ?? null,
-    billNumber: document.doc_number,
-    locationId: document.location_id ?? null,
-    locationName: document.location_name_snapshot ?? "",
-    transactionType: document.transaction_type ?? "CASH",
-    customerId: document.party_id ?? null,
-    customerName: document.customer_name_snapshot ?? "",
-    customerPhone: document.customer_phone_snapshot ?? "",
-    customerAddress: document.customer_address_snapshot ?? "",
-    customerGstNo: document.customer_tax_id_snapshot ?? "",
-    validUntil: formatOptionalDateOutput(document.valid_until),
-    dispatchDate: formatOptionalDateOutput(document.dispatch_date),
-    dispatchCarrier: document.dispatch_carrier ?? "",
-    dispatchReference: document.dispatch_reference ?? "",
-    notes: document.notes ?? "",
-    savedAt: document.updated_at.toISOString(),
-    lines: document.lineItems.map((line) => ({
-      id: line.id,
-      sourceLineId: line.target_links[0]?.source_line_id ?? null,
-      variantId: line.variant_id ?? "",
-      description: line.description_snapshot ?? line.description,
-      quantity: formatDecimalString(Number(line.quantity)),
-      unitPrice: formatDecimalString(Number(line.unit_price)),
-      taxRate: Number(line.tax_rate) > 0 ? `${Number(line.tax_rate)}%` : "0%",
-      taxMode: line.tax_mode_snapshot === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
-      unit: line.unit_snapshot ?? "PCS",
-      stockOnHand: null,
-    })),
-  }));
+  documents.map((document) => {
+    const partySnapshot = parsePartySnapshot(document.party_snapshot);
+
+    return {
+      id: document.id,
+      documentType: document.type as SalesDocumentType,
+      parentId: document.parent_id ?? null,
+      childIds: document.children.map((child) => child.id),
+      status: document.status,
+      cancelReason: document.cancel_reason ?? null,
+      postedAt: document.posted_at?.toISOString() ?? null,
+      billNumber: document.doc_number,
+      locationId: document.location_id ?? null,
+      locationName: document.location_name_snapshot ?? "",
+      transactionType: document.settlement_mode ?? "CASH",
+      customerId: document.party_id ?? null,
+      customerName: partySnapshot?.name ?? "",
+      customerPhone: partySnapshot?.phone ?? "",
+      customerAddress: partySnapshot?.address ?? "",
+      customerGstNo: partySnapshot?.taxId ?? "",
+      validUntil: formatOptionalDateOutput(document.valid_until),
+      dispatchDate: formatOptionalDateOutput(document.dispatch_date),
+      dispatchCarrier: document.dispatch_carrier ?? "",
+      dispatchReference: document.dispatch_reference ?? "",
+      notes: document.notes ?? "",
+      savedAt: document.updated_at.toISOString(),
+      lines: document.lineItems.map((line) => ({
+        id: line.id,
+        sourceLineId: line.target_links[0]?.source_line_id ?? null,
+        variantId: line.variant_id ?? "",
+        description: line.description_snapshot ?? line.description,
+        quantity: formatDecimalString(Number(line.quantity)),
+        unitPrice: formatDecimalString(Number(line.unit_price)),
+        taxRate: Number(line.tax_rate) > 0 ? `${Number(line.tax_rate)}%` : "0%",
+        taxMode: line.tax_mode_snapshot === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
+        unit: line.unit_snapshot ?? "PCS",
+        stockOnHand: null,
+      })),
+    };
+  });
 
 const buildSourceLineMap = (document: SalesDocumentRecord) =>
   Object.fromEntries(
@@ -783,6 +844,13 @@ const saveDraftDocument = async (
     ),
   ]);
   const metadata = getDocumentMetadata(input);
+  const partySnapshot = buildPartySnapshot({
+    role: "customer",
+    name: customerRef.customerName,
+    phone: customerRef.customerPhone,
+    address: customerRef.customerAddress,
+    taxId: customerRef.customerGstNo,
+  });
 
   const normalizedLines = input.lines.map((line) => {
     const variant = variantMap.get(line.variantId);
@@ -836,7 +904,7 @@ const saveDraftDocument = async (
     await tx.document.update({
       where: { id: documentId },
       data: {
-        transaction_type: usesTransactionType(input.documentType)
+        settlement_mode: usesTransactionType(input.documentType)
           ? (input.transactionType ?? "CASH")
           : null,
         doc_number: trimmedBillNumber,
@@ -844,10 +912,7 @@ const saveDraftDocument = async (
         location_name_snapshot: locationRef.locationName,
         parent_id: parentRef?.id ?? null,
         party_id: customerRef.partyId,
-        customer_name_snapshot: customerRef.customerName || null,
-        customer_phone_snapshot: customerRef.customerPhone || null,
-        customer_address_snapshot: customerRef.customerAddress || null,
-        customer_tax_id_snapshot: customerRef.customerGstNo || null,
+        party_snapshot: partySnapshot,
         valid_until: metadata.validUntil,
         dispatch_date: metadata.dispatchDate,
         dispatch_carrier: metadata.dispatchCarrier,
@@ -919,7 +984,7 @@ const saveDraftDocument = async (
       business_id: input.tenantId,
       type: input.documentType,
       status: "DRAFT",
-      transaction_type: usesTransactionType(input.documentType)
+      settlement_mode: usesTransactionType(input.documentType)
         ? (input.transactionType ?? "CASH")
         : null,
       doc_number: trimmedBillNumber,
@@ -927,10 +992,7 @@ const saveDraftDocument = async (
       location_name_snapshot: locationRef.locationName,
       parent_id: parentRef?.id ?? null,
       party_id: customerRef.partyId,
-      customer_name_snapshot: customerRef.customerName || null,
-      customer_phone_snapshot: customerRef.customerPhone || null,
-      customer_address_snapshot: customerRef.customerAddress || null,
-      customer_tax_id_snapshot: customerRef.customerGstNo || null,
+      party_snapshot: partySnapshot,
       valid_until: metadata.validUntil,
       dispatch_date: metadata.dispatchDate,
       dispatch_carrier: metadata.dispatchCarrier,
@@ -1009,12 +1071,14 @@ export const postDraftDocument = async (
       `Add at least one ${SALES_DOCUMENT_META[documentType].singularLabel} line before posting`,
     );
   }
-  if (document.type !== "SALES_INVOICE" && !document.customer_name_snapshot?.trim()) {
+  const partySnapshot = parsePartySnapshot(document.party_snapshot);
+
+  if (document.type !== "SALES_INVOICE" && !partySnapshot?.name.trim()) {
     throw new BadRequestError(
       `${SALES_DOCUMENT_META[documentType].singularLabel} requires customer details`,
     );
   }
-  if (document.transaction_type === "CREDIT" && !document.party_id) {
+  if (document.settlement_mode === "CREDIT" && !document.party_id) {
     throw new BadRequestError(
       `${SALES_DOCUMENT_META[documentType].singularLabel} requires an existing customer for credit transactions`,
     );
