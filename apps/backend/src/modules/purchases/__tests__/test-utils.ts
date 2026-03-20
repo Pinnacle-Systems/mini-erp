@@ -22,6 +22,18 @@ export const createPurchaseTxMock = () => ({
   },
   itemVariant: {
     findMany: vi.fn(),
+    findUnique: vi.fn(),
+  },
+  businessLocation: {
+    findFirst: vi.fn(),
+  },
+  syncChangeLog: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+  },
+  stockLedger: {
+    findMany: vi.fn(),
+    createMany: vi.fn(),
   },
   party: {
     findFirst: vi.fn(),

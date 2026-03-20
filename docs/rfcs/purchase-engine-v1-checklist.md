@@ -72,22 +72,22 @@ Goal: reuse the shared quantity-flow model for purchase conversions.
 
 Goal: make the correct purchase document own each stock movement.
 
-- [ ] Create purchase inventory responsibility resolver
-- [ ] Treat `GOODS_RECEIPT_NOTE` as stock-affecting
-- [ ] Treat standalone `PURCHASE_INVOICE` as stock-affecting
-- [ ] Treat order-linked `PURCHASE_INVOICE` as stock-affecting
-- [ ] Treat GRN-linked `PURCHASE_INVOICE` as non-stock-affecting for linked GRN rows
-- [ ] Treat `PURCHASE_RETURN` as stock-affecting
-- [ ] Create purchase stock posting service
-- [ ] On GRN post, validate location and write positive `inventory.stock_ledger` rows
-- [ ] On standalone purchase invoice post, validate location and write positive `inventory.stock_ledger` rows
-- [ ] On order-linked purchase invoice post, validate location and write positive `inventory.stock_ledger` rows
-- [ ] On GRN-backed purchase invoice post, skip duplicate stock-in for linked GRN rows
-- [ ] On GRN-backed mixed-origin purchase invoice post, add stock only for stock-responsible linked or ad-hoc rows
-- [ ] On purchase return post, validate location and write negative `inventory.stock_ledger` rows
-- [ ] Apply stock effects only for `PRODUCT` lines
-- [ ] Skip stock ledger writes for `SERVICE` lines
-- [ ] Reuse `ALLOW_NEGATIVE_STOCK` policy for purchase returns
+- [x] Create purchase inventory responsibility resolver
+- [x] Treat `GOODS_RECEIPT_NOTE` as stock-affecting
+- [x] Treat standalone `PURCHASE_INVOICE` as stock-affecting
+- [x] Treat order-linked `PURCHASE_INVOICE` as stock-affecting
+- [x] Treat GRN-linked `PURCHASE_INVOICE` as non-stock-affecting for linked GRN rows
+- [x] Treat `PURCHASE_RETURN` as stock-affecting
+- [x] Create purchase stock posting service
+- [x] On GRN post, validate location and write positive `inventory.stock_ledger` rows
+- [x] On standalone purchase invoice post, validate location and write positive `inventory.stock_ledger` rows
+- [x] On order-linked purchase invoice post, validate location and write positive `inventory.stock_ledger` rows
+- [x] On GRN-backed purchase invoice post, skip duplicate stock-in for linked GRN rows
+- [x] On GRN-backed mixed-origin purchase invoice post, add stock only for stock-responsible linked or ad-hoc rows
+- [x] On purchase return post, validate location and write negative `inventory.stock_ledger` rows
+- [x] Apply stock effects only for `PRODUCT` lines
+- [x] Skip stock ledger writes for `SERVICE` lines
+- [x] Reuse `ALLOW_NEGATIVE_STOCK` policy for purchase returns
 
 ## Phase 6: Policy Layer and Reversal Logic
 
