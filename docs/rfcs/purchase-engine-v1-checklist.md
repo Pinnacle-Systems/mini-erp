@@ -111,11 +111,11 @@ Goal: enforce posted-document rules and reversible stock effects.
 
 Goal: expose purchases as an independently permissioned module.
 
-- [ ] Add a first-class frontend module key `purchases`
-- [ ] Extend route guards to support `RequireModule moduleKey="purchases"`
-- [ ] Ensure purchase shell visibility is independent from `sales`
-- [ ] Keep purchase route access independently controllable for roles such as warehouse or inward-stock staff
-- [ ] Add purchase navigation entry points in the app shell
+- [x] Add a first-class frontend module key `purchases`
+- [x] Extend route guards to support `RequireModule moduleKey="purchases"`
+- [x] Ensure purchase shell visibility is independent from `sales`
+- [x] Keep purchase route access independently controllable for roles such as warehouse or inward-stock staff
+- [x] Add purchase navigation entry points in the app shell
 
 ## Phase 8: Frontend Purchase Workspace
 

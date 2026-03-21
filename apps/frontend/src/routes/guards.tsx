@@ -26,7 +26,7 @@ export function RequireRole({ role }: { role: "USER" | "PLATFORM_ADMIN" }) {
 export function RequireModule({
   moduleKey,
 }: {
-  moduleKey: "catalog" | "inventory" | "pricing" | "sales";
+  moduleKey: "catalog" | "inventory" | "purchases" | "pricing" | "sales";
 }) {
   const modules = useSessionStore((state) => state.activeBusinessModules);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);

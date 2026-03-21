@@ -52,6 +52,7 @@ import { LandingRecentActivityItem } from "../../design-system/molecules/Landing
 
 type UserFolderId =
   | "sell"
+  | "buy"
   | "products"
   | "stock"
   | "people"
@@ -65,6 +66,10 @@ type UserAppId =
   | "sales-orders"
   | "delivery-challans"
   | "sales-returns"
+  | "purchase-orders"
+  | "purchase-grns"
+  | "purchase-invoices"
+  | "purchase-returns"
   | "catalog-products"
   | "catalog-services"
   | "catalog-categories"
@@ -108,6 +113,10 @@ const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
   "sales-orders": "sales-orders",
   "delivery-challans": "delivery-challans",
   "sales-returns": "sales-returns",
+  "purchase-orders": "purchase-orders",
+  "purchase-grns": "goods-receipt-notes",
+  "purchase-invoices": "purchase-invoices",
+  "purchase-returns": "purchase-returns",
   "catalog-products": "products",
   "catalog-services": "services",
   "catalog-categories": "item-categories",
@@ -181,6 +190,38 @@ const folders: Array<{
         label: "Returns",
         Icon: Undo2,
         requiredAnyCapability: ["TXN_SALE_RETURN"],
+      },
+    ],
+  },
+  {
+    id: "buy",
+    label: "Purchases",
+    Icon: ShoppingBag,
+    requiredModule: "purchases",
+    apps: [
+      {
+        id: "purchase-orders",
+        label: "Orders",
+        Icon: ClipboardList,
+        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+      },
+      {
+        id: "purchase-grns",
+        label: "GRNs",
+        Icon: ReceiptText,
+        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+      },
+      {
+        id: "purchase-invoices",
+        label: "Invoices",
+        Icon: FileText,
+        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+      },
+      {
+        id: "purchase-returns",
+        label: "Returns",
+        Icon: Undo2,
+        requiredAnyCapability: ["TXN_PURCHASE_RETURN"],
       },
     ],
   },
@@ -458,6 +499,7 @@ export function AppHomePage() {
       activeBusinessModules ?? {
         catalog: true,
         inventory: true,
+        purchases: true,
         sales: true,
         pricing: true,
       },

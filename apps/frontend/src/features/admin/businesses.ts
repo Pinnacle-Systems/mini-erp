@@ -102,6 +102,7 @@ export type AdminStore = {
   modules?: {
     catalog: boolean;
     inventory: boolean;
+    purchases: boolean;
     sales: boolean;
     pricing: boolean;
   };
@@ -331,6 +332,7 @@ export const updateAdminStore = async (
     modules?: {
       catalog?: boolean;
       inventory?: boolean;
+      purchases?: boolean;
       pricing?: boolean;
     };
     license?: {
