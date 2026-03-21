@@ -1152,11 +1152,6 @@ function PurchaseDocumentWorkspace({
                   ? "Posted documents open in read-only mode for review, history, and downstream conversion."
                   : "Pick a supplier, add lines, keep the draft current, then post when the document is ready."}
               </p>
-              {postValidationMessage ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                  {postValidationMessage}
-                </div>
-              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1183,7 +1178,7 @@ function PurchaseDocumentWorkspace({
             </div>
           </div>
 
-          <div className="grid min-h-0 flex-1 gap-2 pt-2 lg:grid-cols-[minmax(0,1fr)_18rem] lg:overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2 lg:overflow-hidden">
             <div className="flex min-h-0 flex-col gap-2 lg:overflow-hidden">
               <div className="grid gap-2 rounded-lg border border-border/80 bg-slate-50 p-2 lg:grid-cols-[minmax(0,1fr)_12rem_10rem]">
                 <div className="space-y-1">
@@ -1528,49 +1523,54 @@ function PurchaseDocumentWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-1 rounded-lg border border-border/80 bg-slate-50 p-2">
-                <Label htmlFor="purchase-notes">Notes</Label>
-                <Textarea
-                  id="purchase-notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  disabled={isViewingPostedDocument}
-                  rows={3}
-                  className="min-h-[5rem] text-xs"
-                />
-              </div>
-            </div>
+              <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+                <div className="space-y-1 rounded-lg border border-border/80 bg-slate-50 p-2">
+                  <Label htmlFor="purchase-notes">Notes</Label>
+                  <Textarea
+                    id="purchase-notes"
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    disabled={isViewingPostedDocument}
+                    rows={3}
+                    className="min-h-[5rem] text-xs"
+                  />
+                  {postValidationMessage ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                      {postValidationMessage}
+                    </div>
+                  ) : null}
+                </div>
 
-            <div className="w-full border-t border-border/70 pt-2 lg:w-[18rem] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
-              <div className="space-y-2 rounded-xl border border-[#d7e2ef] bg-[#f8fbfe] p-3">
-                <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
-                  <span className="shrink-0 font-semibold text-foreground">
-                    {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Summary`}
-                  </span>
-                  <span className="shrink-0 text-muted-foreground">•</span>
-                  <span className="truncate text-muted-foreground">{activeBusinessName}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(totals.subTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Tax</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(totals.taxTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Lines</span>
-                  <span className="font-semibold text-foreground">{normalizeLines(lines).length || 1}</span>
-                </div>
-                {parentDocumentNumber ? (
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="text-muted-foreground">Source</span>
-                    <span className="truncate font-semibold text-foreground">{parentDocumentNumber}</span>
+                <div className="space-y-2 rounded-xl border border-[#d7e2ef] bg-[#f8fbfe] p-3">
+                  <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
+                    <span className="shrink-0 font-semibold text-foreground">
+                      {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Summary`}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">•</span>
+                    <span className="truncate text-muted-foreground">{activeBusinessName}</span>
                   </div>
-                ) : null}
-                <div className="flex items-center justify-between rounded-md border border-border/70 bg-white px-2 py-1.5 text-xs">
-                  <span className="font-semibold text-foreground">Grand total</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(totals.grandTotal)}</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-semibold text-foreground">{formatCurrency(totals.subTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Tax</span>
+                    <span className="font-semibold text-foreground">{formatCurrency(totals.taxTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Lines</span>
+                    <span className="font-semibold text-foreground">{normalizeLines(lines).length || 1}</span>
+                  </div>
+                  {parentDocumentNumber ? (
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-muted-foreground">Source</span>
+                      <span className="truncate font-semibold text-foreground">{parentDocumentNumber}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center justify-between rounded-md border border-border/70 bg-white px-2 py-1.5 text-xs">
+                    <span className="font-semibold text-foreground">Grand total</span>
+                    <span className="font-semibold text-foreground">{formatCurrency(totals.grandTotal)}</span>
+                  </div>
                 </div>
               </div>
             </div>
