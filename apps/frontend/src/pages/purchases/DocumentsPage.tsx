@@ -9,7 +9,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
@@ -83,6 +83,10 @@ type PurchaseDocumentPageConfig = {
   postActionLabel: string;
   numberPrefix: string;
   defaultSettlementMode?: "CASH" | "CREDIT";
+};
+
+type PurchaseDocumentRouteParams = {
+  documentId?: string;
 };
 
 type PurchaseDocumentConversionConfig = {
@@ -445,6 +449,7 @@ function PurchaseDocumentWorkspace({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { documentId } = useParams<PurchaseDocumentRouteParams>();
   const { showToast } = useToast();
   const businesses = useSessionStore((state) => state.businesses);
   const activeBusiness = useMemo(
@@ -488,6 +493,10 @@ function PurchaseDocumentWorkspace({
   const [postValidationMessage, setPostValidationMessage] = useState<string | null>(null);
   const rowMenuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const routeState = location.state as PurchaseRouteState | null;
+  const createRoutePath = `${config.routePath}/new`;
+  const isCreateRoute = location.pathname === createRoutePath;
+  const isDocumentRoute = Boolean(documentId);
+  const isEditorRoute = isCreateRoute || isDocumentRoute;
 
   const isViewingPostedDocument = useMemo(() => {
     const current = documents.find((entry) => entry.id === viewingDocumentId);
@@ -545,7 +554,7 @@ function PurchaseDocumentWorkspace({
     void listPurchaseDocuments(activeStore, config.documentType)
       .then((nextDocuments) => {
         setDocuments(nextDocuments);
-        if (!activeDraftId && !viewingDocumentId && !routeState?.parentDocumentId) {
+        if (!isEditorRoute && !routeState?.parentDocumentId) {
           setBillNumber(getNextBillNumber(config.numberPrefix, nextDocuments));
         }
       })
@@ -557,7 +566,7 @@ function PurchaseDocumentWorkspace({
       .finally(() => {
         setDocumentsLoading(false);
       });
-  }, [activeDraftId, activeStore, config.documentType, config.numberPrefix, routeState?.parentDocumentId, viewingDocumentId]);
+  }, [activeStore, config.documentType, config.numberPrefix, isEditorRoute, routeState?.parentDocumentId]);
 
   useEffect(() => {
     if (!activeStore) {
@@ -620,6 +629,27 @@ function PurchaseDocumentWorkspace({
         navigate(location.pathname, { replace: true, state: null });
       });
   }, [activeStore, config.defaultSettlementMode, config.numberPrefix, documents, location.pathname, navigate, routeState?.parentDocumentId, routeState?.parentDocumentNumber, showToast]);
+
+  useEffect(() => {
+    if (documentsLoading) {
+      return;
+    }
+
+    if (documentId) {
+      const matchedDocument = documents.find((entry) => entry.id === documentId);
+      if (!matchedDocument) {
+        setFormError(`This ${config.singularLabel} could not be found.`);
+        return;
+      }
+
+      applyDocumentToWorkspace(matchedDocument, matchedDocument.status !== "DRAFT");
+      return;
+    }
+
+    if (isCreateRoute && !routeState?.parentDocumentId) {
+      resetWorkspace(documents);
+    }
+  }, [config.singularLabel, documentId, documents, documentsLoading, isCreateRoute, routeState?.parentDocumentId]);
 
   useEffect(() => {
     const normalizedLines = normalizeLines(lines);
@@ -749,6 +779,8 @@ function PurchaseDocumentWorkspace({
         });
         applyDocumentToWorkspace(nextDocument, false);
       }
+
+      navigate(`${config.routePath}/${nextDocument.id}`, { replace: true });
     } catch (error) {
       const message =
         error instanceof PurchaseDocumentApiError ? error.message : "Unable to save purchase draft.";
@@ -802,7 +834,7 @@ function PurchaseDocumentWorkspace({
       const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
       setDocuments(nextDocuments);
 
-      if (viewingDocumentId === document.id) {
+      if (documentId === document.id || viewingDocumentId === document.id) {
         applyDocumentToWorkspace(nextDocument, nextDocument.status !== "DRAFT");
       }
 
@@ -843,8 +875,9 @@ function PurchaseDocumentWorkspace({
       await deletePurchaseDocumentDraft(document.id, activeStore, config.documentType);
       const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
       setDocuments(nextDocuments);
-      if (activeDraftId === document.id || viewingDocumentId === document.id) {
+      if (documentId === document.id || activeDraftId === document.id || viewingDocumentId === document.id) {
         resetWorkspace(nextDocuments);
+        navigate(config.routePath, { replace: true });
       }
       showToast({
         title: `${config.singularLabel} draft deleted.`,
@@ -867,7 +900,7 @@ function PurchaseDocumentWorkspace({
         key: "view",
         label: row.status === "DRAFT" ? "Open Draft" : "View Document",
         icon: Eye,
-        onSelect: () => applyDocumentToWorkspace(row, row.status !== "DRAFT"),
+        onSelect: () => navigate(`${config.routePath}/${row.id}`),
       },
       {
         key: "history",
@@ -898,7 +931,7 @@ function PurchaseDocumentWorkspace({
         label: conversion.actionLabel,
         icon: Copy,
         onSelect: () =>
-          navigate(conversion.targetRoutePath, {
+          navigate(`${conversion.targetRoutePath}/new`, {
             state: {
               parentDocumentId: row.id,
               parentDocumentNumber: row.billNumber,
@@ -946,16 +979,26 @@ function PurchaseDocumentWorkspace({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc] lg:overflow-hidden">
-      <div className="grid min-h-0 flex-1 gap-2 p-2 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] lg:overflow-hidden">
+      <div
+        className={`grid min-h-0 flex-1 gap-2 p-2 lg:overflow-hidden ${isEditorRoute ? "lg:grid-cols-1" : "lg:grid-cols-1"}`}
+      >
+        {!isEditorRoute ? (
         <section className="flex h-full min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:overflow-hidden">
           <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
               <h1 className="text-sm font-semibold text-foreground">{config.listTitle}</h1>
               <p className="text-xs text-muted-foreground">
-                Draft and posted {config.pluralLabel} stay together here for fast review and conversion.
+                Review recent {config.pluralLabel}, open existing documents, or start a new one with full-width editing space.
               </p>
             </div>
-            <Button type="button" size="sm" onClick={() => resetWorkspace(documents)}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                resetWorkspace(documents);
+                navigate(createRoutePath);
+              }}
+            >
               {config.createActionLabel}
             </Button>
           </div>
@@ -992,7 +1035,12 @@ function PurchaseDocumentWorkspace({
                     <span>{formatCurrency(row.total)}</span>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => applyDocumentToWorkspace(row, row.status !== "DRAFT")}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`${config.routePath}/${row.id}`)}
+                    >
                       {row.status === "DRAFT" ? "Open Draft" : "View"}
                     </Button>
                     <IconButton
@@ -1079,7 +1127,9 @@ function PurchaseDocumentWorkspace({
             )}
           </div>
         </section>
+        ) : null}
 
+        {isEditorRoute ? (
         <section className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:overflow-hidden">
           <div className="flex flex-col gap-1.5 border-b border-border/70 pb-1.5 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
@@ -1109,7 +1159,15 @@ function PurchaseDocumentWorkspace({
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => resetWorkspace(documents)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  resetWorkspace(documents);
+                  navigate(config.routePath);
+                }}
+              >
                 Back to Recent
               </Button>
               {!isViewingPostedDocument ? (
@@ -1518,6 +1576,7 @@ function PurchaseDocumentWorkspace({
             </div>
           </div>
         </section>
+        ) : null}
       </div>
 
       {openRowMenuId && rowMenuAnchorRect ? (
