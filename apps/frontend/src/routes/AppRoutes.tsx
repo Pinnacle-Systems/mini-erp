@@ -29,6 +29,12 @@ import {
   PosPage,
   ReturnsPage,
 } from "../pages/sales";
+import {
+  GoodsReceiptNotesPage,
+  PurchaseInvoicesPage,
+  PurchaseOrdersPage,
+  PurchaseReturnsPage,
+} from "../pages/purchases";
 import { SessionHeader } from "../design-system/organisms/SessionHeader";
 import {
   RequireAuth,
@@ -219,44 +225,12 @@ export function AppRoutes() {
                 <Route element={<RequireModule moduleKey="purchases" />}>
                   <Route element={<RequireCapability capability="PARTIES_SUPPLIERS" />}>
                     <Route element={<RequireCapability capability="TXN_PURCHASE_CREATE" />}>
-                      <Route
-                        path="purchase-orders"
-                        element={
-                          <AppFeaturePlaceholderPage
-                            sectionTitle="Purchases"
-                            appLabel="Orders"
-                          />
-                        }
-                      />
-                      <Route
-                        path="goods-receipt-notes"
-                        element={
-                          <AppFeaturePlaceholderPage
-                            sectionTitle="Purchases"
-                            appLabel="Goods Receipt Notes"
-                          />
-                        }
-                      />
-                      <Route
-                        path="purchase-invoices"
-                        element={
-                          <AppFeaturePlaceholderPage
-                            sectionTitle="Purchases"
-                            appLabel="Invoices"
-                          />
-                        }
-                      />
+                      <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
+                      <Route path="goods-receipt-notes" element={<GoodsReceiptNotesPage />} />
+                      <Route path="purchase-invoices" element={<PurchaseInvoicesPage />} />
                     </Route>
                     <Route element={<RequireCapability capability="TXN_PURCHASE_RETURN" />}>
-                      <Route
-                        path="purchase-returns"
-                        element={
-                          <AppFeaturePlaceholderPage
-                            sectionTitle="Purchases"
-                            appLabel="Returns"
-                          />
-                        }
-                      />
+                      <Route path="purchase-returns" element={<PurchaseReturnsPage />} />
                     </Route>
                   </Route>
                 </Route>

@@ -121,26 +121,26 @@ Goal: expose purchases as an independently permissioned module.
 
 Goal: add purchase pages that reuse the dense shared document workspace pattern.
 
-- [ ] Create `apps/frontend/src/pages/purchases/...`
+- [x] Create `apps/frontend/src/pages/purchases/...`
 - [ ] Extract shared document-workspace primitives from current sales pages where reuse reduces duplication
-- [ ] Add purchase orders page
-- [ ] Add goods receipt notes page
-- [ ] Add purchase invoices page
-- [ ] Add purchase returns page
-- [ ] Reuse dense combined list + workspace layout on desktop
-- [ ] Keep mobile purchase flows functional with stacked sections
-- [ ] Add supplier lookup using synced supplier data
-- [ ] Add spreadsheet-like line editor for purchase rows
-- [ ] Add location handling for stock-affecting purchase documents
-- [ ] Support standalone GRN creation from the purchase workspace
-- [ ] Support PO-linked GRN conversion from the purchase workspace
-- [ ] Support standalone purchase invoice creation
-- [ ] Support PO-linked purchase invoice conversion
-- [ ] Support GRN-linked purchase invoice conversion
-- [ ] Support purchase return creation from posted GRN
-- [ ] Support purchase return creation from posted purchase invoice
-- [ ] Surface backend validation and stock errors inline
-- [ ] Hide or disable `VOID` for posted purchase docs
+- [x] Add purchase orders page
+- [x] Add goods receipt notes page
+- [x] Add purchase invoices page
+- [x] Add purchase returns page
+- [x] Reuse dense combined list + workspace layout on desktop
+- [x] Keep mobile purchase flows functional with stacked sections
+- [x] Add supplier lookup using synced supplier data
+- [x] Add spreadsheet-like line editor for purchase rows
+- [x] Add location handling for stock-affecting purchase documents
+- [x] Support standalone GRN creation from the purchase workspace
+- [x] Support PO-linked GRN conversion from the purchase workspace
+- [x] Support standalone purchase invoice creation
+- [x] Support PO-linked purchase invoice conversion
+- [x] Support GRN-linked purchase invoice conversion
+- [x] Support purchase return creation from posted GRN
+- [x] Support purchase return creation from posted purchase invoice
+- [x] Surface backend validation and stock errors inline
+- [x] Hide or disable `VOID` for posted purchase docs
 
 ## Phase 9: Reporting and Downstream Effects
 
