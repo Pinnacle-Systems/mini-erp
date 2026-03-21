@@ -68,7 +68,15 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
       /^\/app\/customers\/new$/.test(location.pathname) ||
       /^\/app\/customers\/[^/]+$/.test(location.pathname) ||
       /^\/app\/suppliers\/new$/.test(location.pathname) ||
-      /^\/app\/suppliers\/[^/]+$/.test(location.pathname));
+      /^\/app\/suppliers\/[^/]+$/.test(location.pathname) ||
+      /^\/app\/purchase-orders\/new$/.test(location.pathname) ||
+      /^\/app\/purchase-orders\/[^/]+$/.test(location.pathname) ||
+      /^\/app\/goods-receipt-notes\/new$/.test(location.pathname) ||
+      /^\/app\/goods-receipt-notes\/[^/]+$/.test(location.pathname) ||
+      /^\/app\/purchase-invoices\/new$/.test(location.pathname) ||
+      /^\/app\/purchase-invoices\/[^/]+$/.test(location.pathname) ||
+      /^\/app\/purchase-returns\/new$/.test(location.pathname) ||
+      /^\/app\/purchase-returns\/[^/]+$/.test(location.pathname));
   const headerContext = (() => {
     if (!isPlatformAdmin) return null;
     const { pathname } = location;
@@ -226,11 +234,28 @@ export function AppRoutes() {
                   <Route element={<RequireCapability capability="PARTIES_SUPPLIERS" />}>
                     <Route element={<RequireCapability capability="TXN_PURCHASE_CREATE" />}>
                       <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
+                      <Route path="purchase-orders/new" element={<PurchaseOrdersPage />} />
+                      <Route path="purchase-orders/:documentId" element={<PurchaseOrdersPage />} />
                       <Route path="goods-receipt-notes" element={<GoodsReceiptNotesPage />} />
+                      <Route path="goods-receipt-notes/new" element={<GoodsReceiptNotesPage />} />
+                      <Route
+                        path="goods-receipt-notes/:documentId"
+                        element={<GoodsReceiptNotesPage />}
+                      />
                       <Route path="purchase-invoices" element={<PurchaseInvoicesPage />} />
+                      <Route path="purchase-invoices/new" element={<PurchaseInvoicesPage />} />
+                      <Route
+                        path="purchase-invoices/:documentId"
+                        element={<PurchaseInvoicesPage />}
+                      />
                     </Route>
                     <Route element={<RequireCapability capability="TXN_PURCHASE_RETURN" />}>
                       <Route path="purchase-returns" element={<PurchaseReturnsPage />} />
+                      <Route path="purchase-returns/new" element={<PurchaseReturnsPage />} />
+                      <Route
+                        path="purchase-returns/:documentId"
+                        element={<PurchaseReturnsPage />}
+                      />
                     </Route>
                   </Route>
                 </Route>
