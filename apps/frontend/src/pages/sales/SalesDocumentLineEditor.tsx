@@ -259,18 +259,12 @@ export function SalesDocumentLineEditor({
                         />
                       )}
                     </div>
-                    {shouldShowOriginBadges ? (
+                    {shouldShowOriginBadges && line.sourceLineId ? (
                       <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
-                          line.sourceLineId ? "cursor-help" : ""
-                        }`}
-                        title={
-                          line.sourceLineId
-                            ? getLineOriginTitle(line) ?? undefined
-                            : undefined
-                        }
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} cursor-help`}
+                        title={getLineOriginTitle(line) ?? undefined}
                       >
-                        {line.sourceLineId ? "Linked" : "Ad-hoc"}
+                        Linked
                       </span>
                     ) : null}
                     {getSameItemMixedOriginHint(line) ? (
@@ -481,18 +475,12 @@ export function SalesDocumentLineEditor({
                           }}
                         />
                         <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-1">
-                          {shouldShowOriginBadges ? (
+                          {shouldShowOriginBadges && line.sourceLineId ? (
                             <span
-                              className={`pointer-events-auto inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} ${
-                                line.sourceLineId ? "cursor-help" : ""
-                              }`}
-                              title={
-                                line.sourceLineId
-                                  ? getLineOriginTitle(line) ?? undefined
-                                  : undefined
-                              }
+                              className={`pointer-events-auto inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${getOriginBadgeClassName(line)} cursor-help`}
+                              title={getLineOriginTitle(line) ?? undefined}
                             >
-                              {line.sourceLineId ? "Linked" : "Ad-hoc"}
+                              Linked
                             </span>
                           ) : null}
                           {getSameItemMixedOriginHint(line) ? (
@@ -529,7 +517,7 @@ export function SalesDocumentLineEditor({
                           onKeyDown={(event) => handleCellKeyDown(event, line.id, "quantity")}
                           inputMode="decimal"
                         />
-                        <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 whitespace-nowrap text-[9px] text-muted-foreground lg:right-2 lg:text-[10px]">
+                        <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center whitespace-nowrap text-[9px] leading-none text-muted-foreground lg:right-2 lg:text-[10px]">
                           {line.unit || "PCS"}
                         </span>
                       </div>

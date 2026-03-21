@@ -1,16 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Clock3,
-  Copy,
-  Eye,
-  History,
-  MoreHorizontal,
-  RotateCcw,
-  Trash2,
-  XCircle,
-} from "lucide-react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { createPortal } from "react-dom";
+import { useRef } from "react";
+import { MoreHorizontal } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
 import { Input } from "../../design-system/atoms/Input";
@@ -18,8 +8,6 @@ import { Label } from "../../design-system/atoms/Label";
 import { Select } from "../../design-system/atoms/Select";
 import { Textarea } from "../../design-system/atoms/Textarea";
 import { LookupDropdownInput } from "../../design-system/molecules/LookupDropdownInput";
-import { Card } from "../../design-system/molecules/Card";
-import { GstSlabSelect } from "../../design-system/molecules/GstSlabSelect";
 import {
   TabularBody,
   TabularCell,
@@ -30,101 +18,30 @@ import {
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
 import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
-import { tabularNumericClassName } from "../../design-system/molecules/tabularTokens";
-import {
-  spreadsheetCellControlClassName,
-  spreadsheetCellNumericClassName,
-  spreadsheetCellSelectClassName,
-} from "../../design-system/molecules/spreadsheetStyles";
 import { ActionReasonDialog } from "../../design-system/organisms/ActionReasonDialog";
-import { FloatingActionMenu, type FloatingActionMenuItem } from "../../design-system/organisms/FloatingActionMenu";
+import { DocumentHistoryDialog } from "../../design-system/organisms/DocumentHistoryDialog";
+import { DraftReviewPanel } from "../../design-system/organisms/DraftReviewPanel";
+import { FloatingActionMenu } from "../../design-system/organisms/FloatingActionMenu";
 import { useSessionStore } from "../../features/auth/session-business";
 import {
-  getLocalItemPricingRowsForDisplay,
-  getLocalStockLevels,
-  getLocalStockVariantOptions,
-  getLocalSuppliers,
-  type ItemPricingRow,
-  type StockLevelRow,
-  type StockVariantOption,
-  type SupplierRow,
-} from "../../features/sync/engine";
-import { useToast } from "../../features/toast/useToast";
-import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
-import { cn } from "../../lib/utils";
-import {
-  createPurchaseDocumentDraft,
-  deletePurchaseDocumentDraft,
-  getPurchaseConversionBalance,
-  getPurchaseDocumentHistory,
-  listPurchaseDocuments,
-  postPurchaseDocumentDraft,
-  PurchaseDocumentApiError,
-  transitionPurchaseDocument,
-  updatePurchaseDocumentDraft,
-  type PurchaseConversionBalanceLine,
-  type PurchaseDocumentAction,
   type PurchaseDocumentCancelReason,
-  type PurchaseDocumentDraft,
-  type PurchaseDocumentHistoryEntry,
-  type PurchaseDocumentLineDraft,
   type PurchaseDocumentType,
 } from "./purchase-documents-api";
-
-type PurchaseDocumentPageConfig = {
-  documentType: PurchaseDocumentType;
-  routePath: string;
-  listTitle: string;
-  createTitle: string;
-  singularLabel: string;
-  pluralLabel: string;
-  listEmptyMessage: string;
-  createActionLabel: string;
-  postActionLabel: string;
-  numberPrefix: string;
-  defaultSettlementMode?: "CASH" | "CREDIT";
-};
-
-type PurchaseDocumentRouteParams = {
-  documentId?: string;
-};
-
-type PurchaseDocumentConversionConfig = {
-  targetDocumentType: PurchaseDocumentType;
-  targetRoutePath: string;
-  actionLabel: string;
-};
-
-type PurchaseLine = PurchaseDocumentLineDraft & {
-  linkedRemainingQuantity?: string | null;
-};
-
-type PurchaseListRow = PurchaseDocumentDraft & {
-  total: number;
-  timestamp: string;
-};
-
-type PurchaseItemOption = StockVariantOption & {
-  description: string;
-  priceAmount: number | null;
-  currency: string;
-  gstLabel: string;
-  taxRate: number;
-  taxMode: "EXCLUSIVE" | "INCLUSIVE";
-  quantityOnHand: number | null;
-};
-
-type PurchaseRouteState = {
-  parentDocumentId?: string;
-  parentDocumentNumber?: string;
-  parentDocumentType?: PurchaseDocumentType;
-};
-
-const CANCEL_REASON_LABELS: Record<PurchaseDocumentCancelReason, string> = {
-  CUSTOMER_DECLINED: "Customer declined",
-  INTERNAL_DROP: "Internal drop",
-  OTHER: "Other",
-};
+import { PurchaseDocumentLineEditor } from "./PurchaseDocumentLineEditor";
+import {
+  buildPurchaseStarterLines,
+  CANCEL_REASON_LABELS,
+  createPurchaseLine,
+  formatCurrency,
+  formatDateTime,
+  formatPurchaseDocumentTypeLabel,
+  isStockAffectingDocument,
+  normalizeLines,
+  type PurchaseDocumentConversionConfig,
+  type PurchaseDocumentPageConfig,
+  usePurchaseDocumentWorkspace,
+  usesSettlementMode,
+} from "./usePurchaseDocumentWorkspace";
 
 const PURCHASE_DOCUMENT_PAGE_CONFIG: Record<
   PurchaseDocumentType,
@@ -145,13 +62,13 @@ const PURCHASE_DOCUMENT_PAGE_CONFIG: Record<
   GOODS_RECEIPT_NOTE: {
     documentType: "GOODS_RECEIPT_NOTE",
     routePath: "/app/goods-receipt-notes",
-    listTitle: "Goods Receipt Notes",
-    createTitle: "Create Goods Receipt Note",
-    singularLabel: "goods receipt note",
-    pluralLabel: "goods receipt notes",
-    listEmptyMessage: "No recent GRNs yet. Receive stock here when goods arrive.",
-    createActionLabel: "Create GRN",
-    postActionLabel: "Post GRN",
+    listTitle: "Goods Receipts",
+    createTitle: "Create Goods Receipt",
+    singularLabel: "goods receipt",
+    pluralLabel: "goods receipts",
+    listEmptyMessage: "No recent goods receipts yet. Receive stock here when goods arrive.",
+    createActionLabel: "Create Goods Receipt",
+    postActionLabel: "Post Goods Receipt",
     numberPrefix: "GRN-",
   },
   PURCHASE_INVOICE: {
@@ -174,7 +91,7 @@ const PURCHASE_DOCUMENT_PAGE_CONFIG: Record<
     createTitle: "Create Purchase Return",
     singularLabel: "purchase return",
     pluralLabel: "purchase returns",
-    listEmptyMessage: "No recent purchase returns yet. Create one from a posted GRN or invoice.",
+    listEmptyMessage: "No recent purchase returns yet. Create one from a posted goods receipt or invoice.",
     createActionLabel: "Create Return",
     postActionLabel: "Post Return",
     numberPrefix: "PRTN-",
@@ -188,7 +105,7 @@ const PURCHASE_DOCUMENT_CONVERSIONS: Partial<
     {
       targetDocumentType: "GOODS_RECEIPT_NOTE",
       targetRoutePath: PURCHASE_DOCUMENT_PAGE_CONFIG.GOODS_RECEIPT_NOTE.routePath,
-      actionLabel: "Create GRN",
+      actionLabel: "Create Goods Receipt",
     },
     {
       targetDocumentType: "PURCHASE_INVOICE",
@@ -217,213 +134,6 @@ const PURCHASE_DOCUMENT_CONVERSIONS: Partial<
   ],
 };
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-
-const formatDateTime = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.valueOf())) {
-    return value;
-  }
-
-  return parsed.toLocaleString("en-IN", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
-
-const toRounded = (value: number, digits: number) => {
-  const factor = 10 ** digits;
-  return Math.round(value * factor) / factor;
-};
-
-const toTaxRateNumber = (value: string) => {
-  if (!value.trim() || value === "EXEMPT") {
-    return 0;
-  }
-  const normalized = value.endsWith("%") ? value.slice(0, -1) : value;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const getLineTotals = (line: PurchaseLine) => {
-  const quantity = Number(line.quantity) || 0;
-  const unitPrice = Number(line.unitPrice) || 0;
-  const taxRate = toTaxRateNumber(line.taxRate);
-  const grossAmount = toRounded(quantity * unitPrice, 2);
-
-  if (line.taxMode === "INCLUSIVE" && taxRate > 0) {
-    const subTotal = toRounded(grossAmount / (1 + taxRate / 100), 2);
-    const taxTotal = toRounded(grossAmount - subTotal, 2);
-    return {
-      subTotal,
-      taxTotal,
-      total: grossAmount,
-    };
-  }
-
-  const subTotal = grossAmount;
-  const taxTotal = toRounded(subTotal * (taxRate / 100), 2);
-  return {
-    subTotal,
-    taxTotal,
-    total: toRounded(subTotal + taxTotal, 2),
-  };
-};
-
-const normalizeLines = (lines: PurchaseLine[]) =>
-  lines.filter(
-    (line) =>
-      line.variantId.trim().length > 0 ||
-      line.description.trim().length > 0 ||
-      line.unitPrice.trim().length > 0,
-  );
-
-const createLine = (seed?: Partial<PurchaseLine>): PurchaseLine => ({
-  id: crypto.randomUUID(),
-  sourceLineId: null,
-  variantId: "",
-  description: "",
-  quantity: "1",
-  unitPrice: "",
-  taxRate: "0%",
-  taxMode: "EXCLUSIVE",
-  unit: "PCS",
-  linkedRemainingQuantity: null,
-  ...seed,
-});
-
-const formatSequenceNumber = (prefix: string, nextNumber: number) =>
-  `${prefix}${String(nextNumber).padStart(4, "0")}`;
-
-const parseSequenceNumber = (value: string, prefix: string) => {
-  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`^${escapedPrefix}(\\d+)$`).exec(value.trim().toUpperCase());
-  if (!match) {
-    return null;
-  }
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const getNextBillNumber = (
-  prefix: string,
-  documents: Array<Pick<PurchaseDocumentDraft, "billNumber">>,
-) => {
-  const maxSequence = documents.reduce((max, document) => {
-    const parsed = parseSequenceNumber(document.billNumber, prefix);
-    return parsed && parsed > max ? parsed : max;
-  }, 0);
-
-  return formatSequenceNumber(prefix, maxSequence + 1);
-};
-
-const getDocumentTotal = (document: PurchaseDocumentDraft) =>
-  normalizeLines(document.lines).reduce(
-    (sum, line) => sum + getLineTotals(line as PurchaseLine).total,
-    0,
-  );
-
-const usesSettlementMode = (documentType: PurchaseDocumentType) =>
-  documentType === "PURCHASE_INVOICE";
-
-const isStockAffectingDocument = (documentType: PurchaseDocumentType) =>
-  documentType !== "PURCHASE_ORDER";
-
-const requiresPostedParent = (documentType: PurchaseDocumentType) =>
-  documentType === "PURCHASE_RETURN";
-
-function PurchaseDocumentHistoryDialog({
-  title,
-  description,
-  entries,
-  loading,
-  error,
-  onClose,
-}: {
-  title: string;
-  description: string;
-  entries: PurchaseDocumentHistoryEntry[];
-  loading: boolean;
-  error: string | null;
-  onClose: () => void;
-}) {
-  const dialog = (
-    <div className="fixed inset-0 z-[90] bg-slate-950/45 p-0 md:p-4">
-      <Card className="h-full w-full rounded-none border-0 bg-white p-0 shadow-none md:mx-auto md:mt-8 md:h-auto md:max-h-[85vh] md:max-w-2xl md:rounded-xl md:border md:border-[#cfd9e5] md:shadow-[0_14px_40px_rgba(15,23,42,0.18)]">
-        <div className="flex items-start justify-between gap-3 border-b border-[#dbe4ee] px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">{title}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-          </div>
-          <Button type="button" variant="outline" size="icon" onClick={onClose} className="h-8 w-8 shrink-0">
-            <XCircle className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </div>
-        <div className="min-h-0 overflow-y-auto px-4 py-3 md:max-h-[calc(85vh-7.5rem)]">
-          {loading ? (
-            <div className="rounded-md border border-border/70 bg-slate-50 px-3 py-3 text-xs text-muted-foreground">
-              Loading document history...
-            </div>
-          ) : error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
-              {error}
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="rounded-md border border-border/70 bg-slate-50 px-3 py-3 text-xs text-muted-foreground">
-              No history has been recorded for this document yet.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {entries.map((entry) => (
-                <div key={entry.id} className="rounded-lg border border-border/80 bg-white px-3 py-2.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-foreground">
-                        {entry.eventType === "CREATED"
-                          ? "Draft created"
-                          : entry.eventType === "UPDATED"
-                            ? "Draft updated"
-                            : entry.eventType === "CONVERSION_LINKED"
-                              ? "Conversion linked"
-                              : entry.fromStatus && entry.toStatus
-                                ? `Status changed: ${entry.fromStatus} -> ${entry.toStatus}`
-                                : "Status changed"}
-                      </p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {entry.actorName?.trim() || "Unknown user"}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
-                      <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span>{formatDateTime(entry.createdAt)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center justify-end border-t border-[#dbe4ee] px-4 py-3">
-          <Button type="button" variant="outline" onClick={onClose} className="h-8 px-3 text-xs">
-            Close
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-
-  return typeof document !== "undefined" ? createPortal(dialog, document.body) : null;
-}
-
 function PurchaseDocumentPage({ config }: { config: PurchaseDocumentPageConfig }) {
   const activeStore = useSessionStore((state) => state.activeStore);
   const activeLocationId = useSessionStore((state) => state.activeLocationId);
@@ -447,540 +157,90 @@ function PurchaseDocumentWorkspace({
   activeStore: string | null;
   activeLocationId: string | null;
 }) {
-  const location = useLocation();
   const navigate = useNavigate();
-  const { documentId } = useParams<PurchaseDocumentRouteParams>();
-  const { showToast } = useToast();
-  const businesses = useSessionStore((state) => state.businesses);
-  const activeBusiness = useMemo(
-    () => businesses.find((business) => business.id === activeStore) ?? null,
-    [activeStore, businesses],
-  );
-  const activeBusinessName = activeBusiness?.name ?? "Active Business";
-  const [documents, setDocuments] = useState<PurchaseDocumentDraft[]>([]);
-  const [documentsLoading, setDocumentsLoading] = useState(false);
-  const [documentsError, setDocumentsError] = useState<string | null>(null);
-  const [lookupLoading, setLookupLoading] = useState(false);
-  const [lookupError, setLookupError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [draftMutationLoading, setDraftMutationLoading] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyEntries, setHistoryEntries] = useState<PurchaseDocumentHistoryEntry[]>([]);
-  const [historyDocument, setHistoryDocument] = useState<PurchaseDocumentDraft | null>(null);
-  const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
-  const [rowMenuAnchorRect, setRowMenuAnchorRect] = useState<DOMRect | null>(null);
-  const [cancelDocument, setCancelDocument] = useState<PurchaseDocumentDraft | null>(null);
-  const [selectedCancelReason, setSelectedCancelReason] =
-    useState<PurchaseDocumentCancelReason>("OTHER");
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
-  const [parentId, setParentId] = useState<string | null>(null);
-  const [parentDocumentNumber, setParentDocumentNumber] = useState("");
-  const [billNumber, setBillNumber] = useState("");
-  const [settlementMode, setSettlementMode] = useState<"CASH" | "CREDIT">(
-    config.defaultSettlementMode ?? "CASH",
-  );
-  const [supplierId, setSupplierId] = useState<string | null>(null);
-  const [supplierName, setSupplierName] = useState("");
-  const [supplierPhone, setSupplierPhone] = useState("");
-  const [supplierAddress, setSupplierAddress] = useState("");
-  const [supplierTaxId, setSupplierTaxId] = useState("");
-  const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<PurchaseLine[]>([createLine()]);
-  const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
-  const [itemOptions, setItemOptions] = useState<PurchaseItemOption[]>([]);
-  const [postValidationMessage, setPostValidationMessage] = useState<string | null>(null);
   const rowMenuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
-  const routeState = location.state as PurchaseRouteState | null;
-  const createRoutePath = `${config.routePath}/new`;
-  const isCreateRoute = location.pathname === createRoutePath;
-  const isDocumentRoute = Boolean(documentId);
-  const isEditorRoute = isCreateRoute || isDocumentRoute;
-
-  const isViewingPostedDocument = useMemo(() => {
-    const current = documents.find((entry) => entry.id === viewingDocumentId);
-    return Boolean(current && current.status !== "DRAFT");
-  }, [documents, viewingDocumentId]);
-
-  const activeDocument = useMemo(
-    () => documents.find((entry) => entry.id === (viewingDocumentId ?? activeDraftId)) ?? null,
-    [activeDraftId, documents, viewingDocumentId],
-  );
-
-  const totals = useMemo(
-    () =>
-      normalizeLines(lines).reduce(
-        (summary, line) => {
-          const lineTotals = getLineTotals(line);
-          return {
-            subTotal: toRounded(summary.subTotal + lineTotals.subTotal, 2),
-            taxTotal: toRounded(summary.taxTotal + lineTotals.taxTotal, 2),
-            grandTotal: toRounded(summary.grandTotal + lineTotals.total, 2),
-          };
-        },
-        { subTotal: 0, taxTotal: 0, grandTotal: 0 },
-      ),
-    [lines],
-  );
-
-  const documentRows = useMemo<PurchaseListRow[]>(
-    () =>
-      documents.map((document) => ({
-        ...document,
-        total: getDocumentTotal(document),
-        timestamp: document.savedAt ?? document.postedAt ?? "",
-      })),
-    [documents],
-  );
-
-  const linkedRemainingBySourceLineId = useMemo(
-    () =>
-      new Map(
-        lines
-          .filter((line) => line.sourceLineId && line.linkedRemainingQuantity)
-          .map((line) => [line.sourceLineId as string, line.linkedRemainingQuantity as string]),
-      ),
-    [lines],
-  );
-
-  useEffect(() => {
-    if (!activeStore) {
-      return;
+  const {
+    activeBusiness,
+    activeBusinessName,
+    activeDocument,
+    activeDraftId,
+    billNumber,
+    cancelDocument,
+    createRoutePath,
+    documentRows,
+    documents,
+    documentsError,
+    documentsLoading,
+    duplicateMeta,
+    duplicateWarningAlerts,
+    duplicateWarnings,
+    draftMutationLoading,
+    formError,
+    getRowMenuActions,
+    historyDocument,
+    historyEntries,
+    historyError,
+    historyLoading,
+    isEditorRoute,
+    isViewingPostedDocument,
+    itemOptions,
+    lines,
+    lookupError,
+    lookupLoading,
+    notes,
+    openSupplierCreate,
+    openRowMenuId,
+    parentDocumentNumber,
+    postValidationMessage,
+    refreshDuplicatePricesToCurrent,
+    resetWorkspace,
+    persistDraft,
+    rowMenuAnchorRect,
+    selectedCancelReason,
+    setBillNumber,
+    setCancelDocument,
+    setHistoryDocument,
+    setHistoryEntries,
+    setHistoryError,
+    setIsListRouteEditorOpen,
+    setLines,
+    setNotes,
+    setOpenRowMenuId,
+    setRowMenuAnchorRect,
+    setSelectedCancelReason,
+    setSettlementMode,
+    setSupplierAddress,
+    setSupplierId,
+    setSupplierName,
+    setSupplierPhone,
+    setSupplierTaxId,
+    settlementMode,
+    supplierAddress,
+    supplierName,
+    supplierOptions,
+    supplierPhone,
+    supplierTaxId,
+    totals,
+    transitionDocument,
+  } = usePurchaseDocumentWorkspace({
+    config,
+    activeStore,
+    activeLocationId,
+    conversions: PURCHASE_DOCUMENT_CONVERSIONS,
+  });
+  const showSourceColumn = config.documentType !== "PURCHASE_ORDER";
+  const getParentDocumentNumber = (row: (typeof documentRows)[number]) => {
+    if (!row.parentId) {
+      return "None";
     }
 
-    setDocumentsLoading(true);
-    setDocumentsError(null);
-    void listPurchaseDocuments(activeStore, config.documentType)
-      .then((nextDocuments) => {
-        setDocuments(nextDocuments);
-        if (!isEditorRoute && !routeState?.parentDocumentId) {
-          setBillNumber(getNextBillNumber(config.numberPrefix, nextDocuments));
-        }
-      })
-      .catch((error) => {
-        setDocumentsError(
-          error instanceof Error ? error.message : "Unable to load purchase documents.",
-        );
-      })
-      .finally(() => {
-        setDocumentsLoading(false);
-      });
-  }, [activeStore, config.documentType, config.numberPrefix, isEditorRoute, routeState?.parentDocumentId]);
-
-  useEffect(() => {
-    if (!activeStore) {
-      return;
-    }
-
-    setLookupLoading(true);
-    setLookupError(null);
-    void Promise.all([
-      getLocalSuppliers(activeStore),
-      getLocalStockVariantOptions(activeStore),
-      getLocalItemPricingRowsForDisplay(activeStore, undefined, false, "PURCHASE"),
-      getLocalStockLevels(activeStore),
-    ])
-      .then(([nextSuppliers, stockOptions, pricingRows, stockLevels]) => {
-        setSuppliers(nextSuppliers.filter((supplier) => supplier.isActive));
-        setItemOptions(buildPurchaseItemOptions(stockOptions, pricingRows, stockLevels));
-      })
-      .catch((error) => {
-        setLookupError(
-          error instanceof Error ? error.message : "Unable to load suppliers or item lookups.",
-        );
-      })
-      .finally(() => {
-        setLookupLoading(false);
-      });
-  }, [activeStore]);
-
-  useEffect(() => {
-    if (!activeStore || !routeState?.parentDocumentId) {
-      return;
-    }
-
-    const sourceDocumentId = routeState.parentDocumentId;
-    const sourceDocumentNumber = routeState.parentDocumentNumber ?? "";
-
-    void getPurchaseConversionBalance(sourceDocumentId, activeStore)
-      .then((balance) => {
-        const convertedLines = balance.lines
-          .filter((line) => Number(line.remainingQuantity) > 0)
-          .map((line) => toConvertedLine(line));
-
-        setActiveDraftId(null);
-        setViewingDocumentId(null);
-        setParentId(sourceDocumentId);
-        setParentDocumentNumber(sourceDocumentNumber);
-        setBillNumber(getNextBillNumber(config.numberPrefix, documents));
-        setSettlementMode(config.defaultSettlementMode ?? "CASH");
-        setNotes("");
-        setLines(convertedLines.length > 0 ? convertedLines : [createLine()]);
-        setPostValidationMessage(null);
-      })
-      .catch((error) => {
-        showToast({
-          title: error instanceof Error ? error.message : "Unable to prepare conversion.",
-          tone: "error",
-        });
-      })
-      .finally(() => {
-        navigate(location.pathname, { replace: true, state: null });
-      });
-  }, [activeStore, config.defaultSettlementMode, config.numberPrefix, documents, location.pathname, navigate, routeState?.parentDocumentId, routeState?.parentDocumentNumber, showToast]);
-
-  useEffect(() => {
-    if (documentsLoading) {
-      return;
-    }
-
-    if (documentId) {
-      const matchedDocument = documents.find((entry) => entry.id === documentId);
-      if (!matchedDocument) {
-        setFormError(`This ${config.singularLabel} could not be found.`);
-        return;
-      }
-
-      applyDocumentToWorkspace(matchedDocument, matchedDocument.status !== "DRAFT");
-      return;
-    }
-
-    if (isCreateRoute && !routeState?.parentDocumentId) {
-      resetWorkspace(documents);
-    }
-  }, [config.singularLabel, documentId, documents, documentsLoading, isCreateRoute, routeState?.parentDocumentId]);
-
-  useEffect(() => {
-    const normalizedLines = normalizeLines(lines);
-    if (normalizedLines.length === 0) {
-      setPostValidationMessage(`Add at least one ${config.singularLabel} line before posting.`);
-      return;
-    }
-
-    if (usesSettlementMode(config.documentType) && settlementMode === "CREDIT" && !supplierId) {
-      setPostValidationMessage(`Credit ${config.pluralLabel} require an existing supplier.`);
-      return;
-    }
-
-    if (!supplierName.trim()) {
-      setPostValidationMessage(`${config.createTitle.replace("Create ", "")} requires supplier details.`);
-      return;
-    }
-
-    if (requiresPostedParent(config.documentType) && !parentId) {
-      setPostValidationMessage("Purchase return must be created from a posted GRN or invoice.");
-      return;
-    }
-
-    setPostValidationMessage(null);
-  }, [config.createTitle, config.documentType, config.pluralLabel, config.singularLabel, lines, parentId, settlementMode, supplierId, supplierName]);
-
-  const resetWorkspace = (nextDocuments: PurchaseDocumentDraft[]) => {
-    setActiveDraftId(null);
-    setViewingDocumentId(null);
-    setParentId(null);
-    setParentDocumentNumber("");
-    setBillNumber(getNextBillNumber(config.numberPrefix, nextDocuments));
-    setSettlementMode(config.defaultSettlementMode ?? "CASH");
-    setSupplierId(null);
-    setSupplierName("");
-    setSupplierPhone("");
-    setSupplierAddress("");
-    setSupplierTaxId("");
-    setNotes("");
-    setLines([createLine()]);
-    setPostValidationMessage(null);
-    setFormError(null);
+    return documentRows.find((candidate) => candidate.id === row.parentId)?.billNumber ?? "Unknown";
   };
-
-  const applyDocumentToWorkspace = (document: PurchaseDocumentDraft, readOnly: boolean) => {
-    setActiveDraftId(readOnly ? null : document.id);
-    setViewingDocumentId(readOnly ? document.id : null);
-    setParentId(document.parentId ?? null);
-    setParentDocumentNumber("");
-    setBillNumber(document.billNumber);
-    setSettlementMode(document.settlementMode ?? config.defaultSettlementMode ?? "CASH");
-    setSupplierId(document.supplierId ?? null);
-    setSupplierName(document.supplierName);
-    setSupplierPhone(document.supplierPhone);
-    setSupplierAddress(document.supplierAddress);
-    setSupplierTaxId(document.supplierTaxId);
-    setNotes(document.notes);
-    setLines(
-      document.lines.length > 0
-        ? document.lines.map((line) =>
-            createLine({
-              ...line,
-              linkedRemainingQuantity: linkedRemainingBySourceLineId.get(line.sourceLineId ?? "") ?? null,
-            }),
-          )
-        : [createLine()],
-    );
-    setFormError(null);
-  };
-
-  const persistDraft = async (mode: "save" | "post") => {
-    if (!activeStore) {
-      return;
-    }
-
-    const normalizedLines = normalizeLines(lines);
-    if (normalizedLines.length === 0) {
-      showToast({
-        title: `Add at least one ${config.singularLabel} line before saving.`,
-        tone: "error",
-      });
-      return;
-    }
-
-    setDraftMutationLoading(true);
-    setFormError(null);
-    try {
-      const payload = {
-        tenantId: activeStore,
-        documentType: config.documentType,
-        parentId,
-        locationId: isStockAffectingDocument(config.documentType) ? activeLocationId ?? null : null,
-        billNumber: billNumber.trim(),
-        settlementMode: usesSettlementMode(config.documentType) ? settlementMode : "CASH",
-        supplierId,
-        supplierName: supplierName.trim(),
-        supplierPhone: supplierPhone.trim(),
-        supplierAddress: supplierAddress.trim(),
-        supplierTaxId: supplierTaxId.trim(),
-        notes: notes.trim(),
-        lines: normalizedLines,
-      };
-
-      const saved =
-        activeDraftId
-          ? await updatePurchaseDocumentDraft(activeDraftId, payload)
-          : await createPurchaseDocumentDraft(payload);
-
-      let nextDocument = saved;
-      if (mode === "post") {
-        nextDocument = await postPurchaseDocumentDraft(saved.id, activeStore, config.documentType);
-      }
-
-      const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
-      setDocuments(nextDocuments);
-
-      if (mode === "post") {
-        showToast({
-          title: `${config.createTitle.replace("Create ", "")} posted.`,
-          tone: "success",
-        });
-        applyDocumentToWorkspace(nextDocument, true);
-      } else {
-        showToast({
-          title: `${config.createTitle.replace("Create ", "")} saved as draft.`,
-          tone: "success",
-        });
-        applyDocumentToWorkspace(nextDocument, false);
-      }
-
-      navigate(`${config.routePath}/${nextDocument.id}`, { replace: true });
-    } catch (error) {
-      const message =
-        error instanceof PurchaseDocumentApiError ? error.message : "Unable to save purchase draft.";
-      setFormError(message);
-      showToast({
-        title: message,
-        tone: "error",
-      });
-    } finally {
-      setDraftMutationLoading(false);
-    }
-  };
-
-  const openHistory = async (document: PurchaseDocumentDraft) => {
-    if (!activeStore) {
-      return;
-    }
-
-    setHistoryDocument(document);
-    setHistoryLoading(true);
-    setHistoryError(null);
-    try {
-      const entries = await getPurchaseDocumentHistory(document.id, activeStore, config.documentType);
-      setHistoryEntries(entries);
-    } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : "Unable to load document history.");
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  const transitionDocument = async (
-    document: PurchaseDocumentDraft,
-    action: PurchaseDocumentAction,
-    cancelReason?: PurchaseDocumentCancelReason,
-  ) => {
-    if (!activeStore) {
-      return;
-    }
-
-    setDraftMutationLoading(true);
-    setFormError(null);
-    try {
-      const nextDocument = await transitionPurchaseDocument(
-        document.id,
-        activeStore,
-        config.documentType,
-        action,
-        cancelReason ?? null,
-      );
-      const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
-      setDocuments(nextDocuments);
-
-      if (documentId === document.id || viewingDocumentId === document.id) {
-        applyDocumentToWorkspace(nextDocument, nextDocument.status !== "DRAFT");
-      }
-
-      showToast({
-        title:
-          action === "CANCEL"
-            ? `${config.createTitle.replace("Create ", "")} cancelled.`
-            : action === "REOPEN"
-              ? `${config.createTitle.replace("Create ", "")} reopened.`
-              : `${config.createTitle.replace("Create ", "")} updated.`,
-        tone: "success",
-      });
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Unable to update purchase document.");
-      showToast({
-        title: error instanceof Error ? error.message : "Unable to update purchase document.",
-        tone: "error",
-      });
-    } finally {
-      setDraftMutationLoading(false);
-      setCancelDocument(null);
-    }
-  };
-
-  const deleteDraft = async (document: PurchaseDocumentDraft) => {
-    if (!activeStore) {
-      return;
-    }
-
-    const confirmed = window.confirm(`Delete draft ${document.billNumber}?`);
-    if (!confirmed) {
-      return;
-    }
-
-    setDraftMutationLoading(true);
-    setFormError(null);
-    try {
-      await deletePurchaseDocumentDraft(document.id, activeStore, config.documentType);
-      const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
-      setDocuments(nextDocuments);
-      if (documentId === document.id || activeDraftId === document.id || viewingDocumentId === document.id) {
-        resetWorkspace(nextDocuments);
-        navigate(config.routePath, { replace: true });
-      }
-      showToast({
-        title: `${config.singularLabel} draft deleted.`,
-        tone: "success",
-      });
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Unable to delete purchase draft.");
-      showToast({
-        title: error instanceof Error ? error.message : "Unable to delete purchase draft.",
-        tone: "error",
-      });
-    } finally {
-      setDraftMutationLoading(false);
-    }
-  };
-
-  const getRowMenuActions = (row: PurchaseListRow): FloatingActionMenuItem[] => {
-    const actions: FloatingActionMenuItem[] = [
-      {
-        key: "view",
-        label: row.status === "DRAFT" ? "Open Draft" : "View Document",
-        icon: Eye,
-        onSelect: () => navigate(`${config.routePath}/${row.id}`),
-      },
-      {
-        key: "history",
-        label: "View History",
-        icon: History,
-        onSelect: () => {
-          void openHistory(row);
-        },
-      },
-    ];
-
-    if (row.status === "DRAFT") {
-      actions.push({
-        key: "delete",
-        label: "Delete Draft",
-        icon: Trash2,
-        tone: "danger",
-        onSelect: () => {
-          void deleteDraft(row);
-        },
-      });
-      return actions;
-    }
-
-    for (const conversion of PURCHASE_DOCUMENT_CONVERSIONS[row.documentType] ?? []) {
-      actions.push({
-        key: `convert-${conversion.targetDocumentType}`,
-        label: conversion.actionLabel,
-        icon: Copy,
-        onSelect: () =>
-          navigate(`${conversion.targetRoutePath}/new`, {
-            state: {
-              parentDocumentId: row.id,
-              parentDocumentNumber: row.billNumber,
-              parentDocumentType: row.documentType,
-            } satisfies PurchaseRouteState,
-          }),
-      });
-    }
-
-    if (row.status === "OPEN" || row.status === "PARTIAL") {
-      actions.push({
-        key: "cancel",
-        label: "Cancel Document",
-        icon: XCircle,
-        tone: "danger",
-        onSelect: () => {
-          setSelectedCancelReason("OTHER");
-          setCancelDocument(row);
-        },
-      });
-    }
-
-    if (row.status === "CANCELLED") {
-      actions.push({
-        key: "reopen",
-        label: "Reopen Document",
-        icon: RotateCcw,
-        onSelect: () => {
-          void transitionDocument(row, "REOPEN");
-        },
-      });
-    }
-
-    return actions;
-  };
-
-  const supplierOptions = useMemo(
-    () =>
-      suppliers.map((supplier) => ({
-        ...supplier,
-        label: supplier.name,
-      })),
-    [suppliers],
-  );
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc] lg:overflow-hidden">
       <div
-        className={`grid min-h-0 flex-1 gap-2 p-2 lg:overflow-hidden ${isEditorRoute ? "lg:grid-cols-1" : "lg:grid-cols-1"}`}
+        className={`grid min-h-0 flex-1 gap-2 lg:overflow-hidden ${isEditorRoute ? "lg:grid-cols-1" : "lg:grid-cols-1"}`}
       >
         {!isEditorRoute ? (
         <section className="flex h-full min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:overflow-hidden">
@@ -996,6 +256,7 @@ function PurchaseDocumentWorkspace({
               size="sm"
               onClick={() => {
                 resetWorkspace(documents);
+                setIsListRouteEditorOpen(false);
                 navigate(createRoutePath);
               }}
             >
@@ -1034,6 +295,11 @@ function PurchaseDocumentWorkspace({
                     <span>{formatDateTime(row.timestamp)}</span>
                     <span>{formatCurrency(row.total)}</span>
                   </div>
+                  {showSourceColumn ? (
+                    <div className="mt-2 truncate text-[10px] text-muted-foreground">
+                      {`Source: ${getParentDocumentNumber(row)}`}
+                    </div>
+                  ) : null}
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <Button
                       type="button"
@@ -1079,10 +345,13 @@ function PurchaseDocumentWorkspace({
               <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
                 <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
                   <TabularHeader>
-                    <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1.2fr) minmax(0,1.7fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,1fr) 3rem")}>
+                    <TabularRow columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,1fr) 3rem" : "minmax(0,1.2fr) minmax(0,1.85fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1fr) 3rem")}>
                       <TabularSerialNumberHeaderCell />
                       <TabularCell variant="header">Number</TabularCell>
                       <TabularCell variant="header">Supplier</TabularCell>
+                      {showSourceColumn ? (
+                        <TabularCell variant="header">Source</TabularCell>
+                      ) : null}
                       <TabularCell variant="header">Status</TabularCell>
                       <TabularCell variant="header" align="end">Total</TabularCell>
                       <TabularCell variant="header">Updated</TabularCell>
@@ -1091,12 +360,17 @@ function PurchaseDocumentWorkspace({
                   </TabularHeader>
                   <TabularBody className="overflow-y-auto">
                     {documentRows.map((row, index) => (
-                      <TabularRow key={row.id} columns={withTabularSerialNumberColumn("minmax(0,1.2fr) minmax(0,1.7fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,1fr) 3rem")} interactive>
+                      <TabularRow key={row.id} columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,1fr) 3rem" : "minmax(0,1.2fr) minmax(0,1.85fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1fr) 3rem")} interactive>
                         <TabularSerialNumberCell index={index} />
                         <TabularCell truncate hoverTitle={row.billNumber} className="font-semibold text-foreground">
                           {row.billNumber}
                         </TabularCell>
                         <TabularCell truncate hoverTitle={row.supplierName}>{row.supplierName}</TabularCell>
+                        {showSourceColumn ? (
+                          <TabularCell truncate hoverTitle={getParentDocumentNumber(row)}>
+                            {getParentDocumentNumber(row)}
+                          </TabularCell>
+                        ) : null}
                         <TabularCell>{row.status ?? "DRAFT"}</TabularCell>
                         <TabularCell align="end" className="font-semibold text-foreground">
                           {formatCurrency(row.total)}
@@ -1160,6 +434,7 @@ function PurchaseDocumentWorkspace({
                 size="sm"
                 onClick={() => {
                   resetWorkspace(documents);
+                  setIsListRouteEditorOpen(false);
                   navigate(config.routePath);
                 }}
               >
@@ -1178,9 +453,30 @@ function PurchaseDocumentWorkspace({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2 lg:overflow-hidden">
+          {duplicateMeta ? (
+            <div className="pt-2">
+              <DraftReviewPanel
+                title={`Duplicate of ${formatPurchaseDocumentTypeLabel(duplicateMeta.sourceDocumentType)} ${duplicateMeta.sourceBillNumber}`}
+                description="Original supplier pricing was preserved in this draft. Review any unavailable items or changed prices before saving or posting."
+                alerts={duplicateWarningAlerts}
+                actionLabel={
+                  duplicateWarnings.priceDiscrepancies.length > 0
+                    ? "Update to Current Prices"
+                    : undefined
+                }
+                actionDisabled={duplicateWarnings.priceDiscrepancies.length === 0}
+                onAction={
+                  duplicateWarnings.priceDiscrepancies.length > 0
+                    ? refreshDuplicatePricesToCurrent
+                    : undefined
+                }
+              />
+            </div>
+          ) : null}
+
+          <div className="flex min-h-0 flex-1 flex-col gap-2 pt-0.5 lg:overflow-hidden">
             <div className="flex min-h-0 flex-col gap-1.5 lg:overflow-hidden">
-              <div className="grid gap-2 pt-0.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_12rem] md:items-start">
+              <div className="flex flex-col gap-2 pt-0.5 md:flex-row md:items-start md:gap-2">
                 <div className="space-y-1 md:w-[13.5rem] md:min-w-[13.5rem]">
                   <Label htmlFor="purchase-bill-number">Document number</Label>
                   <Input
@@ -1191,9 +487,10 @@ function PurchaseDocumentWorkspace({
                     className="h-8 text-xs"
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="purchase-supplier">Supplier</Label>
+                <div className="space-y-1 md:min-w-0 md:flex-1">
+                  <Label htmlFor="purchase-supplier">Supplier *</Label>
                   <div className="space-y-1">
+                    <div className="flex flex-col gap-1 md:flex-row md:items-start md:gap-2">
                     <LookupDropdownInput
                       id="purchase-supplier"
                       value={supplierName}
@@ -1224,6 +521,18 @@ function PurchaseDocumentWorkspace({
                         </div>
                       )}
                     />
+                      {!isViewingPostedDocument ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-fit border-[#9fb5cd] bg-white px-2 text-[11px] font-semibold text-[#1f4167] shadow-none hover:bg-[#f7f9fb] md:mt-[1px] md:shrink-0"
+                          onClick={openSupplierCreate}
+                        >
+                          Create supplier
+                        </Button>
+                      ) : null}
+                    </div>
                     {(supplierPhone || supplierTaxId || supplierAddress) ? (
                       <div className="px-1 text-[11px] text-muted-foreground">
                         <span className="font-medium text-foreground">Phone:</span>{" "}
@@ -1238,40 +547,42 @@ function PurchaseDocumentWorkspace({
                     ) : null}
                   </div>
                 </div>
-                <div className="grid gap-2 md:grid-cols-2">
-                  {usesSettlementMode(config.documentType) ? (
-                    <div className="space-y-1">
-                      <Label htmlFor="purchase-settlement-mode">Settlement</Label>
-                      <Select
-                        id="purchase-settlement-mode"
-                        value={settlementMode}
-                        onChange={(event) => setSettlementMode(event.target.value as "CASH" | "CREDIT")}
-                        disabled={isViewingPostedDocument}
-                        className="h-8 text-xs"
-                      >
-                        <option value="CASH">Cash</option>
-                        <option value="CREDIT">Credit</option>
-                      </Select>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <Label>Source</Label>
-                      <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
-                        {parentDocumentNumber || "Standalone"}
-                      </div>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <Label>Location</Label>
+                {usesSettlementMode(config.documentType) ? (
+                  <div className="space-y-1 md:w-[10rem] md:min-w-[10rem]">
+                    <Label htmlFor="purchase-settlement-mode">Settlement</Label>
+                    <Select
+                      id="purchase-settlement-mode"
+                      value={settlementMode}
+                      onChange={(event) => setSettlementMode(event.target.value as "CASH" | "CREDIT")}
+                      disabled={isViewingPostedDocument}
+                      className="h-8 text-xs"
+                    >
+                      <option value="CASH">Cash</option>
+                      <option value="CREDIT">Credit</option>
+                    </Select>
+                  </div>
+                ) : null}
+                {parentDocumentNumber ? (
+                  <div className="space-y-1 md:w-[14rem] md:min-w-[14rem]">
+                    <Label>Source</Label>
                     <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
-                      {isStockAffectingDocument(config.documentType)
-                        ? activeBusiness?.locations.find((entry) => entry.id === (activeLocationId ?? activeBusiness.defaultLocationId))?.name ??
-                          activeBusiness?.locations.find((entry) => entry.isDefault)?.name ??
-                          "Default location"
-                        : "Business default"}
+                      {parentDocumentNumber}
                     </div>
                   </div>
-                </div>
+                ) : null}
+                {isStockAffectingDocument(config.documentType) ? (
+                  <div className="space-y-1 md:w-[12rem] md:min-w-[12rem]">
+                    <Label>Location</Label>
+                    <div className="flex h-8 items-center px-1 text-xs text-muted-foreground">
+                      {activeBusiness?.locations.find(
+                        (entry) =>
+                          entry.id === (activeLocationId ?? activeBusiness.defaultLocationId),
+                      )?.name ??
+                        activeBusiness?.locations.find((entry) => entry.isDefault)?.name ??
+                        "Default location"}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {lookupError ? (
@@ -1285,222 +596,49 @@ function PurchaseDocumentWorkspace({
                 </div>
               ) : null}
 
-              <div className="flex min-h-[18rem] flex-1 flex-col gap-1.5 pt-0.5 md:min-h-0 md:overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-                    {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
-                  </div>
-                  <Button type="button" variant="outline" size="sm" disabled={isViewingPostedDocument} onClick={() => setLines((current) => [...current, createLine()])}>
-                    Add Line
-                  </Button>
-                </div>
-                <div className="space-y-2 md:hidden">
-                  {lines.map((line, index) => {
-                    const lineTotals = getLineTotals(line);
-                    return (
-                      <div key={line.id} className="rounded-lg border border-border/80 bg-slate-50 p-2">
-                        <div className="mb-2 flex items-center justify-between">
-                          <div className="text-xs font-semibold text-foreground">Line {index + 1}</div>
-                          <Button type="button" variant="ghost" size="sm" className="h-auto p-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700" disabled={isViewingPostedDocument} onClick={() => setLines((current) => current.filter((entry) => entry.id !== line.id))}>
-                            <Trash2 className="mr-1 h-3.5 w-3.5" />
-                            Remove
-                          </Button>
-                        </div>
-                        <div className="grid gap-2">
-                          <div className="space-y-1">
-                            <Label htmlFor={`purchase-line-description-${line.id}`}>Item</Label>
-                            <LookupDropdownInput
-                              id={`purchase-line-description-${line.id}`}
-                              value={line.description}
-                              disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
-                              onValueChange={(value) =>
-                                setLines((current) =>
-                                  current.map((entry) => entry.id === line.id ? { ...entry, description: value } : entry),
-                                )
-                              }
-                              options={itemOptions}
-                              loading={lookupLoading}
-                              loadingLabel="Loading items"
-                              placeholder="Search item or service"
-                              onOptionSelect={(option) =>
-                                setLines((current) =>
-                                  current.map((entry) =>
-                                    entry.id === line.id
-                                      ? {
-                                          ...entry,
-                                          variantId: option.variantId,
-                                          description: option.description,
-                                          unitPrice: option.priceAmount !== null ? String(option.priceAmount) : "",
-                                          taxRate: `${option.taxRate}%`,
-                                          taxMode: option.taxMode,
-                                          unit: option.unit,
-                                        }
-                                      : entry,
-                                  ),
-                                )
-                              }
-                              getOptionKey={(option) => option.variantId}
-                              getOptionSearchText={(option) =>
-                                `${option.label} ${option.sku} ${option.gstLabel}`
-                              }
-                              renderOption={(option) => (
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center justify-between gap-2 text-xs font-medium text-foreground">
-                                    <span className="truncate">{option.description}</span>
-                                    <span className="shrink-0">{formatCurrency(option.priceAmount ?? 0)}</span>
-                                  </div>
-                                  <div className="text-[11px] text-muted-foreground">
-                                    {[option.sku, option.gstLabel].filter(Boolean).join(" • ")}
-                                  </div>
-                                </div>
-                              )}
-                            />
-                            {line.sourceLineId ? (
-                              <div className="text-[11px] text-[#1f4167]">
-                                Linked qty remaining: {line.linkedRemainingQuantity ?? line.quantity}
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="space-y-1">
-                              <Label>Qty</Label>
-                              <Input value={line.quantity} disabled={isViewingPostedDocument} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, quantity: event.target.value } : entry))} className="h-8 text-xs" />
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Rate</Label>
-                              <Input value={line.unitPrice} disabled={isViewingPostedDocument} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, unitPrice: event.target.value } : entry))} className="h-8 text-xs" />
-                            </div>
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="space-y-1">
-                              <Label>Tax</Label>
-                              <GstSlabSelect value={normalizeGstSlab(line.taxRate) ?? "0%"} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, taxRate: event.target.value } : entry))} disabled={isViewingPostedDocument} />
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Tax mode</Label>
-                              <Select value={line.taxMode} disabled={isViewingPostedDocument} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, taxMode: event.target.value as "EXCLUSIVE" | "INCLUSIVE" } : entry))} className="h-8 text-xs">
-                                <option value="EXCLUSIVE">Exclusive</option>
-                                <option value="INCLUSIVE">Inclusive</option>
-                              </Select>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between rounded-md border border-border/80 bg-white px-2 py-1.5 text-xs">
-                            <span className="text-muted-foreground">Line total</span>
-                            <span className="font-semibold text-foreground">{formatCurrency(lineTotals.total)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+              <PurchaseDocumentLineEditor
+                config={config}
+                lines={lines}
+                itemOptions={itemOptions}
+                lookupLoading={lookupLoading}
+                isViewingPostedDocument={isViewingPostedDocument}
+                onAppendLine={() => setLines((current) => [...current, createPurchaseLine()])}
+                onApplyLineItem={(lineId, option) =>
+                  setLines((current) =>
+                    current.map((entry) =>
+                      entry.id === lineId
+                        ? {
+                            ...entry,
+                            variantId: option.variantId,
+                            description: option.description,
+                            unitPrice:
+                              option.priceAmount !== null ? String(option.priceAmount) : "",
+                            taxRate: `${option.taxRate}%`,
+                            taxMode: option.taxMode,
+                            unit: option.unit,
+                          }
+                        : entry,
+                    ),
+                  )
+                }
+                onUpdateLine={(lineId, field, value) =>
+                  setLines((current) =>
+                    current.map((entry) =>
+                      entry.id === lineId ? { ...entry, [field]: value } : entry,
+                    ),
+                  )
+                }
+                onRemoveLine={(lineId) =>
+                  setLines((current) => {
+                    if (current.length === 1) {
+                      return buildPurchaseStarterLines();
+                    }
+                    return current.filter((entry) => entry.id !== lineId);
+                  })
+                }
+              />
 
-                <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex">
-                  <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
-                    <TabularHeader>
-                      <TabularRow columns={withTabularSerialNumberColumn("minmax(0,2.8fr) minmax(4.25rem,1fr) minmax(4.5rem,1fr) minmax(5rem,1.2fr) minmax(3.75rem,0.8fr) minmax(5rem,1fr) 2.25rem")}>
-                        <TabularSerialNumberHeaderCell />
-                        <TabularCell variant="header">Item</TabularCell>
-                        <TabularCell variant="header">Qty</TabularCell>
-                        <TabularCell variant="header">Rate</TabularCell>
-                        <TabularCell variant="header">Tax</TabularCell>
-                        <TabularCell variant="header">Mode</TabularCell>
-                        <TabularCell variant="header" align="end">Amount</TabularCell>
-                        <TabularCell variant="header" align="center">Del</TabularCell>
-                      </TabularRow>
-                    </TabularHeader>
-                    <TabularBody className="overflow-y-auto">
-                      {lines.map((line, index) => {
-                        const totalsForLine = getLineTotals(line);
-                        return (
-                          <TabularRow key={line.id} columns={withTabularSerialNumberColumn("minmax(0,2.8fr) minmax(4.25rem,1fr) minmax(4.5rem,1fr) minmax(5rem,1.2fr) minmax(3.75rem,0.8fr) minmax(5rem,1fr) 2.25rem")} interactive>
-                            <TabularSerialNumberCell index={index} />
-                            <TabularCell>
-                              <div className="space-y-1">
-                                <LookupDropdownInput
-                                  value={line.description}
-                                  disabled={isViewingPostedDocument || Boolean(line.sourceLineId)}
-                                  onValueChange={(value) =>
-                                    setLines((current) =>
-                                      current.map((entry) => entry.id === line.id ? { ...entry, description: value } : entry),
-                                    )
-                                  }
-                                  options={itemOptions}
-                                  loading={lookupLoading}
-                                  loadingLabel="Loading items"
-                                  placeholder="Search item or service"
-                                  onOptionSelect={(option) =>
-                                    setLines((current) =>
-                                      current.map((entry) =>
-                                        entry.id === line.id
-                                          ? {
-                                              ...entry,
-                                              variantId: option.variantId,
-                                              description: option.description,
-                                              unitPrice: option.priceAmount !== null ? String(option.priceAmount) : "",
-                                              taxRate: `${option.taxRate}%`,
-                                              taxMode: option.taxMode,
-                                              unit: option.unit,
-                                            }
-                                          : entry,
-                                      ),
-                                    )
-                                  }
-                                  getOptionKey={(option) => option.variantId}
-                                  getOptionSearchText={(option) =>
-                                    `${option.label} ${option.sku} ${option.gstLabel}`
-                                  }
-                                  renderOption={(option) => (
-                                    <div className="space-y-0.5">
-                                      <div className="flex items-center justify-between gap-2 text-xs font-medium text-foreground">
-                                        <span className="truncate">{option.description}</span>
-                                        <span className="shrink-0">{formatCurrency(option.priceAmount ?? 0)}</span>
-                                      </div>
-                                      <div className="text-[11px] text-muted-foreground">
-                                        {[option.sku, option.gstLabel].filter(Boolean).join(" • ")}
-                                      </div>
-                                    </div>
-                                  )}
-                                  inputClassName={spreadsheetCellControlClassName}
-                                />
-                                {line.sourceLineId ? (
-                                  <div className="text-[10px] text-[#1f4167]">
-                                    Linked qty remaining: {line.linkedRemainingQuantity ?? line.quantity}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </TabularCell>
-                            <TabularCell>
-                              <Input className={cn(spreadsheetCellNumericClassName, tabularNumericClassName)} value={line.quantity} disabled={isViewingPostedDocument} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, quantity: event.target.value } : entry))} />
-                            </TabularCell>
-                            <TabularCell>
-                              <Input className={cn(spreadsheetCellNumericClassName, tabularNumericClassName)} value={line.unitPrice} disabled={isViewingPostedDocument} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, unitPrice: event.target.value } : entry))} />
-                            </TabularCell>
-                            <TabularCell>
-                              <GstSlabSelect value={normalizeGstSlab(line.taxRate) ?? "0%"} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, taxRate: event.target.value } : entry))} disabled={isViewingPostedDocument} className={spreadsheetCellSelectClassName} />
-                            </TabularCell>
-                            <TabularCell>
-                              <Select className={spreadsheetCellSelectClassName} value={line.taxMode} disabled={isViewingPostedDocument} onChange={(event) => setLines((current) => current.map((entry) => entry.id === line.id ? { ...entry, taxMode: event.target.value as "EXCLUSIVE" | "INCLUSIVE" } : entry))}>
-                                <option value="EXCLUSIVE">Excl</option>
-                                <option value="INCLUSIVE">Incl</option>
-                              </Select>
-                            </TabularCell>
-                            <TabularCell align="end" className="font-semibold text-foreground">
-                              {formatCurrency(totalsForLine.total)}
-                            </TabularCell>
-                            <TabularCell align="center">
-                              <Button type="button" variant="ghost" size="icon" disabled={isViewingPostedDocument} onClick={() => setLines((current) => current.filter((entry) => entry.id !== line.id))} className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TabularCell>
-                          </TabularRow>
-                        );
-                      })}
-                    </TabularBody>
-                  </TabularSurface>
-                </div>
-              </div>
-
-              <div className="grid gap-2 rounded-xl border border-border/85 bg-white p-1.5 md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:shrink-0">
+              <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-white p-1.5 md:flex-row md:items-start md:shrink-0">
                 <div className="flex flex-col gap-1 md:min-h-0 md:flex-1">
                   <Label htmlFor="purchase-notes">Notes</Label>
                   <Textarea
@@ -1509,16 +647,19 @@ function PurchaseDocumentWorkspace({
                     onChange={(event) => setNotes(event.target.value)}
                     disabled={isViewingPostedDocument}
                     rows={2}
-                    className="min-h-[2.75rem] max-h-[4.5rem] text-xs"
+                    placeholder="Optional internal note"
+                    className="min-h-[2.75rem] max-h-[4.5rem] w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:min-h-[3rem] md:px-2.5 md:py-1.5 md:text-[11px]"
                   />
-                  {postValidationMessage ? (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                      {postValidationMessage}
-                    </div>
-                  ) : null}
+                  <div className="min-h-[1.75rem]">
+                    {postValidationMessage ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                        {postValidationMessage}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div className="space-y-2 rounded-xl border border-[#d7e2ef] bg-[#f8fbfe] p-3">
+                <div className="w-full border-t border-border/70 pt-2 md:w-[280px] md:border-l md:border-t-0 md:pl-4 md:pt-0">
                   <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap border-b border-border/70 pb-2 text-[11px]">
                     <span className="shrink-0 font-semibold text-foreground">
                       {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Summary`}
@@ -1526,27 +667,29 @@ function PurchaseDocumentWorkspace({
                     <span className="shrink-0 text-muted-foreground">•</span>
                     <span className="truncate text-muted-foreground">{activeBusinessName}</span>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-semibold text-foreground">{formatCurrency(totals.subTotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Tax</span>
-                    <span className="font-semibold text-foreground">{formatCurrency(totals.taxTotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Lines</span>
-                    <span className="font-semibold text-foreground">{normalizeLines(lines).length || 1}</span>
-                  </div>
-                  {parentDocumentNumber ? (
-                    <div className="flex items-center justify-between gap-3 text-xs">
-                      <span className="text-muted-foreground">Source</span>
-                      <span className="truncate font-semibold text-foreground">{parentDocumentNumber}</span>
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(totals.subTotal)}</span>
                     </div>
-                  ) : null}
-                  <div className="flex items-center justify-between rounded-md border border-border/70 bg-white px-2 py-1.5 text-xs">
-                    <span className="font-semibold text-foreground">Grand total</span>
-                    <span className="font-semibold text-foreground">{formatCurrency(totals.grandTotal)}</span>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Tax</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(totals.taxTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Lines</span>
+                      <span className="font-semibold text-foreground">{normalizeLines(lines).length || 1}</span>
+                    </div>
+                    {parentDocumentNumber ? (
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="text-muted-foreground">Source</span>
+                        <span className="truncate font-semibold text-foreground">{parentDocumentNumber}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
+                      <span className="font-semibold text-foreground">Grand total</span>
+                      <span className="font-semibold text-foreground">{formatCurrency(totals.grandTotal)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1590,9 +733,9 @@ function PurchaseDocumentWorkspace({
       ) : null}
 
       {historyDocument ? (
-        <PurchaseDocumentHistoryDialog
-          title={`History: ${historyDocument.billNumber}`}
-          description="Review the server-authored timeline for this purchase document."
+        <DocumentHistoryDialog
+          title={`${config.createTitle.replace("Create ", "")} History`}
+          description={`Lifecycle and conversion events for ${historyDocument.billNumber}.`}
           entries={historyEntries}
           loading={historyLoading}
           error={historyError}
@@ -1606,52 +749,6 @@ function PurchaseDocumentWorkspace({
     </div>
   );
 }
-
-const buildPurchaseItemOptions = (
-  stockOptions: StockVariantOption[],
-  pricingRows: ItemPricingRow[],
-  stockLevels: StockLevelRow[],
-): PurchaseItemOption[] => {
-  const pricingByVariantId = new Map(pricingRows.map((row) => [row.variantId, row] as const));
-  const stockByVariantId = new Map(stockLevels.map((row) => [row.variantId, row] as const));
-
-  return stockOptions.map((option) => {
-    const pricing = pricingByVariantId.get(option.variantId);
-    const stockLevel = stockByVariantId.get(option.variantId);
-    const gstLabel = formatGstSlabLabel(pricing?.gstSlab);
-    const description =
-      pricing?.variantName?.trim()
-        ? `${pricing.itemName} · ${pricing.variantName}`
-        : pricing?.itemName?.trim() || option.label;
-
-    return {
-      ...option,
-      description,
-      priceAmount: pricing?.amount ?? null,
-      currency: pricing?.currency ?? "INR",
-      gstLabel,
-      taxRate:
-        pricing?.gstSlab && normalizeGstSlab(pricing.gstSlab)
-          ? Number((normalizeGstSlab(pricing.gstSlab) ?? "0%").replace("%", "")) || 0
-          : 0,
-      taxMode: pricing?.taxMode ?? "EXCLUSIVE",
-      quantityOnHand: stockLevel?.quantityOnHand ?? null,
-    };
-  });
-};
-
-const toConvertedLine = (line: PurchaseConversionBalanceLine) =>
-  createLine({
-    sourceLineId: line.sourceLineId,
-    variantId: line.variantId ?? "",
-    description: line.description,
-    quantity: line.remainingQuantity,
-    unitPrice: line.unitPrice,
-    taxRate: line.taxRate,
-    taxMode: line.taxMode,
-    unit: line.unit,
-    linkedRemainingQuantity: line.remainingQuantity,
-  });
 
 export function PurchaseOrdersPage() {
   return <PurchaseDocumentPage config={PURCHASE_DOCUMENT_PAGE_CONFIG.PURCHASE_ORDER} />;

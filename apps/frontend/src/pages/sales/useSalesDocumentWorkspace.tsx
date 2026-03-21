@@ -30,6 +30,14 @@ import {
 import { useToast } from "../../features/toast/useToast";
 import { formatGstSlabLabel, normalizeGstSlab } from "../../lib/gst-slabs";
 import {
+  calculateDocumentLineTotals,
+  formatDocumentCurrency,
+  formatDocumentDateTime,
+  formatPrefixedSequenceNumber,
+  getNextDocumentNumber,
+  parseDocumentTaxRate,
+} from "../../lib/document-utils";
+import {
   DESKTOP_GROW_AS_NEEDED_STARTER_ROWS,
   MOBILE_GROW_AS_NEEDED_STARTER_ROWS,
 } from "../../design-system/molecules/useSpreadsheetNavigation";
@@ -48,7 +56,7 @@ import {
   type SalesDocumentDraft,
   type SalesDocumentHistoryEntry,
   type SalesDocumentType,
-} from "./sales-invoices-api";
+} from "./sales-documents-api";
 
 type LinkedSourceBalance = {
   sourceLineId: string;
@@ -74,7 +82,7 @@ export type BillLine = {
 
 type SavedBillDraft = Omit<SalesDocumentDraft, "lines"> & {
   lines: BillLine[];
-  duplicateMeta?: EstimateDuplicateMeta | null;
+  duplicateMeta?: SalesDocumentDuplicateMeta | null;
 };
 
 export type SalesItemOption = StockVariantOption & {
@@ -115,6 +123,7 @@ type BillingRouteState = {
   returnTo?: string;
   invoiceDraft?: Partial<SavedBillDraft>;
   draftSource?: "local" | "server";
+  sourceDocumentNumber?: string;
   createdCustomer?: Partial<CustomerRow>;
   customerMessage?: string;
   customerPrefill?: {
@@ -160,15 +169,26 @@ export type PostDraftResult =
 export const getSalesLineDescriptionInputId = (lineId: string) =>
   `sales-line-desktop-description-${lineId}`;
 
-type EstimateDuplicateMeta = {
+export type SalesDocumentDuplicateMeta = {
   sourceBillNumber: string;
-  lineSourceVariantIds: Record<string, string>;
+  sourceDocumentType: SalesDocumentType;
+  lines: Record<
+    string,
+    {
+      sourceVariantId: string;
+      originalUnitPrice: string;
+      originalTaxRate: string;
+      originalTaxMode: "EXCLUSIVE" | "INCLUSIVE";
+      isAvailable: boolean;
+    }
+  >;
 };
 
-type EstimateDuplicateWarnings = {
-  missingItems: Array<{
+export type SalesDocumentDuplicateWarnings = {
+  unavailableItems: Array<{
     lineId: string;
     description: string;
+    isAvailable: boolean;
   }>;
   priceDiscrepancies: Array<{
     lineId: string;
@@ -244,43 +264,11 @@ const getDefaultStarterLineCount = () => {
 const buildStarterLines = (count = getDefaultStarterLineCount()) =>
   Array.from({ length: count }, () => createLine());
 
-const INVOICE_NUMBER_DIGITS = 4;
-
-const formatInvoiceNumber = (prefix: string, sequence: number) =>
-  `${prefix}${String(sequence).padStart(INVOICE_NUMBER_DIGITS, "0")}`;
-
-const parseInvoiceNumberSequence = (
-  value: string | null | undefined,
-  prefix: string,
-) => {
-  if (!value) return null;
-  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`^${escapedPrefix}(\\d+)$`).exec(
-    value.trim().toUpperCase(),
-  );
-  if (!match) {
-    return null;
-  }
-
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
 const getNextBillNumber = (
   prefix: string,
   syncedInvoices: Array<Pick<SalesDocumentDraft, "billNumber">>,
   localDrafts: Array<Pick<SavedBillDraft, "billNumber">>,
-) => {
-  const highestSequence = [...syncedInvoices, ...localDrafts].reduce(
-    (max, invoice) => {
-      const parsed = parseInvoiceNumberSequence(invoice.billNumber, prefix);
-      return parsed && parsed > max ? parsed : max;
-    },
-    0,
-  );
-
-  return formatInvoiceNumber(prefix, highestSequence + 1);
-};
+) => getNextDocumentNumber(prefix, [...syncedInvoices, ...localDrafts], 4);
 
 export const usesTransactionType = (documentType: SalesDocumentType) =>
   documentType === "SALES_INVOICE";
@@ -290,38 +278,11 @@ const toNumber = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export const toTaxRateNumber = (value: string) => {
-  if (!value || value === "EXEMPT") return 0;
-  const parsed = Number(value.replace("%", ""));
-  return Math.max(0, Number.isFinite(parsed) ? parsed : 0);
-};
+export const toTaxRateNumber = parseDocumentTaxRate;
 
 export const getLineTotals = (
   line: Pick<BillLine, "quantity" | "unitPrice" | "taxRate" | "taxMode">,
-) => {
-  const quantity = Math.max(0, toNumber(line.quantity));
-  const unitPrice = Math.max(0, toNumber(line.unitPrice));
-  const taxRate = toTaxRateNumber(line.taxRate);
-  const grossAmount = quantity * unitPrice;
-
-  if (line.taxMode === "INCLUSIVE" && taxRate > 0) {
-    const subTotal = grossAmount / (1 + taxRate / 100);
-    const taxTotal = grossAmount - subTotal;
-    return {
-      subTotal,
-      taxTotal,
-      total: grossAmount,
-    };
-  }
-
-  const subTotal = grossAmount;
-  const taxTotal = subTotal * (taxRate / 100);
-  return {
-    subTotal,
-    taxTotal,
-    total: subTotal + taxTotal,
-  };
-};
+) => calculateDocumentLineTotals(line, { round: false });
 
 const getDraftGrandTotal = (
   lines: Array<
@@ -329,17 +290,8 @@ const getDraftGrandTotal = (
   >,
 ) => lines.reduce((sum, line) => sum + getLineTotals(line).total, 0);
 
-export const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(value);
-
-export const formatDateTime = (value: string) => {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
-};
+export const formatCurrency = formatDocumentCurrency;
+export const formatDateTime = formatDocumentDateTime;
 
 const formatQuantity = (value: number) => {
   if (!Number.isFinite(value)) return "1";
@@ -390,9 +342,7 @@ const isElementVisible = (element: HTMLElement) => {
 };
 
 const parseGstRate = (value: string | null | undefined) => {
-  if (!value || value === "EXEMPT") return 0;
-  const parsed = Number(value.replace("%", ""));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseDocumentTaxRate(value);
 };
 
 const hasLineContent = (line: BillLine) =>
@@ -507,9 +457,55 @@ const normalizeStoredLine = (rawLine: unknown): BillLine => {
   };
 };
 
-const normalizeEstimateDuplicateMeta = (
+const DUPLICATE_META_STORAGE_SUFFIX = "duplicate-meta";
+
+const normalizeComparableUnitPrice = (
+  amount: number,
+  taxMode: "EXCLUSIVE" | "INCLUSIVE",
+  taxRate: string,
+) => {
+  const normalizedTaxRate = toTaxRateNumber(taxRate);
+  if (taxMode !== "INCLUSIVE" || normalizedTaxRate <= 0) {
+    return amount;
+  }
+
+  return amount / (1 + normalizedTaxRate / 100);
+};
+
+export const formatSalesDocumentTypeLabel = (documentType: SalesDocumentType) =>
+  documentType === "SALES_ESTIMATE"
+    ? "estimate"
+    : documentType === "SALES_ORDER"
+      ? "sales order"
+      : documentType === "DELIVERY_CHALLAN"
+        ? "delivery challan"
+        : documentType === "SALES_INVOICE"
+          ? "invoice"
+          : "sales return";
+
+const convertUnitPriceForTaxMode = (input: {
+  amount: number;
+  fromTaxMode: "EXCLUSIVE" | "INCLUSIVE";
+  fromTaxRate: string;
+  toTaxMode: "EXCLUSIVE" | "INCLUSIVE";
+  toTaxRate: string;
+}) => {
+  const normalizedExclusive = normalizeComparableUnitPrice(
+    input.amount,
+    input.fromTaxMode,
+    input.fromTaxRate,
+  );
+  const targetTaxRate = toTaxRateNumber(input.toTaxRate);
+  if (input.toTaxMode !== "INCLUSIVE" || targetTaxRate <= 0) {
+    return normalizedExclusive;
+  }
+
+  return normalizedExclusive * (1 + targetTaxRate / 100);
+};
+
+const normalizeSalesDocumentDuplicateMeta = (
   rawValue: unknown,
-): EstimateDuplicateMeta | null => {
+): SalesDocumentDuplicateMeta | null => {
   if (!rawValue || typeof rawValue !== "object") {
     return null;
   }
@@ -517,68 +513,110 @@ const normalizeEstimateDuplicateMeta = (
   const value = rawValue as Record<string, unknown>;
   const sourceBillNumber =
     typeof value.sourceBillNumber === "string" ? value.sourceBillNumber.trim() : "";
-  const lineSourceVariantIds =
-    value.lineSourceVariantIds && typeof value.lineSourceVariantIds === "object"
-      ? Object.entries(value.lineSourceVariantIds as Record<string, unknown>).reduce<
-          Record<string, string>
-        >((accumulator, [lineId, variantId]) => {
-          if (
-            lineId.trim().length > 0 &&
-            typeof variantId === "string" &&
-            variantId.trim().length > 0
-          ) {
-            accumulator[lineId] = variantId;
+  const sourceDocumentType =
+    value.sourceDocumentType === "SALES_ESTIMATE" ||
+    value.sourceDocumentType === "SALES_ORDER" ||
+    value.sourceDocumentType === "DELIVERY_CHALLAN" ||
+    value.sourceDocumentType === "SALES_INVOICE" ||
+    value.sourceDocumentType === "SALES_RETURN"
+      ? value.sourceDocumentType
+      : null;
+  const lines =
+    value.lines && typeof value.lines === "object"
+      ? Object.entries(value.lines as Record<string, unknown>).reduce<
+          SalesDocumentDuplicateMeta["lines"]
+        >((accumulator, [lineId, rawLine]) => {
+          const line =
+            rawLine && typeof rawLine === "object"
+              ? (rawLine as Record<string, unknown>)
+              : null;
+          if (!line || lineId.trim().length === 0) {
+            return accumulator;
           }
+
+          const sourceVariantId =
+            typeof line.sourceVariantId === "string"
+              ? line.sourceVariantId.trim()
+              : "";
+          if (!sourceVariantId) {
+            return accumulator;
+          }
+
+          accumulator[lineId] = {
+            sourceVariantId,
+            originalUnitPrice:
+              typeof line.originalUnitPrice === "string"
+                ? line.originalUnitPrice
+                : "",
+            originalTaxRate:
+              typeof line.originalTaxRate === "string"
+                ? line.originalTaxRate
+                : "0%",
+            originalTaxMode: line.originalTaxMode === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
+            isAvailable: line.isAvailable !== false,
+          };
           return accumulator;
         }, {})
       : {};
 
-  if (!sourceBillNumber) {
+  if (!sourceBillNumber || !sourceDocumentType) {
     return null;
   }
 
   return {
     sourceBillNumber,
-    lineSourceVariantIds,
+    sourceDocumentType,
+    lines,
   };
 };
 
 const formatPriceInput = (value: number) =>
   Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)));
 
-const buildDuplicateEstimateWarnings = (
+const buildSalesDocumentDuplicateWarnings = (
   lines: BillLine[],
   itemOptionsByVariantId: Map<string, SalesItemOption>,
-  duplicateMeta: EstimateDuplicateMeta | null,
-): EstimateDuplicateWarnings => {
+  duplicateMeta: SalesDocumentDuplicateMeta | null,
+): SalesDocumentDuplicateWarnings => {
   if (!duplicateMeta) {
     return {
-      missingItems: [],
+      unavailableItems: [],
       priceDiscrepancies: [],
     };
   }
 
-  const missingItems: EstimateDuplicateWarnings["missingItems"] = [];
-  const priceDiscrepancies: EstimateDuplicateWarnings["priceDiscrepancies"] = [];
+  const unavailableItems: SalesDocumentDuplicateWarnings["unavailableItems"] = [];
+  const priceDiscrepancies: SalesDocumentDuplicateWarnings["priceDiscrepancies"] = [];
 
   for (const line of lines) {
-    const sourceVariantId = duplicateMeta.lineSourceVariantIds[line.id];
+    const duplicateLineMeta = duplicateMeta.lines[line.id];
+    const sourceVariantId = duplicateLineMeta?.sourceVariantId;
     const option = line.variantId ? itemOptionsByVariantId.get(line.variantId) : null;
 
     if (sourceVariantId && !option) {
-      missingItems.push({
+      unavailableItems.push({
         lineId: line.id,
         description: line.description || "Unnamed item",
+        isAvailable: false,
       });
       continue;
     }
 
-    if (!option || option.priceAmount === null) {
+    if (!option || option.priceAmount === null || !duplicateLineMeta) {
       continue;
     }
 
-    const draftPrice = toNumber(line.unitPrice);
-    if (Math.abs(draftPrice - option.priceAmount) < 0.01) {
+    const draftPrice = normalizeComparableUnitPrice(
+      toNumber(duplicateLineMeta.originalUnitPrice || line.unitPrice),
+      duplicateLineMeta.originalTaxMode,
+      duplicateLineMeta.originalTaxRate,
+    );
+    const currentPrice = normalizeComparableUnitPrice(
+      option.priceAmount,
+      option.taxMode,
+      `${option.taxRate}%`,
+    );
+    if (Math.abs(draftPrice - currentPrice) < 0.01) {
       continue;
     }
 
@@ -586,12 +624,12 @@ const buildDuplicateEstimateWarnings = (
       lineId: line.id,
       description: line.description || "Unnamed item",
       draftPrice,
-      currentPrice: option.priceAmount,
+      currentPrice,
     });
   }
 
   return {
-    missingItems,
+    unavailableItems,
     priceDiscrepancies,
   };
 };
@@ -629,7 +667,7 @@ const loadStoredDrafts = (
         billNumber:
           typeof draft.billNumber === "string" && draft.billNumber.trim()
             ? draft.billNumber
-            : formatInvoiceNumber(config.numberPrefix, index + 1),
+            : formatPrefixedSequenceNumber(config.numberPrefix, index + 1, 4),
         documentType: config.documentType,
         transactionType: draft.transactionType === "CREDIT" ? "CREDIT" : "CASH",
         customerId:
@@ -662,7 +700,7 @@ const loadStoredDrafts = (
             ? draft.savedAt
             : new Date().toISOString(),
         lines: lines.length > 0 ? lines : buildStarterLines(),
-        duplicateMeta: normalizeEstimateDuplicateMeta(draft.duplicateMeta),
+        duplicateMeta: normalizeSalesDocumentDuplicateMeta(draft.duplicateMeta),
       } satisfies SavedBillDraft;
     });
   } catch {
@@ -715,6 +753,7 @@ export function useSalesDocumentWorkspace({
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerGstNo, setCustomerGstNo] = useState("");
   const [parentId, setParentId] = useState<string | null>(null);
+  const [parentDocumentNumber, setParentDocumentNumber] = useState("");
   const [documentLocationId, setDocumentLocationId] = useState<string | null>(
     activeLocationId ?? null,
   );
@@ -752,7 +791,7 @@ export function useSalesDocumentWorkspace({
   const [openRowMenuAnchorRect, setOpenRowMenuAnchorRect] = useState<DOMRect | null>(null);
   const [numberConflict, setNumberConflict] =
     useState<NumberConflictState | null>(null);
-  const [duplicateMeta, setDuplicateMeta] = useState<EstimateDuplicateMeta | null>(null);
+  const [duplicateMeta, setDuplicateMeta] = useState<SalesDocumentDuplicateMeta | null>(null);
   const [serverInvoices, setServerInvoices] = useState<SalesDocumentDraft[]>([]);
   const [serverInvoicesLoading, setServerInvoicesLoading] = useState(false);
   const [serverInvoicesError, setServerInvoicesError] = useState<string | null>(null);
@@ -765,6 +804,61 @@ export function useSalesDocumentWorkspace({
   const storageKey = activeStore
     ? `${config.storageKeyPrefix}:${activeStore}`
     : null;
+  const duplicateMetaStorageKey = activeStore
+    ? `${config.storageKeyPrefix}:${DUPLICATE_META_STORAGE_SUFFIX}:${activeStore}`
+    : null;
+
+  const loadPersistedDuplicateMetaMap = () => {
+    if (!duplicateMetaStorageKey || typeof window === "undefined") {
+      return {} as Record<string, SalesDocumentDuplicateMeta>;
+    }
+
+    try {
+      const storedValue = window.localStorage.getItem(duplicateMetaStorageKey);
+      const parsed = storedValue ? (JSON.parse(storedValue) as unknown) : {};
+      if (!parsed || typeof parsed !== "object") {
+        return {};
+      }
+
+      return Object.entries(parsed as Record<string, unknown>).reduce<
+        Record<string, SalesDocumentDuplicateMeta>
+      >((accumulator, [draftId, rawMeta]) => {
+        const normalizedMeta = normalizeSalesDocumentDuplicateMeta(rawMeta);
+        if (normalizedMeta) {
+          accumulator[draftId] = normalizedMeta;
+        }
+        return accumulator;
+      }, {});
+    } catch {
+      return {};
+    }
+  };
+
+  const persistDuplicateMetaMap = (
+    nextMap: Record<string, SalesDocumentDuplicateMeta>,
+  ) => {
+    if (!duplicateMetaStorageKey || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(duplicateMetaStorageKey, JSON.stringify(nextMap));
+  };
+
+  const setPersistedDuplicateMeta = (
+    draftId: string,
+    nextMeta: SalesDocumentDuplicateMeta | null,
+  ) => {
+    const nextMap = loadPersistedDuplicateMetaMap();
+    if (nextMeta) {
+      nextMap[draftId] = nextMeta;
+    } else {
+      delete nextMap[draftId];
+    }
+    persistDuplicateMetaMap(nextMap);
+  };
+
+  const getPersistedDuplicateMeta = (draftId: string) =>
+    loadPersistedDuplicateMetaMap()[draftId] ?? null;
 
   useEffect(() => {
     const setOnline = () => setIsOnline(true);
@@ -902,11 +996,11 @@ export function useSalesDocumentWorkspace({
   }, [customerId, customerName, customers]);
 
   const duplicateWarnings = useMemo(
-    () => buildDuplicateEstimateWarnings(lines, itemOptionsByVariantId, duplicateMeta),
+    () => buildSalesDocumentDuplicateWarnings(lines, itemOptionsByVariantId, duplicateMeta),
     [duplicateMeta, itemOptionsByVariantId, lines],
   );
   const duplicateWarningAlerts = useMemo<DraftReviewAlert[]>(() => {
-    const missingAlerts = duplicateWarnings.missingItems.map((warning) => ({
+    const unavailableAlerts = duplicateWarnings.unavailableItems.map((warning) => ({
       id: `missing:${warning.lineId}`,
       title: `${warning.description} is no longer available`,
       description: "Select a replacement item before saving or posting this duplicate.",
@@ -917,7 +1011,7 @@ export function useSalesDocumentWorkspace({
       description: `Draft price ${formatCurrency(warning.draftPrice)}. Current price ${formatCurrency(warning.currentPrice)}.`,
     }));
 
-    return [...missingAlerts, ...priceAlerts];
+    return [...unavailableAlerts, ...priceAlerts];
   }, [duplicateWarnings]);
   const nextBillNumber = useMemo(
     () => getNextBillNumber(config.numberPrefix, serverInvoices, drafts),
@@ -987,19 +1081,24 @@ export function useSalesDocumentWorkspace({
     return conversionConfig[document.documentType] ?? [];
   };
 
-  const duplicateEstimateDraft = (source: SavedBillDraft | SalesDocumentDraft) => {
+  const duplicateSalesDocumentDraft = (source: SavedBillDraft | SalesDocumentDraft) => {
     const sourceLines = source.lines.map(normalizeStoredLine);
-    const lineSourceVariantIds: Record<string, string> = {};
+    const duplicateLineMeta: SalesDocumentDuplicateMeta["lines"] = {};
     const duplicatedLines = sourceLines.map((line) => {
       const nextLineId = crypto.randomUUID();
       const sourceVariantId = line.variantId.trim();
-      if (sourceVariantId) {
-        lineSourceVariantIds[nextLineId] = sourceVariantId;
-      }
-
       const currentOption = sourceVariantId
         ? itemOptionsByVariantId.get(sourceVariantId)
         : null;
+      if (sourceVariantId) {
+        duplicateLineMeta[nextLineId] = {
+          sourceVariantId,
+          originalUnitPrice: line.unitPrice,
+          originalTaxRate: line.taxRate,
+          originalTaxMode: line.taxMode,
+          isAvailable: Boolean(currentOption),
+        };
+      }
 
       return {
         ...line,
@@ -1011,8 +1110,10 @@ export function useSalesDocumentWorkspace({
 
     const duplicatedDraft: SavedBillDraft = {
       id: crypto.randomUUID(),
-      documentType: "SALES_ESTIMATE",
+      documentType: config.documentType,
       parentId: null,
+      childIds: [],
+      locationId: source.locationId ?? activeLocationId ?? null,
       billNumber: nextBillNumber,
       transactionType: source.transactionType === "CREDIT" ? "CREDIT" : "CASH",
       customerId: source.customerId,
@@ -1031,14 +1132,16 @@ export function useSalesDocumentWorkspace({
       lines: duplicatedLines,
       duplicateMeta: {
         sourceBillNumber: source.billNumber,
-        lineSourceVariantIds,
+        sourceDocumentType: source.documentType,
+        lines: duplicateLineMeta,
       },
     };
 
     persistDrafts([duplicatedDraft, ...drafts]);
+    setPersistedDuplicateMeta(duplicatedDraft.id, duplicatedDraft.duplicateMeta ?? null);
     loadDraft(duplicatedDraft);
     setSaveMessage(
-      `Estimate ${source.billNumber} duplicated into draft ${duplicatedDraft.billNumber}. Original prices were preserved.`,
+      `${formatSalesDocumentTypeLabel(source.documentType)} ${source.billNumber} duplicated into draft ${duplicatedDraft.billNumber}. Original prices were preserved.`,
     );
   };
 
@@ -1048,13 +1151,24 @@ export function useSalesDocumentWorkspace({
         const matchingWarning = duplicateWarnings.priceDiscrepancies.find(
           (warning) => warning.lineId === line.id,
         );
-        if (!matchingWarning) {
+        const currentOption = line.variantId
+          ? itemOptionsByVariantId.get(line.variantId)
+          : null;
+        if (!matchingWarning || !currentOption || currentOption.priceAmount === null) {
           return line;
         }
 
         return {
           ...line,
-          unitPrice: formatPriceInput(matchingWarning.currentPrice),
+          unitPrice: formatPriceInput(
+            convertUnitPriceForTaxMode({
+              amount: currentOption.priceAmount,
+              fromTaxMode: currentOption.taxMode,
+              fromTaxRate: `${currentOption.taxRate}%`,
+              toTaxMode: line.taxMode,
+              toTaxRate: line.taxRate,
+            }),
+          ),
         };
       }),
     );
@@ -1115,6 +1229,7 @@ export function useSalesDocumentWorkspace({
         state: {
           returnTo: config.routePath,
           draftSource: "local",
+          sourceDocumentNumber: document.billNumber,
           invoiceDraft: {
             documentType: conversion.targetDocumentType,
             parentId: document.id,
@@ -1147,7 +1262,7 @@ export function useSalesDocumentWorkspace({
       const actions: RowMenuAction[] = [
         {
           key: "open",
-          label: "Open",
+          label: "Edit Draft",
           icon: Eye,
           onSelect: () => {
             if (row.source === "local") {
@@ -1169,16 +1284,14 @@ export function useSalesDocumentWorkspace({
         },
       ];
 
-      if (config.documentType === "SALES_ESTIMATE") {
-        actions.splice(1, 0, {
-          key: "duplicate",
-          label: "Duplicate",
-          icon: Copy,
-          onSelect: () => {
-            duplicateEstimateDraft(row.source === "local" ? row.draft : row.invoice);
-          },
-        });
-      }
+      actions.splice(1, 0, {
+        key: "duplicate",
+        label: "Duplicate",
+        icon: Copy,
+        onSelect: () => {
+          duplicateSalesDocumentDraft(row.source === "local" ? row.draft : row.invoice);
+        },
+      });
 
       return actions;
     }
@@ -1190,7 +1303,7 @@ export function useSalesDocumentWorkspace({
     const actions: RowMenuAction[] = [];
     actions.push({
       key: "open",
-      label: "Open",
+      label: "View Document",
       icon: Eye,
       onSelect: () => {
         loadServerDraft(row.invoice);
@@ -1204,16 +1317,14 @@ export function useSalesDocumentWorkspace({
         void openDocumentHistory(row.invoice);
       },
     });
-    if (config.documentType === "SALES_ESTIMATE") {
-      actions.push({
-        key: "duplicate",
-        label: "Duplicate",
-        icon: Copy,
-        onSelect: () => {
-          duplicateEstimateDraft(row.invoice);
-        },
-      });
-    }
+    actions.push({
+      key: "duplicate",
+      label: "Duplicate",
+      icon: Copy,
+      onSelect: () => {
+        duplicateSalesDocumentDraft(row.invoice);
+      },
+    });
     const conversions = getServerDocumentConversions(row.invoice);
     for (const conversion of conversions) {
       actions.push({
@@ -1276,6 +1387,7 @@ export function useSalesDocumentWorkspace({
       setActiveDraftId(typeof draft.id === "string" ? draft.id : null);
       setActiveDraftSource(routeState.draftSource ?? "local");
       setParentId(typeof draft.parentId === "string" ? draft.parentId : null);
+      setParentDocumentNumber(routeState.sourceDocumentNumber ?? "");
       setDocumentLocationId(
         typeof draft.locationId === "string" ? draft.locationId : activeLocationId ?? null,
       );
@@ -1312,7 +1424,7 @@ export function useSalesDocumentWorkspace({
         typeof draft.dispatchReference === "string" ? draft.dispatchReference : "",
       );
       setNotes(typeof draft.notes === "string" ? draft.notes : "");
-      setDuplicateMeta(normalizeEstimateDuplicateMeta(draft.duplicateMeta));
+      setDuplicateMeta(normalizeSalesDocumentDuplicateMeta(draft.duplicateMeta));
       setLines(
         Array.isArray(draft.lines) && draft.lines.length > 0
           ? draft.lines.map(normalizeStoredLine)
@@ -1419,6 +1531,22 @@ export function useSalesDocumentWorkspace({
   }, [openRowMenuId]);
 
   useEffect(() => {
+    if (!parentId) {
+      setParentDocumentNumber("");
+      return;
+    }
+
+    const resolvedParentNumber =
+      serverInvoices.find((document) => document.id === parentId)?.billNumber ??
+      drafts.find((draft) => draft.id === parentId)?.billNumber ??
+      "";
+
+    if (resolvedParentNumber) {
+      setParentDocumentNumber(resolvedParentNumber);
+    }
+  }, [drafts, parentId, serverInvoices]);
+
+  useEffect(() => {
     if (!activeStore || !parentId) {
       setLinkedSourceBalances({});
       return;
@@ -1432,6 +1560,8 @@ export function useSalesDocumentWorkspace({
         if (cancelled) {
           return;
         }
+
+        setParentDocumentNumber((current) => current || balance.documentNumber);
 
         setLinkedSourceBalances(
           Object.fromEntries(
@@ -1570,12 +1700,8 @@ export function useSalesDocumentWorkspace({
       return null;
     }
 
-    if (isViewingPostedDocument) {
-      return `Linked to ${linkedBalance.sourceDocumentNumber}`;
-    }
-
     const linkedCap = getLinkedLineCap(line);
-    return `Linked to ${linkedBalance.sourceDocumentNumber}${linkedCap !== null ? ` • Cap ${formatQuantity(linkedCap)}` : ""}`;
+    return linkedCap !== null ? `Linked qty available: ${formatQuantity(linkedCap)}` : "Linked";
   };
   const getSameItemMixedOriginHint = (line: BillLine) => {
     if (isViewingPostedDocument || line.sourceLineId || !line.variantId) {
@@ -1641,6 +1767,7 @@ export function useSalesDocumentWorkspace({
     setCustomerAddress("");
     setCustomerGstNo("");
     setParentId(null);
+    setParentDocumentNumber("");
     setDocumentLocationId(activeLocationId ?? null);
     setValidUntil("");
     setDispatchDate("");
@@ -1665,24 +1792,48 @@ export function useSalesDocumentWorkspace({
     setViewMode("editor");
   };
 
-  const buildNormalizedDraft = () => {
-    if (
-      usesTransactionType(config.documentType) &&
-      transactionType === "CREDIT" &&
-      !activeCustomer
-    ) {
-      throw new Error(
-        `Credit ${config.pluralLabel} require an existing customer. Create or select one first.`,
-      );
-    }
-    if (!usesTransactionType(config.documentType) && !customerName.trim()) {
-      throw new Error(
-        `Customer details are required before saving this ${config.singularLabel}.`,
-      );
+  const hasMeaningfulDraftContent = () =>
+    Boolean(
+      parentId ||
+        customerId ||
+        customerName.trim() ||
+        customerPhone.trim() ||
+        customerAddress.trim() ||
+        customerGstNo.trim() ||
+        validUntil.trim() ||
+        dispatchDate.trim() ||
+        dispatchCarrier.trim() ||
+        dispatchReference.trim() ||
+        notes.trim() ||
+        normalizeLines(lines).length > 0,
+    );
+
+  const buildNormalizedDraft = (options?: { allowIncomplete?: boolean }) => {
+    if (!options?.allowIncomplete) {
+      if (
+        usesTransactionType(config.documentType) &&
+        transactionType === "CREDIT" &&
+        !activeCustomer
+      ) {
+        throw new Error(
+          `Credit ${config.pluralLabel} require an existing customer. Create or select one first.`,
+        );
+      }
+      if (!usesTransactionType(config.documentType) && !customerName.trim()) {
+        throw new Error(
+          `Customer details are required before saving this ${config.singularLabel}.`,
+        );
+      }
     }
 
     const normalizedLines = normalizeLines(lines);
-    if (normalizedLines.length === 0) {
+    if (options?.allowIncomplete) {
+      if (!hasMeaningfulDraftContent()) {
+        throw new Error(
+          `Enter at least one line, customer detail, note, or source before saving this ${config.singularLabel} draft.`,
+        );
+      }
+    } else if (normalizedLines.length === 0) {
       throw new Error(
         `Add at least one line with an item or amount before saving this ${config.singularLabel}.`,
       );
@@ -1719,7 +1870,7 @@ export function useSalesDocumentWorkspace({
         );
       }
 
-      const nextDraft = buildNormalizedDraft();
+      const nextDraft = buildNormalizedDraft({ allowIncomplete: true });
       setNumberConflict(null);
 
       if (isOnline) {
@@ -1766,8 +1917,11 @@ export function useSalesDocumentWorkspace({
               });
 
         if (activeDraftSource === "local" && activeDraftId) {
+          setPersistedDuplicateMeta(activeDraftId, null);
           persistDrafts(drafts.filter((draft) => draft.id !== activeDraftId));
         }
+
+        setPersistedDuplicateMeta(savedServerDraft.id, duplicateMeta);
 
         setServerInvoices((current) => {
           const withoutSaved = current.filter(
@@ -1799,6 +1953,7 @@ export function useSalesDocumentWorkspace({
             : [nextDraft, ...drafts];
 
         persistDrafts(nextDrafts);
+        setPersistedDuplicateMeta(nextDraft.id, duplicateMeta);
         setActiveDraftId(nextDraft.id);
         setActiveDraftSource("local");
         assignManualBillNumber(nextDraft.billNumber);
@@ -1834,6 +1989,11 @@ export function useSalesDocumentWorkspace({
         : "CASH",
     );
     setParentId(draft.parentId ?? null);
+    setParentDocumentNumber(
+      draft.parentId
+        ? serverInvoices.find((document) => document.id === draft.parentId)?.billNumber ?? ""
+        : "",
+    );
     setDocumentLocationId(draft.locationId ?? activeLocationId ?? null);
     setCustomerId(draft.customerId);
     setCustomerName(draft.customerName);
@@ -1846,7 +2006,7 @@ export function useSalesDocumentWorkspace({
     setDispatchReference(draft.dispatchReference);
     setNotes(draft.notes);
     setLines(draft.lines.map((line) => ({ ...line })));
-    setDuplicateMeta(draft.duplicateMeta ?? null);
+    setDuplicateMeta(draft.duplicateMeta ?? getPersistedDuplicateMeta(draft.id));
     setNumberConflict(null);
     setSaveMessage(null);
     setViewMode("editor");
@@ -1863,6 +2023,11 @@ export function useSalesDocumentWorkspace({
         : "CASH",
     );
     setParentId(draft.parentId ?? null);
+    setParentDocumentNumber(
+      draft.parentId
+        ? serverInvoices.find((document) => document.id === draft.parentId)?.billNumber ?? ""
+        : "",
+    );
     setDocumentLocationId(draft.locationId ?? activeLocationId ?? null);
     setCustomerId(draft.customerId);
     setCustomerName(draft.customerName);
@@ -1875,7 +2040,7 @@ export function useSalesDocumentWorkspace({
     setDispatchReference(draft.dispatchReference);
     setNotes(draft.notes);
     setLines(draft.lines.map(normalizeStoredLine));
-    setDuplicateMeta(null);
+    setDuplicateMeta(getPersistedDuplicateMeta(draft.id));
     setNumberConflict(null);
     setSaveMessage(null);
     setViewMode("editor");
@@ -1913,9 +2078,11 @@ export function useSalesDocumentWorkspace({
         setServerInvoices((current) =>
           current.filter((document) => document.id !== draftId),
         );
+        setPersistedDuplicateMeta(draftId, null);
       } else {
         const nextDrafts = drafts.filter((draft) => draft.id !== draftId);
         persistDrafts(nextDrafts);
+        setPersistedDuplicateMeta(draftId, null);
       }
       if (draftId === activeDraftId) {
         resetEditor();
@@ -2155,6 +2322,7 @@ export function useSalesDocumentWorkspace({
             lines: localDraft.lines,
           });
     await postSalesDocumentDraft(serverDraft.id, tenantId, config.documentType);
+    setPersistedDuplicateMeta(serverDraft.id, null);
     setServerInvoices((current) => [
       { ...serverDraft, status: "OPEN", postedAt },
       ...current.filter((invoice) => invoice.id !== serverDraft.id),
@@ -2163,6 +2331,7 @@ export function useSalesDocumentWorkspace({
     if (activeDraftSource === "local") {
       const nextDrafts = drafts.filter((draft) => draft.id !== localDraft.id);
       persistDrafts(nextDrafts);
+      setPersistedDuplicateMeta(localDraft.id, null);
     }
     resetEditor({ focusFirstLine: isPosMode });
     setViewMode(isPosMode ? "editor" : "list");
@@ -2567,6 +2736,7 @@ export function useSalesDocumentWorkspace({
     openRowMenuId,
     openRowMenuItems,
     pendingActionDialogs,
+    parentDocumentNumber,
     postDraft,
     postValidationMessage,
     quickAddItemQuery,

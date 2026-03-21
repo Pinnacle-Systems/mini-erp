@@ -41,7 +41,7 @@ const purchaseDocumentBodySchema = z.object({
   supplierAddress: z.string().trim().max(500).default(""),
   supplierTaxId: z.string().trim().max(32).default(""),
   notes: z.string().trim().max(2000).default(""),
-  lines: z.array(purchaseDocumentLineSchema).min(1).max(200),
+  lines: z.array(purchaseDocumentLineSchema).max(200),
 });
 
 export const listPurchaseDocumentsSchema = z.object({

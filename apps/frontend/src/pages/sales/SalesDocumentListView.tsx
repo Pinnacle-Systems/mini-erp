@@ -51,9 +51,23 @@ export function SalesDocumentListView({
 }: SalesDocumentListViewProps) {
   const { showToast } = useToast();
   const lastSaveMessageRef = useRef<string | null>(null);
+  const showSourceColumn = config.documentType !== "SALES_ESTIMATE";
   const desktopGridTemplate = withTabularSerialNumberColumn(
-    "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1.1fr) minmax(0,1.3fr) 3rem",
+    showSourceColumn
+      ? "minmax(0,1.1fr) minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.2fr) 3rem"
+      : "minmax(0,1.2fr) minmax(0,1.9fr) minmax(0,0.95fr) minmax(0,1.1fr) minmax(0,1.2fr) 3rem",
   );
+  const getParentDocumentNumber = (row: InvoiceListRow) => {
+    const parentId =
+      row.source === "local" ? (row.draft.parentId ?? null) : (row.invoice.parentId ?? null);
+    if (!parentId) {
+      return "None";
+    }
+
+    return (
+      invoiceRows.find((candidate) => candidate.id === parentId)?.billNumber ?? "Unknown"
+    );
+  };
 
   useEffect(() => {
     if (!saveMessage || saveMessage === lastSaveMessageRef.current) {
@@ -77,9 +91,9 @@ export function SalesDocumentListView({
               {config.listTitle}
             </h1>
             <p className="text-xs text-muted-foreground">
-              Draft and posted {config.pluralLabel} are shown together here.
-              Status indicates whether a document is still local or already
-              posted.
+              See your draft and posted {config.pluralLabel} in one place.
+              The status shows whether each document is still in draft or has
+              already been posted.
             </p>
           </div>
           <Button type="button" size="sm" onClick={onOpenNewDraft}>
@@ -127,37 +141,68 @@ export function SalesDocumentListView({
                   <span>{formatDateTime(row.timestamp)}</span>
                   <span>{formatCurrency(row.total)}</span>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                  <span>
-                    {row.lines.length} line{row.lines.length === 1 ? "" : "s"}
-                  </span>
-                  {(() => {
-                    const actions = getRowMenuActions(row);
-                    if (actions.length === 0) {
-                      return null;
-                    }
+                {showSourceColumn ? (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                    <span className="truncate">
+                      {`Source: ${getParentDocumentNumber(row)}`}
+                    </span>
+                    {(() => {
+                      const actions = getRowMenuActions(row);
+                      if (actions.length === 0) {
+                        return null;
+                      }
 
-                    return (
-                      <div
-                        className="relative"
-                        onPointerDown={(event) => event.stopPropagation()}
-                      >
-                        <IconButton
-                          type="button"
-                          icon={MoreHorizontal}
-                          variant="ghost"
-                          className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
-                          aria-label={`Open actions for ${row.billNumber}`}
-                          title="More actions"
-                          aria-expanded={openRowMenuId === row.id}
-                          onClick={(event) =>
-                            onToggleRowMenu(row.id, event.currentTarget)
-                          }
-                        />
-                      </div>
-                    );
-                  })()}
-                </div>
+                      return (
+                        <div
+                          className="relative"
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
+                          <IconButton
+                            type="button"
+                            icon={MoreHorizontal}
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                            aria-label={`Open actions for ${row.billNumber}`}
+                            title="More actions"
+                            aria-expanded={openRowMenuId === row.id}
+                            onClick={(event) =>
+                              onToggleRowMenu(row.id, event.currentTarget)
+                            }
+                          />
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div className="mt-2 flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
+                    {(() => {
+                      const actions = getRowMenuActions(row);
+                      if (actions.length === 0) {
+                        return null;
+                      }
+
+                      return (
+                        <div
+                          className="relative"
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
+                          <IconButton
+                            type="button"
+                            icon={MoreHorizontal}
+                            variant="ghost"
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                            aria-label={`Open actions for ${row.billNumber}`}
+                            title="More actions"
+                            aria-expanded={openRowMenuId === row.id}
+                            onClick={(event) =>
+                              onToggleRowMenu(row.id, event.currentTarget)
+                            }
+                          />
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -186,8 +231,10 @@ export function SalesDocumentListView({
                     <TabularSerialNumberHeaderCell />
                     <TabularCell variant="header">Number</TabularCell>
                     <TabularCell variant="header">Customer</TabularCell>
+                    {showSourceColumn ? (
+                      <TabularCell variant="header">Source</TabularCell>
+                    ) : null}
                     <TabularCell variant="header">Status</TabularCell>
-                    <TabularCell variant="header">Lines</TabularCell>
                     <TabularCell variant="header" align="end">Total</TabularCell>
                     <TabularCell variant="header">Updated</TabularCell>
                     <TabularCell variant="header" align="center">Actions</TabularCell>
@@ -203,11 +250,12 @@ export function SalesDocumentListView({
                     <TabularCell truncate hoverTitle={row.customerName}>
                       {row.customerName}
                     </TabularCell>
+                    {showSourceColumn ? (
+                      <TabularCell truncate hoverTitle={getParentDocumentNumber(row)}>
+                        {getParentDocumentNumber(row)}
+                      </TabularCell>
+                    ) : null}
                     <TabularCell>{row.status}</TabularCell>
-                    <TabularCell>
-                      {row.lines.length} line
-                      {row.lines.length === 1 ? "" : "s"}
-                    </TabularCell>
                     <TabularCell align="end" className="font-semibold text-foreground">
                       {formatCurrency(row.total)}
                     </TabularCell>

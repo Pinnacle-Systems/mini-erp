@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import {
   Card,
@@ -28,11 +28,25 @@ const isOnline = () =>
 
 export function AddSupplierPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const businesses = useSessionStore((state) => state.businesses);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
-  const [draft, setDraft] = useState(EMPTY_CUSTOMER_DRAFT);
+  const locationState =
+    location.state && typeof location.state === "object"
+      ? (location.state as {
+          returnTo?: string;
+          purchaseDraft?: unknown;
+          supplierPrefill?: {
+            name?: string;
+          };
+        })
+      : null;
+  const [draft, setDraft] = useState(() => ({
+    ...EMPTY_CUSTOMER_DRAFT,
+    name: locationState?.supplierPrefill?.name ?? EMPTY_CUSTOMER_DRAFT.name,
+  }));
   const [alsoCreateCustomer, setAlsoCreateCustomer] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +79,27 @@ export function AddSupplierPage() {
         await queueCustomerCreate(activeStore, identityId, payload, sharedEntityId);
       }
       await syncOnce(activeStore);
+
+      if (locationState?.returnTo) {
+        navigate(locationState.returnTo, {
+          replace: true,
+          state: {
+            purchaseDraft: locationState.purchaseDraft,
+            createdSupplier: {
+              entityId: sharedEntityId,
+              name: payload.name,
+              phone: payload.phone,
+              address: payload.address,
+              gstNo: payload.gstNo,
+            },
+            supplierMessage: isOnline()
+              ? "Supplier saved and returned to purchases."
+              : "Supplier queued offline and returned to purchases.",
+          },
+        });
+        return;
+      }
+
       navigate("/app/suppliers", {
         replace: true,
         state: {
@@ -122,7 +157,19 @@ export function AddSupplierPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate("/app/suppliers")}
+            onClick={() => {
+              if (locationState?.returnTo) {
+                navigate(locationState.returnTo, {
+                  replace: true,
+                  state: {
+                    purchaseDraft: locationState.purchaseDraft,
+                  },
+                });
+                return;
+              }
+
+              navigate("/app/suppliers");
+            }}
             disabled={loading}
           >
             Cancel

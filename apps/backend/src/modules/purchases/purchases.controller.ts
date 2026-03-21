@@ -331,6 +331,9 @@ const getSupplierReference = async (
     | "settlementMode"
     | "documentType"
   >,
+  options?: {
+    allowIncomplete?: boolean;
+  },
 ) => {
   const normalizedSettlementMode = usesSettlementMode(input.documentType)
     ? input.settlementMode ?? "CASH"
@@ -343,7 +346,7 @@ const getSupplierReference = async (
         `${PURCHASE_DOCUMENT_META[input.documentType].singularLabel} requires an existing supplier for credit transactions`,
       );
     }
-    if (requiresSupplierDetails() && !input.supplierName.trim()) {
+    if (!options?.allowIncomplete && requiresSupplierDetails() && !input.supplierName.trim()) {
       throw new BadRequestError(
         `${PURCHASE_DOCUMENT_META[input.documentType].singularLabel} requires supplier details`,
       );
@@ -632,6 +635,83 @@ const buildSourceLineMap = (document: PurchaseDocumentRecord) =>
     document.lineItems.map((line) => [line.id, line.target_links[0]?.source_line_id ?? null]),
   );
 
+const syncParentConversionStatus = async (
+  tx: PurchaseTransactionClient,
+  tenantId: string,
+  actor: DocumentHistoryActor,
+  parentId?: string | null,
+  metadata?: Record<string, unknown>,
+) => {
+  if (!parentId) {
+    return;
+  }
+
+  const parent = await tx.document.findFirst({
+    where: {
+      id: parentId,
+      business_id: tenantId,
+      deleted_at: null,
+    },
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      posted_at: true,
+    },
+  });
+
+  if (!parent || ["CANCELLED", "VOID"].includes(parent.status as string)) {
+    return;
+  }
+  if (!parent.posted_at) {
+    return;
+  }
+
+  const parentType = parent.type as PurchaseDocumentType;
+  if (!["PURCHASE_ORDER", "GOODS_RECEIPT_NOTE", "PURCHASE_INVOICE"].includes(parentType)) {
+    return;
+  }
+
+  const lineBalances =
+    parentType === "PURCHASE_ORDER"
+      ? await purchaseBalanceService.getReceiptLineBalances(tx, tenantId, parent.id)
+      : parentType === "GOODS_RECEIPT_NOTE"
+        ? await purchaseBalanceService.getInvoiceableLineBalances(tx, tenantId, parent.id)
+        : await purchaseBalanceService.getLineBalances(tx, tenantId, parent.id, "RETURN");
+
+  const hasAnyConsumption = lineBalances.some(
+    (line) => line.remainingQuantity < line.originalQuantity,
+  );
+  const isFullyAllocated = lineBalances.every((line) => line.remainingQuantity <= 0);
+  const nextStatus = !hasAnyConsumption ? "OPEN" : isFullyAllocated ? "COMPLETED" : "PARTIAL";
+
+  if (nextStatus === parent.status) {
+    return;
+  }
+
+  await tx.document.update({
+    where: {
+      id: parent.id,
+    },
+    data: {
+      status: nextStatus,
+    },
+  });
+
+  await recordDocumentHistory(tx, {
+    tenantId,
+    documentId: parent.id,
+    eventType: "STATUS_CHANGED",
+    actor,
+    fromStatus: parent.status,
+    toStatus: nextStatus,
+    metadata: {
+      reason: "CONVERSION_PROGRESS",
+      ...(metadata ?? {}),
+    },
+  });
+};
+
 export const saveDraftPurchaseDocument = async (
   tx: PurchaseTransactionClient,
   documentId: string | null,
@@ -659,7 +739,7 @@ export const saveDraftPurchaseDocument = async (
     input.parentId,
   );
   const [supplierRef, variantMap, locationRef] = await Promise.all([
-    getSupplierReference(tx, input.tenantId, input),
+    getSupplierReference(tx, input.tenantId, input, { allowIncomplete: true }),
     getVariantSnapshotMap(tx, input.tenantId, input.lines),
     getDocumentLocationReference(input.tenantId, input.locationId ?? parentRef?.location_id ?? null),
   ]);
@@ -966,6 +1046,12 @@ export const postDraftPurchaseDocument = async (
     }
   }
 
+  await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+    sourceDocumentId: document.id,
+    sourceDocumentType: document.type,
+    sourceDocumentNumber: document.doc_number,
+  });
+
   return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
 };
 
@@ -1013,6 +1099,12 @@ export const transitionPurchaseDocumentState = async (
       },
     });
 
+    await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+      sourceDocumentId: document.id,
+      sourceDocumentType: document.type,
+      sourceDocumentNumber: document.doc_number,
+    });
+
     return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
   }
 
@@ -1049,6 +1141,12 @@ export const transitionPurchaseDocumentState = async (
       },
     });
 
+    await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+      sourceDocumentId: document.id,
+      sourceDocumentType: document.type,
+      sourceDocumentNumber: document.doc_number,
+    });
+
     return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
   }
 
@@ -1083,6 +1181,12 @@ export const transitionPurchaseDocumentState = async (
     metadata: {
       reason: "REOPENED",
     },
+  });
+
+  await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
+    sourceDocumentId: document.id,
+    sourceDocumentType: document.type,
+    sourceDocumentNumber: document.doc_number,
   });
 
   return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
