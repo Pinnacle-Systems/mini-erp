@@ -1179,9 +1179,9 @@ function PurchaseDocumentWorkspace({
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-2 pt-2 lg:overflow-hidden">
-            <div className="flex min-h-0 flex-col gap-2 lg:overflow-hidden">
-              <div className="grid gap-2 rounded-lg border border-border/80 bg-slate-50 p-2 lg:grid-cols-[minmax(0,1fr)_12rem_10rem]">
-                <div className="space-y-1">
+            <div className="flex min-h-0 flex-col gap-1.5 lg:overflow-hidden">
+              <div className="grid gap-2 pt-0.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_12rem] md:items-start">
+                <div className="space-y-1 md:w-[13.5rem] md:min-w-[13.5rem]">
                   <Label htmlFor="purchase-bill-number">Document number</Label>
                   <Input
                     id="purchase-bill-number"
@@ -1191,103 +1191,86 @@ function PurchaseDocumentWorkspace({
                     className="h-8 text-xs"
                   />
                 </div>
-                {usesSettlementMode(config.documentType) ? (
-                  <div className="space-y-1">
-                    <Label htmlFor="purchase-settlement-mode">Settlement</Label>
-                    <Select
-                      id="purchase-settlement-mode"
-                      value={settlementMode}
-                      onChange={(event) => setSettlementMode(event.target.value as "CASH" | "CREDIT")}
-                      disabled={isViewingPostedDocument}
-                      className="h-8 text-xs"
-                    >
-                      <option value="CASH">Cash</option>
-                      <option value="CREDIT">Credit</option>
-                    </Select>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <Label>Source</Label>
-                    <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
-                      {parentDocumentNumber || "Standalone"}
-                    </div>
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <Label>Location</Label>
-                  <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
-                    {isStockAffectingDocument(config.documentType)
-                      ? activeBusiness?.locations.find((entry) => entry.id === (activeLocationId ?? activeBusiness.defaultLocationId))?.name ??
-                        activeBusiness?.locations.find((entry) => entry.isDefault)?.name ??
-                        "Default location"
-                      : "Business default"}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-2 rounded-lg border border-border/80 bg-slate-50 p-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1.1fr)]">
                 <div className="space-y-1">
                   <Label htmlFor="purchase-supplier">Supplier</Label>
-                  <LookupDropdownInput
-                    id="purchase-supplier"
-                    value={supplierName}
-                    disabled={isViewingPostedDocument}
-                    onValueChange={(value) => {
-                      setSupplierId(null);
-                      setSupplierName(value);
-                    }}
-                    options={supplierOptions}
-                    loading={lookupLoading}
-                    loadingLabel="Loading suppliers"
-                    placeholder="Search supplier"
-                    onOptionSelect={(supplier) => {
-                      setSupplierId(supplier.entityId);
-                      setSupplierName(supplier.name);
-                      setSupplierPhone(supplier.phone);
-                      setSupplierAddress(supplier.address);
-                      setSupplierTaxId(supplier.gstNo);
-                    }}
-                    getOptionKey={(option) => option.entityId}
-                    getOptionSearchText={(option) => `${option.name} ${option.phone} ${option.gstNo}`}
-                    renderOption={(option) => (
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-medium text-foreground">{option.name}</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {[option.phone, option.gstNo].filter(Boolean).join(" • ") || "No phone or tax id"}
+                  <div className="space-y-1">
+                    <LookupDropdownInput
+                      id="purchase-supplier"
+                      value={supplierName}
+                      disabled={isViewingPostedDocument}
+                      onValueChange={(value) => {
+                        setSupplierId(null);
+                        setSupplierName(value);
+                      }}
+                      options={supplierOptions}
+                      loading={lookupLoading}
+                      loadingLabel="Loading suppliers"
+                      placeholder="Search supplier"
+                      onOptionSelect={(supplier) => {
+                        setSupplierId(supplier.entityId);
+                        setSupplierName(supplier.name);
+                        setSupplierPhone(supplier.phone);
+                        setSupplierAddress(supplier.address);
+                        setSupplierTaxId(supplier.gstNo);
+                      }}
+                      getOptionKey={(option) => option.entityId}
+                      getOptionSearchText={(option) => `${option.name} ${option.phone} ${option.gstNo}`}
+                      renderOption={(option) => (
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-medium text-foreground">{option.name}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {[option.phone, option.gstNo].filter(Boolean).join(" • ") || "No phone or tax id"}
+                          </div>
                         </div>
+                      )}
+                    />
+                    {(supplierPhone || supplierTaxId || supplierAddress) ? (
+                      <div className="px-1 text-[11px] text-muted-foreground">
+                        <span className="font-medium text-foreground">Phone:</span>{" "}
+                        {supplierPhone || "Not provided"}{" "}
+                        <span className="text-muted-foreground">•</span>{" "}
+                        <span className="font-medium text-foreground">Tax:</span>{" "}
+                        {supplierTaxId || "Not provided"}{" "}
+                        <span className="text-muted-foreground">•</span>{" "}
+                        <span className="font-medium text-foreground">Address:</span>{" "}
+                        {supplierAddress || "Not provided"}
                       </div>
-                    )}
-                  />
+                    ) : null}
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="purchase-supplier-phone">Phone</Label>
-                  <Input
-                    id="purchase-supplier-phone"
-                    value={supplierPhone}
-                    onChange={(event) => setSupplierPhone(event.target.value)}
-                    disabled={isViewingPostedDocument}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="purchase-supplier-tax-id">Tax ID</Label>
-                  <Input
-                    id="purchase-supplier-tax-id"
-                    value={supplierTaxId}
-                    onChange={(event) => setSupplierTaxId(event.target.value)}
-                    disabled={isViewingPostedDocument}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="space-y-1 lg:col-span-3">
-                  <Label htmlFor="purchase-supplier-address">Address</Label>
-                  <Input
-                    id="purchase-supplier-address"
-                    value={supplierAddress}
-                    onChange={(event) => setSupplierAddress(event.target.value)}
-                    disabled={isViewingPostedDocument}
-                    className="h-8 text-xs"
-                  />
+                <div className="grid gap-2 md:grid-cols-2">
+                  {usesSettlementMode(config.documentType) ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="purchase-settlement-mode">Settlement</Label>
+                      <Select
+                        id="purchase-settlement-mode"
+                        value={settlementMode}
+                        onChange={(event) => setSettlementMode(event.target.value as "CASH" | "CREDIT")}
+                        disabled={isViewingPostedDocument}
+                        className="h-8 text-xs"
+                      >
+                        <option value="CASH">Cash</option>
+                        <option value="CREDIT">Credit</option>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <Label>Source</Label>
+                      <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
+                        {parentDocumentNumber || "Standalone"}
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <Label>Location</Label>
+                    <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
+                      {isStockAffectingDocument(config.documentType)
+                        ? activeBusiness?.locations.find((entry) => entry.id === (activeLocationId ?? activeBusiness.defaultLocationId))?.name ??
+                          activeBusiness?.locations.find((entry) => entry.isDefault)?.name ??
+                          "Default location"
+                        : "Business default"}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1302,13 +1285,7 @@ function PurchaseDocumentWorkspace({
                 </div>
               ) : null}
 
-              {parentDocumentNumber ? (
-                <div className="rounded-md border border-[#d7e2ef] bg-[#f5f9ff] px-3 py-2 text-xs text-[#23466d]">
-                  Source document: <span className="font-semibold">{parentDocumentNumber}</span>
-                </div>
-              ) : null}
-
-              <div className="flex min-h-[14rem] flex-1 flex-col gap-1.5 md:min-h-0 md:overflow-hidden">
+              <div className="flex min-h-[18rem] flex-1 flex-col gap-1.5 pt-0.5 md:min-h-0 md:overflow-hidden">
                 <div className="flex items-center justify-between">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
                     {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
@@ -1523,16 +1500,16 @@ function PurchaseDocumentWorkspace({
                 </div>
               </div>
 
-              <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-                <div className="space-y-1 rounded-lg border border-border/80 bg-slate-50 p-2">
+              <div className="grid gap-2 rounded-xl border border-border/85 bg-white p-1.5 md:grid-cols-[minmax(0,1fr)_18rem] md:items-start md:shrink-0">
+                <div className="flex flex-col gap-1 md:min-h-0 md:flex-1">
                   <Label htmlFor="purchase-notes">Notes</Label>
                   <Textarea
                     id="purchase-notes"
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
                     disabled={isViewingPostedDocument}
-                    rows={3}
-                    className="min-h-[5rem] text-xs"
+                    rows={2}
+                    className="min-h-[2.75rem] max-h-[4.5rem] text-xs"
                   />
                   {postValidationMessage ? (
                     <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
