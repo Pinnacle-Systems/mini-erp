@@ -566,8 +566,8 @@ export function CollectionsPage() {
                   key={bucket.id}
                   className={`flex min-h-8 items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-xs transition ${
                     activeBucket?.id === bucket.id
-                      ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
-                      : "border-border/70 bg-card text-foreground/80 hover:bg-white"
+                      ? "border-primary/20 bg-primary/10 text-primary"
+                      : "border-border/70 bg-card text-foreground/80 hover:bg-card"
                   }`}
                 >
                   <Button
@@ -577,7 +577,13 @@ export function CollectionsPage() {
                     className="flex h-6 min-w-0 flex-1 items-center justify-between rounded-md px-0 text-left text-xs font-medium hover:bg-transparent active:bg-transparent active:scale-100"
                   >
                     <span className="truncate font-medium">{bucket.name}</span>
-                    <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white/80 px-1 text-[10px] leading-none">
+                    <span
+                      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none ${
+                        activeBucket?.id === bucket.id
+                          ? "bg-primary/12 text-primary"
+                          : "bg-muted/70 text-muted-foreground"
+                      }`}
+                    >
                       {bucket.items.reduce((count, itemGroup) => count + itemGroup.links.length, 0)}
                     </span>
                   </Button>
@@ -649,7 +655,7 @@ export function CollectionsPage() {
                   setCollectionNameDraft(activeBucket?.name ?? "");
                 }}
                 disabled={loading}
-                className="h-8 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-foreground/70 hover:bg-white/80 lg:hidden"
+                className="h-8 shrink-0 gap-1 whitespace-nowrap px-2 text-[11px] text-foreground/70 hover:bg-muted/70 lg:hidden"
               >
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <X aria-hidden="true" />
@@ -677,7 +683,7 @@ export function CollectionsPage() {
                 }}
                 disabled={loading}
                 aria-label="Cancel collection rename"
-                className="hidden rounded-full text-foreground/70 hover:bg-white/80 lg:inline-flex"
+                className="hidden rounded-full text-foreground/70 hover:bg-muted/70 lg:inline-flex"
               />
               </div>
             ) : (
@@ -743,7 +749,7 @@ export function CollectionsPage() {
             />
           </div>
           {itemSearchDraft.trim().length > 0 ? (
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-[#f8fbff] px-1.5 py-2">
+            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-muted/45 px-1.5 py-2">
               {searchableItems.length > 0 ? (
                 searchableItems.map((item) => {
                   const selection = variantSelectionsByItemId[item.item.entityId] ?? [];
@@ -757,7 +763,7 @@ export function CollectionsPage() {
                   return (
                     <div
                       key={item.item.entityId}
-                      className="space-y-1 rounded-md border border-border/70 bg-white px-2 py-1.5"
+                      className="space-y-1 rounded-md border border-border/70 bg-card px-2 py-1.5"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">

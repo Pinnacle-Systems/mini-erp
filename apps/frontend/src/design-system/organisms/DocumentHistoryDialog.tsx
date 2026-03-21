@@ -99,11 +99,11 @@ export function DocumentHistoryDialog({
     <div className="fixed inset-0 z-[90] bg-slate-950/45 p-0 md:p-4">
       <Card
         className={cn(
-          "h-full w-full rounded-none border-0 bg-white p-0 shadow-none",
-          "md:mx-auto md:mt-8 md:h-auto md:max-h-[85vh] md:max-w-2xl md:rounded-xl md:border md:border-[#cfd9e5] md:shadow-[0_14px_40px_rgba(15,23,42,0.18)]",
+          "h-full w-full rounded-none border-0 bg-card p-0 shadow-none",
+          "md:mx-auto md:mt-8 md:h-auto md:max-h-[85vh] md:max-w-2xl md:rounded-xl md:border md:border-border/80 md:shadow-[0_14px_40px_rgba(15,23,42,0.18)]",
         )}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-[#dbe4ee] px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-border/80 px-4 py-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-foreground">{title}</p>
             <p className="mt-1 text-xs text-muted-foreground">{description}</p>
@@ -122,15 +122,15 @@ export function DocumentHistoryDialog({
 
         <div className="min-h-0 overflow-y-auto px-4 py-3 md:max-h-[calc(85vh-7.5rem)]">
           {loading ? (
-            <div className="rounded-md border border-border/70 bg-slate-50 px-3 py-3 text-xs text-muted-foreground">
+            <div className="rounded-md border border-border/70 bg-muted/55 px-3 py-3 text-xs text-muted-foreground">
               Loading document history...
             </div>
           ) : error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700">
+            <div className="rounded-md border border-destructive/35 bg-destructive/12 px-3 py-3 text-xs text-destructive">
               {error}
             </div>
           ) : entries.length === 0 ? (
-            <div className="rounded-md border border-border/70 bg-slate-50 px-3 py-3 text-xs text-muted-foreground">
+            <div className="rounded-md border border-border/70 bg-muted/55 px-3 py-3 text-xs text-muted-foreground">
               No history has been recorded for this document yet.
             </div>
           ) : (
@@ -140,7 +140,7 @@ export function DocumentHistoryDialog({
                 return (
                   <div
                     key={entry.id}
-                    className="rounded-lg border border-border/80 bg-white px-3 py-2.5"
+                    className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -168,7 +168,7 @@ export function DocumentHistoryDialog({
           )}
         </div>
 
-        <div className="flex items-center justify-end border-t border-[#dbe4ee] px-4 py-3">
+        <div className="flex items-center justify-end border-t border-border/80 px-4 py-3">
           <Button type="button" variant="outline" onClick={onClose} className="h-8 px-3 text-xs">
             Close
           </Button>

@@ -18,14 +18,14 @@ export function LoadingOverlay({
   return (
     <div
       className={cn(
-        "absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/90",
+        "absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-card/90",
         className,
       )}
       aria-live="polite"
       aria-label={label}
       role="status"
     >
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#6aa5eb]/35 border-t-[#2f6fb7]" />
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
     </div>
   );
 }

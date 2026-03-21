@@ -99,10 +99,10 @@ export function PosPaymentModal({
     <div className="fixed inset-0 z-[95] bg-slate-950/45 p-3 sm:p-4">
       <Card
         className={cn(
-          "mx-auto mt-6 w-full max-w-lg rounded-xl border border-[#cfd9e5] bg-white p-0 shadow-[0_14px_40px_rgba(15,23,42,0.18)] sm:mt-14",
+          "mx-auto mt-6 w-full max-w-lg rounded-xl border border-border/80 bg-card p-0 shadow-[0_14px_40px_rgba(15,23,42,0.18)] sm:mt-14",
         )}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-[#dbe4ee] px-4 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-border/80 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-foreground">Complete POS Sale</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -123,8 +123,8 @@ export function PosPaymentModal({
         </div>
 
         <div className="space-y-4 px-4 py-4">
-          <div className="rounded-lg border border-[#8fb6e2] bg-[#edf5ff] px-3 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[#355a84]">
+          <div className="rounded-lg border border-primary/20 bg-primary/10 px-3 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-primary">
               Total Payable
             </div>
             <div className="mt-1 text-2xl font-semibold text-foreground">
@@ -171,7 +171,7 @@ export function PosPaymentModal({
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-3 py-2">
+          <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/60 px-3 py-2">
             <div className="space-y-0.5">
               <div className="text-[11px] font-semibold text-foreground">
                 Auto-print receipt
@@ -188,7 +188,7 @@ export function PosPaymentModal({
             />
           </div>
 
-          <div className="grid gap-2 rounded-lg border border-border/70 bg-slate-50 p-3 sm:grid-cols-2">
+          <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/60 p-3 sm:grid-cols-2">
             <div>
               <div className="text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
                 Tendered
@@ -210,18 +210,18 @@ export function PosPaymentModal({
           </div>
 
           {!canCompleteSale ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            <div className="rounded-md border border-warning/35 bg-warning/12 px-3 py-2 text-[11px] text-warning">
               Cash tendered must cover the sale total before checkout can finish.
             </div>
           ) : null}
           {errorMessage ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            <div className="rounded-md border border-destructive/35 bg-destructive/12 px-3 py-2 text-[11px] text-destructive">
               {errorMessage}
             </div>
           ) : null}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-[#dbe4ee] px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border/80 px-4 py-3">
           <Button
             type="button"
             variant="outline"

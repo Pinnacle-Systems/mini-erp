@@ -107,7 +107,7 @@ export function FloatingActionMenu({
       />
       <div
         ref={menuRef}
-        className="absolute min-w-[10rem] overflow-y-auto rounded-lg border border-border/80 bg-white p-1 text-left shadow-[0_8px_18px_rgba(15,23,42,0.12)]"
+        className="absolute min-w-[10rem] overflow-y-auto rounded-lg border border-border/80 bg-popover p-1 text-left text-popover-foreground shadow-[0_8px_18px_rgba(15,23,42,0.12)]"
         style={{
           top: position.top,
           left: position.left,
@@ -124,8 +124,8 @@ export function FloatingActionMenu({
               size="sm"
               className={`h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] ${
                 item.tone === "danger"
-                  ? "text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
-                  : "text-[#15314e]"
+                  ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  : "text-popover-foreground hover:bg-muted/60"
               }`}
               disabled={item.disabled}
               onClick={() => {
