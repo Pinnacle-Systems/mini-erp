@@ -3,12 +3,15 @@ import { Clock3, X } from "lucide-react";
 import { Button } from "../atoms/Button";
 import { Card } from "../molecules/Card";
 import { cn } from "../../lib/utils";
-import type { SalesDocumentHistoryEntry } from "../../pages/sales/sales-invoices-api";
+import type { SalesDocumentHistoryEntry } from "../../pages/sales/sales-documents-api";
+import type { PurchaseDocumentHistoryEntry } from "../../pages/purchases/purchase-documents-api";
+
+type DocumentHistoryEntry = SalesDocumentHistoryEntry | PurchaseDocumentHistoryEntry;
 
 type DocumentHistoryDialogProps = {
   title: string;
   description: string;
-  entries: SalesDocumentHistoryEntry[];
+  entries: DocumentHistoryEntry[];
   loading?: boolean;
   error?: string | null;
   onClose: () => void;
@@ -29,7 +32,7 @@ const formatTimestamp = (value: string) => {
   });
 };
 
-const formatEventTitle = (entry: SalesDocumentHistoryEntry) => {
+const formatEventTitle = (entry: DocumentHistoryEntry) => {
   if (entry.eventType === "CREATED") {
     return "Draft created";
   }
@@ -54,7 +57,7 @@ const formatEventTitle = (entry: SalesDocumentHistoryEntry) => {
   return "Status changed";
 };
 
-const formatEventDetails = (entry: SalesDocumentHistoryEntry) => {
+const formatEventDetails = (entry: DocumentHistoryEntry) => {
   if (entry.eventType === "CONVERSION_LINKED") {
     const sourceNumber =
       typeof entry.metadata?.sourceDocumentNumber === "string"

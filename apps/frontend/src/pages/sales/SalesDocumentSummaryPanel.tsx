@@ -14,6 +14,7 @@ type SalesDocumentSummaryPanelProps = {
     grandTotal: number;
   };
   linesCountSource: Parameters<typeof normalizeLines>[0];
+  sourceDocumentNumber?: string;
   validUntil: string;
   dispatchDate: string;
   dispatchReference: string;
@@ -31,6 +32,7 @@ export function SalesDocumentSummaryPanel({
   activeBusinessName,
   totals,
   linesCountSource,
+  sourceDocumentNumber,
   validUntil,
   dispatchDate,
   dispatchReference,
@@ -85,6 +87,14 @@ export function SalesDocumentSummaryPanel({
             {normalizedLineCount || 1}
           </span>
         </div>
+        {sourceDocumentNumber ? (
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-muted-foreground">Source</span>
+            <span className="truncate font-semibold text-foreground">
+              {sourceDocumentNumber}
+            </span>
+          </div>
+        ) : null}
         {config.documentType === "SALES_ESTIMATE" && validUntil ? (
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Valid until</span>

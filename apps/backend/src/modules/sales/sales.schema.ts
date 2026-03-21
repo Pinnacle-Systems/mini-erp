@@ -47,7 +47,7 @@ const salesDocumentBodySchema = z.object({
   dispatchCarrier: z.string().trim().max(120).default(""),
   dispatchReference: z.string().trim().max(120).default(""),
   notes: z.string().trim().max(2000).default(""),
-  lines: z.array(salesDocumentLineSchema).min(1).max(200),
+  lines: z.array(salesDocumentLineSchema).max(200),
 });
 
 export const listSalesDocumentsSchema = z.object({

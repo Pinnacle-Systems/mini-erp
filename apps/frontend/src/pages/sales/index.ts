@@ -5,4 +5,4 @@ export {
   OrdersPage,
   PosPage,
   ReturnsPage,
-} from "./BillsPage";
+} from "./DocumentsPage";

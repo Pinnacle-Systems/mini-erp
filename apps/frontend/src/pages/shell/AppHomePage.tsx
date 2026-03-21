@@ -207,7 +207,7 @@ const folders: Array<{
       },
       {
         id: "purchase-grns",
-        label: "GRNs",
+        label: "Goods Receipts",
         Icon: ReceiptText,
         requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
       },

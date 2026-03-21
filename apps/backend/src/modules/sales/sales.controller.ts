@@ -364,6 +364,9 @@ const getCustomerReference = async (
     | "transactionType"
     | "documentType"
   >,
+  options?: {
+    allowIncomplete?: boolean;
+  },
 ) => {
   const normalizedTransactionType = usesTransactionType(input.documentType)
     ? input.transactionType ?? "CASH"
@@ -375,7 +378,11 @@ const getCustomerReference = async (
         `${SALES_DOCUMENT_META[input.documentType].singularLabel} requires an existing customer for credit transactions`,
       );
     }
-    if (requiresCustomerDetails(input.documentType) && !input.customerName.trim()) {
+    if (
+      !options?.allowIncomplete &&
+      requiresCustomerDetails(input.documentType) &&
+      !input.customerName.trim()
+    ) {
       throw new BadRequestError(
         `${SALES_DOCUMENT_META[input.documentType].singularLabel} requires customer details`,
       );
@@ -834,7 +841,7 @@ const saveDraftDocument = async (
     input.parentId,
   );
   const [customerRef, variantMap, locationRef] = await Promise.all([
-    getCustomerReference(tx, input.tenantId, input),
+    getCustomerReference(tx, input.tenantId, input, { allowIncomplete: true }),
     getVariantSnapshotMap(tx, input.tenantId, input.lines),
     getDocumentLocationReference(
       input.tenantId,

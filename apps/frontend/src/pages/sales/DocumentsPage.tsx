@@ -16,7 +16,7 @@ import { useToast } from "../../features/toast/useToast";
 import { useEffect, useState } from "react";
 import {
   type SalesDocumentType,
-} from "./sales-invoices-api";
+} from "./sales-documents-api";
 import { SalesDocumentListView } from "./SalesDocumentListView";
 import { SalesDocumentLineEditor } from "./SalesDocumentLineEditor";
 import { PosQuickAddBar } from "./PosQuickAddBar";
@@ -30,6 +30,7 @@ import { SalesDocumentWorkspaceHeader } from "./SalesDocumentWorkspaceHeader";
 import { usePosHotkeys } from "./usePosHotkeys";
 import {
   formatCurrency,
+  formatSalesDocumentTypeLabel,
   getLineTotals,
   normalizeLines,
   type SalesDocumentPageConfig,
@@ -288,6 +289,7 @@ function SalesDocumentWorkspace({
     openRowMenuId,
     openRowMenuItems,
     pendingActionDialogs,
+    parentDocumentNumber,
     postDraft,
     postValidationMessage,
     quickAddItemQuery,
@@ -924,12 +926,12 @@ function SalesDocumentWorkspace({
         {duplicateMeta ? (
           <div className="pt-2">
             <DraftReviewPanel
-              title={`Duplicate of estimate ${duplicateMeta.sourceBillNumber}`}
+              title={`Duplicate of ${formatSalesDocumentTypeLabel(duplicateMeta.sourceDocumentType)} ${duplicateMeta.sourceBillNumber}`}
               description="Original line pricing was preserved in this draft. Review any unavailable items or stale prices before posting."
               alerts={duplicateWarningAlerts}
               actionLabel={
                 duplicateWarnings.priceDiscrepancies.length > 0
-                  ? "Refresh to Current Price"
+                  ? "Update to Current Prices"
                   : undefined
               }
               actionDisabled={duplicateWarnings.priceDiscrepancies.length === 0}
@@ -995,6 +997,7 @@ function SalesDocumentWorkspace({
                   activeBusinessName={activeBusinessName}
                   totals={totals}
                   linesCountSource={lines}
+                  sourceDocumentNumber={parentDocumentNumber}
                   validUntil={validUntil}
                   dispatchDate={dispatchDate}
                   dispatchReference={dispatchReference}
@@ -1091,6 +1094,14 @@ function SalesDocumentWorkspace({
           {transactionField}
           {billNumberField}
           {customerField}
+          {parentDocumentNumber ? (
+            <div className="space-y-1 md:w-[14rem] md:min-w-[14rem]">
+              <Label>Source</Label>
+              <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
+                {parentDocumentNumber}
+              </div>
+            </div>
+          ) : null}
           {config.documentType === "DELIVERY_CHALLAN" ||
           config.documentType === "SALES_RETURN" ? (
             <div className="space-y-1 md:w-[17rem] md:min-w-[17rem]">
@@ -1284,6 +1295,7 @@ function SalesDocumentWorkspace({
               activeBusinessName={activeBusinessName}
               totals={totals}
               linesCountSource={lines}
+              sourceDocumentNumber={parentDocumentNumber}
               validUntil={validUntil}
               dispatchDate={dispatchDate}
               dispatchReference={dispatchReference}
