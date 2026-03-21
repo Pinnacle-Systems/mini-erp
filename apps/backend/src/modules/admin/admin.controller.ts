@@ -38,6 +38,7 @@ const LOGO_UPLOAD_DIR = resolve(__dirname, "../../../uploads/business-logos");
 const MODULE_CAPABILITY_MAP = {
   catalog: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
   inventory: ["INV_STOCK_OUT", "INV_STOCK_IN", "INV_ADJUSTMENT", "INV_TRANSFER"],
+  purchases: ["TXN_PURCHASE_CREATE", "TXN_PURCHASE_RETURN"],
   sales: ["TXN_SALE_CREATE", "TXN_SALE_RETURN"],
   pricing: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
 } as const;
@@ -995,6 +996,7 @@ export const updateStore = catchAsync(async (req, res) => {
     modules?: {
       catalog?: boolean;
       inventory?: boolean;
+      purchases?: boolean;
       sales?: boolean;
       pricing?: boolean;
     };
@@ -1117,6 +1119,7 @@ export const updateStore = catchAsync(async (req, res) => {
 
         applyModule(modules.catalog, "catalog");
         applyModule(modules.inventory, "inventory");
+        applyModule(modules.purchases, "purchases");
         applyModule(modules.sales, "sales");
         applyModule(modules.pricing, "pricing");
         const nextOverrides = deriveOverridesForBundle(currentLicenseView.bundleKey, effective);

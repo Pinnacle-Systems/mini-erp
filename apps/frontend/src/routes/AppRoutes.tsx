@@ -216,6 +216,50 @@ export function AppRoutes() {
                     </Route>
                   </Route>
                 </Route>
+                <Route element={<RequireModule moduleKey="purchases" />}>
+                  <Route element={<RequireCapability capability="PARTIES_SUPPLIERS" />}>
+                    <Route element={<RequireCapability capability="TXN_PURCHASE_CREATE" />}>
+                      <Route
+                        path="purchase-orders"
+                        element={
+                          <AppFeaturePlaceholderPage
+                            sectionTitle="Purchases"
+                            appLabel="Orders"
+                          />
+                        }
+                      />
+                      <Route
+                        path="goods-receipt-notes"
+                        element={
+                          <AppFeaturePlaceholderPage
+                            sectionTitle="Purchases"
+                            appLabel="Goods Receipt Notes"
+                          />
+                        }
+                      />
+                      <Route
+                        path="purchase-invoices"
+                        element={
+                          <AppFeaturePlaceholderPage
+                            sectionTitle="Purchases"
+                            appLabel="Invoices"
+                          />
+                        }
+                      />
+                    </Route>
+                    <Route element={<RequireCapability capability="TXN_PURCHASE_RETURN" />}>
+                      <Route
+                        path="purchase-returns"
+                        element={
+                          <AppFeaturePlaceholderPage
+                            sectionTitle="Purchases"
+                            appLabel="Returns"
+                          />
+                        }
+                      />
+                    </Route>
+                  </Route>
+                </Route>
                 <Route element={<RequireCapability capability="ITEM_PRODUCTS" />}>
                   <Route
                     path="products"
