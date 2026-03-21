@@ -14,7 +14,7 @@ export const TABULAR_CSS_VARS = {
 } as const;
 
 export const tabularFrameClassName =
-  "rounded-[var(--tabular-frame-radius)] border bg-white [border-color:var(--tabular-frame-border-color)] [border-width:var(--tabular-frame-border-width)]";
+  "rounded-[var(--tabular-frame-radius)] border bg-card [border-color:var(--tabular-frame-border-color)] [border-width:var(--tabular-frame-border-width)]";
 
 export const tabularHeaderSectionClassName =
   "sticky top-0 z-10 bg-[var(--tabular-header-bg)] text-[10px] uppercase tracking-[0.05em] [color:var(--tabular-header-text)]";

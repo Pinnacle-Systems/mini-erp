@@ -7,6 +7,8 @@
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-secondary: hsl(var(--secondary));
@@ -15,42 +17,59 @@
   --color-muted-foreground: hsl(var(--muted-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-tabular-border: hsl(var(--tabular-frame-border-color));
+  --color-tabular-header: hsl(var(--tabular-header-bg));
+  --color-tabular-header-text: hsl(var(--tabular-header-text));
+  --color-tabular-grid: hsl(var(--tabular-grid-line-color));
+  --color-tabular-hover: hsl(var(--tabular-row-hover-bg));
 }
 
 @layer base {
-  :root {
-    --background: 220 16% 91%;
-    --foreground: 220 20% 12%;
-    --card: 220 20% 96.5%;
-    --card-foreground: 220 20% 12%;
-    --primary: 210 100% 45%;
-    --primary-foreground: 210 100% 99%;
-    --secondary: 220 14% 87%;
-    --secondary-foreground: 220 20% 20%;
-    --muted: 220 13% 88%;
-    --muted-foreground: 220 10% 44%;
-    --accent: 210 34% 89%;
-    --accent-foreground: 220 20% 20%;
-    --border: 220 12% 74%;
-    --input: 220 12% 74%;
-    --ring: 210 100% 45%;
-    --tabular-frame-border-color: #c9d3df;
+  :root,
+  [data-theme="light"] {
+    --background: 210 40% 98%;
+    --foreground: 224 71% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 214 32% 96%;
+    --secondary-foreground: 222 47% 18%;
+    --muted: 214 28% 95%;
+    --muted-foreground: 215 16% 42%;
+    --accent: 221 83% 98%;
+    --accent-foreground: 222 47% 18%;
+    --destructive: 0 72% 46%;
+    --destructive-foreground: 210 100% 99%;
+    --border: 214 24% 89%;
+    --input: 214 24% 89%;
+    --ring: 221 83% 53%;
+    --success: 142 76% 36%;
+    --warning: 38 92% 50%;
+    --tabular-frame-border-color: hsl(214 24% 89%);
     --tabular-frame-border-width: 1px;
     --tabular-frame-radius: 0.125rem;
-    --tabular-header-bg: #eaf0f7;
-    --tabular-header-text: #4a617a;
-    --tabular-grid-line-color: #e2e8f0;
+    --tabular-header-bg: hsl(210 40% 99%);
+    --tabular-header-text: hsl(215 25% 32%);
+    --tabular-grid-line-color: hsl(214 32% 95%);
     --tabular-cell-padding-x: 0.5rem;
     --tabular-cell-padding-y: 0.1875rem;
     --tabular-row-height: 2rem;
     --tabular-footer-height: 1.375rem;
     --tabular-footer-button-height: 1.125rem;
     --tabular-num-features: "tnum";
-    --tabular-cell-bg: #ffffff;
-    --tabular-cell-hover-bg: #f8fafc;
+    --tabular-cell-bg: hsl(var(--card));
+    --tabular-row-hover-bg: hsl(221 83% 98%);
+    --tabular-selection-bg: hsl(221 72% 95%);
 
     font-family:
       -apple-system,
@@ -59,6 +78,37 @@
       "Helvetica Neue",
       "Segoe UI",
       sans-serif;
+  }
+
+  [data-theme="dark"] {
+    --background: 222 35% 7%;
+    --foreground: 210 40% 96%;
+    --card: 222 28% 11%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 28% 10%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 212 92% 62%;
+    --primary-foreground: 222 35% 7%;
+    --secondary: 222 20% 16%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 222 18% 15%;
+    --muted-foreground: 215 18% 76%;
+    --accent: 222 18% 15%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 68% 54%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 18% 22%;
+    --input: 217 18% 22%;
+    --ring: 212 92% 62%;
+    --success: 142.1 70.6% 45.3%;
+    --warning: 43 96% 62%;
+    --tabular-frame-border-color: hsl(217 18% 22%);
+    --tabular-header-bg: hsl(222 22% 15%);
+    --tabular-header-text: hsl(210 34% 92%);
+    --tabular-grid-line-color: hsl(222 18% 19%);
+    --tabular-cell-bg: hsl(var(--card));
+    --tabular-row-hover-bg: hsl(222 20% 18%);
+    --tabular-selection-bg: hsl(214 55% 22%);
   }
 
   * {
@@ -81,17 +131,39 @@
     width: 100%;
     min-height: 100vh;
     background:
-      radial-gradient(1200px 500px at -10% -20%, hsl(210 35% 90%), transparent 70%),
-      radial-gradient(900px 400px at 100% -10%, hsl(220 20% 88%), transparent 70%),
+      radial-gradient(1200px 500px at -10% -20%, hsl(210 38% 95%), transparent 70%),
+      radial-gradient(900px 400px at 100% -10%, hsl(220 24% 94%), transparent 70%),
       hsl(var(--background));
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     @apply bg-background text-foreground;
   }
 
+  select,
+  option,
+  optgroup {
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--card));
+  }
+
   #root {
     width: 100%;
     min-height: 100vh;
+  }
+
+  html[data-theme="dark"] body {
+    background:
+      radial-gradient(1200px 500px at -10% -20%, hsl(218 22% 16%), transparent 70%),
+      radial-gradient(900px 400px at 100% -10%, hsl(222 24% 13%), transparent 70%),
+      hsl(var(--background));
+  }
+
+  html[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"] {
+    color-scheme: light;
   }
 
   @media (min-width: 1024px) {
@@ -136,7 +208,7 @@
   }
 
   .app-filter-panel {
-    @apply rounded-xl border border-[#c6d8ef] bg-[#f4f8ff] p-2;
+    @apply rounded-xl border border-tabular-border bg-tabular-header p-2;
   }
 
   .tabular-grid-row {
@@ -148,16 +220,24 @@
     box-shadow:
       inset -1px 0 0 var(--tabular-grid-line-color),
       inset 0 -1px 0 var(--tabular-grid-line-color);
+    background-clip: padding-box;
   }
 
   .tabular-grid-row > .tabular-grid-cell:last-child {
     box-shadow: inset 0 -1px 0 var(--tabular-grid-line-color);
   }
 
+  html[data-theme="light"] .tabular-grid-row:first-child > .tabular-grid-cell {
+    box-shadow:
+      inset -1px 0 0 var(--tabular-grid-line-color),
+      inset 0 -2px 0 var(--tabular-grid-line-color);
+  }
+
   .tabular-scroll-region {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-color: color-mix(in srgb, var(--tabular-frame-border-color) 85%, transparent)
+      transparent;
   }
 
   .tabular-scroll-region::-webkit-scrollbar {
@@ -170,20 +250,20 @@
   }
 
   .tabular-scroll-region::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: color-mix(in srgb, var(--tabular-frame-border-color) 85%, transparent);
     border-radius: 999px;
   }
 
   .tabular-scroll-region::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: color-mix(in srgb, var(--tabular-header-text) 65%, transparent);
   }
 
   .app-filter-legend {
-    @apply rounded-full border border-[#c6d8ef] bg-[#eef5ff] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#35597f];
+    @apply rounded-full border border-tabular-border bg-secondary px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-tabular-header-text;
   }
 
   .app-filter-help {
-    @apply mb-2 text-[11px] leading-tight text-[#4c6e93];
+    @apply mb-2 text-[11px] leading-tight text-muted-foreground;
   }
 
   .app-filter-row {

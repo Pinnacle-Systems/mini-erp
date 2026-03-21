@@ -369,8 +369,8 @@ export function CategoriesPage() {
                 key={bucket.name}
                 className={`flex min-h-8 items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-xs transition ${
                   activeBucket?.name === bucket.name
-                    ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
-                    : "border-border/70 bg-white/70 text-foreground/80 hover:bg-white"
+                    ? "border-primary/20 bg-primary/10 text-primary"
+                    : "border-border/70 bg-card/70 text-foreground/80 hover:bg-card"
                 }`}
               >
                 <Button
@@ -381,7 +381,13 @@ export function CategoriesPage() {
                   className="flex h-6 min-w-0 flex-1 items-center justify-between border-none bg-transparent px-0 text-left text-xs font-medium shadow-none hover:bg-transparent"
                 >
                   <span className="truncate font-medium">{bucket.name}</span>
-                  <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px]">
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                      activeBucket?.name === bucket.name
+                        ? "bg-primary/12 text-primary"
+                        : "bg-muted/70 text-muted-foreground"
+                    }`}
+                  >
                     {getBucketVariantCount(bucket)}
                   </span>
                 </Button>
@@ -389,7 +395,7 @@ export function CategoriesPage() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 gap-1 px-1.5 text-[11px] text-[#8a2d2d] hover:bg-[#fff1f1]"
+                  className="h-6 gap-1 px-1.5 text-[11px] text-[#8a2d2d] hover:bg-[#fff1f1] lg:hidden"
                   onClick={() => {
                     void onDeleteCategory(bucket);
                   }}
@@ -400,6 +406,19 @@ export function CategoriesPage() {
                   <Trash2 aria-hidden="true" />
                   <span>Delete</span>
                 </Button>
+                <IconButton
+                  type="button"
+                  icon={Trash2}
+                  variant="ghost"
+                  className="hidden h-6 w-6 rounded-full border-none bg-transparent p-0 text-[#8a2d2d] shadow-none transition hover:bg-[#fff1f1] lg:inline-flex"
+                  onClick={() => {
+                    void onDeleteCategory(bucket);
+                  }}
+                  disabled={loading}
+                  aria-label={`Delete category ${bucket.name}`}
+                  title={`Delete category ${bucket.name}`}
+                  iconSize={14}
+                />
               </div>
             ))}
           </div>

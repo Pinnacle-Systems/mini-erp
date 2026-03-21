@@ -563,13 +563,13 @@ function SalesDocumentWorkspace({
     usesTransactionType(config.documentType) &&
     transactionType === "CREDIT" &&
     !activeCustomer
-      ? "border-amber-300 bg-amber-50/40 focus:border-amber-400 focus:ring-amber-200/70"
+      ? "border-warning/45 bg-warning/10 focus:border-warning/60 focus:ring-warning/20"
       : undefined;
 
   const transactionField = usesTransactionType(config.documentType) ? (
     <div className={isPosMode ? "space-y-0.5" : "space-y-1"}>
       <Label htmlFor="sales-bill-transaction-switch">Transaction</Label>
-      <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 text-xs text-[#15314e] lg:h-7 lg:text-[11px]">
+      <div className="flex h-8 w-max items-center gap-2 rounded-lg border border-input bg-card px-3 text-xs text-foreground lg:h-7 lg:text-[11px]">
         <span
           className={
             transactionType === "CASH"
@@ -587,9 +587,9 @@ function SalesDocumentWorkspace({
             setTransactionType(checked ? "CREDIT" : "CASH")
           }
           aria-label="Toggle cash or credit transaction"
-          className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
-          checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
-          uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+          className="h-6 w-11 border border-border/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)]"
+          checkedTrackClassName="border-primary/60 bg-primary/80"
+          uncheckedTrackClassName="border-border/80 bg-muted"
         />
         <span
           className={
@@ -625,7 +625,7 @@ function SalesDocumentWorkspace({
         </div>
       ) : null}
       {numberConflict ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+        <div className="rounded-md border border-warning/35 bg-warning/12 px-2 py-1.5 text-[11px] text-warning">
           {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number`}{" "}
           <span className="font-semibold">{numberConflict.requested}</span> is already
           used. Suggested:{" "}
@@ -633,7 +633,7 @@ function SalesDocumentWorkspace({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] underline underline-offset-2 hover:bg-transparent"
+            className="h-auto px-0 py-0 text-[11px] font-semibold text-primary underline underline-offset-2 hover:bg-transparent"
             onClick={() => {
               void applySuggestedInvoiceNumber();
             }}
@@ -694,7 +694,7 @@ function SalesDocumentWorkspace({
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 w-fit border-[#9fb5cd] bg-white px-2 text-[11px] font-semibold text-[#1f4167] shadow-none hover:bg-[#f7f9fb] md:mt-[1px] md:shrink-0"
+            className="h-7 w-fit border-input bg-card px-2 text-[11px] font-semibold text-primary shadow-none hover:bg-muted/65 md:mt-[1px] md:shrink-0"
             onClick={openCustomerCreate}
           >
             Create customer
@@ -712,7 +712,7 @@ function SalesDocumentWorkspace({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                className="h-auto px-0 py-0 text-[11px] font-semibold text-primary hover:bg-transparent"
                 onClick={() => {
                   void quickCreateCustomerFromPhone();
                 }}
@@ -747,11 +747,11 @@ function SalesDocumentWorkspace({
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex shrink-0 items-center gap-2">
             <h1 className="text-sm font-semibold text-foreground">New Sale</h1>
-            <span className="rounded-md border border-border/70 bg-slate-50 px-2 py-0.5 text-[11px] text-muted-foreground">
+            <span className="rounded-md border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground">
               #{billNumber}
             </span>
           </div>
-          <div className="flex h-7 shrink-0 items-center gap-2 rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-2 text-[11px] text-[#15314e]">
+          <div className="flex h-7 shrink-0 items-center gap-2 rounded-lg border border-input bg-card px-2 text-[11px] text-foreground">
             <span
               className={
                 transactionType === "CASH"
@@ -769,9 +769,9 @@ function SalesDocumentWorkspace({
                 setTransactionType(checked ? "CREDIT" : "CASH")
               }
               aria-label="Toggle cash or credit transaction"
-              className="h-6 w-11 border border-[#b8cbe0] shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]"
-              checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
-              uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
+              className="h-6 w-11 border border-border/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)]"
+              checkedTrackClassName="border-primary/60 bg-primary/80"
+              uncheckedTrackClassName="border-border/80 bg-muted"
             />
             <span
               className={
@@ -823,7 +823,7 @@ function SalesDocumentWorkspace({
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 border-[#9fb5cd] bg-white px-2 text-[11px] font-semibold text-[#1f4167] shadow-none hover:bg-[#f7f9fb]"
+              className="h-7 border-input bg-card px-2 text-[11px] font-semibold text-primary shadow-none hover:bg-muted/65"
               onClick={openCustomerCreate}
             >
               Create customer
@@ -833,7 +833,7 @@ function SalesDocumentWorkspace({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 px-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                className="h-7 px-0 text-[11px] font-semibold text-primary hover:bg-transparent"
                 onClick={() => {
                   void quickCreateCustomerFromPhone();
                 }}
@@ -864,7 +864,7 @@ function SalesDocumentWorkspace({
               {draftMutationLoading ? "Saving..." : `Save Draft (${validLineCount || 1})`}
             </span>
             {!draftMutationLoading ? (
-              <span className="ml-2 rounded border border-border/80 bg-slate-50 px-1 py-0 text-[10px] font-medium text-muted-foreground">
+              <span className="ml-2 rounded border border-border/80 bg-muted/60 px-1 py-0 text-[10px] font-medium text-muted-foreground">
                 Ctrl+S
               </span>
             ) : null}
@@ -875,7 +875,7 @@ function SalesDocumentWorkspace({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
-      <div className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden">
+      <div className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden">
         {posDesktopWorkspaceHeader}
         {isPosMode && !isViewingPostedDocument ? (
           <div className="lg:hidden">
@@ -947,16 +947,16 @@ function SalesDocumentWorkspace({
         {isPosMode ? (
           <div className="grid gap-3 pb-2 pt-1 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-stretch lg:gap-2 lg:pb-0">
             <div className="flex min-h-0 flex-col gap-3 lg:h-full">
-              <div className="grid gap-1.5 rounded-xl border border-border/70 bg-slate-50/65 px-2 py-1.5 lg:hidden lg:grid-cols-[auto_auto] lg:items-start">
+              <div className="grid gap-1.5 rounded-xl border border-border/70 bg-muted/55 px-2 py-1.5 lg:hidden lg:grid-cols-[auto_auto] lg:items-start">
                 {transactionField}
                 {billNumberField}
               </div>
               {lookupError ? (
-                <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
+                <div className="rounded-md border border-destructive/35 bg-destructive/12 px-2 py-1.5 text-[11px] text-destructive">
                   {lookupError}
                 </div>
               ) : null}
-              <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border/80 bg-white p-2 shadow-sm lg:h-full lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+              <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border/80 bg-card p-2 shadow-sm lg:h-full lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
                 <SalesDocumentLineEditor
                   config={config}
                   lines={lines}
@@ -991,7 +991,7 @@ function SalesDocumentWorkspace({
             </div>
 
             <div className="lg:flex lg:min-h-0 lg:h-full lg:flex-col lg:border-l lg:border-border/60 lg:pl-1">
-              <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-white p-2 shadow-sm lg:min-h-0 lg:h-full lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-2 shadow-sm lg:min-h-0 lg:h-full lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
                 <SalesDocumentSummaryPanel
                   config={config}
                   activeBusinessName={activeBusinessName}
@@ -1015,7 +1015,7 @@ function SalesDocumentWorkspace({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-auto w-fit px-0 py-0 text-[11px] font-medium text-[#1f4167] hover:bg-transparent"
+                      className="h-7 w-fit rounded-md border border-transparent px-2 text-[11px] font-medium text-primary hover:border-border/70 hover:bg-muted/55"
                       onClick={() => setIsPosNotesOpen((current) => !current)}
                     >
                       {isPosNotesOpen || notes.trim()
@@ -1032,13 +1032,13 @@ function SalesDocumentWorkspace({
                       onChange={(event) => setNotes(event.target.value)}
                       placeholder="Optional internal note"
                       rows={2}
-                      className="w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:px-2.5 md:py-1.5 md:text-[11px]"
+                      className="w-full resize-none overflow-y-auto"
                     />
                   ) : null}
                 </div>
                 <div className="min-h-[1.75rem]">
                   {!isViewingPostedDocument && numberConflict ? (
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-warning/35 bg-warning/12 px-2 py-1 text-[11px] text-warning">
                       <span>
                         Requested number{" "}
                         <span className="font-semibold">{numberConflict.requested}</span>{" "}
@@ -1048,7 +1048,7 @@ function SalesDocumentWorkspace({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-auto px-0 py-0 text-[11px] font-semibold text-[#1f4167] hover:bg-transparent"
+                        className="h-auto px-0 py-0 text-[11px] font-semibold text-primary hover:bg-transparent"
                         onClick={() => {
                           void applySuggestedInvoiceNumber();
                         }}
@@ -1058,11 +1058,11 @@ function SalesDocumentWorkspace({
                       </Button>
                     </div>
                   ) : !isViewingPostedDocument && postValidationMessage ? (
-                    <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                    <div className="rounded-md border border-warning/35 bg-warning/12 px-2 py-1 text-[11px] text-warning">
                       {postValidationMessage}
                     </div>
                   ) : saveMessage ? (
-                    <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1 text-[11px] text-muted-foreground">
+                    <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
                       {saveMessage}
                     </div>
                   ) : null}
@@ -1097,7 +1097,7 @@ function SalesDocumentWorkspace({
           {parentDocumentNumber ? (
             <div className="space-y-1 md:w-[14rem] md:min-w-[14rem]">
               <Label>Source</Label>
-              <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
+              <div className="flex h-8 items-center rounded-md border border-border/80 bg-card px-2 text-xs text-muted-foreground">
                 {parentDocumentNumber}
               </div>
             </div>
@@ -1148,13 +1148,13 @@ function SalesDocumentWorkspace({
         </div>
 
         {lookupError ? (
-          <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
+          <div className="rounded-md border border-destructive/35 bg-destructive/12 px-2 py-1.5 text-[11px] text-destructive">
             {lookupError}
           </div>
         ) : null}
 
         {config.documentType === "DELIVERY_CHALLAN" ? (
-          <div className="grid gap-2 rounded-xl border border-border/80 bg-slate-50 p-2 md:grid-cols-3">
+          <div className="grid gap-2 rounded-xl border border-border/80 bg-muted/55 p-2 md:grid-cols-3">
             <div className="space-y-1">
               <Label htmlFor="delivery-challan-dispatch-date">
                 Dispatch date
@@ -1227,14 +1227,14 @@ function SalesDocumentWorkspace({
             getSameItemMixedOriginHint={getSameItemMixedOriginHint}
           />
 
-          <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-white p-1.5 md:flex-row md:items-start md:shrink-0">
+          <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-card p-1.5 md:flex-row md:items-start md:shrink-0">
             <div className="flex flex-col gap-1 md:min-h-0 md:flex-1">
               {isPosMode && !isViewingPostedDocument ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-auto w-fit px-0 py-0 text-[11px] font-medium text-[#1f4167] hover:bg-transparent"
+                  className="h-auto w-fit px-0 py-0 text-[11px] font-medium text-primary hover:bg-transparent"
                   onClick={() => setIsPosNotesOpen((current) => !current)}
                 >
                   {isPosNotesOpen || notes.trim()
@@ -1253,12 +1253,12 @@ function SalesDocumentWorkspace({
                   onChange={(event) => setNotes(event.target.value)}
                   placeholder="Optional internal note"
                   rows={isPosMode ? 2 : 2}
-                  className="min-h-[2.75rem] max-h-[4.5rem] w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:min-h-[3rem] md:px-2.5 md:py-1.5 md:text-[11px]"
+                  className="min-h-[2.75rem] max-h-[4.5rem] w-full resize-none overflow-y-auto md:min-h-[3rem]"
                 />
               ) : null}
               <div className="min-h-[1.75rem]">
                 {!isViewingPostedDocument && numberConflict ? (
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-warning/35 bg-warning/12 px-2 py-1 text-[11px] text-warning">
                     <span>
                       Requested number{" "}
                       <span className="font-semibold">

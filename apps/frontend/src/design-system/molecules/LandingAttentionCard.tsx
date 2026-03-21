@@ -6,10 +6,10 @@ type LandingAttentionCardProps = {
 
 export function LandingAttentionCard({ label, value, detail }: LandingAttentionCardProps) {
   return (
-    <div className="rounded-xl border border-[#d6e4f5] bg-[#f8fbff] p-2">
+    <div className="rounded-xl border border-border/80 bg-muted/70 p-2">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-foreground">{label}</p>
-        <span className="rounded-full bg-[#e8f2ff] px-2 py-0.5 text-[10px] font-semibold text-[#24507e]">
+        <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
           {value}
         </span>
       </div>

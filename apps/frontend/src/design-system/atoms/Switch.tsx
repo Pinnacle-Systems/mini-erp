@@ -41,7 +41,7 @@ export function Switch({
     >
       <span
         className={cn(
-          "absolute top-1/2 inline-block h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow transition-[left]",
+          "absolute top-1/2 inline-block h-4 w-4 -translate-y-1/2 rounded-full border border-white/15 bg-[hsl(210_20%_92%)] shadow-[0_1px_2px_rgba(15,23,42,0.32),inset_0_1px_0_rgba(255,255,255,0.18)] transition-[left,background-color,border-color,box-shadow]",
           checked ? "left-[calc(100%-1.25rem)]" : "left-1",
         )}
       />

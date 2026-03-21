@@ -115,11 +115,11 @@ export function PosQuickAddBar({
   }, [disabled, onValueChange, value]);
 
   return (
-    <div className="grid gap-1.5 rounded-xl border border-[#8fb6e2] bg-[#f4f8ff] p-2 shadow-[inset_0_0_0_1px_rgba(143,182,226,0.18)] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+    <div className="grid gap-1.5 rounded-xl border border-border/80 bg-muted/55 p-2 shadow-[inset_0_0_0_1px_hsl(var(--border)/0.35)] lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
       <div className="space-y-1 lg:space-y-0">
         <div className="flex items-center justify-between gap-2 lg:hidden">
           <Label htmlFor="sales-pos-quick-add">Quick add item</Label>
-          <span className="text-[10px] font-medium uppercase tracking-[0.05em] text-[#355a84]">
+          <span className="text-[10px] font-medium uppercase tracking-[0.05em] text-primary">
             Scanner focus
           </span>
         </div>
@@ -142,7 +142,7 @@ export function PosQuickAddBar({
                 `${option.label} ${option.sku} ${option.barcode} ${option.gstLabel}`
               }
               renderOption={(option) => <SalesItemOptionContent option={option} />}
-              inputClassName="h-10 border-[#6fa2db] bg-white text-sm shadow-[0_0_0_1px_rgba(111,162,219,0.12)] lg:h-9 lg:pr-20"
+              inputClassName="h-10 border-primary/40 bg-card text-sm shadow-[0_0_0_1px_hsl(var(--primary)/0.12)] lg:h-9 lg:pr-20"
               inputProps={{
                 onKeyDown: (event) => {
                   if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) {
@@ -159,7 +159,7 @@ export function PosQuickAddBar({
                 },
               }}
             />
-            <span className="pointer-events-none absolute inset-y-0 right-3 hidden items-center text-[9px] font-medium text-[#8ca0b4] lg:inline-flex">
+            <span className="pointer-events-none absolute inset-y-0 right-3 hidden items-center text-[9px] font-medium text-muted-foreground lg:inline-flex">
               Scan ready
             </span>
           </div>

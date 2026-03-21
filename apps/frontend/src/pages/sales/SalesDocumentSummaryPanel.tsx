@@ -57,7 +57,7 @@ export function SalesDocumentSummaryPanel({
       <div
         className={`rounded-xl border px-3 py-3 ${
           isPosMode
-            ? "border-[#c9dcf2] bg-[#f4f8ff]"
+            ? "border-border/80 bg-muted/55"
             : "border-transparent bg-transparent px-0 py-0"
         }`}
       >
@@ -128,8 +128,8 @@ export function SalesDocumentSummaryPanel({
           </>
         ) : null}
         {isPosMode ? (
-          <div className="rounded-lg border border-[#8fb6e2] bg-white px-3 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#355a84]">
+          <div className="rounded-lg border border-primary/25 bg-primary/6 px-3 py-3 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.06)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-primary">
               Total payable
             </div>
             <div className="mt-1 text-4xl font-semibold tracking-[-0.03em] text-foreground">
@@ -137,7 +137,7 @@ export function SalesDocumentSummaryPanel({
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
+          <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 text-xs">
             <span className="font-semibold text-foreground">Grand total</span>
             <span className="font-semibold text-foreground">
               {formatCurrency(totals.grandTotal)}
@@ -150,14 +150,14 @@ export function SalesDocumentSummaryPanel({
               <Button
                 type="button"
                 size="sm"
-                className="w-full justify-between"
+                className="group w-full justify-between disabled:border-input disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
                 onClick={onOpenPosPayment}
                 disabled={isPosting || !canCheckout}
               >
                 <span>
                   {isPosting ? "Working..." : canCheckout ? "Pay Now" : "Add item to pay"}
                 </span>
-                <span className="rounded border border-white/40 bg-white/10 px-1 py-0 text-[10px] font-medium text-white/90">
+                <span className="rounded border border-primary-foreground/25 bg-primary-foreground/10 px-1 py-0 text-[10px] font-medium text-primary-foreground/90 group-disabled:border-border/70 group-disabled:bg-muted/70 group-disabled:text-muted-foreground">
                   Ctrl+Enter
                 </span>
               </Button>

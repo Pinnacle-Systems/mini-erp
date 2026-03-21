@@ -5,6 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0e7490" />
     <title>Mini ERP Frontend</title>
+    <script>
+      (() => {
+        try {
+          const storageKey = "mini-erp-theme-pref";
+          const validThemes = ["light", "dark"];
+          const saved = window.localStorage.getItem(storageKey);
+          let theme = "light";
+
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            const candidate = parsed?.state?.theme;
+
+            if (typeof candidate === "string" && validThemes.includes(candidate)) {
+              theme = candidate;
+            }
+          }
+
+          document.documentElement.dataset.theme = theme;
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <style>
       :root {
         font-family:
@@ -21,19 +44,31 @@
         display: grid;
         place-items: center;
         background:
-          radial-gradient(900px 400px at -10% -20%, #dbeafe, transparent 70%),
-          radial-gradient(800px 300px at 110% -20%, #e0f2fe, transparent 70%),
-          #f4f8fc;
-        color: #111827;
+          radial-gradient(900px 400px at -10% -20%, hsl(210 35% 90%), transparent 70%),
+          radial-gradient(800px 300px at 110% -20%, hsl(220 20% 88%), transparent 70%),
+          hsl(220 16% 91%);
+        color: hsl(220 20% 12%);
+      }
+      html[data-theme="dark"] body {
+        background:
+          radial-gradient(900px 400px at -10% -20%, hsl(214 45% 24%), transparent 70%),
+          radial-gradient(800px 300px at 110% -20%, hsl(224 36% 20%), transparent 70%),
+          hsl(224 34% 12%);
+        color: hsl(210 40% 96%);
       }
       .boot-fallback {
         display: none;
         width: min(540px, calc(100% - 2rem));
         border-radius: 24px;
-        border: 1px solid #dbe3ee;
-        background: #ffffffd9;
+        border: 1px solid hsl(214 23% 81%);
+        background: hsl(220 20% 100% / 0.85);
         padding: 2rem;
         box-shadow: 0 20px 48px -28px rgb(15 23 42 / 0.35);
+      }
+      html[data-theme="dark"] .boot-fallback {
+        border-color: hsl(219 17% 32%);
+        background: hsl(224 30% 16% / 0.92);
+        box-shadow: 0 20px 48px -28px rgb(2 6 23 / 0.65);
       }
       html.show-boot-fallback .boot-fallback {
         display: block;
@@ -44,7 +79,10 @@
       }
       .boot-fallback p {
         margin: 0;
-        color: #4b5563;
+        color: hsl(220 10% 44%);
+      }
+      html[data-theme="dark"] .boot-fallback p {
+        color: hsl(214 18% 70%);
       }
     </style>
   </head>

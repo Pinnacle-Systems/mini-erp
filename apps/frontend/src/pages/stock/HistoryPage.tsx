@@ -164,7 +164,7 @@ export function HistoryPage() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 lg:flex lg:min-h-0 lg:flex-col">
-        <div className="grid gap-3 border border-border/80 bg-slate-50 p-3 lg:grid-cols-[minmax(0,1fr)_180px_auto] lg:items-end">
+        <div className="grid gap-3 rounded-lg border border-border/80 bg-muted/55 p-3 lg:grid-cols-[minmax(0,1fr)_180px_auto] lg:items-end">
           <div className="space-y-1.5">
             <Label htmlFor="stock-history-search">Search</Label>
             <Input
@@ -225,13 +225,13 @@ export function HistoryPage() {
           </p>
         </div>
 
-        {error ? <p className="text-xs text-red-700">{error}</p> : null}
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
         {loading && rows.length === 0 ? (
           <p className="text-xs text-muted-foreground">Loading stock history...</p>
         ) : null}
 
         <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-          <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+          <TabularSurface className="min-h-0 flex-1 overflow-hidden">
             <TabularHeader>
               <TabularRow columns={desktopGridTemplate}>
                 <TabularSerialNumberHeaderCell />
@@ -273,7 +273,7 @@ export function HistoryPage() {
                   <TabularCell>{toMovementLabel(row.reason)}</TabularCell>
                   <TabularCell
                     align="end"
-                    className={row.quantity < 0 ? "font-semibold text-red-700" : "font-semibold text-foreground"}
+                    className={row.quantity < 0 ? "font-semibold text-destructive" : "font-semibold text-foreground"}
                   >
                     {row.quantity < 0 ? "-" : "+"}
                     {formatQuantity(row.quantity)}
@@ -297,14 +297,14 @@ export function HistoryPage() {
 
         <div className="space-y-2 lg:hidden">
           {filteredRows.length === 0 && !loading ? (
-            <div className="rounded-lg border border-border/80 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-border/80 bg-muted/55 px-3 py-2 text-xs text-muted-foreground">
               Recent stock movements will appear here after inventory changes are recorded.
             </div>
           ) : null}
           {filteredRows.map((row) => (
             <div
               key={row.entityId}
-              className="rounded-lg border border-border/80 bg-white px-3 py-2"
+              className="rounded-lg border border-border/80 bg-card px-3 py-2"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -323,7 +323,7 @@ export function HistoryPage() {
                 </div>
                 <p
                   className={`text-sm font-semibold ${
-                    row.quantity < 0 ? "text-red-700" : "text-foreground"
+                    row.quantity < 0 ? "text-destructive" : "text-foreground"
                   }`}
                 >
                   {row.quantity < 0 ? "-" : "+"}

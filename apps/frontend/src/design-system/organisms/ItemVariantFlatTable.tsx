@@ -117,15 +117,15 @@ export function ItemVariantFlatTable({
   const hasAction = Boolean(onAction || onOpenItem);
   const desktopGridTemplate = useMemo(() => {
     const tracks = [
-      showCategory ? "minmax(0, 14%)" : null,
-      "minmax(0, 28%)",
-      "minmax(0, 18%)",
-      showUnit ? "5rem" : null,
-      showCommercialFields ? "6rem" : null,
-      showCommercialFields ? "7rem" : null,
-      showCommercialFields && showPurchasePrice ? "7rem" : null,
-      showCommercialFields ? "6rem" : null,
-      showStatus ? "minmax(0, 12%)" : null,
+      showCategory ? "minmax(10rem, 1.2fr)" : null,
+      "minmax(14rem, 2fr)",
+      "minmax(8rem, 1.1fr)",
+      showUnit ? "4.5rem" : null,
+      showCommercialFields ? "5.5rem" : null,
+      showCommercialFields ? "6.5rem" : null,
+      showCommercialFields && showPurchasePrice ? "6.5rem" : null,
+      showCommercialFields ? "5.5rem" : null,
+      showStatus ? "minmax(7.5rem, 0.9fr)" : null,
       hasAction ? "3.5rem" : null,
     ].filter(Boolean);
     return withTabularSerialNumberColumn(tracks.join(" "));

@@ -36,7 +36,7 @@ type TabularSerialNumberCellProps = Omit<TabularCellProps, "children"> & {
 };
 
 const tabularReadOnlyCellClassName =
-  "h-[var(--tabular-row-height)] bg-[var(--tabular-cell-bg)] text-[11px] font-normal leading-none transition-colors group-hover/tabular-row:bg-[var(--tabular-cell-hover-bg)] lg:text-[10px]";
+  "h-[var(--tabular-row-height)] bg-card text-[11px] font-normal leading-none text-card-foreground transition-colors group-hover/tabular-row:bg-[var(--tabular-row-hover-bg)] lg:text-[10px]";
 
 const tabularGridCellChromeClassName = "tabular-grid-cell";
 
@@ -71,7 +71,7 @@ export const TabularSurface = forwardRef<HTMLDivElement, TabularSurfaceProps>(
       <div
         ref={ref}
         className={cn(
-          "flex min-h-0 flex-col overflow-hidden bg-white",
+          "flex min-h-0 flex-col overflow-hidden bg-card",
           framed ? tabularFrameClassName : undefined,
           className,
         )}
@@ -142,7 +142,7 @@ export function TabularBody({
       ref={bodyRef}
       role="rowgroup"
       className={cn(
-        "tabular-scroll-region flex min-h-0 flex-1 flex-col overflow-y-auto bg-white",
+        "tabular-scroll-region flex min-h-0 flex-1 flex-col overflow-y-auto bg-card text-card-foreground",
         className,
       )}
       {...props}
