@@ -435,7 +435,7 @@ export function AdjustmentsPage() {
                         }
                         setActiveLocation(activeStore, event.target.value || null);
                       }}
-                      className="h-7 min-w-[11rem] max-w-[14rem] bg-white px-2 text-[11px] lg:h-6 lg:text-[10px]"
+                      className="h-7 min-w-[11rem] max-w-[14rem] border-input bg-card px-2 text-[11px] text-foreground shadow-none lg:h-6 lg:text-[10px]"
                     >
                       {(activeBusiness.locations ?? []).map((location) => (
                         <option key={location.id} value={location.id}>
@@ -445,7 +445,7 @@ export function AdjustmentsPage() {
                       ))}
                     </Select>
                   ) : (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-foreground">
+                    <span className="rounded-full border border-border/70 bg-muted/55 px-2 py-0.5 text-foreground">
                       {activeLocation?.name ?? "Default location"}
                     </span>
                   )}
@@ -485,22 +485,22 @@ export function AdjustmentsPage() {
 
         <CardContent className="space-y-1.5 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
           {!activeStore || !isBusinessSelected ? (
-            <p className="rounded-lg border border-border/80 bg-slate-50 px-2 py-2 text-xs text-muted-foreground">
+            <p className="rounded-lg border border-border/80 bg-muted/55 px-2 py-2 text-xs text-muted-foreground">
               Select a business first to record stock adjustments.
             </p>
           ) : isLoadingOptions ? (
-            <p className="rounded-lg border border-border/80 bg-slate-50 px-2 py-2 text-xs text-muted-foreground">
+            <p className="rounded-lg border border-border/80 bg-muted/55 px-2 py-2 text-xs text-muted-foreground">
               Loading item variants...
             </p>
           ) : options.length === 0 ? (
-            <p className="rounded-lg border border-border/80 bg-slate-50 px-2 py-2 text-xs text-muted-foreground">
+            <p className="rounded-lg border border-border/80 bg-muted/55 px-2 py-2 text-xs text-muted-foreground">
               No synced item variants available. Add items first, then return here.
             </p>
           ) : (
             <>
               <div className="space-y-2 lg:hidden">
                 {rows.map((row, index) => (
-                  <div key={row.id} className="space-y-2 rounded-lg border border-border/80 bg-white p-2">
+                  <div key={row.id} className="space-y-2 rounded-lg border border-border/80 bg-card p-2">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
                       Row {index + 1}
                     </p>
@@ -570,7 +570,7 @@ export function AdjustmentsPage() {
                     </div>
                     <div className="space-y-1">
                       <Label>Unit</Label>
-                      <p className="min-h-8 rounded-lg border border-border/80 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                      <p className="min-h-8 rounded-lg border border-border/80 bg-muted/55 px-3 py-2 text-xs text-muted-foreground">
                         {optionByVariantId.get(row.variantId)?.unit || "Select item variant first"}
                       </p>
                     </div>
@@ -578,7 +578,7 @@ export function AdjustmentsPage() {
                       <IconButton
                         type="button"
                         variant="ghost"
-                        className="flex-1 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+                        className="flex-1 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                         icon={RotateCcw}
                         iconSize={14}
                         title="Clear row"
@@ -589,7 +589,7 @@ export function AdjustmentsPage() {
                       <IconButton
                         type="button"
                         variant="ghost"
-                        className="flex-1 text-muted-foreground hover:bg-red-50 hover:text-red-700"
+                        className="flex-1 text-muted-foreground hover:bg-destructive/12 hover:text-destructive"
                         icon={Trash2}
                         iconSize={14}
                         title="Remove row"
@@ -603,7 +603,7 @@ export function AdjustmentsPage() {
               </div>
 
               <div className="mt-1 hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-                <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+                <TabularSurface className="min-h-0 flex-1 overflow-hidden">
                   <TabularHeader>
                     <TabularRow columns={desktopGridTemplate}>
                       <TabularSerialNumberHeaderCell />
@@ -630,7 +630,7 @@ export function AdjustmentsPage() {
                             inputUnstyled
                             inputClassName={cn(
                               spreadsheetCellSelectClassName,
-                              row.variantId ? "text-foreground" : "text-[#8ea0b3]",
+                              row.variantId ? "text-foreground" : "text-foreground/55",
                             )}
                             dropdownClassName="max-h-56"
                             onValueChange={(value) =>
@@ -663,7 +663,7 @@ export function AdjustmentsPage() {
                             unstyled
                             className={cn(
                               spreadsheetCellSelectClassName,
-                              row.reason ? "text-foreground" : "text-[#8ea0b3]",
+                              row.reason ? "text-foreground" : "text-foreground/55",
                             )}
                             value={row.reason}
                             onChange={(event) =>
@@ -713,7 +713,7 @@ export function AdjustmentsPage() {
                             <IconButton
                               type="button"
                               variant="ghost"
-                              className="h-7 w-7 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+                              className="h-7 w-7 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                               icon={RotateCcw}
                               iconSize={14}
                               title="Clear row"
@@ -724,7 +724,7 @@ export function AdjustmentsPage() {
                             <IconButton
                               type="button"
                               variant="ghost"
-                              className="h-7 w-7 text-muted-foreground hover:bg-red-50 hover:text-red-700"
+                              className="h-7 w-7 text-muted-foreground hover:bg-destructive/12 hover:text-destructive"
                               icon={Trash2}
                               iconSize={14}
                               title="Remove row"
@@ -742,8 +742,8 @@ export function AdjustmentsPage() {
             </>
           )}
 
-          {error ? <p className="text-xs text-red-700">{error}</p> : null}
-          {message ? <p className="text-xs text-emerald-700">{message}</p> : null}
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          {message ? <p className="text-xs text-success">{message}</p> : null}
         </CardContent>
       </Card>
     </section>

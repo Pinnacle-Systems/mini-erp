@@ -238,12 +238,12 @@ function PurchaseDocumentWorkspace({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc] lg:overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col bg-background lg:overflow-hidden">
       <div
         className={`grid min-h-0 flex-1 gap-2 lg:overflow-hidden ${isEditorRoute ? "lg:grid-cols-1" : "lg:grid-cols-1"}`}
       >
         {!isEditorRoute ? (
-        <section className="flex h-full min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:overflow-hidden">
+        <section className="flex h-full min-h-0 flex-col rounded-xl border border-border/85 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:overflow-hidden">
           <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
               <h1 className="text-sm font-semibold text-foreground">{config.listTitle}</h1>
@@ -266,22 +266,22 @@ function PurchaseDocumentWorkspace({
 
           <div className="space-y-2 pt-2 lg:hidden">
             {documentsError ? (
-              <div className="rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+              <div className="rounded-md border border-destructive/35 bg-destructive/12 px-2 py-3 text-xs text-destructive">
                 {documentsError}
               </div>
             ) : null}
             {documentsLoading ? (
-              <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+              <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
                 {`Loading ${config.pluralLabel}...`}
               </div>
             ) : null}
             {documentRows.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+              <div className="rounded-md border border-dashed border-border/80 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
                 {config.listEmptyMessage}
               </div>
             ) : (
               documentRows.map((row) => (
-                <div key={row.id} className="rounded-lg border border-border/70 bg-white px-2 py-2 text-xs">
+                <div key={row.id} className="rounded-lg border border-border/70 bg-card px-2 py-2 text-xs">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{row.billNumber}</div>
@@ -313,7 +313,7 @@ function PurchaseDocumentWorkspace({
                       type="button"
                       icon={MoreHorizontal}
                       variant="ghost"
-                      className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                      className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-primary hover:bg-muted/70"
                       onClick={(event) => {
                         rowMenuButtonRefs.current.set(row.id, event.currentTarget);
                         setOpenRowMenuId(row.id);
@@ -328,22 +328,22 @@ function PurchaseDocumentWorkspace({
 
           <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {documentsError ? (
-              <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+              <div className="mt-2 rounded-md border border-destructive/35 bg-destructive/12 px-2 py-3 text-xs text-destructive">
                 {documentsError}
               </div>
             ) : null}
             {documentsLoading ? (
-              <div className="mt-2 rounded-md border border-border/70 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+              <div className="mt-2 rounded-md border border-border/70 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
                 {`Loading ${config.pluralLabel}...`}
               </div>
             ) : null}
             {documentRows.length === 0 ? (
-              <div className="mt-2 rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+              <div className="mt-2 rounded-md border border-dashed border-border/80 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
                 {config.listEmptyMessage}
               </div>
             ) : (
               <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
-                <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+                <TabularSurface className="min-h-0 flex-1 overflow-hidden">
                   <TabularHeader>
                     <TabularRow columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,1fr) 3rem" : "minmax(0,1.2fr) minmax(0,1.85fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1fr) 3rem")}>
                       <TabularSerialNumberHeaderCell />
@@ -384,7 +384,7 @@ function PurchaseDocumentWorkspace({
                               type="button"
                               icon={MoreHorizontal}
                               variant="ghost"
-                              className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                              className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-primary hover:bg-muted/70"
                               onClick={(event) => {
                                 rowMenuButtonRefs.current.set(row.id, event.currentTarget);
                                 setOpenRowMenuId(row.id);
@@ -404,7 +404,7 @@ function PurchaseDocumentWorkspace({
         ) : null}
 
         {isEditorRoute ? (
-        <section className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:overflow-hidden">
+        <section className="flex min-h-0 flex-col rounded-xl border border-border/85 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:overflow-hidden">
           <div className="flex flex-col gap-1.5 border-b border-border/70 pb-1.5 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -416,7 +416,7 @@ function PurchaseDocumentWorkspace({
                       : config.createTitle}
                 </h2>
                 {activeDocument?.status && activeDocument.status !== "DRAFT" ? (
-                  <span className="hidden rounded-md border border-border/70 bg-slate-50 px-2 py-0.5 text-[10px] text-muted-foreground lg:inline-flex">
+                  <span className="hidden rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] text-primary lg:inline-flex">
                     Status: {activeDocument.status}
                   </span>
                 ) : null}
@@ -526,7 +526,7 @@ function PurchaseDocumentWorkspace({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-7 w-fit border-[#9fb5cd] bg-white px-2 text-[11px] font-semibold text-[#1f4167] shadow-none hover:bg-[#f7f9fb] md:mt-[1px] md:shrink-0"
+                          className="h-7 w-fit border-input bg-card px-2 text-[11px] font-semibold text-primary shadow-none hover:bg-muted/65 md:mt-[1px] md:shrink-0"
                           onClick={openSupplierCreate}
                         >
                           Create supplier
@@ -565,7 +565,7 @@ function PurchaseDocumentWorkspace({
                 {parentDocumentNumber ? (
                   <div className="space-y-1 md:w-[14rem] md:min-w-[14rem]">
                     <Label>Source</Label>
-                    <div className="flex h-8 items-center rounded-md border border-border/80 bg-white px-2 text-xs text-muted-foreground">
+                    <div className="flex h-8 items-center rounded-md border border-border/80 bg-muted/45 px-2 text-xs text-muted-foreground">
                       {parentDocumentNumber}
                     </div>
                   </div>
@@ -586,12 +586,12 @@ function PurchaseDocumentWorkspace({
               </div>
 
               {lookupError ? (
-                <div className="rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+                <div className="rounded-md border border-destructive/35 bg-destructive/12 px-2 py-3 text-xs text-destructive">
                   {lookupError}
                 </div>
               ) : null}
               {formError ? (
-                <div className="rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+                <div className="rounded-md border border-destructive/35 bg-destructive/12 px-2 py-3 text-xs text-destructive">
                   {formError}
                 </div>
               ) : null}
@@ -638,7 +638,7 @@ function PurchaseDocumentWorkspace({
                 }
               />
 
-              <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-white p-1.5 md:flex-row md:items-start md:shrink-0">
+              <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-card p-1.5 md:flex-row md:items-start md:shrink-0">
                 <div className="flex flex-col gap-1 md:min-h-0 md:flex-1">
                   <Label htmlFor="purchase-notes">Notes</Label>
                   <Textarea
@@ -648,11 +648,11 @@ function PurchaseDocumentWorkspace({
                     disabled={isViewingPostedDocument}
                     rows={2}
                     placeholder="Optional internal note"
-                    className="min-h-[2.75rem] max-h-[4.5rem] w-full resize-none overflow-y-auto rounded-lg border border-[#9fb5cd] bg-[#f7f9fb] px-3 py-2 text-xs text-[#15314e] placeholder:text-[#6d829b] shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-[#5d95d6] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6aa5eb]/20 md:min-h-[3rem] md:px-2.5 md:py-1.5 md:text-[11px]"
+                    className="min-h-[2.75rem] max-h-[4.5rem] w-full resize-none overflow-y-auto rounded-lg border border-input bg-muted/55 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus:border-ring focus:bg-card focus:outline-none focus:ring-2 focus:ring-ring/20 md:min-h-[3rem] md:px-2.5 md:py-1.5 md:text-[11px]"
                   />
                   <div className="min-h-[1.75rem]">
                     {postValidationMessage ? (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                      <div className="rounded-md border border-warning/35 bg-warning/12 px-2 py-1 text-[11px] text-warning">
                         {postValidationMessage}
                       </div>
                     ) : null}
@@ -686,7 +686,7 @@ function PurchaseDocumentWorkspace({
                         <span className="truncate font-semibold text-foreground">{parentDocumentNumber}</span>
                       </div>
                     ) : null}
-                    <div className="flex items-center justify-between rounded-md border border-border/70 bg-slate-50 px-2 py-1.5 text-xs">
+                    <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 text-xs">
                       <span className="font-semibold text-foreground">Grand total</span>
                       <span className="font-semibold text-foreground">{formatCurrency(totals.grandTotal)}</span>
                     </div>

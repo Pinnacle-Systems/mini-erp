@@ -28,6 +28,23 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))"
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))"
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))"
+        },
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        tabular: {
+          border: "hsl(var(--tabular-frame-border-color))",
+          header: "hsl(var(--tabular-header-bg))",
+          "header-text": "hsl(var(--tabular-header-text))",
+          grid: "hsl(var(--tabular-grid-line-color))",
+          hover: "hsl(var(--tabular-row-hover-bg))"
         }
       },
       boxShadow: {

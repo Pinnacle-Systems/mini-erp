@@ -12,11 +12,11 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variantStyles: Record<ButtonVariant, string> = {
   default:
-    "border border-[#0a63dd] bg-[#0a74ff] text-white shadow-[0_1px_2px_rgba(10,116,255,0.22),0_8px_16px_-14px_rgba(10,116,255,0.45)] hover:bg-[#0d7eff] active:bg-[#0667e3]",
+    "border border-primary/90 bg-primary text-primary-foreground shadow-[0_1px_2px_hsl(var(--primary)/0.22),0_8px_16px_-14px_hsl(var(--primary)/0.45)] hover:bg-primary/95 active:bg-primary/90",
   ghost:
     "border border-transparent bg-transparent text-foreground hover:bg-muted active:bg-muted/80",
   outline:
-    "border border-[#8fa9c7] bg-[#f6f8fb] text-[#15314e] shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-[#fbfcfd] active:bg-[#edf2f7]"
+    "border border-input bg-card text-card-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-background/90 active:bg-muted"
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

@@ -157,14 +157,14 @@ export function PurchaseDocumentLineEditor({
         {lines.map((line, index) => {
           const lineTotals = getLineTotals(line);
           return (
-            <div key={line.id} className="rounded-lg border border-border/80 bg-slate-50 p-2">
+            <div key={line.id} className="rounded-lg border border-border/80 bg-muted/55 p-2">
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-xs font-semibold text-foreground">Line {index + 1}</div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-auto p-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"
+                  className="h-auto p-1.5 text-[11px] font-semibold text-destructive hover:bg-destructive/12 hover:text-destructive"
                   disabled={isViewingPostedDocument}
                   onClick={() => onRemoveLine(line.id)}
                 >
@@ -260,7 +260,7 @@ export function PurchaseDocumentLineEditor({
                     </Button>
                   </div>
                 </div>
-                <div className="flex items-center justify-between rounded-md border border-border/80 bg-white px-2 py-1.5 text-xs">
+                <div className="flex items-center justify-between rounded-md border border-border/80 bg-card px-2 py-1.5 text-xs">
                   <span className="text-muted-foreground">Line total</span>
                   <span className="font-semibold text-foreground">
                     {formatCurrency(lineTotals.total)}
@@ -277,7 +277,7 @@ export function PurchaseDocumentLineEditor({
           ref={desktopTableRef}
           role="grid"
           aria-label={`${config.singularLabel} lines`}
-          className="min-h-0 flex-1 overflow-hidden bg-white"
+          className="min-h-0 flex-1 overflow-hidden"
         >
           <TabularHeader>
             <TabularRow columns={desktopGridTemplate}>
@@ -419,7 +419,7 @@ export function PurchaseDocumentLineEditor({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[11px] text-muted-foreground shadow-none hover:bg-slate-50 lg:text-[10px]"
+                      className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[11px] text-muted-foreground shadow-none hover:bg-muted/55 lg:text-[10px]"
                       disabled={isViewingPostedDocument}
                       onClick={() =>
                         onUpdateLine(

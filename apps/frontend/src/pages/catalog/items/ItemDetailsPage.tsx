@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Input } from "../../../design-system/atoms/Input";
-import { IconButton } from "../../../design-system/atoms/IconButton";
 import { Label } from "../../../design-system/atoms/Label";
 import { Select } from "../../../design-system/atoms/Select";
 import { Switch } from "../../../design-system/atoms/Switch";
-import { Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -1655,16 +1653,18 @@ export function ItemDetailsPage({
                   secondaryLabel="Back"
                   onSecondaryClick={onBack}
                   trailingDesktopContent={
-                    <IconButton
+                    <Button
                       type="button"
-                      icon={Trash2}
-                      variant="ghost"
-                      className="hidden h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#8a2b2b] shadow-none hover:bg-[#fce8e8] hover:text-[#7a1f1f] lg:inline-flex"
+                      variant="outline"
+                      size="sm"
+                      className="hidden h-7 border-destructive/35 px-2 text-destructive hover:bg-destructive/12 hover:text-destructive lg:inline-flex"
                       onClick={() => void onDeleteItem()}
                       disabled={loading}
                       aria-label={`Delete ${singularLabel.toLowerCase()}`}
                       title={`Delete ${singularLabel.toLowerCase()}`}
-                    />
+                    >
+                      <span>Delete</span>
+                    </Button>
                   }
                 />
               )}

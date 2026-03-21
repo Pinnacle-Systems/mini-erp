@@ -84,7 +84,7 @@ export function SalesDocumentListView({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
-      <div className="flex flex-col rounded-xl border border-border/85 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:min-h-0 lg:flex-1">
+      <div className="flex flex-col rounded-xl border border-border/85 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:min-h-0 lg:flex-1">
         <div className="flex flex-col gap-2 border-b border-border/70 pb-2 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-1">
             <h1 className="text-sm font-semibold text-foreground">
@@ -103,17 +103,17 @@ export function SalesDocumentListView({
 
         <div className="space-y-2 pt-2 lg:hidden">
           {serverInvoicesError ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+            <div className="rounded-md border border-destructive/35 bg-destructive/12 px-2 py-3 text-xs text-destructive">
               {serverInvoicesError}
             </div>
           ) : null}
           {serverInvoicesLoading ? (
-            <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+            <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
               {`Loading ${config.pluralLabel}...`}
             </div>
           ) : null}
           {invoiceRows.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+            <div className="rounded-md border border-dashed border-border/80 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
               {config.listEmptyMessage}
             </div>
           ) : (
@@ -122,8 +122,8 @@ export function SalesDocumentListView({
                 key={`${row.source}:${row.id}`}
                 className={`rounded-lg border px-2 py-2 text-xs ${
                   row.source === "local" && row.id === activeDraftId
-                    ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
-                    : "border-border/70 bg-white text-foreground"
+                    ? "border-primary/25 bg-primary/10 text-primary"
+                    : "border-border/70 bg-card text-foreground"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -161,7 +161,7 @@ export function SalesDocumentListView({
                             type="button"
                             icon={MoreHorizontal}
                             variant="ghost"
-                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-primary hover:bg-muted/55"
                             aria-label={`Open actions for ${row.billNumber}`}
                             title="More actions"
                             aria-expanded={openRowMenuId === row.id}
@@ -190,7 +190,7 @@ export function SalesDocumentListView({
                             type="button"
                             icon={MoreHorizontal}
                             variant="ghost"
-                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                            className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-primary hover:bg-muted/55"
                             aria-label={`Open actions for ${row.billNumber}`}
                             title="More actions"
                             aria-expanded={openRowMenuId === row.id}
@@ -210,22 +210,22 @@ export function SalesDocumentListView({
 
         <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
           {serverInvoicesError ? (
-            <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-3 text-xs text-red-700">
+            <div className="mt-2 rounded-md border border-destructive/35 bg-destructive/12 px-2 py-3 text-xs text-destructive">
               {serverInvoicesError}
             </div>
           ) : null}
           {serverInvoicesLoading ? (
-            <div className="mt-2 rounded-md border border-border/70 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+            <div className="mt-2 rounded-md border border-border/70 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
               {`Loading ${config.pluralLabel}...`}
             </div>
           ) : null}
           {invoiceRows.length === 0 ? (
-            <div className="mt-2 rounded-md border border-dashed border-border/80 bg-slate-50 px-2 py-3 text-xs text-muted-foreground">
+            <div className="mt-2 rounded-md border border-dashed border-border/80 bg-muted/55 px-2 py-3 text-xs text-muted-foreground">
               {config.listEmptyMessage}
             </div>
           ) : (
             <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
-              <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-white">
+              <TabularSurface className="min-h-0 flex-1 overflow-hidden bg-card">
                 <TabularHeader>
                   <TabularRow columns={desktopGridTemplate}>
                     <TabularSerialNumberHeaderCell />
@@ -282,7 +282,7 @@ export function SalesDocumentListView({
                               type="button"
                               icon={MoreHorizontal}
                               variant="ghost"
-                              className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-[#1f4167] hover:bg-white/55"
+                              className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-primary hover:bg-muted/55"
                               onClick={(event) =>
                                 onToggleRowMenu(row.id, event.currentTarget)
                               }

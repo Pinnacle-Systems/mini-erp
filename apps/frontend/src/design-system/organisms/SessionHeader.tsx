@@ -1,6 +1,7 @@
 import { ArrowLeft, Building2, ChevronDown, LogOut } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTheme } from "../../features/theme/useTheme";
 import { Button } from "../atoms/Button";
 import { BusinessSelectionDialog } from "./BusinessSelectionDialog";
 import { LocationSelectionDialog } from "./LocationSelectionDialog";
@@ -43,6 +44,7 @@ export function SessionHeader({
   );
   const setIsBusinessSelected = useSessionStore((state) => state.setIsBusinessSelected);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
+  const { theme, availableThemes, setTheme } = useTheme();
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [isLocationSwitcherOpen, setIsLocationSwitcherOpen] = useState(false);
   const [switchQuery, setSwitchQuery] = useState("");
@@ -181,7 +183,7 @@ export function SessionHeader({
           <button
             type="button"
             onClick={() => navigate("/app")}
-            className="max-w-full cursor-pointer truncate rounded-md px-1 py-0.5 text-left text-base font-semibold tracking-[-0.01em] transition hover:bg-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:text-lg"
+            className="max-w-full cursor-pointer truncate rounded-md px-1 py-0.5 text-left text-base font-semibold tracking-[-0.01em] transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:text-lg"
             title="Back to home"
           >
             {activeBusinessName}
@@ -194,7 +196,7 @@ export function SessionHeader({
             type="button"
             variant="outline"
             onClick={handleBack}
-            className="h-8 shrink-0 gap-1.5 px-2.5 text-xs md:px-3"
+            className="h-8 shrink-0 gap-1.5 px-2.5 text-xs lg:hidden md:px-3"
             aria-label="Go back"
             title="Back"
           >
@@ -211,7 +213,7 @@ export function SessionHeader({
               setSwitchQuery("");
               setIsSwitcherOpen(true);
             }}
-            className="h-8 max-w-[3rem] shrink-0 gap-1.5 px-2 text-xs md:max-w-[13rem] md:px-2.5"
+            className="h-8 max-w-[3rem] shrink-0 gap-1.5 border-border/70 bg-muted/55 px-2 text-xs shadow-none hover:bg-muted/80 md:max-w-[13rem] md:px-2.5"
             aria-label="Switch business"
             title={activeBusinessName}
           >
@@ -229,10 +231,10 @@ export function SessionHeader({
               setIsLocationSwitcherOpen(true);
             }}
             className={cn(
-              "relative flex h-8 shrink-0 items-center overflow-hidden rounded-md transition-[border-color,box-shadow,background-color] duration-150 focus-within:border-[#5d95d6] focus-within:bg-white focus-within:outline-none focus-within:ring-2 focus-within:ring-[#6aa5eb]/20",
+              "relative flex h-8 shrink-0 items-center overflow-hidden rounded-md transition-[border-color,box-shadow,background-color] duration-150 focus-within:border-ring/65 focus-within:bg-background focus-within:outline-none focus-within:ring-2 focus-within:ring-ring/20",
               standaloneLocationControl
-                ? "min-w-[11rem] max-w-[14rem] border border-[#9fb5cd] bg-[#f7f9fb] px-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
-                : "min-w-[9.75rem] max-w-[12rem] border border-[#d1d9e6] bg-[#f8fafc] px-2 shadow-[0_1px_1px_rgba(15,23,42,0.02)]",
+                ? "min-w-[11rem] max-w-[14rem] border border-input bg-muted/55 px-2.5 shadow-none"
+                : "min-w-[9.75rem] max-w-[12rem] border border-border/70 bg-muted/55 px-2 shadow-none",
             )}
             disabled={switching}
             aria-label="Switch location"
@@ -253,7 +255,7 @@ export function SessionHeader({
                 aria-hidden="true"
                 className={cn(
                   "h-2 w-2 shrink-0 rounded-full transition-colors",
-                  isDefaultLocationSelected ? "bg-transparent" : "bg-[#2f6fb7]",
+                  isDefaultLocationSelected ? "bg-transparent" : "bg-primary",
                 )}
               />
               <span
@@ -262,8 +264,8 @@ export function SessionHeader({
                   isDefaultLocationSelected
                     ? standaloneLocationControl
                       ? "font-medium text-foreground"
-                      : "text-[#334155]"
-                    : "font-medium text-[#1f4167]",
+                      : "text-muted-foreground"
+                    : "font-medium text-primary",
                 )}
                 title={activeLocationOptionLabel}
               >
@@ -274,7 +276,7 @@ export function SessionHeader({
           </button>
         ) : showSelectedStore && activeBusiness ? (
           <div
-            className="hidden shrink-0 items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] text-muted-foreground md:flex"
+            className="hidden shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/55 px-2.5 py-1 text-[11px] text-muted-foreground md:flex"
             title={activeLocationOptionLabel}
           >
             <span className="text-[10px] font-medium text-muted-foreground">Location</span>
@@ -283,6 +285,24 @@ export function SessionHeader({
             </span>
           </div>
         ) : null}
+        <label className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground shadow-none">
+          <span className="hidden sm:inline">Theme</span>
+          <select
+            value={theme}
+            onChange={(event) => {
+              setTheme(event.target.value as typeof theme);
+            }}
+            className="min-w-[5.5rem] border-0 bg-transparent p-0 text-[11px] font-medium text-foreground outline-none"
+            aria-label="Temporary theme switcher"
+            title="Temporary theme switcher"
+          >
+            {availableThemes.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {onLogout ? (
           <Button
             type="button"

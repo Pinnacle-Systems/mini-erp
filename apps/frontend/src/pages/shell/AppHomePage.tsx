@@ -509,6 +509,12 @@ export function AppHomePage() {
     () => `user-shell-sidebar-collapsed:${activeStore ?? "global"}`,
     [activeStore],
   );
+  const routeDrivenAppId: UserAppId | null = useMemo(() => {
+    if (!location.pathname.startsWith("/app/")) return null;
+    const appSegment = location.pathname.slice("/app/".length).split("/")[0] ?? "";
+    if (!appSegment) return null;
+    return APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null;
+  }, [location.pathname]);
 
   useEffect(() => {
     const setOnline = () => setIsOnline(true);
@@ -559,8 +565,8 @@ export function AppHomePage() {
   }, [desktopSidebarStorageKey, isDesktopSidebarCollapsed]);
 
   const visibleFolders = useMemo(
-    () =>
-      folders
+    () => {
+      const filteredFolders = folders
         .filter(
           (folder) =>
             !folder.requiredModule || enabledModules[folder.requiredModule],
@@ -582,8 +588,45 @@ export function AppHomePage() {
             },
           ),
         }))
-        .filter((folder) => folder.apps.length > 0),
-    [activeBusiness, enabledModules, isMobileViewport, isOnline],
+        .filter((folder) => folder.apps.length > 0);
+
+      const hasRouteFolder = routeDrivenAppId
+        ? filteredFolders.some((folder) =>
+            folder.apps.some((app) => app.id === routeDrivenAppId),
+          )
+        : true;
+
+      if (!hasRouteFolder && routeDrivenAppId) {
+        const routeFolder = folders.find((folder) =>
+          folder.apps.some((app) => app.id === routeDrivenAppId),
+        );
+
+        if (routeFolder) {
+          const routeFolderApps = routeFolder.apps.filter((app) => {
+            if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
+              return false;
+            }
+
+            return (
+              !app.requiredAnyCapability?.length ||
+              app.requiredAnyCapability.some((capability) =>
+                hasAssignedStoreCapability(activeBusiness, capability),
+              )
+            );
+          });
+
+          if (routeFolderApps.length > 0) {
+            filteredFolders.push({
+              ...routeFolder,
+              apps: routeFolderApps,
+            });
+          }
+        }
+      }
+
+      return filteredFolders;
+    },
+    [activeBusiness, enabledModules, isMobileViewport, isOnline, routeDrivenAppId],
   );
   const visibleAppIds = useMemo(
     () => new Set(visibleFolders.flatMap((folder) => folder.apps.map((app) => app.id))),
@@ -651,13 +694,6 @@ export function AppHomePage() {
     },
     [mobileVisibleFolders, visibleFolders],
   );
-
-  const routeDrivenAppId: UserAppId | null = useMemo(() => {
-    if (!location.pathname.startsWith("/app/")) return null;
-    const appSegment = location.pathname.slice("/app/".length).split("/")[0] ?? "";
-    if (!appSegment) return null;
-    return APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null;
-  }, [location.pathname]);
 
   const updateAppTabsOverflow = useCallback(() => {
     const container = appTabsScrollRef.current;
@@ -925,10 +961,10 @@ export function AppHomePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 p-0">
-            <div className="rounded-lg border border-dashed border-[#c6d8ef] bg-[#f7fbff] px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border/80 bg-muted/65 px-3 py-2 text-[11px] text-muted-foreground">
               Search controls will appear here when global lookup is implemented.
             </div>
-            <div className="rounded-lg border border-[#dce8f6] bg-[#fbfdff] px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="rounded-lg border border-border/80 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
               <p>
                 Sync summary placeholder for the current business.
               </p>
@@ -1024,7 +1060,7 @@ export function AppHomePage() {
                 </Button>
               </div>
               {shouldShowCollapsedFolderFlyout && activeFolder ? (
-                <div className="absolute left-[3.6rem] top-2 z-30 flex w-56 max-w-[calc(100vw-7rem)] flex-col rounded-xl border border-border/80 bg-white p-2 shadow-[0_12px_24px_-12px_rgba(15,23,42,0.28)]">
+                <div className="absolute left-[3.6rem] top-2 z-30 flex w-56 max-w-[calc(100vw-7rem)] flex-col rounded-xl border border-border/80 bg-card p-2 shadow-[0_12px_24px_-12px_rgba(15,23,42,0.28)]">
                   <div className="border-b border-border/70 px-1 pb-2">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                       {activeFolder.label}
@@ -1052,7 +1088,7 @@ export function AppHomePage() {
                           label={entry.label}
                           active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
                           stacked
-                          className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
+                          className="border-border/60 bg-transparent shadow-none hover:bg-card/55"
                         />
                       ))}
                     </div>
@@ -1117,7 +1153,7 @@ export function AppHomePage() {
                         label={entry.label}
                         active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
                         stacked
-                        className="border-border/60 bg-transparent shadow-none hover:bg-white/55"
+                        className="border-border/60 bg-transparent shadow-none hover:bg-card/55"
                       />
                     ))}
                   </div>
@@ -1161,7 +1197,7 @@ export function AppHomePage() {
         </aside>
 
         <section className="min-w-0 space-y-2 lg:flex lg:min-h-0 lg:flex-col">
-          <div className="min-w-0 rounded-xl border border-border/80 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_24px_-20px_rgba(15,23,42,0.18)] lg:hidden">
+          <div className="min-w-0 rounded-xl border border-border/80 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_24px_-20px_rgba(15,23,42,0.18)] lg:hidden">
             <div className="mb-3">
               <p className="text-xs font-semibold tracking-[0.01em] text-foreground/90">
                 {activeFolder?.label ?? "Apps"}
@@ -1197,10 +1233,10 @@ export function AppHomePage() {
                 ))}
               </div>
               {showAppTabsLeftFade ? (
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-white/95 via-white/70 to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-card/95 via-card/70 to-transparent" />
               ) : null}
               {showAppTabsRightFade ? (
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white/95 via-white/70 to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-card/95 via-card/70 to-transparent" />
               ) : null}
             </div>
           </div>
@@ -1219,9 +1255,9 @@ export function AppHomePage() {
         </section>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border/80 bg-white p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border/80 bg-card p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
         {showSessionMenu ? (
-          <div className="absolute inset-x-2 bottom-full z-50 mb-2 rounded-lg border border-border/80 bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
+          <div className="absolute inset-x-2 bottom-full z-50 mb-2 rounded-lg border border-border/80 bg-card p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
             <div className="grid gap-1">
               {mobileOverflowFolders.map((folder) => (
                 <Button
@@ -1257,7 +1293,7 @@ export function AppHomePage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-9 w-full justify-start gap-2 px-3 text-[12px] text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                className="h-9 w-full justify-start gap-2 px-3 text-[12px] text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => {
                   setShowSessionMenu(false);
                   void onLogout();
@@ -1289,7 +1325,7 @@ export function AppHomePage() {
           <Button
             type="button"
             variant="ghost"
-            className="flex min-h-14 min-w-[4.8rem] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight text-foreground/75 hover:bg-white/80"
+            className="flex min-h-14 min-w-[4.8rem] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight text-foreground/75 hover:bg-card/80"
             onClick={() => setShowSessionMenu((current) => !current)}
             aria-expanded={showSessionMenu}
             aria-label="Open more options"

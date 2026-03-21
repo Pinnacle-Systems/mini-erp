@@ -178,7 +178,7 @@ export function SalesDocumentLineEditor({
 
       <div className="space-y-2 md:hidden">
         {isPosMode && !hasStartedSale ? (
-          <div className="rounded-xl border border-dashed border-[#b9cfe7] bg-[#f8fbff] px-4 py-8 text-center">
+          <div className="rounded-xl border border-dashed border-border/80 bg-muted/50 px-4 py-8 text-center">
             <div className="text-sm font-semibold text-foreground">
               Scan barcode or search item to start sale
             </div>
@@ -203,8 +203,8 @@ export function SalesDocumentLineEditor({
               data-bill-line-id={line.id}
               className={`rounded-lg border p-2 ${
                 isPosMode && activeLineId === line.id
-                  ? "border-[#8fb6e2] bg-[#edf5ff]"
-                  : "border-border/80 bg-slate-50"
+                  ? "border-primary/30 bg-primary/10"
+                  : "border-border/80 bg-muted/55"
               }`}
               onClick={() => onActiveLineChange?.(line.id)}
               onFocusCapture={() => onActiveLineChange?.(line.id)}
@@ -217,7 +217,7 @@ export function SalesDocumentLineEditor({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-auto p-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 hover:text-red-700"
+                  className="h-auto p-1.5 text-[11px] font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => onRemoveLine(line.id)}
                   disabled={isViewingPostedDocument}
                 >
@@ -233,7 +233,7 @@ export function SalesDocumentLineEditor({
                   <div className="flex items-center gap-1">
                     <div className="min-w-0 flex-1">
                       {isPosStarterLine ? (
-                        <div className="flex h-8 items-center rounded-lg border border-dashed border-[#b9cfe7] bg-[#f8fbff] px-3 text-[11px] text-muted-foreground">
+                        <div className="flex h-8 items-center rounded-lg border border-dashed border-border/80 bg-muted/50 px-3 text-[11px] text-muted-foreground">
                           Use Quick add item above to start the sale.
                         </div>
                       ) : (
@@ -269,7 +269,7 @@ export function SalesDocumentLineEditor({
                     ) : null}
                     {getSameItemMixedOriginHint(line) ? (
                       <span
-                        className="inline-flex shrink-0 items-center rounded-full bg-amber-500 p-1 text-white"
+                        className="inline-flex shrink-0 items-center rounded-full bg-warning p-1 text-background"
                         title={getSameItemMixedOriginHint(line) ?? undefined}
                         aria-label={getSameItemMixedOriginHint(line) ?? undefined}
                       >
@@ -323,7 +323,7 @@ export function SalesDocumentLineEditor({
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                  <div className="flex items-center rounded-md border border-border/70 bg-white px-2 py-1.5">
+                  <div className="flex items-center rounded-md border border-border/70 bg-card px-2 py-1.5">
                     <span className="mr-1">Unit:</span>
                     <span className="font-medium text-foreground">
                       {line.unit || "PCS"}
@@ -333,7 +333,7 @@ export function SalesDocumentLineEditor({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-auto w-full justify-between border-border/70 bg-white px-2 py-1.5 text-[11px] font-normal text-muted-foreground"
+                    className="h-auto w-full justify-between border-border/70 bg-card px-2 py-1.5 text-[11px] font-normal text-muted-foreground"
                     disabled={isViewingPostedDocument}
                     onClick={() =>
                       onUpdateLine(
@@ -348,7 +348,7 @@ export function SalesDocumentLineEditor({
                       {line.taxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
                     </span>
                   </Button>
-                  <div className="col-span-2 space-y-0.5 rounded-md border border-border/70 bg-white px-2 py-1.5">
+                  <div className="col-span-2 space-y-0.5 rounded-md border border-border/70 bg-card px-2 py-1.5">
                     {toTaxRateNumber(line.taxRate) > 0 ? (
                       line.taxMode === "INCLUSIVE" ? (
                         <>
@@ -404,7 +404,7 @@ export function SalesDocumentLineEditor({
             ref={desktopTableRef}
             role="grid"
             aria-label={`${config.singularLabel} lines`}
-            className="hidden min-h-0 flex-1 overflow-hidden bg-white md:flex"
+            className="hidden min-h-0 flex-1 overflow-hidden bg-card md:flex"
           >
             <TabularHeader>
               <TabularRow columns={desktopGridTemplate}>
@@ -434,7 +434,7 @@ export function SalesDocumentLineEditor({
                     data-bill-line-id={line.id}
                     className={
                       isPosMode && activeLineId === line.id
-                        ? "[&>div]:!bg-[#edf5ff] shadow-[inset_3px_0_0_0_#4a8dd9]"
+                        ? "[&>div]:!bg-primary/10 shadow-[inset_3px_0_0_0_hsl(var(--primary))]"
                         : undefined
                     }
                     onClick={() => onActiveLineChange?.(line.id)}
@@ -485,7 +485,7 @@ export function SalesDocumentLineEditor({
                           ) : null}
                           {getSameItemMixedOriginHint(line) ? (
                             <span
-                              className="pointer-events-auto inline-flex shrink-0 items-center rounded-full bg-amber-500 p-0.5 text-white"
+                              className="pointer-events-auto inline-flex shrink-0 items-center rounded-full bg-warning p-0.5 text-background"
                               title={getSameItemMixedOriginHint(line) ?? undefined}
                               aria-label={getSameItemMixedOriginHint(line) ?? undefined}
                             >
