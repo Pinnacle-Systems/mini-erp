@@ -1,4 +1,5 @@
 import { Button } from "../../design-system/atoms/Button";
+import type { FinancialDocumentBalanceRow } from "../finance/financial-api";
 import {
   formatCurrency,
   normalizeLines,
@@ -23,8 +24,40 @@ type SalesDocumentSummaryPanelProps = {
   isPosting?: boolean;
   canCheckout?: boolean;
   onOpenPosPayment?: () => void;
+  financialBalance?: FinancialDocumentBalanceRow | null;
   desktopRailInset?: boolean;
   className?: string;
+};
+
+const getPaymentStatusLabel = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
+  switch (value) {
+    case "N_A":
+      return "N/A";
+    case "UNPAID":
+      return "Unpaid";
+    case "PARTIAL":
+      return "Partial";
+    case "PAID":
+      return "Paid";
+    case "OVERPAID":
+      return "Overpaid";
+  }
+};
+
+const getPaymentStatusClassName = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
+  switch (value) {
+    case "PAID":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "PARTIAL":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "OVERPAID":
+      return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+    case "N_A":
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+    case "UNPAID":
+    default:
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+  }
 };
 
 export function SalesDocumentSummaryPanel({
@@ -41,6 +74,7 @@ export function SalesDocumentSummaryPanel({
   isPosting = false,
   canCheckout = true,
   onOpenPosPayment,
+  financialBalance = null,
   desktopRailInset = true,
   className,
 }: SalesDocumentSummaryPanelProps) {
@@ -87,6 +121,49 @@ export function SalesDocumentSummaryPanel({
             {normalizedLineCount || 1}
           </span>
         </div>
+        {financialBalance ? (
+          <>
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-muted-foreground">Payment status</span>
+              <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(financialBalance.paymentStatus)}`}>
+                {getPaymentStatusLabel(financialBalance.paymentStatus)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                {config.documentType === "SALES_INVOICE" ? "Collected" : "Paid out"}
+              </span>
+              <span className="font-semibold text-foreground">
+                {formatCurrency(financialBalance.paidAmount)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Outstanding</span>
+              <span className="font-semibold text-foreground">
+                {formatCurrency(financialBalance.outstandingAmount)}
+              </span>
+            </div>
+            {financialBalance.lastPaymentAt ? (
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-muted-foreground">Last payment</span>
+                <span className="truncate font-semibold text-foreground">
+                  {new Date(financialBalance.lastPaymentAt).toLocaleDateString()}
+                </span>
+              </div>
+            ) : null}
+            {financialBalance.fullySettledAt ? (
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-muted-foreground">Fully settled</span>
+                <span className="truncate font-semibold text-foreground">
+                  {new Date(financialBalance.fullySettledAt).toLocaleDateString()}
+                </span>
+              </div>
+            ) : null}
+            <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
+              Return amounts are tracked separately and do not yet reduce invoice outstanding balance in this phase.
+            </div>
+          </>
+        ) : null}
         {sourceDocumentNumber ? (
           <div className="flex items-center justify-between gap-3 text-xs">
             <span className="text-muted-foreground">Source</span>

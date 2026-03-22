@@ -14,6 +14,11 @@ import {
 import { useSessionStore } from "../../features/auth/session-business";
 import { useToast } from "../../features/toast/useToast";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  getFinancialDocumentBalance,
+  type FinancialDocumentBalanceRow,
+} from "../finance/financial-api";
 import {
   type SalesDocumentType,
 } from "./sales-documents-api";
@@ -42,6 +47,37 @@ type SalesDocumentConversionConfig = {
   targetDocumentType: SalesDocumentType;
   targetRoutePath: string;
   actionLabel: string;
+};
+
+const getPaymentStatusLabel = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
+  switch (value) {
+    case "N_A":
+      return "N/A";
+    case "UNPAID":
+      return "Unpaid";
+    case "PARTIAL":
+      return "Partial";
+    case "PAID":
+      return "Paid";
+    case "OVERPAID":
+      return "Overpaid";
+  }
+};
+
+const getPaymentStatusToneClassName = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
+  switch (value) {
+    case "PAID":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "PARTIAL":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "OVERPAID":
+      return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+    case "N_A":
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+    case "UNPAID":
+    default:
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+  }
 };
 
 const SALES_DOCUMENT_PAGE_CONFIG: Record<
@@ -240,6 +276,7 @@ function SalesDocumentWorkspace({
   activeLocationId: string | null;
   config: SalesDocumentPageConfig;
 }) {
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const {
     activeBusiness,
@@ -338,6 +375,40 @@ function SalesDocumentWorkspace({
   const [posPaymentError, setPosPaymentError] = useState<string | null>(null);
   const [isPosNotesOpen, setIsPosNotesOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<PrintableReceiptData | null>(null);
+  const [financialBalance, setFinancialBalance] = useState<FinancialDocumentBalanceRow | null>(null);
+  const isFinancialSalesDocument =
+    config.documentType === "SALES_INVOICE" || config.documentType === "SALES_RETURN";
+  const viewedFinancialDocumentId = activeServerDocument?.id ?? activeDraftId ?? null;
+  const canRecordSettlement =
+    isViewingPostedDocument &&
+    config.documentType === "SALES_INVOICE" &&
+    Boolean(viewedFinancialDocumentId) &&
+    !["CANCELLED", "VOID"].includes(activeServerDocument?.status ?? "");
+
+  useEffect(() => {
+    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !isFinancialSalesDocument) {
+      setFinancialBalance(null);
+      return;
+    }
+
+    let cancelled = false;
+    void getFinancialDocumentBalance(activeStore, config.documentType, viewedFinancialDocumentId)
+      .then((balance) => {
+        if (!cancelled) {
+          setFinancialBalance(balance);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!cancelled) {
+          setFinancialBalance(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, config.documentType, isFinancialSalesDocument, isViewingPostedDocument, viewedFinancialDocumentId]);
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -894,8 +965,16 @@ function SalesDocumentWorkspace({
               postShortcutHint={isPosMode ? "Ctrl+Enter" : undefined}
               showNewSaleAction={isPosMode && isViewingPostedDocument}
               newSaleActionLabel="Start New Sale"
+              paymentActionLabel={canRecordSettlement ? "Record Receipt" : undefined}
+              paymentStatusLabel={financialBalance ? getPaymentStatusLabel(financialBalance.paymentStatus) : null}
+              paymentStatusToneClassName={financialBalance ? getPaymentStatusToneClassName(financialBalance.paymentStatus) : null}
               onOpenList={() => setViewMode("list")}
               onOpenNewSale={isPosMode ? openNewDraft : undefined}
+              onOpenPaymentAction={
+                canRecordSettlement
+                  ? () => navigate(`/app/payments-received?documentId=${encodeURIComponent(viewedFinancialDocumentId!)}`)
+                  : undefined
+              }
               onSaveDraft={handleSaveDraft}
               onPostDraft={handlePostDraft}
             />
@@ -916,8 +995,16 @@ function SalesDocumentWorkspace({
             postShortcutHint={isPosMode ? "Ctrl+Enter" : undefined}
             showNewSaleAction={isPosMode && isViewingPostedDocument}
             newSaleActionLabel="Start New Sale"
+            paymentActionLabel={canRecordSettlement ? "Record Receipt" : undefined}
+            paymentStatusLabel={financialBalance ? getPaymentStatusLabel(financialBalance.paymentStatus) : null}
+            paymentStatusToneClassName={financialBalance ? getPaymentStatusToneClassName(financialBalance.paymentStatus) : null}
             onOpenList={() => setViewMode("list")}
             onOpenNewSale={isPosMode ? openNewDraft : undefined}
+            onOpenPaymentAction={
+              canRecordSettlement
+                ? () => navigate(`/app/payments-received?documentId=${encodeURIComponent(viewedFinancialDocumentId!)}`)
+                : undefined
+            }
             onSaveDraft={handleSaveDraft}
             onPostDraft={handlePostDraft}
           />
@@ -1003,6 +1090,7 @@ function SalesDocumentWorkspace({
                   dispatchReference={dispatchReference}
                   dispatchCarrier={dispatchCarrier}
                   isPosMode={isPosMode}
+                  financialBalance={financialBalance}
                   isPosting={draftMutationLoading}
                   canCheckout={validLineCount > 0}
                   onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}
@@ -1301,6 +1389,7 @@ function SalesDocumentWorkspace({
               dispatchReference={dispatchReference}
               dispatchCarrier={dispatchCarrier}
               isPosMode={isPosMode}
+              financialBalance={financialBalance}
               isPosting={draftMutationLoading}
               canCheckout={validLineCount > 0}
               onOpenPosPayment={isPosMode ? handleOpenPosPayment : undefined}

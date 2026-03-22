@@ -16,8 +16,12 @@ type SalesDocumentWorkspaceHeaderProps = {
   postShortcutHint?: string;
   showNewSaleAction?: boolean;
   newSaleActionLabel?: string;
+  paymentActionLabel?: string;
+  paymentStatusLabel?: string | null;
+  paymentStatusToneClassName?: string | null;
   onOpenList: () => void;
   onOpenNewSale?: () => void;
+  onOpenPaymentAction?: () => void;
   onSaveDraft: () => void;
   onPostDraft: () => void;
 };
@@ -37,8 +41,12 @@ export function SalesDocumentWorkspaceHeader({
   postShortcutHint,
   showNewSaleAction = false,
   newSaleActionLabel = "Start New Sale",
+  paymentActionLabel,
+  paymentStatusLabel,
+  paymentStatusToneClassName,
   onOpenList,
   onOpenNewSale,
+  onOpenPaymentAction,
   onSaveDraft,
   onPostDraft,
 }: SalesDocumentWorkspaceHeaderProps) {
@@ -62,6 +70,11 @@ export function SalesDocumentWorkspaceHeader({
               Status: {documentStatus ?? "OPEN"}
             </span>
           ) : null}
+          {isViewingPostedDocument && paymentStatusLabel ? (
+            <span className={`hidden rounded-md border px-2 py-0.5 text-[10px] font-medium lg:inline-flex ${paymentStatusToneClassName ?? "border-border/70 bg-muted/55 text-muted-foreground"}`}>
+              Payment: {paymentStatusLabel}
+            </span>
+          ) : null}
         </div>
         <p className={`text-xs text-muted-foreground ${isPosMode ? "lg:text-[11px]" : ""}`}>
           {isViewingPostedDocument
@@ -71,8 +84,15 @@ export function SalesDocumentWorkspaceHeader({
               : "Select a customer, add lines, save the draft, then post when it is ready."}
         </p>
         {isViewingPostedDocument ? (
-          <div className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary lg:hidden">
-            Status: {documentStatus ?? "OPEN"}
+          <div className="flex flex-wrap gap-1 lg:hidden">
+            <div className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
+              Status: {documentStatus ?? "OPEN"}
+            </div>
+            {paymentStatusLabel ? (
+              <div className={`rounded-md border px-2 py-1 text-[11px] font-medium ${paymentStatusToneClassName ?? "border-border/70 bg-muted/55 text-muted-foreground"}`}>
+                Payment: {paymentStatusLabel}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {!isOnline ? (
@@ -98,6 +118,15 @@ export function SalesDocumentWorkspaceHeader({
               onClick={onOpenNewSale}
             >
               {newSaleActionLabel}
+            </Button>
+          ) : null}
+          {isViewingPostedDocument && paymentActionLabel && onOpenPaymentAction ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onOpenPaymentAction}
+            >
+              {paymentActionLabel}
             </Button>
           ) : null}
           {!isViewingPostedDocument ? (

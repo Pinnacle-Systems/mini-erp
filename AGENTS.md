@@ -84,3 +84,11 @@ When a change materially updates the product's stable architecture or design dir
 - State clearly that the code change is provisional and the documentation still needs to be updated.
 
 Avoid leaving durable code changes that silently contradict the repo's written standards.
+
+## Prisma Migrations
+
+When making Prisma schema changes:
+
+- Update the `*.prisma` models first and treat them as the source of truth for schema intent.
+- Generate SQL migrations with Prisma tooling by default instead of hand-writing `migration.sql`.
+- Only hand-edit a generated migration when there is a specific need, and call out that exception in the task or PR.

@@ -9,6 +9,7 @@ import {
   NotFoundError,
 } from "../../shared/utils/errors.js";
 import { getBusinessCapabilitiesFromLicense } from "../license/license.service.js";
+import accountsService from "../accounts/accounts.service.js";
 import {
   mapDocumentHistoryEntries,
   recordDocumentHistory,
@@ -780,6 +781,7 @@ const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
       locationId: document.location_id ?? null,
       locationName: document.location_name_snapshot ?? "",
       transactionType: document.settlement_mode ?? "CASH",
+      grandTotal: Number(document.grand_total ?? 0),
       customerId: document.party_id ?? null,
       customerName: partySnapshot?.name ?? "",
       customerPhone: partySnapshot?.phone ?? "",
@@ -805,6 +807,31 @@ const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
       })),
     };
   });
+
+const enrichSalesDocumentsWithSettlement = async (
+  tenantId: string,
+  documents: ReturnType<typeof mapSalesDocuments>,
+) => {
+  const settlementById = await accountsService.buildSettlementMap(
+    tenantId,
+    documents
+      .filter((document) => document.documentType === "SALES_INVOICE")
+      .map((document) => ({
+        id: document.id,
+        documentType: document.documentType as "SALES_INVOICE",
+        status: document.status ?? null,
+        grandTotal: document.grandTotal,
+      })),
+  );
+
+  return documents.map((document) => ({
+    ...document,
+    settlement:
+      document.documentType === "SALES_INVOICE"
+        ? (settlementById.get(document.id) ?? null)
+        : null,
+  }));
+};
 
 const buildSourceLineMap = (document: SalesDocumentRecord) =>
   Object.fromEntries(
@@ -1373,7 +1400,7 @@ export const listSalesDocuments = catchAsync(async (req, res) => {
     take: Number(limit),
   });
 
-  res.json(toSalesDocumentListView(mapSalesDocuments(documents)));
+  res.json(toSalesDocumentListView(await enrichSalesDocumentsWithSettlement(tenantId, mapSalesDocuments(documents))));
 });
 
 export const getSalesDocumentHistory = catchAsync(async (req, res) => {
@@ -1444,7 +1471,7 @@ export const createSalesDocument = catchAsync(async (req, res) => {
     }),
   );
 
-  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
+  res.json(toSalesDocumentPayload((await enrichSalesDocumentsWithSettlement(input.tenantId, mapSalesDocuments([document])))[0]));
 });
 
 export const updateSalesDocument = catchAsync(async (req, res) => {
@@ -1460,7 +1487,7 @@ export const updateSalesDocument = catchAsync(async (req, res) => {
     }),
   );
 
-  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
+  res.json(toSalesDocumentPayload((await enrichSalesDocumentsWithSettlement(input.tenantId, mapSalesDocuments([document])))[0]));
 });
 
 export const postSalesDocument = catchAsync(async (req, res) => {
@@ -1479,7 +1506,7 @@ export const postSalesDocument = catchAsync(async (req, res) => {
     }),
   );
 
-  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
+  res.json(toSalesDocumentPayload((await enrichSalesDocumentsWithSettlement(tenantId, mapSalesDocuments([document])))[0]));
 });
 
 export const transitionSalesDocument = catchAsync(async (req, res) => {
@@ -1508,7 +1535,7 @@ export const transitionSalesDocument = catchAsync(async (req, res) => {
     ),
   );
 
-  res.json(toSalesDocumentPayload(mapSalesDocuments([document])[0]));
+  res.json(toSalesDocumentPayload((await enrichSalesDocumentsWithSettlement(tenantId, mapSalesDocuments([document])))[0]));
 });
 
 export const deleteSalesDocument = catchAsync(async (req, res) => {

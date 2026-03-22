@@ -20,6 +20,7 @@ import {
 } from "../pages/people";
 import { AppFeaturePlaceholderPage, DataSyncAppPage, ItemSyncAppPage } from "../pages/shell/UserAppPages";
 import { AdjustmentsPage, HistoryPage, LevelsPage } from "../pages/stock";
+import { AccountsPage, ExpensesPage, OverviewPage, PaymentsPage } from "../pages/finance";
 import { OfflinePage } from "../pages/system";
 import {
   BillsPage,
@@ -206,6 +207,19 @@ export function AppRoutes() {
           <Route element={<AppLayout onLogout={() => void onLogout()} />}>
             <Route path="/app" element={<AppEntryRoute />}>
               <Route element={<RequireRole role="USER" />}>
+                <Route element={<RequireModule moduleKey="accounts" />}>
+                  <Route element={<RequireAnyCapability capabilities={["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"]} />}>
+                    <Route path="finance-overview" element={<OverviewPage />} />
+                    <Route path="financial-accounts" element={<AccountsPage />} />
+                  </Route>
+                  <Route element={<RequireCapability capability="FINANCE_RECEIVABLES" />}>
+                    <Route path="payments-received" element={<PaymentsPage flow="RECEIVABLE" />} />
+                  </Route>
+                  <Route element={<RequireCapability capability="FINANCE_PAYABLES" />}>
+                    <Route path="payments-made" element={<PaymentsPage flow="PAYABLE" />} />
+                    <Route path="expenses" element={<ExpensesPage />} />
+                  </Route>
+                </Route>
                 <Route element={<RequireModule moduleKey="sales" />}>
                   <Route
                     element={

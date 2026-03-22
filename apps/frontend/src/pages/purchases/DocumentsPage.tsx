@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
@@ -23,6 +23,10 @@ import { DocumentHistoryDialog } from "../../design-system/organisms/DocumentHis
 import { DraftReviewPanel } from "../../design-system/organisms/DraftReviewPanel";
 import { FloatingActionMenu } from "../../design-system/organisms/FloatingActionMenu";
 import { useSessionStore } from "../../features/auth/session-business";
+import {
+  getFinancialDocumentBalance,
+  type FinancialDocumentBalanceRow,
+} from "../finance/financial-api";
 import {
   type PurchaseDocumentCancelReason,
   type PurchaseDocumentType,
@@ -134,6 +138,82 @@ const PURCHASE_DOCUMENT_CONVERSIONS: Partial<
   ],
 };
 
+const getSettlementStatus = (
+  row: Pick<FinancialDocumentBalanceRow, "settlementStatus" | "paymentStatus">,
+) => row.settlementStatus ?? row.paymentStatus;
+
+const getPurchaseSettlementLabel = (
+  row:
+    | Pick<
+        FinancialDocumentBalanceRow,
+        "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount"
+      >
+    | Pick<
+        NonNullable<NonNullable<{ settlement?: FinancialDocumentBalanceRow | null }>["settlement"]>,
+        "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount"
+      >,
+) => {
+  const status = getSettlementStatus(row);
+  switch (status) {
+    case "N_A":
+      return "N/A";
+    case "UNPAID":
+      return "Unpaid";
+    case "PARTIAL":
+      return "Partial";
+    case "PAID":
+      if (row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled by Return";
+      }
+      if (row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled";
+      }
+      return "Paid";
+    case "OVERPAID":
+      return "Vendor Credit";
+  }
+};
+
+const getSettlementStatusClassName = (value: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID") => {
+  switch (value) {
+    case "PAID":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "PARTIAL":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "OVERPAID":
+      return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+    case "N_A":
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+    case "UNPAID":
+    default:
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+  }
+};
+
+const getPurchaseSettlementTitle = (
+  row:
+    | Pick<
+        FinancialDocumentBalanceRow,
+        "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount" | "grossDocumentAmount"
+      >
+    | Pick<
+        NonNullable<NonNullable<{ settlement?: FinancialDocumentBalanceRow | null }>["settlement"]>,
+        "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount" | "grossDocumentAmount"
+      >,
+) => {
+  const status = getSettlementStatus(row);
+  if (status === "OVERPAID") {
+    return "Total payments and returns exceed the original invoice amount.";
+  }
+  if (status === "PAID" && row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
+    return "The invoice balance was fully settled by linked purchase returns without a cash payment.";
+  }
+  if (status === "PAID" && row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
+    return "Payments and linked purchase returns together fully settled the invoice.";
+  }
+  return undefined;
+};
+
 const toPositivePurchaseQuantity = (value: string) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
@@ -241,6 +321,42 @@ function PurchaseDocumentWorkspace({
     conversions: PURCHASE_DOCUMENT_CONVERSIONS,
   });
   const showSourceColumn = config.documentType !== "PURCHASE_ORDER";
+  const showPaymentColumn = config.documentType === "PURCHASE_INVOICE";
+  const [financialBalance, setFinancialBalance] = useState<FinancialDocumentBalanceRow | null>(null);
+  const isFinancialPurchaseDocument =
+    config.documentType === "PURCHASE_INVOICE" || config.documentType === "PURCHASE_RETURN";
+  const viewedFinancialDocumentId = activeDocument?.id ?? null;
+  const canRecordSettlement =
+    isViewingPostedDocument &&
+    config.documentType === "PURCHASE_INVOICE" &&
+    Boolean(viewedFinancialDocumentId) &&
+    !["CANCELLED", "VOID"].includes(activeDocument?.status ?? "");
+
+  useEffect(() => {
+    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !isFinancialPurchaseDocument) {
+      setFinancialBalance(null);
+      return;
+    }
+
+    let cancelled = false;
+    void getFinancialDocumentBalance(activeStore, config.documentType, viewedFinancialDocumentId)
+      .then((balance) => {
+        if (!cancelled) {
+          setFinancialBalance(balance);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!cancelled) {
+          setFinancialBalance(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, config.documentType, isFinancialPurchaseDocument, isViewingPostedDocument, viewedFinancialDocumentId]);
+
   const getParentDocumentNumber = (row: (typeof documentRows)[number]) => {
     if (!row.parentId) {
       return "None";
@@ -311,6 +427,16 @@ function PurchaseDocumentWorkspace({
                     <span>{formatDateTime(row.timestamp)}</span>
                     <span>{formatCurrency(row.total)}</span>
                   </div>
+                  {showPaymentColumn && row.settlement ? (
+                    <div className="mt-2">
+                      <span
+                        className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getSettlementStatusClassName(getSettlementStatus(row.settlement))}`}
+                        title={getPurchaseSettlementTitle(row.settlement)}
+                      >
+                        {getPurchaseSettlementLabel(row.settlement)}
+                      </span>
+                    </div>
+                  ) : null}
                   {showSourceColumn ? (
                     <div className="mt-2 truncate text-[10px] text-muted-foreground">
                       {`Source: ${getParentDocumentNumber(row)}`}
@@ -361,7 +487,7 @@ function PurchaseDocumentWorkspace({
               <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
                 <TabularSurface className="min-h-0 flex-1 overflow-hidden">
                   <TabularHeader>
-                    <TabularRow columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem")}>
+                    <TabularRow columns={withTabularSerialNumberColumn(showSourceColumn ? (showPaymentColumn ? "minmax(0,1fr) minmax(0,1.45fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem") : (showPaymentColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem"))}>
                       <TabularSerialNumberHeaderCell />
                       <TabularCell variant="header">Number</TabularCell>
                       <TabularCell variant="header">Supplier</TabularCell>
@@ -369,6 +495,9 @@ function PurchaseDocumentWorkspace({
                         <TabularCell variant="header">Source</TabularCell>
                       ) : null}
                       <TabularCell variant="header">Status</TabularCell>
+                      {showPaymentColumn ? (
+                        <TabularCell variant="header">Settlement</TabularCell>
+                      ) : null}
                       <TabularCell variant="header" align="end">Total</TabularCell>
                       <TabularCell variant="header">Updated</TabularCell>
                       <TabularCell variant="header" align="center">Actions</TabularCell>
@@ -376,7 +505,7 @@ function PurchaseDocumentWorkspace({
                   </TabularHeader>
                   <TabularBody className="overflow-y-auto">
                     {documentRows.map((row, index) => (
-                      <TabularRow key={row.id} columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem")} interactive>
+                      <TabularRow key={row.id} columns={withTabularSerialNumberColumn(showSourceColumn ? (showPaymentColumn ? "minmax(0,1fr) minmax(0,1.45fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem") : (showPaymentColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem"))} interactive>
                         <TabularSerialNumberCell index={index} />
                         <TabularCell truncate hoverTitle={row.billNumber} className="font-semibold text-foreground">
                           {row.billNumber}
@@ -388,6 +517,20 @@ function PurchaseDocumentWorkspace({
                           </TabularCell>
                         ) : null}
                         <TabularCell>{row.status ?? "DRAFT"}</TabularCell>
+                        {showPaymentColumn ? (
+                          <TabularCell>
+                            {row.settlement ? (
+                              <span
+                                className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getSettlementStatusClassName(getSettlementStatus(row.settlement))}`}
+                                title={getPurchaseSettlementTitle(row.settlement)}
+                              >
+                                {getPurchaseSettlementLabel(row.settlement)}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground">N/A</span>
+                            )}
+                          </TabularCell>
+                        ) : null}
                         <TabularCell align="end" className="font-semibold text-foreground">
                           {formatCurrency(row.total)}
                         </TabularCell>
@@ -436,6 +579,11 @@ function PurchaseDocumentWorkspace({
                     Status: {activeDocument.status}
                   </span>
                 ) : null}
+                {financialBalance ? (
+                  <span className={`hidden rounded-md border px-2 py-0.5 text-[10px] font-medium lg:inline-flex ${getSettlementStatusClassName(getSettlementStatus(financialBalance))}`}>
+                    Settlement: {getPurchaseSettlementLabel(financialBalance)}
+                  </span>
+                ) : null}
               </div>
               <p className="text-xs text-muted-foreground">
                 {isViewingPostedDocument
@@ -456,6 +604,17 @@ function PurchaseDocumentWorkspace({
               >
                 Back to Recent
               </Button>
+              {canRecordSettlement ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    navigate(`/app/payments-made?documentId=${encodeURIComponent(viewedFinancialDocumentId!)}`)
+                  }
+                >
+                  Record Payment
+                </Button>
+              ) : null}
               {!isViewingPostedDocument ? (
                 <>
                   <Button type="button" variant="outline" size="sm" disabled={draftMutationLoading} onClick={() => void persistDraft("save")}>
@@ -729,6 +888,69 @@ function PurchaseDocumentWorkspace({
                       <span className="text-muted-foreground">Lines</span>
                       <span className="font-semibold text-foreground">{normalizeLines(lines).length || 1}</span>
                     </div>
+                    {financialBalance ? (
+                      <>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">Settlement status</span>
+                            <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getSettlementStatusClassName(getSettlementStatus(financialBalance))}`}>
+                            {getPurchaseSettlementLabel(financialBalance)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">
+                            {config.documentType === "PURCHASE_INVOICE" ? "Cash paid" : "Received back"}
+                          </span>
+                          <span className="font-semibold text-foreground">
+                            {formatCurrency(financialBalance.paidAmount)}
+                          </span>
+                        </div>
+                        {financialBalance.appliedReturnAmount > 0 ? (
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Returns applied</span>
+                            <span className="font-semibold text-foreground">
+                              {formatCurrency(financialBalance.appliedReturnAmount)}
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">
+                            {financialBalance.netOutstandingAmount < 0 ? "Vendor credit" : "Outstanding"}
+                          </span>
+                          <span className="font-semibold text-foreground">
+                            {formatCurrency(Math.abs(financialBalance.netOutstandingAmount))}
+                          </span>
+                        </div>
+                        {financialBalance.lastPaymentAt ? (
+                          <div className="flex items-center justify-between gap-3 text-xs">
+                            <span className="text-muted-foreground">Last payment</span>
+                            <span className="truncate font-semibold text-foreground">
+                              {new Date(financialBalance.lastPaymentAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        ) : null}
+                        {financialBalance.fullySettledAt ? (
+                          <div className="flex items-center justify-between gap-3 text-xs">
+                            <span className="text-muted-foreground">Fully settled</span>
+                            <span className="truncate font-semibold text-foreground">
+                              {new Date(financialBalance.fullySettledAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        ) : null}
+                        {financialBalance.netOutstandingAmount < 0 ? (
+                          <div className="rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 py-1 text-[11px] text-fuchsia-700">
+                            Total payments and returns exceed the original invoice amount. A vendor credit or refund is due.
+                          </div>
+                        ) : financialBalance.paidAmount <= 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
+                          <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
+                            This invoice is settled by linked purchase returns. No cash payment has been recorded.
+                          </div>
+                        ) : financialBalance.paidAmount > 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
+                          <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
+                            This invoice is settled by a combination of cash payments and linked purchase returns.
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
                     {parentDocumentNumber ? (
                       <div className="flex items-center justify-between gap-3 text-xs">
                         <span className="text-muted-foreground">Source</span>

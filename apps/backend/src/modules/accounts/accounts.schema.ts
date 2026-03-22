@@ -1,0 +1,117 @@
+import { z } from "zod";
+
+const financialAccountTypeSchema = z.enum(["CASH", "BANK", "UPI", "CREDIT_CARD", "OTHER"]);
+const moneyMovementSourceKindSchema = z.enum(["PAYMENT_RECEIVED", "PAYMENT_MADE", "EXPENSE", "MANUAL"]);
+const financialDocumentTypeSchema = z.enum([
+  "SALES_INVOICE",
+  "SALES_RETURN",
+  "PURCHASE_INVOICE",
+  "PURCHASE_RETURN",
+]);
+
+const allocationSchema = z.object({
+  documentType: financialDocumentTypeSchema,
+  documentId: z.uuid(),
+  allocatedAmount: z.coerce.number().positive(),
+});
+
+export const accountsOverviewSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+  }),
+});
+
+export const listFinancialAccountsSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    includeInactive: z.coerce.boolean().optional().default(false),
+  }),
+});
+
+export const createFinancialAccountSchema = z.object({
+  body: z.object({
+    tenantId: z.uuid(),
+    name: z.string().trim().min(1).max(80),
+    accountType: financialAccountTypeSchema,
+    currency: z.string().trim().length(3).optional().default("INR"),
+    openingBalance: z.coerce.number().optional().default(0),
+    locationId: z.uuid().optional().nullable(),
+  }),
+});
+
+export const archiveFinancialAccountSchema = z.object({
+  params: z.object({
+    accountId: z.uuid(),
+  }),
+  body: z.object({
+    tenantId: z.uuid(),
+  }),
+});
+
+export const listMoneyMovementsSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    sourceKind: moneyMovementSourceKindSchema.optional(),
+    accountId: z.uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  }),
+});
+
+export const paymentCreateSchema = z.object({
+  body: z.object({
+    tenantId: z.uuid(),
+    occurredAt: z.string().datetime(),
+    amount: z.coerce.number().positive(),
+    financialAccountId: z.uuid(),
+    referenceNo: z.string().trim().max(80).optional(),
+    notes: z.string().trim().max(500).optional(),
+    allocations: z.array(allocationSchema).max(10).optional().default([]),
+  }),
+});
+
+export const createExpenseSchema = z.object({
+  body: z.object({
+    tenantId: z.uuid(),
+    occurredAt: z.string().datetime(),
+    amount: z.coerce.number().positive(),
+    expenseCategoryId: z.uuid(),
+    financialAccountId: z.uuid(),
+    payeeName: z.string().trim().min(1).max(120),
+    referenceNo: z.string().trim().max(80).optional(),
+    notes: z.string().trim().max(500).optional(),
+    locationId: z.uuid().optional().nullable(),
+    partyId: z.uuid().optional().nullable(),
+  }),
+});
+
+export const listExpensesSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    categoryId: z.uuid().optional(),
+    accountId: z.uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  }),
+});
+
+export const listExpenseCategoriesSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    includeInactive: z.coerce.boolean().optional().default(false),
+  }),
+});
+
+export const listOpenDocumentsSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    flow: z.enum(["RECEIVABLE", "PAYABLE"]),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  }),
+});
+
+export const documentBalanceSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    documentType: financialDocumentTypeSchema,
+    documentId: z.uuid(),
+  }),
+});

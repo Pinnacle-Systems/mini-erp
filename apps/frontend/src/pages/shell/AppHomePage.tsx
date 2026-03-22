@@ -51,6 +51,7 @@ import { LandingQuickActionButton } from "../../design-system/molecules/LandingQ
 import { LandingRecentActivityItem } from "../../design-system/molecules/LandingRecentActivityItem";
 
 type UserFolderId =
+  | "finance"
   | "sell"
   | "buy"
   | "products"
@@ -60,6 +61,11 @@ type UserFolderId =
   | "reports"
   | "admin";
 type UserAppId =
+  | "finance-overview"
+  | "finance-received"
+  | "finance-made"
+  | "finance-expenses"
+  | "finance-accounts"
   | "sales-estimates"
   | "sales-pos"
   | "sales-bills"
@@ -107,6 +113,11 @@ type UserFolderNavEntry = {
 };
 
 const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
+  "finance-overview": "finance-overview",
+  "finance-received": "payments-received",
+  "finance-made": "payments-made",
+  "finance-expenses": "expenses",
+  "finance-accounts": "financial-accounts",
   "sales-estimates": "sales-estimates",
   "sales-pos": "sales-pos",
   "sales-bills": "sales-bills",
@@ -166,6 +177,44 @@ const folders: Array<{
   requiredModule?: keyof BusinessModules;
   apps: UserFolderApp[];
 }> = [
+  {
+    id: "finance",
+    label: "Finance",
+    Icon: ReceiptText,
+    requiredModule: "accounts",
+    apps: [
+      {
+        id: "finance-overview",
+        label: "Overview",
+        Icon: LayoutGrid,
+        requiredAnyCapability: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
+      },
+      {
+        id: "finance-received",
+        label: "Payments Received",
+        Icon: HandCoins,
+        requiredAnyCapability: ["FINANCE_RECEIVABLES"],
+      },
+      {
+        id: "finance-made",
+        label: "Payments Made",
+        Icon: FileText,
+        requiredAnyCapability: ["FINANCE_PAYABLES"],
+      },
+      {
+        id: "finance-expenses",
+        label: "Expenses",
+        Icon: ReceiptText,
+        requiredAnyCapability: ["FINANCE_PAYABLES"],
+      },
+      {
+        id: "finance-accounts",
+        label: "Accounts",
+        Icon: Cog,
+        requiredAnyCapability: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
+      },
+    ],
+  },
   {
     id: "sell",
     label: "Sell",
@@ -526,6 +575,7 @@ export function AppHomePage() {
   const enabledModules = useMemo(
     () =>
       activeBusinessModules ?? {
+        accounts: true,
         catalog: true,
         inventory: true,
         purchases: true,

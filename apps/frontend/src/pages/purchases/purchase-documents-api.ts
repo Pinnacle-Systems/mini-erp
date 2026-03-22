@@ -1,4 +1,5 @@
 import { apiFetch } from "../../lib/api";
+import type { InvoiceSettlementSummary } from "../finance/financial-api";
 
 export type PurchaseDocumentType =
   | "PURCHASE_ORDER"
@@ -47,6 +48,8 @@ export type PurchaseDocumentDraft = {
     | "VOID";
   cancelReason?: PurchaseDocumentCancelReason | null;
   postedAt?: string | null;
+  grandTotal?: number;
+  settlement?: InvoiceSettlementSummary | null;
   billNumber: string;
   settlementMode: "CASH" | "CREDIT";
   supplierId: string | null;

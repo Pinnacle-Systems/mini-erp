@@ -2,7 +2,24 @@ import { useSessionStore } from "../features/auth/session-business";
 
 const ACCESS_TOKEN_KEY = "mini_erp_frontend_access_token";
 
-const getApiBaseUrl = () => import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
+const normalizeBaseUrl = (value: string | undefined) => {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return "";
+  return trimmed.replace(/\/+$/, "");
+};
+
+const getApiBaseUrl = () => {
+  const explicitBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+  if (explicitBaseUrl) {
+    return explicitBaseUrl;
+  }
+
+  if (import.meta.env.DEV) {
+    return normalizeBaseUrl(import.meta.env.VITE_DEV_PROXY_TARGET);
+  }
+
+  return "";
+};
 
 export const getAccessToken = () => window.localStorage.getItem(ACCESS_TOKEN_KEY);
 

@@ -183,7 +183,7 @@ class PurchaseBalanceService {
           : remainingQuantity;
       const invoiceableQuantity =
         sourceDocument.type === "GOODS_RECEIPT_NOTE"
-          ? originalQuantity - returnedQuantity
+          ? originalQuantity - fulfilledQuantity - returnedQuantity
           : remainingQuantity;
 
       return {

@@ -21,6 +21,37 @@ import {
   type SalesDocumentPageConfig,
 } from "./useSalesDocumentWorkspace";
 
+const getPaymentStatusLabel = (value: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID") => {
+  switch (value) {
+    case "N_A":
+      return "N/A";
+    case "UNPAID":
+      return "Unpaid";
+    case "PARTIAL":
+      return "Partial";
+    case "PAID":
+      return "Paid";
+    case "OVERPAID":
+      return "Overpaid";
+  }
+};
+
+const getPaymentStatusClassName = (value: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID") => {
+  switch (value) {
+    case "PAID":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "PARTIAL":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "OVERPAID":
+      return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+    case "N_A":
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+    case "UNPAID":
+    default:
+      return "border-border/70 bg-muted/55 text-muted-foreground";
+  }
+};
+
 type SalesDocumentListViewProps = {
   config: SalesDocumentPageConfig;
   saveMessage: string | null;
@@ -52,10 +83,15 @@ export function SalesDocumentListView({
   const { showToast } = useToast();
   const lastSaveMessageRef = useRef<string | null>(null);
   const showSourceColumn = config.documentType !== "SALES_ESTIMATE";
+  const showPaymentColumn = config.documentType === "SALES_INVOICE";
   const desktopGridTemplate = withTabularSerialNumberColumn(
     showSourceColumn
-      ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem"
-      : "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.85fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem",
+      ? showPaymentColumn
+        ? "minmax(0,1fr) minmax(0,1.35fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,1fr) 4.5rem"
+        : "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem"
+      : showPaymentColumn
+        ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem"
+        : "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.85fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem",
   );
   const getParentDocumentNumber = (row: InvoiceListRow) => {
     const parentId =
@@ -147,6 +183,13 @@ export function SalesDocumentListView({
                   <span>{formatDateTime(row.timestamp)}</span>
                   <span>{formatCurrency(row.total)}</span>
                 </div>
+                {showPaymentColumn && row.source === "server" && row.invoice.settlement ? (
+                  <div className="mt-2">
+                    <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(row.invoice.settlement.paymentStatus)}`}>
+                      {getPaymentStatusLabel(row.invoice.settlement.paymentStatus)}
+                    </span>
+                  </div>
+                ) : null}
                 {showSourceColumn ? (
                   <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
                     <span className="truncate">
@@ -241,6 +284,9 @@ export function SalesDocumentListView({
                       <TabularCell variant="header">Source</TabularCell>
                     ) : null}
                     <TabularCell variant="header">Status</TabularCell>
+                    {showPaymentColumn ? (
+                      <TabularCell variant="header">Payment</TabularCell>
+                    ) : null}
                     <TabularCell variant="header" align="end">Total</TabularCell>
                     <TabularCell variant="header">Updated</TabularCell>
                     <TabularCell variant="header" align="center">Actions</TabularCell>
@@ -262,6 +308,20 @@ export function SalesDocumentListView({
                       </TabularCell>
                     ) : null}
                     <TabularCell>{row.status}</TabularCell>
+                    {showPaymentColumn ? (
+                      <TabularCell>
+                        {row.source === "server" && row.invoice.settlement ? (
+                          <span
+                            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(row.invoice.settlement.paymentStatus)}`}
+                            title={row.invoice.settlement.paymentStatus === "OVERPAID" ? "Invoice has received more than its current outstanding amount." : undefined}
+                          >
+                            {getPaymentStatusLabel(row.invoice.settlement.paymentStatus)}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground">N/A</span>
+                        )}
+                      </TabularCell>
+                    ) : null}
                     <TabularCell align="end" className="font-semibold text-foreground">
                       {formatCurrency(row.total)}
                     </TabularCell>

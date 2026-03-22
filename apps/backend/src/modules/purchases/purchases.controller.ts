@@ -3,6 +3,7 @@ import tenantService from "../tenant/tenant.service.js";
 import { catchAsync } from "../../shared/utils/catchAsync.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../shared/utils/errors.js";
 import { getBusinessCapabilitiesFromLicense } from "../license/license.service.js";
+import accountsService from "../accounts/accounts.service.js";
 import {
   mapDocumentHistoryEntries,
   recordDocumentHistory,
@@ -616,6 +617,7 @@ const mapPurchaseDocuments = (documents: PurchaseDocumentRecord[]) =>
       locationId: document.location_id ?? null,
       locationName: document.location_name_snapshot ?? "",
       settlementMode: document.settlement_mode ?? "CASH",
+      grandTotal: Number(document.grand_total ?? 0),
       supplierId: document.party_id ?? null,
       supplierName: partySnapshot?.name ?? "",
       supplierPhone: partySnapshot?.phone ?? "",
@@ -636,6 +638,31 @@ const mapPurchaseDocuments = (documents: PurchaseDocumentRecord[]) =>
       })),
     };
   });
+
+const enrichPurchaseDocumentsWithSettlement = async (
+  tenantId: string,
+  documents: ReturnType<typeof mapPurchaseDocuments>,
+) => {
+  const settlementById = await accountsService.buildSettlementMap(
+    tenantId,
+    documents
+      .filter((document) => document.documentType === "PURCHASE_INVOICE")
+      .map((document) => ({
+        id: document.id,
+        documentType: document.documentType as "PURCHASE_INVOICE",
+        status: document.status ?? null,
+        grandTotal: document.grandTotal,
+      })),
+  );
+
+  return documents.map((document) => ({
+    ...document,
+    settlement:
+      document.documentType === "PURCHASE_INVOICE"
+        ? (settlementById.get(document.id) ?? null)
+        : null,
+  }));
+};
 
 const buildSourceLineMap = (document: PurchaseDocumentRecord) =>
   Object.fromEntries(
@@ -1254,7 +1281,11 @@ export const listPurchaseDocuments = catchAsync(async (req, res) => {
     take: Number(limit),
   });
 
-  res.json(toPurchaseDocumentListView(mapPurchaseDocuments(documents)));
+  res.json(
+    toPurchaseDocumentListView(
+      await enrichPurchaseDocumentsWithSettlement(tenantId, mapPurchaseDocuments(documents)),
+    ),
+  );
 });
 
 export const getPurchaseDocumentHistory = catchAsync(async (req, res) => {
@@ -1340,7 +1371,11 @@ export const createPurchaseDocument = catchAsync(async (req, res) => {
     }),
   );
 
-  res.json(toPurchaseDocumentPayload(mapPurchaseDocuments([document])[0]));
+  res.json(
+    toPurchaseDocumentPayload(
+      (await enrichPurchaseDocumentsWithSettlement(input.tenantId, mapPurchaseDocuments([document])))[0],
+    ),
+  );
 });
 
 export const updatePurchaseDocument = catchAsync(async (req, res) => {
@@ -1356,7 +1391,11 @@ export const updatePurchaseDocument = catchAsync(async (req, res) => {
     }),
   );
 
-  res.json(toPurchaseDocumentPayload(mapPurchaseDocuments([document])[0]));
+  res.json(
+    toPurchaseDocumentPayload(
+      (await enrichPurchaseDocumentsWithSettlement(input.tenantId, mapPurchaseDocuments([document])))[0],
+    ),
+  );
 });
 
 export const postPurchaseDocument = catchAsync(async (req, res) => {
@@ -1375,7 +1414,11 @@ export const postPurchaseDocument = catchAsync(async (req, res) => {
     }),
   );
 
-  res.json(toPurchaseDocumentPayload(mapPurchaseDocuments([document])[0]));
+  res.json(
+    toPurchaseDocumentPayload(
+      (await enrichPurchaseDocumentsWithSettlement(tenantId, mapPurchaseDocuments([document])))[0],
+    ),
+  );
 });
 
 export const transitionPurchaseDocument = catchAsync(async (req, res) => {
@@ -1404,7 +1447,11 @@ export const transitionPurchaseDocument = catchAsync(async (req, res) => {
     ),
   );
 
-  res.json(toPurchaseDocumentPayload(mapPurchaseDocuments([document])[0]));
+  res.json(
+    toPurchaseDocumentPayload(
+      (await enrichPurchaseDocumentsWithSettlement(tenantId, mapPurchaseDocuments([document])))[0],
+    ),
+  );
 });
 
 export const deletePurchaseDocument = catchAsync(async (req, res) => {
