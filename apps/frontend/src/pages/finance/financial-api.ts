@@ -115,6 +115,16 @@ export type FinancialOverview = {
   }>;
 };
 
+export type PartyFinancialSummary = {
+  partyId: string;
+  flow: "RECEIVABLE" | "PAYABLE";
+  totalOutstanding: number;
+  openDocumentCount: number;
+  unappliedAmount: number;
+  documentCreditAmount: number;
+  recentMovements: MoneyMovementRow[];
+};
+
 export type InvoiceSettlementSummary = Pick<
   FinancialDocumentBalanceRow,
   | "grossDocumentAmount"
@@ -133,6 +143,23 @@ export const getFinancialOverview = async (tenantId: string): Promise<FinancialO
   const response = await apiFetch(`/api/accounts/overview?${query.toString()}`, { method: "GET" });
   if (!response.ok) throw await parseError(response, "Unable to load financial overview");
   return (await response.json()) as FinancialOverview;
+};
+
+export const getPartyFinancialSummary = async (
+  tenantId: string,
+  partyId: string,
+  flow: "RECEIVABLE" | "PAYABLE",
+): Promise<PartyFinancialSummary> => {
+  const query = new URLSearchParams({ tenantId, partyId, flow });
+  const response = await apiFetch(`/api/accounts/party-summary?${query.toString()}`, {
+    method: "GET",
+  });
+  if (!response.ok) throw await parseError(response, "Unable to load party financial summary");
+  const payload = (await response.json()) as { summary?: PartyFinancialSummary };
+  if (!payload.summary) {
+    throw new FinancialApiError("Unable to load party financial summary", response.status);
+  }
+  return payload.summary;
 };
 
 export const listFinancialAccounts = async (

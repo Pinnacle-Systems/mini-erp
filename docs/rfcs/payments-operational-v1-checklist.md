@@ -2,7 +2,7 @@
 
 This checklist tracks implementation status for [RFC: Payments and Operational Financial Tracking V1](/home/ajay/workspace/mini-erp/docs/rfcs/payments-operational-v1.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: updated against tracked repository state on 2026-03-22. The operational finance foundation is implemented and usable. The repo now includes `accounts.*` operational tables, backend APIs, finance frontend pages, invoice settlement summaries, purchase-return-aware purchase invoice settlement, and overview cards for customer receivables, supplier payables, and vendor credit. The phase is still incomplete for sales-return-aware settlement, unapplied credit handling, movement reversal flows, and deeper reporting.
+Status review note: updated against tracked repository state on 2026-03-22. The operational finance foundation is implemented and usable. The repo now includes `accounts.*` operational tables, backend APIs, finance frontend pages, invoice settlement summaries, purchase-return-aware purchase invoice settlement, sales-return-aware sales invoice settlement, party-level finance summaries, unapplied credit summaries, and overview cards for customer receivables, supplier payables, and vendor credit. The phase is still incomplete for multi-document allocation, dedicated unapplied-credit workflows, expense void/recreate, and deeper reporting.
 
 ## Phase 1: Operational Finance Foundation
 
@@ -125,7 +125,8 @@ Goal: expose operational finance workflows in a compact business-oriented module
 - [x] Add expense quick-entry UI
 - [x] Add financial account maintenance UI
 - [ ] Add multi-document allocation UI in a single payment entry
-- [ ] Add unapplied credit / advance payment UI
+- [x] Add party-level unapplied credit / advance summary UI
+- [ ] Add unapplied credit / advance payment workflow UI
 - [ ] Add richer filtering and export workflows
 
 ## Phase 8: Document Context Integration
@@ -144,7 +145,7 @@ Goal: make settlement visible where users manage invoices.
   - `Settled`
   - `Settled by Return`
   - `Vendor Credit`
-- [ ] Add similarly refined wording once sales returns join sales settlement math
+- [x] Add similarly refined wording once sales returns join sales settlement math
 
 ## Phase 9: Overview and Rollup Accuracy
 
@@ -154,16 +155,27 @@ Goal: keep overview cards aligned with business meaning.
 - [x] Stop counting sales returns as standalone payables in overview rollups
 - [x] Rename overview cards to `Customer Receivable` and `Supplier Payable`
 - [x] Add separate `Vendor Credit` overview metric
-- [ ] Add customer-credit equivalent when sales-return-aware settlement and unapplied credit are implemented
+- [ ] Add customer-credit equivalent overview metric when customer-credit rollups are promoted beyond party-level detail
 
-## Phase 10: Still Pending for Later Phase
+## Phase 10: Party-Level Finance Context
+
+Goal: help users understand what a specific customer or supplier owes, and whether advance money is already sitting in the system.
+
+- [x] Add party financial summary backend endpoint
+- [x] Add party summary aggregation in `accounts.service.ts`
+- [x] Add party-level total outstanding summary
+- [x] Add party-level open invoice count
+- [x] Add party-level unapplied payment / advance summary
+- [x] Add party-level document credit summary
+- [x] Add recent party finance activity in customer detail
+- [x] Add recent party finance activity in supplier detail
+
+## Phase 11: Still Pending for Later Phase
 
 These are agreed pending items rather than regressions:
 
-- [ ] Sales-return-aware sales invoice settlement
-- [ ] Money movement reversal / void workflow
-- [ ] Party-level outstanding summary
-- [ ] Party-level unapplied credit summary
+- [ ] Expense money movement reversal / void workflow
+- [ ] Dedicated unapplied credit / advance allocation workflow
 - [ ] Advance receipt / advance payment handling UX
 - [ ] Multi-document payment allocation UI
 - [ ] Attachment support for expense/payment records

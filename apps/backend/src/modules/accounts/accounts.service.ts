@@ -65,6 +65,36 @@ type OpenFinancialDocumentSummary = {
   fullySettledAt: string | null;
 };
 
+type PartyFinancialSummary = {
+  partyId: string;
+  flow: DocumentFlow;
+  totalOutstanding: number;
+  openDocumentCount: number;
+  unappliedAmount: number;
+  documentCreditAmount: number;
+  recentMovements: Array<{
+    id: string;
+    direction: "INFLOW" | "OUTFLOW";
+    status: "POSTED" | "VOIDED";
+    sourceKind: "PAYMENT_RECEIVED" | "PAYMENT_MADE" | "EXPENSE" | "MANUAL";
+    sourceDocumentType: string | null;
+    sourceDocumentId: string | null;
+    sourceDocumentNumber: string | null;
+    occurredAt: string;
+    amount: number;
+    currency: string;
+    accountId: string;
+    accountName: string;
+    partyId: string | null;
+    partyName: string;
+    locationId: string | null;
+    referenceNo: string;
+    notes: string;
+  }>;
+};
+
+type MoneyMovementListRow = PartyFinancialSummary["recentMovements"][number];
+
 const ensureDefaults = async (tenantId: string) => {
   const [accountCount, categoryCount] = await Promise.all([
     prismaAny.financialAccount.count({
@@ -739,6 +769,58 @@ const listExpenseCategories = async (tenantId: string, includeInactive = false) 
   }));
 };
 
+const mapMoneyMovementRows = async (
+  tenantId: string,
+  rows: any[],
+): Promise<MoneyMovementListRow[]> => {
+  const sourceDocumentIds = rows
+    .map((row: any) => row.source_document_id)
+    .filter((value: unknown): value is string => typeof value === "string");
+  const documents = sourceDocumentIds.length
+    ? await prismaAny.document.findMany({
+        where: {
+          id: {
+            in: sourceDocumentIds,
+          },
+          business_id: tenantId,
+        },
+        select: {
+          id: true,
+          doc_number: true,
+        },
+      })
+    : [];
+  const documentNumberById = new Map(
+    documents.map((document: any) => [String(document.id), String(document.doc_number)] as const),
+  );
+
+  return rows.map((row: any): MoneyMovementListRow => ({
+    id: String(row.id),
+    direction: row.direction,
+    status: row.status,
+    sourceKind: row.source_kind,
+    sourceDocumentType:
+      typeof row.source_document_type === "string" ? row.source_document_type : null,
+    sourceDocumentId:
+      typeof row.source_document_id === "string" ? row.source_document_id : null,
+    sourceDocumentNumber:
+      typeof row.source_document_id === "string"
+        ? ((documentNumberById.get(row.source_document_id) as string | undefined) ?? null)
+        : null,
+    occurredAt: row.occurred_at.toISOString(),
+    amount: Number(row.amount ?? 0),
+    currency: String(row.currency),
+    accountId: String(row.financial_account.id),
+    accountName: String(row.financial_account.name),
+    partyId: typeof row.party_id === "string" ? row.party_id : null,
+    partyName:
+      typeof row.party_name_snapshot === "string" ? row.party_name_snapshot : "",
+    locationId: typeof row.location_id === "string" ? row.location_id : null,
+    referenceNo: typeof row.reference_no === "string" ? row.reference_no : "",
+    notes: typeof row.notes === "string" ? row.notes : "",
+  }));
+};
+
 const listMoneyMovements = async (
   tenantId: string,
   input: {
@@ -782,52 +864,90 @@ const listMoneyMovements = async (
     take: input.limit,
   });
 
-  const sourceDocumentIds = rows
-    .map((row: any) => row.source_document_id)
-    .filter((value: unknown): value is string => typeof value === "string");
-  const documents = sourceDocumentIds.length
-    ? await prismaAny.document.findMany({
-        where: {
-          id: {
-            in: sourceDocumentIds,
-          },
-          business_id: tenantId,
-        },
-        select: {
-          id: true,
-          doc_number: true,
-        },
-      })
-    : [];
-  const documentNumberById = new Map(
-    documents.map((document: any) => [String(document.id), String(document.doc_number)] as const),
-  );
+  return mapMoneyMovementRows(tenantId, rows);
+};
 
-  return rows.map((row: any) => ({
-    id: String(row.id),
-    direction: row.direction,
-    status: row.status,
-    sourceKind: row.source_kind,
-    sourceDocumentType:
-      typeof row.source_document_type === "string" ? row.source_document_type : null,
-    sourceDocumentId:
-      typeof row.source_document_id === "string" ? row.source_document_id : null,
-    sourceDocumentNumber:
-      typeof row.source_document_id === "string"
-        ? (documentNumberById.get(row.source_document_id) ?? null)
-        : null,
-    occurredAt: row.occurred_at.toISOString(),
-    amount: Number(row.amount ?? 0),
-    currency: String(row.currency),
-    accountId: String(row.financial_account.id),
-    accountName: String(row.financial_account.name),
-    partyId: typeof row.party_id === "string" ? row.party_id : null,
-    partyName:
-      typeof row.party_name_snapshot === "string" ? row.party_name_snapshot : "",
-    locationId: typeof row.location_id === "string" ? row.location_id : null,
-    referenceNo: typeof row.reference_no === "string" ? row.reference_no : "",
-    notes: typeof row.notes === "string" ? row.notes : "",
-  }));
+const getPartyFinancialSummary = async (
+  tenantId: string,
+  partyId: string,
+  flow: DocumentFlow,
+): Promise<PartyFinancialSummary> => {
+  await ensureDefaults(tenantId);
+
+  const [documents, paymentRows] = await Promise.all([
+    getPostedDocumentsForFlow(tenantId, flow),
+    prismaAny.moneyMovement.findMany({
+      where: {
+        business_id: tenantId,
+        party_id: partyId,
+        status: "POSTED",
+        direction: flow === "RECEIVABLE" ? "INFLOW" : "OUTFLOW",
+        source_kind: flow === "RECEIVABLE" ? "PAYMENT_RECEIVED" : "PAYMENT_MADE",
+      },
+      select: {
+        id: true,
+        direction: true,
+        status: true,
+        source_kind: true,
+        source_document_type: true,
+        source_document_id: true,
+        occurred_at: true,
+        amount: true,
+        currency: true,
+        party_id: true,
+        party_name_snapshot: true,
+        location_id: true,
+        reference_no: true,
+        notes: true,
+        financial_account: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        allocations: {
+          select: {
+            allocated_amount: true,
+          },
+        },
+      },
+      orderBy: {
+        occurred_at: "desc",
+      },
+      take: 10,
+    }),
+  ]);
+
+  const partyDocuments = documents.filter((document) => document.partyId === partyId);
+  const totalOutstanding = partyDocuments.reduce((sum, document) => sum + document.outstandingAmount, 0);
+  const openDocumentCount = partyDocuments.filter(
+    (document) => document.outstandingAmount > SETTLEMENT_EPSILON,
+  ).length;
+  const documentCreditAmount = partyDocuments.reduce((sum, document) => {
+    if (document.netOutstandingAmount >= -SETTLEMENT_EPSILON) {
+      return sum;
+    }
+    return sum + Math.abs(document.netOutstandingAmount);
+  }, 0);
+
+  const unappliedAmount = paymentRows.reduce((sum: number, row: any) => {
+    const allocatedAmount = (row.allocations ?? []).reduce(
+      (allocatedSum: number, allocation: any) =>
+        allocatedSum + Number(allocation.allocated_amount ?? 0),
+      0,
+    );
+    return sum + Math.max(0, Number(row.amount ?? 0) - allocatedAmount);
+  }, 0);
+
+  return {
+    partyId,
+    flow,
+    totalOutstanding: Number(totalOutstanding.toFixed(2)),
+    openDocumentCount,
+    unappliedAmount: Number(unappliedAmount.toFixed(2)),
+    documentCreditAmount: Number(documentCreditAmount.toFixed(2)),
+    recentMovements: await mapMoneyMovementRows(tenantId, paymentRows),
+  };
 };
 
 const voidMoneyMovement = async (tenantId: string, movementId: string) => {
@@ -1305,5 +1425,6 @@ export default {
   createExpense,
   getOverview,
   getDocumentBalance,
+  getPartyFinancialSummary,
   buildSettlementMap,
 };

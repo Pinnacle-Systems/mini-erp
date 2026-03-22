@@ -14,6 +14,7 @@ import {
   listMoneyMovements,
   listOpenDocuments,
   overview,
+  partyFinancialSummary,
   voidMoneyMovement,
 } from "./accounts.controller.js";
 import {
@@ -28,6 +29,7 @@ import {
   listMoneyMovementsSchema,
   listOpenDocumentsSchema,
   paymentCreateSchema,
+  partyFinancialSummarySchema,
   voidMoneyMovementSchema,
 } from "./accounts.schema.js";
 
@@ -47,5 +49,6 @@ router.post("/expenses", validateRequest(createExpenseSchema), createExpense);
 router.get("/expenses", validateRequest(listExpensesSchema), listExpenses);
 router.get("/open-documents", validateRequest(listOpenDocumentsSchema), listOpenDocuments);
 router.get("/document-balance", validateRequest(documentBalanceSchema), getDocumentBalance);
+router.get("/party-summary", validateRequest(partyFinancialSummarySchema), partyFinancialSummary);
 
 export default router;

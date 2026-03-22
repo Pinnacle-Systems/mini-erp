@@ -124,3 +124,11 @@ export const documentBalanceSchema = z.object({
     documentId: z.uuid(),
   }),
 });
+
+export const partyFinancialSummarySchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+    partyId: z.uuid(),
+    flow: z.enum(["RECEIVABLE", "PAYABLE"]),
+  }),
+});

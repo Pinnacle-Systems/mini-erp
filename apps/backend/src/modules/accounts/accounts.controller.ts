@@ -129,3 +129,13 @@ export const getDocumentBalance = catchAsync(async (req, res) => {
     }),
   );
 });
+
+export const partyFinancialSummary = catchAsync(async (req, res) => {
+  const { tenantId, partyId, flow } = req.query as any;
+  await assertMembership(req.user.id, tenantId);
+  res.json(
+    successResponse({
+      summary: await accountsService.getPartyFinancialSummary(tenantId, partyId, flow),
+    }),
+  );
+});

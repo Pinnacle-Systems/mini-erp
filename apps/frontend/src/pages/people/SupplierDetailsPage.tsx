@@ -9,6 +9,10 @@ import {
   CardTitle,
 } from "../../design-system/molecules/Card";
 import {
+  getPartyFinancialSummary,
+  type PartyFinancialSummary,
+} from "../finance/financial-api";
+import {
   hasAssignedStoreCapability,
   useSessionStore,
 } from "../../features/auth/session-business";
@@ -32,6 +36,9 @@ import {
 const isOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine;
 
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value || 0);
+
 export function SupplierDetailsPage() {
   const navigate = useNavigate();
   const { supplierId = "" } = useParams();
@@ -47,9 +54,12 @@ export function SupplierDetailsPage() {
   const [alsoManageAsCustomer, setAlsoManageAsCustomer] = useState(false);
   const [draft, setDraft] = useState(EMPTY_CUSTOMER_DRAFT);
   const [initialDraft, setInitialDraft] = useState(EMPTY_CUSTOMER_DRAFT);
+  const [financialSummary, setFinancialSummary] = useState<PartyFinancialSummary | null>(null);
+  const [financialError, setFinancialError] = useState<string | null>(null);
   const activeBusiness =
     businesses.find((business) => business.id === activeStore) ?? null;
   const canAlsoBeCustomer = hasAssignedStoreCapability(activeBusiness, "PARTIES_CUSTOMERS");
+  const hasAccountsModule = useSessionStore((state) => state.activeBusinessModules?.accounts ?? false);
 
   useEffect(() => {
     if (!activeStore || !isBusinessSelected || !supplierId) {
@@ -124,6 +134,39 @@ export function SupplierDetailsPage() {
       cancelled = true;
     };
   }, [activeStore, isBusinessSelected, supplierId]);
+
+  useEffect(() => {
+    if (!activeStore || !isBusinessSelected || !supplierId || !hasAccountsModule) {
+      setFinancialSummary(null);
+      setFinancialError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadFinancialSummary = async () => {
+      try {
+        const summary = await getPartyFinancialSummary(activeStore, supplierId, "PAYABLE");
+        if (!cancelled) {
+          setFinancialSummary(summary);
+          setFinancialError(null);
+        }
+      } catch (nextError) {
+        console.error(nextError);
+        if (!cancelled) {
+          setFinancialError(
+            nextError instanceof Error ? nextError.message : "Unable to load supplier finance summary",
+          );
+        }
+      }
+    };
+
+    void loadFinancialSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, hasAccountsModule, isBusinessSelected, supplierId]);
 
   const isDirty = useMemo(
     () =>
@@ -268,6 +311,79 @@ export function SupplierDetailsPage() {
         {saveError ? <p className="text-xs text-red-700">{saveError}</p> : null}
         {supplier ? (
           <>
+            {hasAccountsModule ? (
+              <div className="rounded-lg border border-border/80 bg-muted/40 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Financial Summary</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Supplier payables, unapplied advances, and recent payment activity.
+                    </p>
+                  </div>
+                </div>
+                {financialError ? (
+                  <p className="text-xs text-destructive">{financialError}</p>
+                ) : financialSummary ? (
+                  <div className="space-y-3">
+                    <div className="grid gap-2 md:grid-cols-4">
+                      <div className="rounded-md border border-border/70 bg-background px-3 py-2">
+                        <div className="text-[11px] text-muted-foreground">Total Payable</div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {formatCurrency(financialSummary.totalOutstanding)}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border/70 bg-background px-3 py-2">
+                        <div className="text-[11px] text-muted-foreground">Open Invoices</div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {financialSummary.openDocumentCount}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border/70 bg-background px-3 py-2">
+                        <div className="text-[11px] text-muted-foreground">Unapplied Advance</div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {formatCurrency(financialSummary.unappliedAmount)}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-border/70 bg-background px-3 py-2">
+                        <div className="text-[11px] text-muted-foreground">Vendor Credit</div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {formatCurrency(financialSummary.documentCreditAmount)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        Recent Finance Activity
+                      </p>
+                      {financialSummary.recentMovements.length > 0 ? (
+                        financialSummary.recentMovements.map((movement) => (
+                          <div
+                            key={movement.id}
+                            className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background px-3 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-foreground">
+                                {movement.sourceDocumentNumber || movement.referenceNo || "Payment"}
+                              </div>
+                              <div className="truncate text-muted-foreground">
+                                {new Date(movement.occurredAt).toLocaleDateString()} • {movement.accountName}
+                              </div>
+                            </div>
+                            <div className="shrink-0 font-semibold text-foreground">
+                              {formatCurrency(movement.amount)}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No payment activity recorded yet.</p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Loading financial summary...</p>
+                )}
+              </div>
+            ) : null}
             <CustomerFormFields
               draft={draft}
               setDraft={setDraft}
