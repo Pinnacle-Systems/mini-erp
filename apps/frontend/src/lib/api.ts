@@ -1,3 +1,5 @@
+import { useSessionStore } from "../features/auth/session-business";
+
 const ACCESS_TOKEN_KEY = "mini_erp_frontend_access_token";
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
@@ -27,8 +29,16 @@ type ApiFetchOptions = {
 };
 
 const refreshAccessToken = async () => {
+  const { activeStore, isBusinessSelected } = useSessionStore.getState();
+  const currentBusinessId = isBusinessSelected ? activeStore : null;
   const response = await fetch(apiUrl("/api/auth/refresh"), {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      currentBusinessId ? { currentBusinessId } : {},
+    ),
     credentials: "include"
   });
 

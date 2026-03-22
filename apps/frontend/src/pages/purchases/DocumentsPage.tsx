@@ -134,6 +134,18 @@ const PURCHASE_DOCUMENT_CONVERSIONS: Partial<
   ],
 };
 
+const toPositivePurchaseQuantity = (value: string) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+};
+
+const formatPurchaseQuantity = (value: number) => {
+  const normalized = Math.max(0, value);
+  return Number.isInteger(normalized)
+    ? String(normalized)
+    : String(Number(normalized.toFixed(3)));
+};
+
 function PurchaseDocumentPage({ config }: { config: PurchaseDocumentPageConfig }) {
   const activeStore = useSessionStore((state) => state.activeStore);
   const activeLocationId = useSessionStore((state) => state.activeLocationId);
@@ -345,7 +357,7 @@ function PurchaseDocumentWorkspace({
               <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
                 <TabularSurface className="min-h-0 flex-1 overflow-hidden">
                   <TabularHeader>
-                    <TabularRow columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,1fr) 3rem" : "minmax(0,1.2fr) minmax(0,1.85fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1fr) 3rem")}>
+                    <TabularRow columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem")}>
                       <TabularSerialNumberHeaderCell />
                       <TabularCell variant="header">Number</TabularCell>
                       <TabularCell variant="header">Supplier</TabularCell>
@@ -360,7 +372,7 @@ function PurchaseDocumentWorkspace({
                   </TabularHeader>
                   <TabularBody className="overflow-y-auto">
                     {documentRows.map((row, index) => (
-                      <TabularRow key={row.id} columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,1fr) 3rem" : "minmax(0,1.2fr) minmax(0,1.85fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1fr) 3rem")} interactive>
+                      <TabularRow key={row.id} columns={withTabularSerialNumberColumn(showSourceColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem")} interactive>
                         <TabularSerialNumberCell index={index} />
                         <TabularCell truncate hoverTitle={row.billNumber} className="font-semibold text-foreground">
                           {row.billNumber}
@@ -475,7 +487,7 @@ function PurchaseDocumentWorkspace({
           ) : null}
 
           <div className="flex min-h-0 flex-1 flex-col gap-2 pt-0.5 lg:overflow-hidden">
-            <div className="flex min-h-0 flex-col gap-1.5 lg:overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col gap-1.5 lg:overflow-hidden">
               <div className="flex flex-col gap-2 pt-0.5 md:flex-row md:items-start md:gap-2">
                 <div className="space-y-1 md:w-[13.5rem] md:min-w-[13.5rem]">
                   <Label htmlFor="purchase-bill-number">Document number</Label>
@@ -604,8 +616,41 @@ function PurchaseDocumentWorkspace({
                 isViewingPostedDocument={isViewingPostedDocument}
                 onAppendLine={() => setLines((current) => [...current, createPurchaseLine()])}
                 onApplyLineItem={(lineId, option) =>
-                  setLines((current) =>
-                    current.map((entry) =>
+                  setLines((current) => {
+                    const currentLine = current.find((entry) => entry.id === lineId);
+                    if (!currentLine) {
+                      return current;
+                    }
+
+                    const existingLine = current.find(
+                      (entry) =>
+                        entry.variantId === option.variantId &&
+                        entry.id !== lineId &&
+                        !entry.sourceLineId &&
+                        !currentLine.sourceLineId,
+                    );
+
+                    if (existingLine) {
+                      const incrementBy = toPositivePurchaseQuantity(currentLine.quantity);
+                      return current.map((entry) => {
+                        if (entry.id === existingLine.id) {
+                          return {
+                            ...entry,
+                            quantity: formatPurchaseQuantity(
+                              toPositivePurchaseQuantity(entry.quantity) + incrementBy,
+                            ),
+                          };
+                        }
+
+                        if (entry.id === lineId) {
+                          return createPurchaseLine({ id: lineId });
+                        }
+
+                        return entry;
+                      });
+                    }
+
+                    return current.map((entry) =>
                       entry.id === lineId
                         ? {
                             ...entry,
@@ -618,8 +663,8 @@ function PurchaseDocumentWorkspace({
                             unit: option.unit,
                           }
                         : entry,
-                    ),
-                  )
+                    );
+                  })
                 }
                 onUpdateLine={(lineId, field, value) =>
                   setLines((current) =>
@@ -638,7 +683,7 @@ function PurchaseDocumentWorkspace({
                 }
               />
 
-              <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-card p-1.5 md:flex-row md:items-start md:shrink-0">
+              <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-card p-1.5 md:mt-auto md:flex-row md:items-start md:shrink-0">
                 <div className="flex flex-col gap-1 md:min-h-0 md:flex-1">
                   <Label htmlFor="purchase-notes">Notes</Label>
                   <Textarea

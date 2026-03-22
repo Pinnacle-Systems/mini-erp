@@ -142,6 +142,23 @@ const APP_ID_BY_ROUTE_SEGMENT = Object.fromEntries(
   Object.entries(APP_ROUTE_SEGMENT_BY_ID).map(([appId, segment]) => [segment, appId]),
 ) as Record<string, RoutableAppId>;
 
+const getFolderIdForAppId = (appId: UserAppId | null): UserFolderId | null => {
+  if (!appId) {
+    return null;
+  }
+
+  return folders.find((folder) => folder.apps.some((app) => app.id === appId))?.id ?? null;
+};
+
+const inferFolderIdFromPathname = (pathname: string): UserFolderId | null => {
+  if (!pathname.startsWith("/app/")) {
+    return null;
+  }
+
+  const appSegment = pathname.slice("/app/".length).split("/")[0] ?? "";
+  return getFolderIdForAppId(APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null);
+};
+
 const folders: Array<{
   id: UserFolderId;
   label: string;
@@ -464,7 +481,19 @@ export function AppHomePage() {
     () => activeBusiness?.name ?? "No business selected",
     [activeBusiness],
   );
-  const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(null);
+  const routeDrivenAppId: UserAppId | null = useMemo(() => {
+    if (!location.pathname.startsWith("/app/")) return null;
+    const appSegment = location.pathname.slice("/app/".length).split("/")[0] ?? "";
+    if (!appSegment) return null;
+    return APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null;
+  }, [location.pathname]);
+  const routeDrivenFolderId = useMemo(
+    () => getFolderIdForAppId(routeDrivenAppId),
+    [routeDrivenAppId],
+  );
+  const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(() =>
+    typeof window === "undefined" ? null : inferFolderIdFromPathname(window.location.pathname),
+  );
   const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   const [mobileVisibleFolderCount, setMobileVisibleFolderCount] = useState(1);
@@ -478,7 +507,7 @@ export function AppHomePage() {
   );
   const appTabsScrollRef = useRef<HTMLDivElement | null>(null);
   const desktopSidebarRef = useRef<HTMLDivElement | null>(null);
-  const previousRouteDrivenAppIdRef = useRef<UserAppId | null>(null);
+  const previousPathnameRef = useRef(location.pathname);
   const [showAppTabsLeftFade, setShowAppTabsLeftFade] = useState(false);
   const [showAppTabsRightFade, setShowAppTabsRightFade] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(() => {
@@ -509,12 +538,6 @@ export function AppHomePage() {
     () => `user-shell-sidebar-collapsed:${activeStore ?? "global"}`,
     [activeStore],
   );
-  const routeDrivenAppId: UserAppId | null = useMemo(() => {
-    if (!location.pathname.startsWith("/app/")) return null;
-    const appSegment = location.pathname.slice("/app/".length).split("/")[0] ?? "";
-    if (!appSegment) return null;
-    return APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null;
-  }, [location.pathname]);
 
   useEffect(() => {
     const setOnline = () => setIsOnline(true);
@@ -732,21 +755,20 @@ export function AppHomePage() {
   }, [activeFolderId, visibleFolders]);
 
   useEffect(() => {
-    const previousRouteDrivenAppId = previousRouteDrivenAppIdRef.current;
-    previousRouteDrivenAppIdRef.current = routeDrivenAppId;
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = location.pathname;
 
-    if (!routeDrivenAppId || routeDrivenAppId === previousRouteDrivenAppId) {
+    if (location.pathname === previousPathname) {
       return;
     }
-    const matchedFolder = visibleFolders.find((folder) =>
-      folder.apps.some((app) => app.id === routeDrivenAppId),
-    );
-    if (matchedFolder && matchedFolder.id !== activeFolderId) {
+
+    const nextFolderId = routeDrivenFolderId;
+    if (nextFolderId && nextFolderId !== activeFolderId) {
       queueMicrotask(() => {
-        setActiveFolderId(matchedFolder.id);
+        setActiveFolderId(nextFolderId);
       });
     }
-  }, [activeFolderId, routeDrivenAppId, visibleFolders]);
+  }, [activeFolderId, location.pathname, routeDrivenFolderId]);
 
   useEffect(() => {
     const initialFrameId = window.requestAnimationFrame(() => {

@@ -251,6 +251,11 @@ const createLine = (): BillLine => ({
   stockOnHand: null,
 });
 
+const resetLine = (lineId: string): BillLine => ({
+  ...createLine(),
+  id: lineId,
+});
+
 const getDefaultStarterLineCount = () => {
   if (typeof window === "undefined") {
     return DESKTOP_GROW_AS_NEEDED_STARTER_ROWS;
@@ -2161,16 +2166,20 @@ export function useSalesDocumentWorkspace({
         highlightedLineId = existingLine.id;
         const incrementBy = Math.max(toNumber(currentLine.quantity), 1);
 
-        return currentLines
-          .map((line) =>
-            line.id === existingLine.id
-              ? {
-                  ...line,
-                  quantity: formatQuantity(toNumber(line.quantity) + incrementBy),
-                }
-              : line,
-          )
-          .filter((line) => line.id !== lineId);
+        return currentLines.map((line) => {
+          if (line.id === existingLine.id) {
+            return {
+              ...line,
+              quantity: formatQuantity(toNumber(line.quantity) + incrementBy),
+            };
+          }
+
+          if (line.id === lineId) {
+            return resetLine(lineId);
+          }
+
+          return line;
+        });
       }
 
       return currentLines.map((line) =>

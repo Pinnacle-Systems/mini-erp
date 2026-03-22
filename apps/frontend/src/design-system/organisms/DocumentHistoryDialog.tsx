@@ -32,6 +32,60 @@ const formatTimestamp = (value: string) => {
   });
 };
 
+const PURCHASE_DOCUMENT_TYPE_LABELS = {
+  PURCHASE_ORDER: "purchase order",
+  GOODS_RECEIPT_NOTE: "goods receipt",
+  PURCHASE_INVOICE: "purchase invoice",
+  PURCHASE_RETURN: "purchase return",
+} as const;
+
+const SALES_DOCUMENT_TYPE_LABELS = {
+  SALES_ESTIMATE: "estimate",
+  SALES_ORDER: "sales order",
+  DELIVERY_CHALLAN: "delivery challan",
+  SALES_INVOICE: "invoice",
+  SALES_RETURN: "sales return",
+} as const;
+
+const toSentenceCase = (value: string) =>
+  value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+
+const formatDocumentTypeLabel = (value: unknown) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (value in PURCHASE_DOCUMENT_TYPE_LABELS) {
+    return PURCHASE_DOCUMENT_TYPE_LABELS[value as keyof typeof PURCHASE_DOCUMENT_TYPE_LABELS];
+  }
+
+  if (value in SALES_DOCUMENT_TYPE_LABELS) {
+    return SALES_DOCUMENT_TYPE_LABELS[value as keyof typeof SALES_DOCUMENT_TYPE_LABELS];
+  }
+
+  return null;
+};
+
+const getConversionDocumentContext = (entry: DocumentHistoryEntry) => {
+  const sourceDocumentType = formatDocumentTypeLabel(entry.metadata?.sourceDocumentType);
+  const sourceDocumentNumber =
+    typeof entry.metadata?.sourceDocumentNumber === "string"
+      ? entry.metadata.sourceDocumentNumber
+      : null;
+  const targetDocumentType = formatDocumentTypeLabel(entry.metadata?.targetDocumentType);
+  const targetDocumentNumber =
+    typeof entry.metadata?.targetDocumentNumber === "string"
+      ? entry.metadata.targetDocumentNumber
+      : null;
+
+  return {
+    sourceDocumentType,
+    sourceDocumentNumber,
+    targetDocumentType,
+    targetDocumentNumber,
+  };
+};
+
 const formatEventTitle = (entry: DocumentHistoryEntry) => {
   if (entry.eventType === "CREATED") {
     return "Draft created";
@@ -41,11 +95,24 @@ const formatEventTitle = (entry: DocumentHistoryEntry) => {
   }
   if (entry.eventType === "CONVERSION_LINKED") {
     const direction = entry.metadata?.direction;
+    const {
+      sourceDocumentType,
+      sourceDocumentNumber,
+      targetDocumentType,
+      targetDocumentNumber,
+    } = getConversionDocumentContext(entry);
+
     if (direction === "FROM_SOURCE") {
-      return "Converted from source";
+      if (sourceDocumentType && sourceDocumentNumber) {
+        return `Created from ${sourceDocumentType} ${sourceDocumentNumber}`;
+      }
+      return "Created from source document";
     }
     if (direction === "TO_TARGET") {
-      return "Converted to target";
+      if (targetDocumentType && targetDocumentNumber) {
+        return `Converted to ${targetDocumentType} ${targetDocumentNumber}`;
+      }
+      return "Converted to target document";
     }
     return "Conversion linked";
   }
@@ -59,20 +126,19 @@ const formatEventTitle = (entry: DocumentHistoryEntry) => {
 
 const formatEventDetails = (entry: DocumentHistoryEntry) => {
   if (entry.eventType === "CONVERSION_LINKED") {
-    const sourceNumber =
-      typeof entry.metadata?.sourceDocumentNumber === "string"
-        ? entry.metadata.sourceDocumentNumber
-        : null;
-    const targetNumber =
-      typeof entry.metadata?.targetDocumentNumber === "string"
-        ? entry.metadata.targetDocumentNumber
-        : null;
+    const direction = entry.metadata?.direction;
+    const {
+      sourceDocumentType,
+      sourceDocumentNumber,
+      targetDocumentType,
+      targetDocumentNumber,
+    } = getConversionDocumentContext(entry);
 
-    if (sourceNumber) {
-      return `Source document ${sourceNumber}`;
+    if (direction === "FROM_SOURCE" && sourceDocumentType && sourceDocumentNumber) {
+      return `Created from ${toSentenceCase(sourceDocumentType)} ${sourceDocumentNumber}.`;
     }
-    if (targetNumber) {
-      return `Target document ${targetNumber}`;
+    if (direction === "TO_TARGET" && targetDocumentType && targetDocumentNumber) {
+      return `Target document: ${toSentenceCase(targetDocumentType)} ${targetDocumentNumber}.`;
     }
   }
 

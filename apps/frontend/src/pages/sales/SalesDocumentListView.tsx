@@ -54,8 +54,8 @@ export function SalesDocumentListView({
   const showSourceColumn = config.documentType !== "SALES_ESTIMATE";
   const desktopGridTemplate = withTabularSerialNumberColumn(
     showSourceColumn
-      ? "minmax(0,1.1fr) minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.2fr) 3rem"
-      : "minmax(0,1.2fr) minmax(0,1.9fr) minmax(0,0.95fr) minmax(0,1.1fr) minmax(0,1.2fr) 3rem",
+      ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem"
+      : "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.85fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem",
   );
   const getParentDocumentNumber = (row: InvoiceListRow) => {
     const parentId =
