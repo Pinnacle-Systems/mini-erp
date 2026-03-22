@@ -48,6 +48,15 @@ export const archiveFinancialAccountSchema = z.object({
   }),
 });
 
+export const voidMoneyMovementSchema = z.object({
+  params: z.object({
+    movementId: z.uuid(),
+  }),
+  body: z.object({
+    tenantId: z.uuid(),
+  }),
+});
+
 export const listMoneyMovementsSchema = z.object({
   query: z.object({
     tenantId: z.uuid(),

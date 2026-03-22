@@ -57,8 +57,9 @@ Goal: make operational finance writes durable and accounting-ready.
 - [x] Track money movement source metadata
 - [x] Track account attribution on every movement
 - [x] Track party context when available
-- [ ] Add explicit reverse / void endpoint for money movements
-- [ ] Add enforced void-and-recreate workflow in UI
+- [x] Add explicit reverse / void endpoint for payment money movements
+- [x] Add payment-screen void action for posted payment movements
+- [ ] Extend void-and-recreate workflow to expense or other movement types where supporting status fields exist
 
 ## Phase 4: Derived Settlement Layer
 

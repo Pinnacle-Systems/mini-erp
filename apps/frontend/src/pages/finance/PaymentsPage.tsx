@@ -5,6 +5,9 @@ import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
 import { Select } from "../../design-system/atoms/Select";
 import {
+  IconButton,
+} from "../../design-system/atoms/IconButton";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -21,6 +24,7 @@ import {
   TabularSurface,
 } from "../../design-system/molecules/TabularSurface";
 import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
+import { Ban } from "lucide-react";
 import { useSessionStore } from "../../features/auth/session-business";
 import {
   listFinancialAccounts,
@@ -28,6 +32,7 @@ import {
   listOpenDocuments,
   recordMadePayment,
   recordReceivedPayment,
+  voidMoneyMovement,
   type FinancialAccountRow,
   type FinancialDocumentBalanceRow,
   type MoneyMovementRow,
@@ -159,6 +164,23 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     }
   };
 
+  const onVoidMovement = async (movementId: string) => {
+    if (!activeStore) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await voidMoneyMovement(activeStore, movementId);
+      await load();
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError instanceof Error ? nextError.message : "Unable to void payment");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
       <Card className="p-2">
@@ -224,23 +246,49 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
         <CardContent className="min-h-0 lg:flex-1">
           <TabularSurface className="min-h-0 overflow-hidden">
             <TabularHeader>
-              <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
+              <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr) 4rem")}>
                 <TabularSerialNumberHeaderCell />
                 <TabularCell variant="header">When</TabularCell>
                 <TabularCell variant="header">Document</TabularCell>
                 <TabularCell variant="header">Account</TabularCell>
                 <TabularCell variant="header" align="end">Amount</TabularCell>
+                <TabularCell variant="header" align="center">Action</TabularCell>
               </TabularRow>
             </TabularHeader>
             <TabularBody className="overflow-y-auto">
               {movements.map((movement, index) => (
-                <TabularRow key={movement.id} columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
+                <TabularRow key={movement.id} columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr) 4rem")}>
                   <TabularSerialNumberCell index={index} />
                   <TabularCell>{new Date(movement.occurredAt).toLocaleDateString()}</TabularCell>
                   <TabularCell>{movement.sourceDocumentNumber || movement.partyName || "Standalone"}</TabularCell>
                   <TabularCell>{movement.accountName}</TabularCell>
-                  <TabularCell align="end" className={flow === "RECEIVABLE" ? "text-foreground" : "text-destructive"}>
+                  <TabularCell
+                    align="end"
+                    className={
+                      movement.status === "VOIDED"
+                        ? "text-muted-foreground line-through"
+                        : flow === "RECEIVABLE"
+                          ? "text-foreground"
+                          : "text-destructive"
+                    }
+                  >
                     {formatCurrency(movement.amount)}
+                  </TabularCell>
+                  <TabularCell align="center">
+                    {movement.status === "VOIDED" ? (
+                      <span className="text-[11px] text-muted-foreground">Voided</span>
+                    ) : (
+                      <IconButton
+                        type="button"
+                        icon={Ban}
+                        variant="ghost"
+                        className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-destructive hover:bg-destructive/10"
+                        aria-label={`Void ${movement.sourceDocumentNumber || movement.id}`}
+                        title="Void entry"
+                        onClick={() => void onVoidMovement(movement.id)}
+                        disabled={loading}
+                      />
+                    )}
                   </TabularCell>
                 </TabularRow>
               ))}

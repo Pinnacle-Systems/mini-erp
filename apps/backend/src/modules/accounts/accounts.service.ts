@@ -830,6 +830,121 @@ const listMoneyMovements = async (
   }));
 };
 
+const voidMoneyMovement = async (tenantId: string, movementId: string) => {
+  const movement = await prismaAny.moneyMovement.findFirst({
+    where: {
+      id: movementId,
+      business_id: tenantId,
+    },
+    select: {
+      id: true,
+      status: true,
+      source_kind: true,
+      source_document_type: true,
+      source_document_id: true,
+      occurred_at: true,
+      amount: true,
+      currency: true,
+      party_id: true,
+      party_name_snapshot: true,
+      location_id: true,
+      reference_no: true,
+      notes: true,
+      financial_account: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!movement) {
+    throw new NotFoundError("Money movement not found");
+  }
+  if (movement.status === "VOIDED") {
+    throw new BadRequestError("Money movement is already voided");
+  }
+  if (!["PAYMENT_RECEIVED", "PAYMENT_MADE", "MANUAL"].includes(String(movement.source_kind))) {
+    throw new BadRequestError("Only payment or manual money movements can be voided in this phase");
+  }
+
+  const updated = await prismaAny.moneyMovement.update({
+    where: {
+      id: movementId,
+    },
+    data: {
+      status: "VOIDED",
+    },
+    select: {
+      id: true,
+      direction: true,
+      status: true,
+      source_kind: true,
+      source_document_type: true,
+      source_document_id: true,
+      occurred_at: true,
+      amount: true,
+      currency: true,
+      party_id: true,
+      party_name_snapshot: true,
+      location_id: true,
+      reference_no: true,
+      notes: true,
+      financial_account: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  const documentNumberById =
+    typeof updated.source_document_id === "string"
+      ? new Map(
+          (
+            await prismaAny.document.findMany({
+              where: {
+                id: updated.source_document_id,
+                business_id: tenantId,
+              },
+              select: {
+                id: true,
+                doc_number: true,
+              },
+            })
+          ).map((document: any) => [String(document.id), String(document.doc_number)] as const),
+        )
+      : new Map<string, string>();
+
+  return {
+    id: String(updated.id),
+    direction: updated.direction,
+    status: updated.status,
+    sourceKind: updated.source_kind,
+    sourceDocumentType:
+      typeof updated.source_document_type === "string" ? updated.source_document_type : null,
+    sourceDocumentId:
+      typeof updated.source_document_id === "string" ? updated.source_document_id : null,
+    sourceDocumentNumber:
+      typeof updated.source_document_id === "string"
+        ? (documentNumberById.get(updated.source_document_id) ?? null)
+        : null,
+    occurredAt: updated.occurred_at.toISOString(),
+    amount: Number(updated.amount ?? 0),
+    currency: String(updated.currency),
+    accountId: String(updated.financial_account.id),
+    accountName: String(updated.financial_account.name),
+    partyId: typeof updated.party_id === "string" ? updated.party_id : null,
+    partyName:
+      typeof updated.party_name_snapshot === "string" ? updated.party_name_snapshot : "",
+    locationId: typeof updated.location_id === "string" ? updated.location_id : null,
+    referenceNo: typeof updated.reference_no === "string" ? updated.reference_no : "",
+    notes: typeof updated.notes === "string" ? updated.notes : "",
+  };
+};
+
 const recordPayment = async (
   tenantId: string,
   flow: DocumentFlow,
@@ -1173,6 +1288,7 @@ export default {
   archiveFinancialAccount,
   listExpenseCategories,
   listMoneyMovements,
+  voidMoneyMovement,
   listExpenses,
   listOpenDocuments: async (tenantId: string, flow: DocumentFlow, limit?: number) =>
     (await getPostedDocumentsForFlow(tenantId, flow, limit)).filter(

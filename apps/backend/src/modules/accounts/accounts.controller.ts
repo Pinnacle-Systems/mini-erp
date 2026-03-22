@@ -71,6 +71,14 @@ export const listMoneyMovements = catchAsync(async (req, res) => {
   );
 });
 
+export const voidMoneyMovement = catchAsync(async (req, res) => {
+  const { movementId } = req.params as { movementId: string };
+  const { tenantId } = req.body as { tenantId: string };
+  await assertMembership(req.user.id, tenantId);
+  const movement = await accountsService.voidMoneyMovement(tenantId, movementId);
+  res.json(successResponse({ movement }));
+});
+
 export const createReceivedPayment = catchAsync(async (req, res) => {
   const { tenantId, ...input } = req.body as any;
   await assertMembership(req.user.id, tenantId);

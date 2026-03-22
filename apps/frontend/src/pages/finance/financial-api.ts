@@ -197,6 +197,26 @@ export const listMoneyMovements = async (
   return payload.movements ?? [];
 };
 
+export const voidMoneyMovement = async (
+  tenantId: string,
+  movementId: string,
+): Promise<MoneyMovementRow> => {
+  const response = await apiFetch(
+    `/api/accounts/money-movements/${encodeURIComponent(movementId)}/void`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenantId }),
+    },
+  );
+  if (!response.ok) throw await parseError(response, "Unable to void money movement");
+  const payload = (await response.json()) as { movement?: MoneyMovementRow };
+  if (!payload.movement) {
+    throw new FinancialApiError("Unable to void money movement", response.status);
+  }
+  return payload.movement;
+};
+
 export const listExpenses = async (
   tenantId: string,
 ): Promise<ExpenseRow[]> => {

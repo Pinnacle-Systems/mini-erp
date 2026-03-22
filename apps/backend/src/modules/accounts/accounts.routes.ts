@@ -14,6 +14,7 @@ import {
   listMoneyMovements,
   listOpenDocuments,
   overview,
+  voidMoneyMovement,
 } from "./accounts.controller.js";
 import {
   accountsOverviewSchema,
@@ -27,6 +28,7 @@ import {
   listMoneyMovementsSchema,
   listOpenDocumentsSchema,
   paymentCreateSchema,
+  voidMoneyMovementSchema,
 } from "./accounts.schema.js";
 
 const router = Router();
@@ -38,6 +40,7 @@ router.post("/financial-accounts", validateRequest(createFinancialAccountSchema)
 router.post("/financial-accounts/:accountId/archive", validateRequest(archiveFinancialAccountSchema), archiveFinancialAccount);
 router.get("/expense-categories", validateRequest(listExpenseCategoriesSchema), listExpenseCategories);
 router.get("/money-movements", validateRequest(listMoneyMovementsSchema), listMoneyMovements);
+router.post("/money-movements/:movementId/void", validateRequest(voidMoneyMovementSchema), voidMoneyMovement);
 router.post("/payments/received", validateRequest(paymentCreateSchema), createReceivedPayment);
 router.post("/payments/made", validateRequest(paymentCreateSchema), createMadePayment);
 router.post("/expenses", validateRequest(createExpenseSchema), createExpense);
