@@ -21,7 +21,12 @@ import {
   type SalesDocumentPageConfig,
 } from "./useSalesDocumentWorkspace";
 
-const getPaymentStatusLabel = (value: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID") => {
+const getSettlementStatus = (
+  row: { settlementStatus?: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID"; paymentStatus?: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID"; paidAmount: number; appliedReturnAmount: number },
+) => row.settlementStatus ?? row.paymentStatus ?? "UNPAID";
+
+const getPaymentStatusLabel = (row: { settlementStatus?: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID"; paymentStatus?: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "OVERPAID"; paidAmount: number; appliedReturnAmount: number }) => {
+  const value = getSettlementStatus(row);
   switch (value) {
     case "N_A":
       return "N/A";
@@ -30,9 +35,15 @@ const getPaymentStatusLabel = (value: "N_A" | "UNPAID" | "PARTIAL" | "PAID" | "O
     case "PARTIAL":
       return "Partial";
     case "PAID":
+      if (row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled by Return";
+      }
+      if (row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled";
+      }
       return "Paid";
     case "OVERPAID":
-      return "Overpaid";
+      return "Customer Credit";
   }
 };
 
@@ -185,8 +196,8 @@ export function SalesDocumentListView({
                 </div>
                 {showPaymentColumn && row.source === "server" && row.invoice.settlement ? (
                   <div className="mt-2">
-                    <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(row.invoice.settlement.paymentStatus)}`}>
-                      {getPaymentStatusLabel(row.invoice.settlement.paymentStatus)}
+                    <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(getSettlementStatus(row.invoice.settlement))}`}>
+                      {getPaymentStatusLabel(row.invoice.settlement)}
                     </span>
                   </div>
                 ) : null}
@@ -285,7 +296,7 @@ export function SalesDocumentListView({
                     ) : null}
                     <TabularCell variant="header">Status</TabularCell>
                     {showPaymentColumn ? (
-                      <TabularCell variant="header">Payment</TabularCell>
+                      <TabularCell variant="header">Settlement</TabularCell>
                     ) : null}
                     <TabularCell variant="header" align="end">Total</TabularCell>
                     <TabularCell variant="header">Updated</TabularCell>
@@ -312,10 +323,10 @@ export function SalesDocumentListView({
                       <TabularCell>
                         {row.source === "server" && row.invoice.settlement ? (
                           <span
-                            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(row.invoice.settlement.paymentStatus)}`}
-                            title={row.invoice.settlement.paymentStatus === "OVERPAID" ? "Invoice has received more than its current outstanding amount." : undefined}
+                            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(getSettlementStatus(row.invoice.settlement))}`}
+                            title={getSettlementStatus(row.invoice.settlement) === "OVERPAID" ? "Total receipts and returns exceed the original invoice amount." : undefined}
                           >
-                            {getPaymentStatusLabel(row.invoice.settlement.paymentStatus)}
+                            {getPaymentStatusLabel(row.invoice.settlement)}
                           </span>
                         ) : (
                           <span className="text-[11px] text-muted-foreground">N/A</span>

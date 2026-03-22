@@ -102,8 +102,8 @@ Goal: keep sales invoice settlement visible while deferring full return-aware be
 
 - [x] Include received-payment allocations in sales invoice settlement
 - [x] Surface settlement summary on sales invoices
-- [ ] Include linked sales returns in sales invoice settlement
-- [ ] Add sales-return-aware status wording where needed
+- [x] Include linked sales returns in sales invoice settlement
+- [x] Add sales-return-aware status wording where needed
 
 ## Phase 7: Frontend Finance Surfaces
 

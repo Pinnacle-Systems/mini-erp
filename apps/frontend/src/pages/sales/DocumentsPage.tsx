@@ -49,7 +49,12 @@ type SalesDocumentConversionConfig = {
   actionLabel: string;
 };
 
-const getPaymentStatusLabel = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
+const getSettlementStatus = (
+  row: Pick<FinancialDocumentBalanceRow, "settlementStatus" | "paymentStatus">,
+) => row.settlementStatus ?? row.paymentStatus;
+
+const getPaymentStatusLabel = (row: Pick<FinancialDocumentBalanceRow, "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount">) => {
+  const value = getSettlementStatus(row);
   switch (value) {
     case "N_A":
       return "N/A";
@@ -58,13 +63,20 @@ const getPaymentStatusLabel = (value: NonNullable<FinancialDocumentBalanceRow["p
     case "PARTIAL":
       return "Partial";
     case "PAID":
+      if (row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled by Return";
+      }
+      if (row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled";
+      }
       return "Paid";
     case "OVERPAID":
-      return "Overpaid";
+      return "Customer Credit";
   }
 };
 
-const getPaymentStatusToneClassName = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
+const getPaymentStatusToneClassName = (row: Pick<FinancialDocumentBalanceRow, "settlementStatus" | "paymentStatus">) => {
+  const value = getSettlementStatus(row);
   switch (value) {
     case "PAID":
       return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -966,8 +978,8 @@ function SalesDocumentWorkspace({
               showNewSaleAction={isPosMode && isViewingPostedDocument}
               newSaleActionLabel="Start New Sale"
               paymentActionLabel={canRecordSettlement ? "Record Receipt" : undefined}
-              paymentStatusLabel={financialBalance ? getPaymentStatusLabel(financialBalance.paymentStatus) : null}
-              paymentStatusToneClassName={financialBalance ? getPaymentStatusToneClassName(financialBalance.paymentStatus) : null}
+              paymentStatusLabel={financialBalance ? getPaymentStatusLabel(financialBalance) : null}
+              paymentStatusToneClassName={financialBalance ? getPaymentStatusToneClassName(financialBalance) : null}
               onOpenList={() => setViewMode("list")}
               onOpenNewSale={isPosMode ? openNewDraft : undefined}
               onOpenPaymentAction={
@@ -996,8 +1008,8 @@ function SalesDocumentWorkspace({
             showNewSaleAction={isPosMode && isViewingPostedDocument}
             newSaleActionLabel="Start New Sale"
             paymentActionLabel={canRecordSettlement ? "Record Receipt" : undefined}
-            paymentStatusLabel={financialBalance ? getPaymentStatusLabel(financialBalance.paymentStatus) : null}
-            paymentStatusToneClassName={financialBalance ? getPaymentStatusToneClassName(financialBalance.paymentStatus) : null}
+            paymentStatusLabel={financialBalance ? getPaymentStatusLabel(financialBalance) : null}
+            paymentStatusToneClassName={financialBalance ? getPaymentStatusToneClassName(financialBalance) : null}
             onOpenList={() => setViewMode("list")}
             onOpenNewSale={isPosMode ? openNewDraft : undefined}
             onOpenPaymentAction={

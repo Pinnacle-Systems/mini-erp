@@ -29,7 +29,17 @@ type SalesDocumentSummaryPanelProps = {
   className?: string;
 };
 
-const getPaymentStatusLabel = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
+const getSettlementStatus = (
+  row: Pick<FinancialDocumentBalanceRow, "settlementStatus" | "paymentStatus">,
+) => row.settlementStatus ?? row.paymentStatus;
+
+const getSalesSettlementLabel = (
+  row: Pick<
+    FinancialDocumentBalanceRow,
+    "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount"
+  >,
+) => {
+  const value = getSettlementStatus(row);
   switch (value) {
     case "N_A":
       return "N/A";
@@ -38,9 +48,15 @@ const getPaymentStatusLabel = (value: NonNullable<FinancialDocumentBalanceRow["p
     case "PARTIAL":
       return "Partial";
     case "PAID":
+      if (row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled by Return";
+      }
+      if (row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
+        return "Settled";
+      }
       return "Paid";
     case "OVERPAID":
-      return "Overpaid";
+      return "Customer Credit";
   }
 };
 
@@ -57,7 +73,26 @@ const getPaymentStatusClassName = (value: NonNullable<FinancialDocumentBalanceRo
     case "UNPAID":
     default:
       return "border-border/70 bg-muted/55 text-muted-foreground";
+    }
+};
+
+const getSalesSettlementTitle = (
+  row: Pick<
+    FinancialDocumentBalanceRow,
+    "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount"
+  >,
+) => {
+  const value = getSettlementStatus(row);
+  if (value === "OVERPAID") {
+    return "Total payments and returns exceed the original invoice amount.";
   }
+  if (value === "PAID" && row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
+    return "The invoice balance was fully settled by linked sales returns without a cash receipt.";
+  }
+  if (value === "PAID" && row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
+    return "Receipts and linked sales returns together fully settled the invoice.";
+  }
+  return undefined;
 };
 
 export function SalesDocumentSummaryPanel({
@@ -124,23 +159,36 @@ export function SalesDocumentSummaryPanel({
         {financialBalance ? (
           <>
             <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="text-muted-foreground">Payment status</span>
-              <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(financialBalance.paymentStatus)}`}>
-                {getPaymentStatusLabel(financialBalance.paymentStatus)}
+              <span className="text-muted-foreground">Settlement status</span>
+              <span
+                className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(getSettlementStatus(financialBalance))}`}
+                title={getSalesSettlementTitle(financialBalance)}
+              >
+                {getSalesSettlementLabel(financialBalance)}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
-                {config.documentType === "SALES_INVOICE" ? "Collected" : "Paid out"}
+                {config.documentType === "SALES_INVOICE" ? "Cash collected" : "Paid out"}
               </span>
               <span className="font-semibold text-foreground">
                 {formatCurrency(financialBalance.paidAmount)}
               </span>
             </div>
+            {financialBalance.appliedReturnAmount > 0 ? (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Returns applied</span>
+                <span className="font-semibold text-foreground">
+                  {formatCurrency(financialBalance.appliedReturnAmount)}
+                </span>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Outstanding</span>
+              <span className="text-muted-foreground">
+                {financialBalance.netOutstandingAmount < 0 ? "Customer credit" : "Outstanding"}
+              </span>
               <span className="font-semibold text-foreground">
-                {formatCurrency(financialBalance.outstandingAmount)}
+                {formatCurrency(Math.abs(financialBalance.netOutstandingAmount))}
               </span>
             </div>
             {financialBalance.lastPaymentAt ? (
@@ -159,9 +207,19 @@ export function SalesDocumentSummaryPanel({
                 </span>
               </div>
             ) : null}
-            <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
-              Return amounts are tracked separately and do not yet reduce invoice outstanding balance in this phase.
-            </div>
+            {financialBalance.netOutstandingAmount < 0 ? (
+              <div className="rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 py-1 text-[11px] text-fuchsia-700">
+                Total receipts and returns exceed the original invoice amount. A customer credit or refund is due.
+              </div>
+            ) : financialBalance.paidAmount <= 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
+              <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
+                This invoice is settled by linked sales returns. No cash receipt has been recorded.
+              </div>
+            ) : financialBalance.paidAmount > 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
+              <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
+                This invoice is settled by a combination of cash receipts and linked sales returns.
+              </div>
+            ) : null}
           </>
         ) : null}
         {sourceDocumentNumber ? (

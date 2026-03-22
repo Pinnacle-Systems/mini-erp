@@ -272,10 +272,56 @@ const buildSettlementMap = async (
     groupedReturns.set(row.parent_id, current);
   }
 
+  const salesReturnRows = await prismaAny.document.findMany({
+    where: {
+      business_id: tenantId,
+      type: "SALES_RETURN",
+      parent_id: {
+        in: invoiceDocuments
+          .filter((document) => document.documentType === "SALES_INVOICE")
+          .map((document) => document.id),
+      },
+      posted_at: {
+        not: null,
+      },
+      deleted_at: null,
+      status: {
+        notIn: ["CANCELLED", "VOID"],
+      },
+    },
+    select: {
+      parent_id: true,
+      grand_total: true,
+      posted_at: true,
+    },
+    orderBy: [
+      {
+        posted_at: "asc",
+      },
+      {
+        id: "asc",
+      },
+    ],
+  });
+
+  const groupedSalesReturns = new Map<string, typeof salesReturnRows>();
+  for (const row of salesReturnRows) {
+    if (typeof row.parent_id !== "string") {
+      continue;
+    }
+    const current = groupedSalesReturns.get(row.parent_id) ?? [];
+    current.push(row);
+    groupedSalesReturns.set(row.parent_id, current);
+  }
+
   for (const document of invoiceDocuments) {
     const rows = groupedRows.get(document.id) ?? [];
-    const returnRows =
+    const purchaseReturnRowsForDocument =
       document.documentType === "PURCHASE_INVOICE" ? (groupedReturns.get(document.id) ?? []) : [];
+    const salesReturnRowsForDocument =
+      document.documentType === "SALES_INVOICE"
+        ? (groupedSalesReturns.get(document.id) ?? [])
+        : [];
     let paidAmount = 0;
     let appliedReturnAmount = 0;
     let lastPaymentAt: string | null = null;
@@ -291,7 +337,7 @@ const buildSettlementMap = async (
       settlementEvents.push({ occurredAt, amount });
     }
 
-    for (const row of returnRows) {
+    for (const row of [...purchaseReturnRowsForDocument, ...salesReturnRowsForDocument]) {
       const occurredAt = row.posted_at.toISOString();
       const amount = Number(row.grand_total ?? 0);
       appliedReturnAmount += amount;
