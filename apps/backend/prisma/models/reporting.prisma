@@ -23,6 +23,18 @@ enum ItemActivityStatus {
   @@schema("reporting")
 }
 
+enum StockActivitySourceType {
+  STOCK_ADJUSTMENT
+  GOODS_RECEIPT_NOTE
+  PURCHASE_INVOICE
+  PURCHASE_RETURN
+  DELIVERY_CHALLAN
+  SALES_INVOICE
+  SALES_RETURN
+
+  @@schema("reporting")
+}
+
 model ItemActivityProjection {
   id                String                 @id @default(uuid()) @db.Uuid
   business_id       String                 @db.Uuid
@@ -54,5 +66,32 @@ model ItemActivityProjection {
   @@index([business_id, source_type, occurred_at])
   @@index([business_id, source_status])
   @@map("item_activity_projection")
+  @@schema("reporting")
+}
+
+model StockActivity {
+  id                     String                  @id @default(uuid()) @db.Uuid
+  business_id            String                  @db.Uuid
+  location_id            String                  @db.Uuid
+  location_name          String
+  item_id                String                  @db.Uuid
+  variant_id             String                  @db.Uuid
+  item_name              String
+  variant_name           String?
+  sku                    String?
+  unit                   String                  @db.VarChar(16)
+  occurred_at            DateTime
+  quantity_delta         Decimal                 @db.Decimal(14, 3)
+  quantity_on_hand_after Decimal                 @db.Decimal(14, 3)
+  source_type            StockActivitySourceType
+  source_document_id     String?                 @db.Uuid
+  source_document_number String?
+  source_action          String                  @db.VarChar(32)
+  created_at             DateTime                @default(now())
+
+  @@index([business_id, location_id, occurred_at(sort: Desc), id(sort: Desc)])
+  @@index([variant_id, occurred_at(sort: Desc), id(sort: Desc)])
+  @@index([business_id, source_type, occurred_at(sort: Desc), id(sort: Desc)])
+  @@map("stock_activity")
   @@schema("reporting")
 }

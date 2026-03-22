@@ -47,6 +47,7 @@ export type SalesDocumentDraft = {
   id: string;
   documentType: SalesDocumentType;
   parentId?: string | null;
+  parentDocumentNumber?: string | null;
   locationId?: string | null;
   locationName?: string;
   childIds?: string[];

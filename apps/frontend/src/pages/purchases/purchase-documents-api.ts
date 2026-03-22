@@ -34,6 +34,7 @@ export type PurchaseDocumentDraft = {
   id: string;
   documentType: PurchaseDocumentType;
   parentId?: string | null;
+  parentDocumentNumber?: string | null;
   locationId?: string | null;
   locationName?: string;
   childIds?: string[];

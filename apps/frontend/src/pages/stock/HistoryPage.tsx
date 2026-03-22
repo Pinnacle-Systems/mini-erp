@@ -22,31 +22,46 @@ import {
 } from "../../design-system/molecules/Card";
 import { useSessionStore } from "../../features/auth/session-business";
 import {
-  getLocalStockAdjustmentHistory,
+  fetchStockActivityHistory,
+  getInitialLocalStockActivityHistory,
   getSyncRejectionFromError,
   syncOnce,
-  type StockAdjustmentHistoryRow,
-  type StockAdjustmentReason,
+  type StockActivityHistoryRow,
+  type StockActivitySourceType,
 } from "../../features/sync/engine";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
-const MOVEMENT_FILTER_OPTIONS: Array<{
-  value: "ALL" | StockAdjustmentReason;
+const SOURCE_FILTER_OPTIONS: Array<{
+  value: "ALL" | StockActivitySourceType;
   label: string;
 }> = [
-  { value: "ALL", label: "All movements" },
-  { value: "OPENING_BALANCE", label: "Opening Balance" },
-  { value: "ADJUSTMENT_INCREASE", label: "Stock In" },
-  { value: "ADJUSTMENT_DECREASE", label: "Stock Out" },
+  { value: "ALL", label: "All activity" },
+  { value: "STOCK_ADJUSTMENT", label: "Manual Adjustment" },
+  { value: "GOODS_RECEIPT_NOTE", label: "Goods Receipt Note" },
+  { value: "PURCHASE_INVOICE", label: "Purchase Invoice" },
+  { value: "PURCHASE_RETURN", label: "Purchase Return" },
+  { value: "DELIVERY_CHALLAN", label: "Delivery Challan" },
+  { value: "SALES_INVOICE", label: "Sales Invoice" },
+  { value: "SALES_RETURN", label: "Sales Return" },
 ];
+
+const STOCK_ACTIVITY_REGISTRY: Record<StockActivitySourceType, { label: string }> = {
+  STOCK_ADJUSTMENT: { label: "Manual Adjustment" },
+  GOODS_RECEIPT_NOTE: { label: "Goods Receipt Note" },
+  PURCHASE_INVOICE: { label: "Purchase Invoice" },
+  PURCHASE_RETURN: { label: "Purchase Return" },
+  DELIVERY_CHALLAN: { label: "Delivery Challan" },
+  SALES_INVOICE: { label: "Sales Invoice" },
+  SALES_RETURN: { label: "Sales Return" },
+};
 
 const toUserStockHistoryErrorMessage = (error: unknown) => {
   const rejection = getSyncRejectionFromError(error);
   if (rejection) return rejection.message;
   if (!(error instanceof Error)) {
-    return "Unable to load stock adjustment history right now.";
+    return "Unable to load stock activity right now.";
   }
-  return error.message || "Unable to load stock adjustment history right now.";
+  return error.message || "Unable to load stock activity right now.";
 };
 
 const formatQuantity = (value: number) => Math.abs(value).toFixed(3).replace(/\.?0+$/, "");
@@ -63,25 +78,33 @@ const formatTimestamp = (value: string) => {
   });
 };
 
-const toMovementLabel = (reason: StockAdjustmentReason) => {
-  if (reason === "ADJUSTMENT_INCREASE") return "Stock In";
-  if (reason === "ADJUSTMENT_DECREASE") return "Stock Out";
-  return "Opening Balance";
+const toActionLabel = (row: StockActivityHistoryRow) => {
+  const base = STOCK_ACTIVITY_REGISTRY[row.sourceType]?.label ?? row.sourceType;
+  if (row.sourceAction === "CANCELLED") return `${base} Cancelled`;
+  if (row.sourceAction === "REOPENED") return `${base} Reopened`;
+  return base;
 };
 
 export function HistoryPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
-  const [rows, setRows] = useState<StockAdjustmentHistoryRow[]>([]);
+  const [recentRows, setRecentRows] = useState<StockActivityHistoryRow[]>([]);
+  const [historicalRows, setHistoricalRows] = useState<StockActivityHistoryRow[]>([]);
   const [query, setQuery] = useState("");
-  const [movementFilter, setMovementFilter] = useState<"ALL" | StockAdjustmentReason>("ALL");
+  const [sourceFilter, setSourceFilter] = useState<"ALL" | StockActivitySourceType>("ALL");
+  const [mode, setMode] = useState<"RECENT" | "HISTORICAL">("RECENT");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [auditStartDate, setAuditStartDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debouncedQuery = useDebouncedValue(query, 250);
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
   useEffect(() => {
     if (!activeStore || !isBusinessSelected) {
-      setRows([]);
+      setRecentRows([]);
+      setHistoricalRows([]);
       return;
     }
 
@@ -90,14 +113,14 @@ export function HistoryPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const localRows = await getLocalStockAdjustmentHistory(activeStore);
+        const localRows = await getInitialLocalStockActivityHistory(activeStore);
         if (!cancelled) {
-          setRows(localRows);
+          setRecentRows(localRows);
         }
         await syncOnce(activeStore);
-        const syncedRows = await getLocalStockAdjustmentHistory(activeStore);
+        const syncedRows = await getInitialLocalStockActivityHistory(activeStore);
         if (!cancelled) {
-          setRows(syncedRows);
+          setRecentRows(syncedRows);
           setError(null);
         }
       } catch (nextError) {
@@ -119,13 +142,65 @@ export function HistoryPage() {
     };
   }, [activeStore, isBusinessSelected]);
 
+  useEffect(() => {
+    if (mode !== "HISTORICAL" || !activeStore || !isBusinessSelected || isOffline) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const result = await fetchStockActivityHistory(activeStore, {
+          q: debouncedQuery.trim() || undefined,
+          sourceType: sourceFilter === "ALL" ? undefined : sourceFilter,
+        });
+
+        if (!cancelled) {
+          setHistoricalRows(result.rows);
+          setNextCursor(result.nextCursor);
+          setHasMore(result.hasMore);
+          setAuditStartDate(result.auditStartDate);
+          setError(null);
+        }
+      } catch (nextError) {
+        console.error(nextError);
+        if (!cancelled) {
+          setError(toUserStockHistoryErrorMessage(nextError));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, debouncedQuery, isBusinessSelected, isOffline, mode, sourceFilter]);
+
   const onRefresh = async () => {
     if (!activeStore || !isBusinessSelected || loading) return;
 
     setLoading(true);
     try {
-      await syncOnce(activeStore);
-      setRows(await getLocalStockAdjustmentHistory(activeStore));
+      if (mode === "HISTORICAL") {
+        const result = await fetchStockActivityHistory(activeStore, {
+          q: debouncedQuery.trim() || undefined,
+          sourceType: sourceFilter === "ALL" ? undefined : sourceFilter,
+        });
+        setHistoricalRows(result.rows);
+        setNextCursor(result.nextCursor);
+        setHasMore(result.hasMore);
+        setAuditStartDate(result.auditStartDate);
+      } else {
+        await syncOnce(activeStore);
+        setRecentRows(await getInitialLocalStockActivityHistory(activeStore));
+      }
       setError(null);
     } catch (nextError) {
       console.error(nextError);
@@ -135,32 +210,64 @@ export function HistoryPage() {
     }
   };
 
-  const normalizedQuery = (query.trim().length === 0 ? "" : debouncedQuery).trim().toLowerCase();
-  const filteredRows = useMemo(
+  const loadOlderActivity = async () => {
+    if (!activeStore || !isBusinessSelected || loading || !nextCursor) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await fetchStockActivityHistory(activeStore, {
+        q: debouncedQuery.trim() || undefined,
+        sourceType: sourceFilter === "ALL" ? undefined : sourceFilter,
+        cursor: nextCursor,
+      });
+      setHistoricalRows((current) => [...current, ...result.rows]);
+      setNextCursor(result.nextCursor);
+      setHasMore(result.hasMore);
+      setAuditStartDate(result.auditStartDate);
+      setError(null);
+    } catch (nextError) {
+      console.error(nextError);
+      setError(toUserStockHistoryErrorMessage(nextError));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const normalizedQuery = debouncedQuery.trim().toLowerCase();
+  const filteredRecentRows = useMemo(
     () =>
-      rows.filter((row) => {
-        if (movementFilter !== "ALL" && row.reason !== movementFilter) {
+      recentRows.filter((row) => {
+        if (sourceFilter !== "ALL" && row.sourceType !== sourceFilter) {
           return false;
         }
         if (!normalizedQuery) {
           return true;
         }
-        return [row.itemName, row.variantName, row.sku]
-          .some((value) => value.toLowerCase().includes(normalizedQuery));
+        return [
+          row.itemName,
+          row.variantName,
+          row.sku,
+          row.sourceDocumentNumber ?? "",
+          STOCK_ACTIVITY_REGISTRY[row.sourceType]?.label ?? row.sourceType,
+        ].some((value) => value.toLowerCase().includes(normalizedQuery));
       }),
-    [movementFilter, normalizedQuery, rows],
+    [normalizedQuery, recentRows, sourceFilter],
   );
+  const visibleRows = mode === "HISTORICAL" ? historicalRows : filteredRecentRows;
+
   const desktopGridTemplate = withTabularSerialNumberColumn(
-    "minmax(0,1.35fr) minmax(0,1.55fr) minmax(0,1.25fr) minmax(0,0.9fr) minmax(0,0.95fr) minmax(0,0.65fr) minmax(0,0.5fr) minmax(0,0.8fr)",
+    "minmax(0,1.2fr) minmax(0,1.45fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,0.95fr) minmax(0,0.65fr) minmax(0,0.5fr) minmax(0,0.7fr)",
   );
 
   return (
     <Card className="lg:h-full lg:min-h-0">
       <CardHeader>
-        <CardTitle>Stock History</CardTitle>
+        <CardTitle>Stock Activity</CardTitle>
         <CardDescription>
-          Review recent stock movements for your items, including opening balances, stock in,
-          and stock out entries.
+          Review recent stock-affecting activity, then load older audit history from the server
+          when you need deeper investigation.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 lg:flex lg:min-h-0 lg:flex-col">
@@ -172,20 +279,20 @@ export function HistoryPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               disabled={loading}
-              placeholder="Item, variant, or SKU"
+              placeholder="Item, variant, SKU, or document"
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="stock-history-movement">Movement</Label>
+            <Label htmlFor="stock-history-movement">Action Type</Label>
             <Select
               id="stock-history-movement"
-              value={movementFilter}
+              value={sourceFilter}
               onChange={(event) =>
-                setMovementFilter(event.target.value as "ALL" | StockAdjustmentReason)
+                setSourceFilter(event.target.value as "ALL" | StockActivitySourceType)
               }
               disabled={loading}
             >
-              {MOVEMENT_FILTER_OPTIONS.map((option) => (
+              {SOURCE_FILTER_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -198,9 +305,9 @@ export function HistoryPage() {
               variant="outline"
               onClick={() => {
                 setQuery("");
-                setMovementFilter("ALL");
+                setSourceFilter("ALL");
               }}
-              disabled={loading && rows.length === 0}
+              disabled={loading && visibleRows.length === 0}
             >
               Clear Filters
             </Button>
@@ -219,15 +326,51 @@ export function HistoryPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            {filteredRows.length === 0
-              ? "No stock movements match the current filters."
-              : `${filteredRows.length} recent movement${filteredRows.length === 1 ? "" : "s"} in view.`}
+            {visibleRows.length === 0
+              ? "No stock activity matches the current filters."
+              : mode === "HISTORICAL"
+                ? `${visibleRows.length} historical activit${visibleRows.length === 1 ? "y" : "ies"} loaded.`
+                : `${visibleRows.length} recent activit${visibleRows.length === 1 ? "y" : "ies"} in view.`}
           </p>
+          <div className="flex flex-wrap gap-2">
+            {mode === "RECENT" ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!activeStore || !isBusinessSelected || isOffline || loading}
+                onClick={() => {
+                  setMode("HISTORICAL");
+                }}
+                title={isOffline ? "Full history is only available online." : undefined}
+              >
+                View Older Activity
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={loading}
+                onClick={() => {
+                  setMode("RECENT");
+                  setHistoricalRows([]);
+                  setNextCursor(null);
+                  setHasMore(false);
+                }}
+              >
+                Back to Recent
+              </Button>
+            )}
+          </div>
         </div>
 
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        {loading && rows.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Loading stock history...</p>
+        {isOffline && mode === "RECENT" ? (
+          <p className="text-xs text-muted-foreground">
+            Full history is only available online. Showing recent synced activity.
+          </p>
+        ) : null}
+        {loading && visibleRows.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Loading stock activity...</p>
         ) : null}
 
         <div className="hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -239,7 +382,8 @@ export function HistoryPage() {
                 <TabularCell variant="header">Item</TabularCell>
                 <TabularCell variant="header">Variant</TabularCell>
                 <TabularCell variant="header">Location</TabularCell>
-                <TabularCell variant="header">Movement</TabularCell>
+                <TabularCell variant="header">Action</TabularCell>
+                <TabularCell variant="header">Document</TabularCell>
                 <TabularCell variant="header" align="end">
                   Qty
                 </TabularCell>
@@ -250,11 +394,11 @@ export function HistoryPage() {
               </TabularRow>
             </TabularHeader>
             <TabularBody className="overflow-y-auto">
-              {filteredRows.map((row, index) => (
+              {visibleRows.map((row, index) => (
                 <TabularRow key={row.entityId} columns={desktopGridTemplate} interactive>
                   <TabularSerialNumberCell index={index} />
-                  <TabularCell truncate hoverTitle={formatTimestamp(row.createdAt)}>
-                    {formatTimestamp(row.createdAt)}
+                  <TabularCell truncate hoverTitle={formatTimestamp(row.occurredAt)}>
+                    {formatTimestamp(row.occurredAt)}
                   </TabularCell>
                   <TabularCell>
                     <div className="min-w-0">
@@ -270,24 +414,31 @@ export function HistoryPage() {
                   <TabularCell truncate hoverTitle={row.locationName || "—"}>
                     {row.locationName || "—"}
                   </TabularCell>
-                  <TabularCell>{toMovementLabel(row.reason)}</TabularCell>
+                  <TabularCell>{toActionLabel(row)}</TabularCell>
+                  <TabularCell truncate hoverTitle={row.sourceDocumentNumber || "Manual entry"}>
+                    {row.sourceDocumentNumber || "Manual entry"}
+                  </TabularCell>
                   <TabularCell
                     align="end"
-                    className={row.quantity < 0 ? "font-semibold text-destructive" : "font-semibold text-foreground"}
+                    className={
+                      row.quantityDelta < 0
+                        ? "font-semibold text-destructive"
+                        : "font-semibold text-foreground"
+                    }
                   >
-                    {row.quantity < 0 ? "-" : "+"}
-                    {formatQuantity(row.quantity)}
+                    {row.quantityDelta < 0 ? "-" : "+"}
+                    {formatQuantity(row.quantityDelta)}
                   </TabularCell>
                   <TabularCell>{row.unit}</TabularCell>
                   <TabularCell align="end" className="font-semibold text-foreground">
-                    {formatQuantity(row.quantityOnHand)}
+                    {formatQuantity(row.quantityOnHandAfter)}
                   </TabularCell>
                 </TabularRow>
               ))}
-              {filteredRows.length === 0 && !loading ? (
+              {visibleRows.length === 0 && !loading ? (
                 <TabularRow columns={desktopGridTemplate}>
-                  <TabularCell className="col-span-9 text-muted-foreground">
-                    Recent stock movements will appear here after inventory changes are recorded.
+                  <TabularCell className="col-span-10 text-muted-foreground">
+                    Stock activity will appear here after inventory changes are recorded.
                   </TabularCell>
                 </TabularRow>
               ) : null}
@@ -296,12 +447,12 @@ export function HistoryPage() {
         </div>
 
         <div className="space-y-2 lg:hidden">
-          {filteredRows.length === 0 && !loading ? (
+          {visibleRows.length === 0 && !loading ? (
             <div className="rounded-lg border border-border/80 bg-muted/55 px-3 py-2 text-xs text-muted-foreground">
-              Recent stock movements will appear here after inventory changes are recorded.
+              Stock activity will appear here after inventory changes are recorded.
             </div>
           ) : null}
-          {filteredRows.map((row) => (
+          {visibleRows.map((row) => (
             <div
               key={row.entityId}
               className="rounded-lg border border-border/80 bg-card px-3 py-2"
@@ -314,25 +465,49 @@ export function HistoryPage() {
                     {row.sku ? ` • ${row.sku}` : ""}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {row.locationName || "Unknown location"} • {toMovementLabel(row.reason)} •{" "}
-                    {formatTimestamp(row.createdAt)}
+                    {row.locationName || "Unknown location"} • {toActionLabel(row)} •{" "}
+                    {formatTimestamp(row.occurredAt)}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    On hand after: {formatQuantity(row.quantityOnHand)} {row.unit}
+                    {row.sourceDocumentNumber || "Manual entry"} • On hand after:{" "}
+                    {formatQuantity(row.quantityOnHandAfter)} {row.unit}
                   </p>
                 </div>
                 <p
                   className={`text-sm font-semibold ${
-                    row.quantity < 0 ? "text-destructive" : "text-foreground"
+                    row.quantityDelta < 0 ? "text-destructive" : "text-foreground"
                   }`}
                 >
-                  {row.quantity < 0 ? "-" : "+"}
-                  {formatQuantity(row.quantity)} {row.unit}
+                  {row.quantityDelta < 0 ? "-" : "+"}
+                  {formatQuantity(row.quantityDelta)} {row.unit}
                 </p>
               </div>
             </div>
           ))}
         </div>
+
+        {mode === "HISTORICAL" ? (
+          <div className="space-y-2">
+            {hasMore ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  void loadOlderActivity();
+                }}
+                disabled={loading || !nextCursor}
+              >
+                {loading ? "Loading..." : "Load Older Activity"}
+              </Button>
+            ) : null}
+            {auditStartDate ? (
+              <div className="rounded-lg border border-border/80 bg-muted/55 px-3 py-2 text-xs text-muted-foreground">
+                Full stock activity tracking began on {formatTimestamp(auditStartDate)}. Older
+                activity is not available in this audit trail.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -60,12 +60,18 @@ export function SalesDocumentListView({
   const getParentDocumentNumber = (row: InvoiceListRow) => {
     const parentId =
       row.source === "local" ? (row.draft.parentId ?? null) : (row.invoice.parentId ?? null);
+    const parentDocumentNumber =
+      row.source === "local"
+        ? (row.draft.parentDocumentNumber ?? null)
+        : (row.invoice.parentDocumentNumber ?? null);
     if (!parentId) {
       return "None";
     }
 
     return (
-      invoiceRows.find((candidate) => candidate.id === parentId)?.billNumber ?? "Unknown"
+      parentDocumentNumber ??
+      invoiceRows.find((candidate) => candidate.id === parentId)?.billNumber ??
+      "Unknown"
     );
   };
 

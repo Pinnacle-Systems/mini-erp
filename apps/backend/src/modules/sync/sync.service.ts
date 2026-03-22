@@ -1,6 +1,8 @@
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../shared/utils/errors.js";
 import { getBusinessModulesFromLicense } from "../license/license.service.js";
+import { stockActivityRecorder } from "../inventory/stock-activity-recorder.service.js";
+import { STOCK_ACTIVITY_RECENT_LIMIT } from "../inventory/stock-activity.shared.js";
 
 type SyncRejectionReasonCode =
   | "VERSION_CONFLICT"
@@ -166,6 +168,21 @@ const PRICE_TYPES = new Set(["SALES", "PURCHASE"]);
 const PRICE_TAX_MODES = new Set(["EXCLUSIVE", "INCLUSIVE"]);
 const GST_SLAB_PATTERN = /^[A-Z0-9][A-Z0-9._/%-]{0,31}$/;
 const prismaAny = prisma as any;
+
+const getRecentStockActivityIds = async (tenantId: string, limit: number) => {
+  const rows = await prismaAny.stockActivity.findMany({
+    where: {
+      business_id: tenantId,
+    },
+    select: {
+      id: true,
+    },
+    orderBy: [{ occurred_at: "desc" }, { id: "desc" }],
+    take: limit,
+  });
+
+  return new Set(rows.map((row) => String(row.id)));
+};
 
 const toReasonCodeFromStatus = (statusCode?: number): SyncRejectionReasonCode => {
   if (statusCode === 403) return "PERMISSION_DENIED";
@@ -3537,6 +3554,25 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
   }
 
   const stockLevel = await getStockLevelSnapshot(tx, tenantId, variantId, location);
+  const activityRow = await stockActivityRecorder.record(txAny, {
+    snapshot: stockActivityRecorder.withQuantityOnHandAfter(
+      {
+        businessId: tenantId,
+        locationId: stockLevel.locationId,
+        locationName: stockLevel.locationName,
+        itemId: stockLevel.itemId,
+        variantId: stockLevel.variantId,
+        itemName: stockLevel.itemName,
+        variantName: stockLevel.variantName,
+        sku: stockLevel.sku,
+        unit: stockLevel.unit,
+      },
+      Number(stockLevel.quantityOnHand),
+    ),
+    quantityDelta: ledgerQuantity,
+    sourceType: "STOCK_ADJUSTMENT",
+    sourceAction: "ADJUSTED",
+  });
 
   return {
     snapshot: toStockAdjustmentSnapshot(
@@ -3557,6 +3593,12 @@ const applyStockAdjustmentMutation = async (tx, tenantId, mutation) => {
         entityId: String(stockLevel.id),
         operation: "UPDATE" as const,
         data: stockLevel,
+      },
+      {
+        entity: "stock_activity",
+        entityId: activityRow.id,
+        operation: "CREATE" as const,
+        data: stockActivityRecorder.toSyncPayload(activityRow),
       },
     ],
   };
@@ -3888,6 +3930,10 @@ const getSyncResults = async (
 
 const getDeltasSinceCursor = async (tenantId, cursor, limit) => {
   const parsedCursor = BigInt(cursor);
+  const recentStockActivityIds = await getRecentStockActivityIds(
+    tenantId,
+    STOCK_ACTIVITY_RECENT_LIMIT,
+  );
 
   const changes = await prismaAny.syncChangeLog.findMany({
     where: {
@@ -3911,7 +3957,13 @@ const getDeltasSinceCursor = async (tenantId, cursor, limit) => {
     ),
     serverVersion: change.server_version,
     serverTimestamp: change.server_timestamp.toISOString(),
-  }));
+  })).filter((delta) => {
+    if (delta.entity !== "stock_activity") {
+      return true;
+    }
+
+    return recentStockActivityIds.has(delta.entityId);
+  });
 
   return {
     nextCursor:

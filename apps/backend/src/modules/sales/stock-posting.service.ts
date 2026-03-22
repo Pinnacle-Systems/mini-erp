@@ -1,4 +1,6 @@
 import { BadRequestError } from "../../shared/utils/errors.js";
+import { stockActivityRecorder } from "../inventory/stock-activity-recorder.service.js";
+import type { StockActivitySourceType } from "../inventory/stock-activity.shared.js";
 import { inventoryResponsibilityService } from "./inventory-responsibility.service.js";
 import type { SalesDocumentType, SalesTransactionClient } from "./sales.types.js";
 
@@ -32,8 +34,21 @@ const getTransitionReason = (
   return action === "CANCEL" ? "SALE_INVOICE_CANCEL" : "SALE_INVOICE_REOPEN";
 };
 
+const getStockActivitySourceType = (
+  documentType: SalesDocumentType,
+): StockActivitySourceType => {
+  if (documentType === "DELIVERY_CHALLAN") {
+    return "DELIVERY_CHALLAN";
+  }
+  if (documentType === "SALES_RETURN") {
+    return "SALES_RETURN";
+  }
+  return "SALES_INVOICE";
+};
+
 type StockPostingDocument = {
   id: string;
+  doc_number: string;
   type: string;
   parent_id: string | null;
   location_id: string | null;
@@ -71,6 +86,7 @@ class StockPostingService {
       },
       select: {
         id: true,
+        doc_number: true,
         type: true,
         parent_id: true,
         location_id: true,
@@ -399,14 +415,65 @@ class StockPostingService {
   private async appendStockLevelSyncChanges(
     tx: SalesTransactionClient,
     tenantId: string,
-    document: Pick<StockPostingDocument, "location_id" | "location_name_snapshot">,
-    productLines: Array<{ variant_id: string }>,
+    snapshots: Array<{
+      id: string;
+      variantId: string;
+      itemId: string;
+      itemName: string;
+      variantName: string | null;
+      sku: string | null;
+      unit: string;
+      locationId: string;
+      locationName: string;
+      quantityOnHand: number;
+    }>,
+  ) {
+    if (snapshots.length === 0) {
+      return;
+    }
+
+    for (const snapshot of snapshots) {
+      await this.appendSyncChange(tx, tenantId, "stock_level", String(snapshot.id), "UPDATE", snapshot);
+    }
+  }
+
+  private async applyStockLedgerAndActivityEffects(
+    tx: SalesTransactionClient,
+    tenantId: string,
+    document: Pick<
+      StockPostingDocument,
+      "id" | "doc_number" | "type" | "location_id" | "location_name_snapshot"
+    >,
+    productLines: Array<{
+      variant_id: string;
+      quantity: unknown;
+    }>,
+    sourceAction: "POSTED" | "CANCELLED" | "REOPENED",
+    deltaForLine: (quantity: number) => number,
+    reason: string,
   ) {
     if (!document.location_id || productLines.length === 0) {
       return;
     }
 
+    const sourceType = getStockActivitySourceType(document.type as SalesDocumentType);
     const uniqueVariantIds = [...new Set(productLines.map((line) => line.variant_id))];
+    const runningSnapshots = new Map<
+      string,
+      {
+        id: string;
+        variantId: string;
+        itemId: string;
+        itemName: string;
+        variantName: string | null;
+        sku: string | null;
+        unit: string;
+        locationId: string;
+        locationName: string;
+        quantityOnHand: number;
+      }
+    >();
+
     for (const variantId of uniqueVariantIds) {
       const snapshot = await this.getStockLevelSnapshot(
         tx,
@@ -415,8 +482,69 @@ class StockPostingService {
         document.location_id,
         document.location_name_snapshot ?? null,
       );
-      await this.appendSyncChange(tx, tenantId, "stock_level", String(snapshot.id), "UPDATE", snapshot);
+      runningSnapshots.set(variantId, snapshot);
     }
+
+    for (const line of productLines) {
+      const currentSnapshot = runningSnapshots.get(line.variant_id);
+      if (!currentSnapshot) {
+        continue;
+      }
+
+      const quantityDelta = roundQuantity(deltaForLine(Number(line.quantity)));
+      await tx.stockLedger.create({
+        data: {
+          business_id: tenantId,
+          location_id: document.location_id,
+          variant_id: line.variant_id,
+          quantity: quantityDelta,
+          reason,
+          reference_id: document.id,
+          is_active: true,
+          deleted_at: null,
+        },
+      });
+
+      const nextQuantityOnHand = roundQuantity(currentSnapshot.quantityOnHand + quantityDelta);
+      const nextSnapshot = {
+        ...currentSnapshot,
+        quantityOnHand: nextQuantityOnHand,
+      };
+      runningSnapshots.set(line.variant_id, nextSnapshot);
+
+      const activityRow = await stockActivityRecorder.record(tx as any, {
+        snapshot: stockActivityRecorder.withQuantityOnHandAfter(
+          {
+            businessId: tenantId,
+            locationId: nextSnapshot.locationId,
+            locationName: nextSnapshot.locationName,
+            itemId: nextSnapshot.itemId,
+            variantId: nextSnapshot.variantId,
+            itemName: nextSnapshot.itemName,
+            variantName: nextSnapshot.variantName,
+            sku: nextSnapshot.sku,
+            unit: nextSnapshot.unit,
+          },
+          nextQuantityOnHand,
+        ),
+        quantityDelta,
+        sourceType,
+        sourceAction,
+        sourceDocumentId: document.id,
+        sourceDocumentNumber: document.doc_number,
+      });
+
+      await this.appendSyncChange(
+        tx,
+        tenantId,
+        "stock_activity",
+        activityRow.id,
+        "CREATE",
+        stockActivityRecorder.toSyncPayload(activityRow),
+      );
+    }
+
+    await this.appendStockLevelSyncChanges(tx, tenantId, Array.from(runningSnapshots.values()));
   }
 
   async applyPostingEffects(
@@ -452,23 +580,15 @@ class StockPostingService {
       await this.assertSufficientStock(tx, tenantId, document.location_id, productLines);
     }
 
-    await tx.stockLedger.createMany({
-      data: productLines.map((line) => ({
-        business_id: tenantId,
-        location_id: document.location_id,
-        variant_id: line.variant_id as string,
-        quantity:
-          stockEffect === "DEDUCT"
-            ? -roundQuantity(Number(line.quantity))
-            : roundQuantity(Number(line.quantity)),
-        reason: getPostingReason(document.type as SalesDocumentType),
-        reference_id: document.id,
-        is_active: true,
-        deleted_at: null,
-      })),
-    });
-
-    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
+    await this.applyStockLedgerAndActivityEffects(
+      tx,
+      tenantId,
+      document,
+      productLines,
+      "POSTED",
+      (quantity) => (stockEffect === "DEDUCT" ? -quantity : quantity),
+      getPostingReason(document.type as SalesDocumentType),
+    );
   }
 
   async applyCancellationEffects(
@@ -498,23 +618,15 @@ class StockPostingService {
       return;
     }
 
-    await tx.stockLedger.createMany({
-      data: productLines.map((line) => ({
-        business_id: tenantId,
-        location_id: document.location_id,
-        variant_id: line.variant_id,
-        quantity:
-          stockEffect === "DEDUCT"
-            ? roundQuantity(Number(line.quantity))
-            : -roundQuantity(Number(line.quantity)),
-        reason: getTransitionReason(document.type as SalesDocumentType, "CANCEL"),
-        reference_id: document.id,
-        is_active: true,
-        deleted_at: null,
-      })),
-    });
-
-    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
+    await this.applyStockLedgerAndActivityEffects(
+      tx,
+      tenantId,
+      document,
+      productLines,
+      "CANCELLED",
+      (quantity) => (stockEffect === "DEDUCT" ? quantity : -quantity),
+      getTransitionReason(document.type as SalesDocumentType, "CANCEL"),
+    );
   }
 
   async applyReopenEffects(
@@ -548,23 +660,15 @@ class StockPostingService {
       await this.assertSufficientStock(tx, tenantId, document.location_id, productLines);
     }
 
-    await tx.stockLedger.createMany({
-      data: productLines.map((line) => ({
-        business_id: tenantId,
-        location_id: document.location_id,
-        variant_id: line.variant_id,
-        quantity:
-          stockEffect === "DEDUCT"
-            ? -roundQuantity(Number(line.quantity))
-            : roundQuantity(Number(line.quantity)),
-        reason: getTransitionReason(document.type as SalesDocumentType, "REOPEN"),
-        reference_id: document.id,
-        is_active: true,
-        deleted_at: null,
-      })),
-    });
-
-    await this.appendStockLevelSyncChanges(tx, tenantId, document, productLines);
+    await this.applyStockLedgerAndActivityEffects(
+      tx,
+      tenantId,
+      document,
+      productLines,
+      "REOPENED",
+      (quantity) => (stockEffect === "DEDUCT" ? -quantity : quantity),
+      getTransitionReason(document.type as SalesDocumentType, "REOPEN"),
+    );
   }
 }
 

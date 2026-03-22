@@ -149,6 +149,36 @@ export const listEntities = async (tenantId: string, entity: string) => {
     .toArray();
 };
 
+export const pruneRecentEntityRecords = async (
+  tenantId: string,
+  entity: string,
+  keepLimit: number,
+) => {
+  const records = await listEntities(tenantId, entity);
+  if (records.length <= keepLimit) {
+    return;
+  }
+
+  const idsToDelete = records
+    .sort((left, right) => {
+      const updatedAtCompare = right.updatedAt.localeCompare(left.updatedAt);
+      if (updatedAtCompare !== 0) {
+        return updatedAtCompare;
+      }
+      return right.entityId.localeCompare(left.entityId);
+    })
+    .slice(keepLimit)
+    .map((record) => [tenantId, entity, record.entityId] as [string, string, string]);
+
+  if (idsToDelete.length === 0) {
+    return;
+  }
+
+  await syncDb.transaction("rw", syncDb.entities, async () => {
+    await syncDb.entities.bulkDelete(idsToDelete);
+  });
+};
+
 export const upsertSyncResults = async (results: LocalSyncResultRecord[]) => {
   if (results.length === 0) return;
   await syncDb.syncResults.bulkPut(results);

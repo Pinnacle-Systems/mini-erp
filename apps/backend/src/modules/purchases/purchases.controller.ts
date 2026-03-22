@@ -557,6 +557,12 @@ const getPurchaseDocumentOrThrow = async (
       deleted_at: null,
     },
     include: {
+      parent: {
+        select: {
+          id: true,
+          doc_number: true,
+        },
+      },
       children: {
         where: {
           deleted_at: null,
@@ -601,6 +607,7 @@ const mapPurchaseDocuments = (documents: PurchaseDocumentRecord[]) =>
       id: document.id,
       documentType: document.type as PurchaseDocumentType,
       parentId: document.parent_id ?? null,
+      parentDocumentNumber: document.parent?.doc_number ?? null,
       childIds: document.children.map((child) => child.id),
       status: document.status,
       cancelReason: document.cancel_reason ?? null,
@@ -1208,6 +1215,12 @@ export const listPurchaseDocuments = catchAsync(async (req, res) => {
       deleted_at: null,
     },
     include: {
+      parent: {
+        select: {
+          id: true,
+          doc_number: true,
+        },
+      },
       children: {
         where: {
           deleted_at: null,

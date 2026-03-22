@@ -540,6 +540,12 @@ const getDocumentOrThrow = async (
       deleted_at: null,
     },
     include: {
+      parent: {
+        select: {
+          id: true,
+          doc_number: true,
+        },
+      },
       children: {
         where: {
           deleted_at: null,
@@ -765,6 +771,7 @@ const mapSalesDocuments = (documents: SalesDocumentRecord[]) =>
       id: document.id,
       documentType: document.type as SalesDocumentType,
       parentId: document.parent_id ?? null,
+      parentDocumentNumber: document.parent?.doc_number ?? null,
       childIds: document.children.map((child) => child.id),
       status: document.status,
       cancelReason: document.cancel_reason ?? null,
@@ -1327,6 +1334,12 @@ export const listSalesDocuments = catchAsync(async (req, res) => {
       deleted_at: null,
     },
     include: {
+      parent: {
+        select: {
+          id: true,
+          doc_number: true,
+        },
+      },
       children: {
         where: {
           deleted_at: null,

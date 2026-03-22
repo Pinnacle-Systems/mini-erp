@@ -246,7 +246,11 @@ function PurchaseDocumentWorkspace({
       return "None";
     }
 
-    return documentRows.find((candidate) => candidate.id === row.parentId)?.billNumber ?? "Unknown";
+    return (
+      row.parentDocumentNumber ??
+      documentRows.find((candidate) => candidate.id === row.parentId)?.billNumber ??
+      "Unknown"
+    );
   };
 
   return (

@@ -6,6 +6,7 @@ import {
   applyDeltas,
   listEntities,
   listSyncResults,
+  pruneRecentEntityRecords,
   queueMutation,
   syncDb,
   type EntityRecord,
@@ -25,6 +26,8 @@ import type {
 
 const CURSOR_KEY = "cursor";
 const DEVICE_ID_KEY = "mini_erp_device_id_v1";
+const STOCK_ACTIVITY_RECENT_LIMIT = 50;
+const STOCK_ACTIVITY_INITIAL_DISPLAY_LIMIT = 10;
 const isNetworkOnline = () =>
   typeof navigator === "undefined" ? true : navigator.onLine;
 
@@ -671,6 +674,8 @@ const pull = async (tenantId: string) => {
     await applyDeltas(tenantId, payload.deltas);
     await setCursor(tenantId, payload.nextCursor);
   });
+
+  await pruneRecentEntityRecords(tenantId, "stock_activity", STOCK_ACTIVITY_RECENT_LIMIT);
 };
 
 export const syncOnce = async (tenantId: string) => {
@@ -1539,6 +1544,48 @@ export type StockAdjustmentHistoryRow = {
   createdAt: string;
 };
 
+export type StockActivitySourceType =
+  | "STOCK_ADJUSTMENT"
+  | "GOODS_RECEIPT_NOTE"
+  | "PURCHASE_INVOICE"
+  | "PURCHASE_RETURN"
+  | "DELIVERY_CHALLAN"
+  | "SALES_INVOICE"
+  | "SALES_RETURN";
+
+export type StockActivitySourceAction =
+  | "ADJUSTED"
+  | "POSTED"
+  | "CANCELLED"
+  | "REOPENED";
+
+export type StockActivityHistoryRow = {
+  entityId: string;
+  businessId: string;
+  locationId: string;
+  locationName: string;
+  itemId: string;
+  variantId: string;
+  itemName: string;
+  variantName: string;
+  sku: string;
+  unit: string;
+  occurredAt: string;
+  quantityDelta: number;
+  quantityOnHandAfter: number;
+  sourceType: StockActivitySourceType;
+  sourceDocumentId: string | null;
+  sourceDocumentNumber: string | null;
+  sourceAction: StockActivitySourceAction;
+};
+
+export type StockActivityHistoryResponse = {
+  rows: StockActivityHistoryRow[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  auditStartDate: string;
+};
+
 export const queueItemCategoryCreate = async (
   tenantId: string,
   userId: string,
@@ -1964,6 +2011,119 @@ export const getLocalStockAdjustmentHistory = async (
     })
     .filter((row) => row.variantId.length > 0)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+};
+
+export const getLocalStockActivityHistory = async (
+  tenantId: string,
+): Promise<StockActivityHistoryRow[]> => {
+  const records = await listEntities(tenantId, "stock_activity");
+
+  return records
+    .filter((record) => !record.deletedAt)
+    .map((record) => {
+      const data = record.data;
+      return {
+        entityId: record.entityId,
+        businessId: String(data.businessId ?? tenantId),
+        locationId: String(data.locationId ?? ""),
+        locationName: String(data.locationName ?? "Unknown location"),
+        itemId: String(data.itemId ?? ""),
+        variantId: String(data.variantId ?? ""),
+        itemName: String(data.itemName ?? "Untitled Item"),
+        variantName: String(data.variantName ?? ""),
+        sku: String(data.sku ?? ""),
+        unit: String(data.unit ?? "PCS"),
+        occurredAt: String(data.occurredAt ?? record.updatedAt),
+        quantityDelta: Number(data.quantityDelta ?? 0),
+        quantityOnHandAfter: Number(data.quantityOnHandAfter ?? 0),
+        sourceType: String(data.sourceType ?? "STOCK_ADJUSTMENT") as StockActivitySourceType,
+        sourceDocumentId:
+          typeof data.sourceDocumentId === "string" ? data.sourceDocumentId : null,
+        sourceDocumentNumber:
+          typeof data.sourceDocumentNumber === "string" ? data.sourceDocumentNumber : null,
+        sourceAction: String(data.sourceAction ?? "ADJUSTED") as StockActivitySourceAction,
+      } satisfies StockActivityHistoryRow;
+    })
+    .filter((row) => row.variantId.length > 0)
+    .sort((left, right) => {
+      const occurredAtCompare = right.occurredAt.localeCompare(left.occurredAt);
+      if (occurredAtCompare !== 0) {
+        return occurredAtCompare;
+      }
+      return right.entityId.localeCompare(left.entityId);
+    });
+};
+
+export const getInitialLocalStockActivityHistory = async (
+  tenantId: string,
+): Promise<StockActivityHistoryRow[]> =>
+  (await getLocalStockActivityHistory(tenantId)).slice(0, STOCK_ACTIVITY_INITIAL_DISPLAY_LIMIT);
+
+export const fetchStockActivityHistory = async (
+  tenantId: string,
+  options: {
+    q?: string;
+    sourceType?: StockActivitySourceType;
+    cursor?: string;
+    limit?: number;
+  } = {},
+): Promise<StockActivityHistoryResponse> => {
+  const params = new URLSearchParams({
+    tenantId,
+    limit: String(options.limit ?? STOCK_ACTIVITY_RECENT_LIMIT),
+  });
+  if (options.q?.trim()) {
+    params.set("q", options.q.trim());
+  }
+  if (options.sourceType) {
+    params.set("sourceType", options.sourceType);
+  }
+  if (options.cursor) {
+    params.set("cursor", options.cursor);
+  }
+
+  const response = await apiFetch(`/api/inventory/stock-activity?${params.toString()}`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw new SyncHttpError("results", response.status);
+  }
+
+  const payload = (await response.json()) as {
+    success: true;
+    rows: Array<Record<string, unknown>>;
+    nextCursor: string | null;
+    hasMore: boolean;
+    auditStartDate: string;
+  };
+
+  return {
+    rows: payload.rows.map((row) => ({
+      entityId: String(row.id ?? ""),
+      businessId: String(row.businessId ?? tenantId),
+      locationId: String(row.locationId ?? ""),
+      locationName: String(row.locationName ?? "Unknown location"),
+      itemId: String(row.itemId ?? ""),
+      variantId: String(row.variantId ?? ""),
+      itemName: String(row.itemName ?? "Untitled Item"),
+      variantName: String(row.variantName ?? ""),
+      sku: String(row.sku ?? ""),
+      unit: String(row.unit ?? "PCS"),
+      occurredAt: String(row.occurredAt ?? ""),
+      quantityDelta: Number(row.quantityDelta ?? 0),
+      quantityOnHandAfter: Number(row.quantityOnHandAfter ?? 0),
+      sourceType: String(row.sourceType ?? "STOCK_ADJUSTMENT") as StockActivitySourceType,
+      sourceDocumentId:
+        typeof row.sourceDocumentId === "string" ? row.sourceDocumentId : null,
+      sourceDocumentNumber:
+        typeof row.sourceDocumentNumber === "string" ? row.sourceDocumentNumber : null,
+      sourceAction: String(row.sourceAction ?? "ADJUSTED") as StockActivitySourceAction,
+    })),
+    nextCursor: payload.nextCursor,
+    hasMore: payload.hasMore,
+    auditStartDate: payload.auditStartDate,
+  };
 };
 
 const addOptionValue = (

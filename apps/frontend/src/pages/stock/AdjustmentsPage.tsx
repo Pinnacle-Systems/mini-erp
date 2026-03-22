@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../../design-system/atoms/Button";
@@ -23,6 +23,7 @@ import {
   spreadsheetCellNumericClassName,
   spreadsheetCellSelectClassName,
 } from "../../design-system/molecules/spreadsheetStyles";
+import { useSpreadsheetNavigation } from "../../design-system/molecules/useSpreadsheetNavigation";
 import { useSessionStore } from "../../features/auth/session-business";
 import { hasAssignedStoreCapability } from "../../features/auth/session-business";
 import {
@@ -57,6 +58,8 @@ type AdjustmentDraftRow = {
 type ReadyAdjustmentDraftRow = AdjustmentDraftRow & {
   reason: StockAdjustmentReason;
 };
+
+type AdjustmentFieldKey = "variant" | "reason" | "quantity";
 
 const buildEmptyRow = (variantId = ""): AdjustmentDraftRow => ({
   id: crypto.randomUUID(),
@@ -108,6 +111,7 @@ const isRowPristine = (row: AdjustmentDraftRow) =>
   row.variantQuery.trim().length === 0;
 
 export function AdjustmentsPage() {
+  const desktopTableRef = useRef<HTMLDivElement | null>(null);
   const identityId = useSessionStore((state) => state.identityId);
   const activeStore = useSessionStore((state) => state.activeStore);
   const activeLocationId = useSessionStore((state) => state.activeLocationId);
@@ -164,6 +168,23 @@ export function AdjustmentsPage() {
     row.variantId && optionByVariantId.get(row.variantId)?.label
       ? (optionByVariantId.get(row.variantId)?.label ?? row.variantQuery)
       : row.variantQuery;
+  const {
+    getCellDataAttributes,
+    handleCellFocus,
+    handleCellKeyDown,
+  } = useSpreadsheetNavigation<AdjustmentFieldKey>({
+    containerRef: desktopTableRef,
+    getRowOrder: () => rows.map((row) => row.id),
+    getFieldOrderForRow: () => ["variant", "reason", "quantity"],
+    appendMode: "grow-as-needed",
+    canAppendFromRow: (rowId) => {
+      const row = rows.find((entry) => entry.id === rowId);
+      return Boolean(row && !isRowPristine(row));
+    },
+    onRequestAppendRow: () => {
+      addRow();
+    },
+  });
 
   useEffect(() => {
     const desktopMedia = window.matchMedia("(min-width: 1024px)");
@@ -284,23 +305,6 @@ export function AdjustmentsPage() {
         target.focus();
       }
     });
-  };
-
-  const moveToNextRowFromQuantity = (rowId: string) => {
-    const currentIndex = rows.findIndex((row) => row.id === rowId);
-    if (currentIndex < 0) {
-      return;
-    }
-
-    const nextRow = rows[currentIndex + 1];
-    if (nextRow) {
-      focusRowVariant(nextRow.id);
-      return;
-    }
-
-    const appendedRow = buildEmptyRow();
-    setRows((current) => [...current, appendedRow]);
-    setPendingFocusRowId(appendedRow.id);
   };
 
   const clearRow = (rowId: string) => {
@@ -603,7 +607,12 @@ export function AdjustmentsPage() {
               </div>
 
               <div className="mt-1 hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-                <TabularSurface className="min-h-0 flex-1 overflow-hidden">
+                <TabularSurface
+                  ref={desktopTableRef}
+                  role="grid"
+                  aria-label="Stock adjustments"
+                  className="min-h-0 flex-1 overflow-hidden"
+                >
                   <TabularHeader>
                     <TabularRow columns={desktopGridTemplate}>
                       <TabularSerialNumberHeaderCell />
@@ -654,13 +663,19 @@ export function AdjustmentsPage() {
                                 </span>
                               </div>
                             )}
-                            inputProps={{ "aria-label": "Search item variant" }}
+                            inputProps={{
+                              ...getCellDataAttributes(row.id, "variant"),
+                              "aria-label": "Search item variant",
+                              onKeyDown: (event) => handleCellKeyDown(event, row.id, "variant"),
+                              onFocus: () => handleCellFocus(row.id, "variant"),
+                            }}
                           />
                         </TabularCell>
                         <TabularCell variant="editable">
                           <Select
                             id={`stock-desktop-reason-${row.id}`}
                             unstyled
+                            {...getCellDataAttributes(row.id, "reason")}
                             className={cn(
                               spreadsheetCellSelectClassName,
                               row.reason ? "text-foreground" : "text-foreground/55",
@@ -671,6 +686,8 @@ export function AdjustmentsPage() {
                                 reason: event.target.value as StockAdjustmentReason | "",
                               })
                             }
+                            onFocus={() => handleCellFocus(row.id, "reason")}
+                            onKeyDown={(event) => handleCellKeyDown(event, row.id, "reason")}
                             disabled={isBusy}
                           >
                             <option value="" disabled>
@@ -688,18 +705,15 @@ export function AdjustmentsPage() {
                             <Input
                               id={`stock-desktop-quantity-${row.id}`}
                               unstyled
+                              {...getCellDataAttributes(row.id, "quantity")}
                               className={`${spreadsheetCellControlClassName} ${spreadsheetCellNumericClassName} w-full px-0 pr-0`}
                               inputMode="decimal"
                               value={row.quantity}
                               onChange={(event) => updateRow(row.id, { quantity: event.target.value })}
                               placeholder=""
                               disabled={isBusy}
-                              onKeyDown={(event) => {
-                                if (event.key === "Tab" && !event.shiftKey) {
-                                  event.preventDefault();
-                                  moveToNextRowFromQuantity(row.id);
-                                }
-                              }}
+                              onFocus={() => handleCellFocus(row.id, "quantity")}
+                              onKeyDown={(event) => handleCellKeyDown(event, row.id, "quantity")}
                             />
                             <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
                               {row.variantId && optionByVariantId.get(row.variantId)?.unit

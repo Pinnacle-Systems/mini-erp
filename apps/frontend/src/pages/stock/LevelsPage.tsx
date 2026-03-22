@@ -232,7 +232,7 @@ export function LevelsPage() {
                 <TabularCell variant="header" align="end">
                   Qty
                 </TabularCell>
-                <TabularCell variant="header">UOM</TabularCell>
+                <TabularCell variant="header">Unit</TabularCell>
               </TabularRow>
             </TabularHeader>
             <TabularBody className="overflow-y-auto">
