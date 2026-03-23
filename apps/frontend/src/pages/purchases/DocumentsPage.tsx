@@ -50,6 +50,11 @@ import {
   usesSettlementMode,
 } from "./usePurchaseDocumentWorkspace";
 
+const isFinancialPurchaseDocumentType = (
+  documentType: PurchaseDocumentType,
+): documentType is "PURCHASE_INVOICE" | "PURCHASE_RETURN" =>
+  documentType === "PURCHASE_INVOICE" || documentType === "PURCHASE_RETURN";
+
 const PURCHASE_DOCUMENT_PAGE_CONFIG: Record<
   PurchaseDocumentType,
   PurchaseDocumentPageConfig
@@ -351,8 +356,9 @@ function PurchaseDocumentWorkspace({
   const [paymentReferenceDraft, setPaymentReferenceDraft] = useState("");
   const [paymentDateDraft, setPaymentDateDraft] = useState(getTodayDateInputValue());
   const [paymentDateTouched, setPaymentDateTouched] = useState(false);
-  const isFinancialPurchaseDocument =
-    config.documentType === "PURCHASE_INVOICE" || config.documentType === "PURCHASE_RETURN";
+  const financialPurchaseDocumentType = isFinancialPurchaseDocumentType(config.documentType)
+    ? config.documentType
+    : null;
   const viewedFinancialDocumentId = activeDocument?.id ?? null;
   const canRecordSettlement =
     isViewingPostedDocument &&
@@ -398,13 +404,17 @@ function PurchaseDocumentWorkspace({
     : null;
 
   useEffect(() => {
-    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !isFinancialPurchaseDocument) {
+    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !financialPurchaseDocumentType) {
       setFinancialBalance(null);
       return;
     }
 
     let cancelled = false;
-    void getFinancialDocumentBalance(activeStore, config.documentType, viewedFinancialDocumentId)
+    void getFinancialDocumentBalance(
+      activeStore,
+      financialPurchaseDocumentType,
+      viewedFinancialDocumentId,
+    )
       .then((balance) => {
         if (!cancelled) {
           setFinancialBalance(balance);
@@ -420,7 +430,12 @@ function PurchaseDocumentWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [activeStore, config.documentType, isFinancialPurchaseDocument, isViewingPostedDocument, viewedFinancialDocumentId]);
+  }, [
+    activeStore,
+    financialPurchaseDocumentType,
+    isViewingPostedDocument,
+    viewedFinancialDocumentId,
+  ]);
 
   useEffect(() => {
     if (!activeStore || config.documentType !== "PURCHASE_INVOICE") {

@@ -92,6 +92,11 @@ const getPaymentStatusToneClassName = (row: Pick<FinancialDocumentBalanceRow, "s
   }
 };
 
+const isFinancialSalesDocumentType = (
+  documentType: SalesDocumentType,
+): documentType is "SALES_INVOICE" | "SALES_RETURN" =>
+  documentType === "SALES_INVOICE" || documentType === "SALES_RETURN";
+
 const getDeliveryChallanReturnProgressToneClassName = (
   status: "PARTIAL_RETURNED" | "RETURNED_IN_FULL",
 ) =>
@@ -395,8 +400,9 @@ function SalesDocumentWorkspace({
   const [isPosNotesOpen, setIsPosNotesOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<PrintableReceiptData | null>(null);
   const [financialBalance, setFinancialBalance] = useState<FinancialDocumentBalanceRow | null>(null);
-  const isFinancialSalesDocument =
-    config.documentType === "SALES_INVOICE" || config.documentType === "SALES_RETURN";
+  const financialSalesDocumentType = isFinancialSalesDocumentType(config.documentType)
+    ? config.documentType
+    : null;
   const viewedFinancialDocumentId = activeServerDocument?.id ?? activeDraftId ?? null;
   const canRecordSettlement =
     isViewingPostedDocument &&
@@ -405,13 +411,17 @@ function SalesDocumentWorkspace({
     !["CANCELLED", "VOID"].includes(activeServerDocument?.status ?? "");
 
   useEffect(() => {
-    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !isFinancialSalesDocument) {
+    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !financialSalesDocumentType) {
       setFinancialBalance(null);
       return;
     }
 
     let cancelled = false;
-    void getFinancialDocumentBalance(activeStore, config.documentType, viewedFinancialDocumentId)
+    void getFinancialDocumentBalance(
+      activeStore,
+      financialSalesDocumentType,
+      viewedFinancialDocumentId,
+    )
       .then((balance) => {
         if (!cancelled) {
           setFinancialBalance(balance);
@@ -427,7 +437,12 @@ function SalesDocumentWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [activeStore, config.documentType, isFinancialSalesDocument, isViewingPostedDocument, viewedFinancialDocumentId]);
+  }, [
+    activeStore,
+    financialSalesDocumentType,
+    isViewingPostedDocument,
+    viewedFinancialDocumentId,
+  ]);
 
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(() => {
     if (typeof window === "undefined") {
