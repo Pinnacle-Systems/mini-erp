@@ -7,6 +7,7 @@ import inventoryRoutes from "./modules/inventory/inventory.routes.js";
 import purchasesRoutes from "./modules/purchases/purchases.routes.js";
 import salesRoutes from "./modules/sales/sales.routes.js";
 import syncRoutes from "./modules/sync/sync.routes.js";
+import systemRoutes from "./modules/system/system.routes.js";
 
 const router = Router();
 
@@ -22,4 +23,5 @@ router.use("/inventory", inventoryRoutes);
 router.use("/purchases", purchasesRoutes);
 router.use("/sales", salesRoutes);
 router.use("/sync", syncRoutes);
+router.use("/system", systemRoutes);
 export default router;

@@ -38,6 +38,9 @@
           "Segoe UI",
           sans-serif;
       }
+      html {
+        background-color: hsl(220 16% 91%);
+      }
       body {
         margin: 0;
         min-height: 100vh;
@@ -55,6 +58,13 @@
           radial-gradient(800px 300px at 110% -20%, hsl(224 36% 20%), transparent 70%),
           hsl(224 34% 12%);
         color: hsl(210 40% 96%);
+      }
+      html[data-theme="dark"] {
+        background-color: hsl(224 34% 12%);
+      }
+      #root {
+        min-height: 100dvh;
+        background-color: inherit;
       }
       .boot-fallback {
         display: none;

@@ -1,4 +1,5 @@
 import { useSessionStore } from "../features/auth/session-business";
+import { isNativeAndroidApp } from "../platform/capacitor";
 
 const ACCESS_TOKEN_KEY = "mini_erp_frontend_access_token";
 
@@ -9,6 +10,13 @@ const normalizeBaseUrl = (value: string | undefined) => {
 };
 
 const getApiBaseUrl = () => {
+  if (isNativeAndroidApp()) {
+    const androidBaseUrl = normalizeBaseUrl(import.meta.env.VITE_ANDROID_API_BASE_URL);
+    if (androidBaseUrl) {
+      return androidBaseUrl;
+    }
+  }
+
   const explicitBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
   if (explicitBaseUrl) {
     return explicitBaseUrl;
