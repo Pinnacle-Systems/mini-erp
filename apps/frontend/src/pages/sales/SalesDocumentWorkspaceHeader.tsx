@@ -7,6 +7,8 @@ type SalesDocumentWorkspaceHeaderProps = {
   activeDraftId: string | null;
   isPosMode: boolean;
   documentStatus: string | null | undefined;
+  secondaryStatusLabel?: string | null;
+  secondaryStatusToneClassName?: string | null;
   isOnline: boolean;
   draftMutationLoading: boolean;
   linesCount: number;
@@ -32,6 +34,8 @@ export function SalesDocumentWorkspaceHeader({
   activeDraftId,
   isPosMode,
   documentStatus,
+  secondaryStatusLabel,
+  secondaryStatusToneClassName,
   isOnline,
   draftMutationLoading,
   linesCount,
@@ -70,6 +74,16 @@ export function SalesDocumentWorkspaceHeader({
               Status: {documentStatus ?? "OPEN"}
             </span>
           ) : null}
+          {isViewingPostedDocument && secondaryStatusLabel ? (
+            <span
+              className={`hidden rounded-md border px-2 py-0.5 text-[10px] font-medium lg:inline-flex ${
+                secondaryStatusToneClassName ??
+                "border-border/70 bg-muted/55 text-muted-foreground"
+              }`}
+            >
+              {secondaryStatusLabel}
+            </span>
+          ) : null}
           {isViewingPostedDocument && paymentStatusLabel ? (
             <span className={`hidden rounded-md border px-2 py-0.5 text-[10px] font-medium lg:inline-flex ${paymentStatusToneClassName ?? "border-border/70 bg-muted/55 text-muted-foreground"}`}>
               Payment: {paymentStatusLabel}
@@ -88,6 +102,16 @@ export function SalesDocumentWorkspaceHeader({
             <div className="rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
               Status: {documentStatus ?? "OPEN"}
             </div>
+            {secondaryStatusLabel ? (
+              <div
+                className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
+                  secondaryStatusToneClassName ??
+                  "border-border/70 bg-muted/55 text-muted-foreground"
+                }`}
+              >
+                {secondaryStatusLabel}
+              </div>
+            ) : null}
             {paymentStatusLabel ? (
               <div className={`rounded-md border px-2 py-1 text-[11px] font-medium ${paymentStatusToneClassName ?? "border-border/70 bg-muted/55 text-muted-foreground"}`}>
                 Payment: {paymentStatusLabel}

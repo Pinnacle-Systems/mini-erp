@@ -141,7 +141,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-screen w-full lg:h-screen lg:overflow-hidden">
       {isAuthenticated ? (
-        <div className="fixed inset-x-0 top-0 z-40 border-b border-border/80 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+        <div className="fixed inset-x-0 top-0 z-40 border-b border-border/70 bg-background/84 backdrop-blur-md shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="px-2 py-2 sm:px-3 md:px-4">
             <SessionHeader
               showBack={shouldShowUserBack}

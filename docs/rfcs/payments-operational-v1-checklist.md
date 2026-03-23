@@ -2,7 +2,7 @@
 
 This checklist tracks implementation status for [RFC: Payments and Operational Financial Tracking V1](/home/ajay/workspace/mini-erp/docs/rfcs/payments-operational-v1.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: updated against tracked repository state on 2026-03-22. The operational finance foundation is implemented and usable. The repo now includes `accounts.*` operational tables, backend APIs, finance frontend pages, invoice settlement summaries, purchase-return-aware purchase invoice settlement, sales-return-aware sales invoice settlement, party-level finance summaries, unapplied credit summaries, and overview cards for customer receivables, supplier payables, and vendor credit. The phase is still incomplete for multi-document allocation, dedicated unapplied-credit workflows, expense void/recreate, and deeper reporting.
+Status review note: updated against tracked repository state on 2026-03-23. The operational finance foundation is implemented and usable. The repo now includes `accounts.*` operational tables, backend APIs, finance frontend pages, invoice settlement summaries, purchase-return-aware purchase invoice settlement, sales-return-aware sales invoice settlement, party-level finance summaries, unapplied credit summaries, cash purchase-invoice post-and-pay, and overview cards for customer receivable, customer credit, supplier payable, and supplier credit. The phase is still incomplete for multi-document allocation, dedicated unapplied-credit workflows, expense void/recreate, and deeper reporting.
 
 ## Phase 1: Operational Finance Foundation
 
@@ -59,6 +59,8 @@ Goal: make operational finance writes durable and accounting-ready.
 - [x] Track party context when available
 - [x] Add explicit reverse / void endpoint for payment money movements
 - [x] Add payment-screen void action for posted payment movements
+- [x] Exclude voided movements from active finance overview recent activity and month totals
+- [x] Keep voided movement history visible in audit surfaces with business-language copy
 - [ ] Extend void-and-recreate workflow to expense or other movement types where supporting status fields exist
 
 ## Phase 4: Derived Settlement Layer
@@ -94,8 +96,13 @@ Goal: make purchase invoice settlement net-exposure-aware.
 - [x] Only count purchase returns with `posted_at != null` and status not in `CANCELLED | VOID`
 - [x] Use tax-inclusive return `grand_total`
 - [x] Derive purchase invoice settlement from `paidAmount + appliedReturnAmount`
-- [x] Surface purchase invoice vendor credit when net outstanding is negative
+- [x] Surface purchase invoice supplier credit when net outstanding is negative
 - [x] Remove standalone purchase returns from receivable overview rollups
+- [x] Add cash purchase invoice post-and-pay flow
+- [x] Require financial account selection for `PURCHASE_INVOICE + CASH`
+- [x] Create purchase invoice and made-payment allocation in one transaction for `PURCHASE_INVOICE + CASH`
+- [x] Auto-void linked cash-post payment when the purchase invoice is cancelled
+- [x] Block reopen to draft while linked posted payment exists
 
 ## Phase 6: Sales Invoice Settlement
 
@@ -117,7 +124,7 @@ Goal: expose operational finance workflows in a compact business-oriented module
 - [x] Add Payments Made page
 - [x] Add Expenses page
 - [x] Add Accounts page
-- [x] Add overview cards for customer receivable, supplier payable, vendor credit, inflow, outflow, and expense total
+- [x] Add overview cards for customer receivable, customer credit, supplier payable, supplier credit, inflow, outflow, and expense total
 - [x] Add recent activity table
 - [x] Add account balances view
 - [x] Add expense-by-category view
@@ -144,8 +151,9 @@ Goal: make settlement visible where users manage invoices.
   - `Paid`
   - `Settled`
   - `Settled by Return`
-  - `Vendor Credit`
+  - `Supplier Credit`
 - [x] Add similarly refined wording once sales returns join sales settlement math
+- [x] Keep settlement summary invoice-focused; purchase returns do not need the same settlement section
 
 ## Phase 9: Overview and Rollup Accuracy
 
@@ -154,8 +162,8 @@ Goal: keep overview cards aligned with business meaning.
 - [x] Stop counting purchase returns as standalone receivables in overview rollups
 - [x] Stop counting sales returns as standalone payables in overview rollups
 - [x] Rename overview cards to `Customer Receivable` and `Supplier Payable`
-- [x] Add separate `Vendor Credit` overview metric
-- [ ] Add customer-credit equivalent overview metric when customer-credit rollups are promoted beyond party-level detail
+- [x] Add separate `Supplier Credit` overview metric
+- [x] Add separate `Customer Credit` overview metric
 
 ## Phase 10: Party-Level Finance Context
 

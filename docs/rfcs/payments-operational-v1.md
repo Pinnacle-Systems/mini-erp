@@ -106,7 +106,7 @@ For invoice-like documents, settlement is derived from:
 Current behavior:
 
 - `SALES_INVOICE`
-  - settlement is payment-aware from received-payment allocations
+  - settlement is net-exposure-aware from received-payment allocations plus linked sales returns
 - `PURCHASE_INVOICE`
   - settlement is net-exposure-aware from made-payment allocations plus linked purchase returns
 
@@ -129,11 +129,54 @@ Purchase-return-aware settlement uses implicit application:
 Result:
 
 - a purchase invoice may be settled by cash, by return, or by a combination of both
-- negative net outstanding on a purchase invoice represents vendor credit / refund due
+- negative net outstanding on a purchase invoice represents supplier credit / refund due
 
-### 5.5 Current Limitation
+### 5.5 Sales Return Handling
 
-Sales returns are not yet included in sales invoice settlement math in this phase.
+Sales-invoice-aware settlement now uses implicit application:
+
+- sales returns linked by `parent_id` to a sales invoice reduce the invoice's net exposure
+- only returns with `posted_at != null` and status not in `CANCELLED` or `VOID` count
+- the return `grand_total` is used so settlement math stays tax-inclusive
+
+Result:
+
+- a sales invoice may be settled by receipt, by return, or by a combination of both
+- negative net outstanding on a sales invoice represents customer credit / refund due
+
+### 5.6 Cash Purchase Invoice Post-and-Pay
+
+`settlement_mode = CASH` on a purchase invoice is not only descriptive metadata. It now drives a posting-time financial workflow:
+
+- `PURCHASE_INVOICE + CREDIT`
+  - posting remains document-only and leaves settlement derived from later payments and returns
+- `PURCHASE_INVOICE + CASH`
+  - posting requires a selected financial account
+  - posting creates the purchase invoice and the linked made-payment allocation in one backend transaction
+  - the created money movement carries:
+    - `financial_account_id`
+    - `location_id`
+    - `source_document_id`
+    - `source_document_type = PURCHASE_INVOICE`
+  - the invoice lands immediately in `PAID` settlement state when fully covered by the auto-created payment
+
+Guard rules:
+
+- the cash-post flow is backend-owned; it does not require separate Accounts-screen navigation
+- if payment creation fails, invoice posting rolls back
+- a purchase invoice with linked posted payment movements cannot reopen to draft until those linked payments are voided
+- cancelling a cash-posted purchase invoice automatically voids the linked auto-created payment movement
+
+### 5.7 Voided Movement Visibility
+
+Voided money movements remain part of audit history but are no longer treated as live financial activity.
+
+Rules:
+
+- voided movements do not affect account balances
+- voided movements do not count toward `This Month In` or `This Month Out`
+- voided movements do not appear in active `Recent Activity` overview surfaces
+- void events should still be visible in document history and finance-ledger contexts using descriptive business language rather than internal identifiers
 
 ## 6. API Surface
 
@@ -171,15 +214,22 @@ The finance module currently ships these screens:
 
 Invoice surfaces now show settlement context:
 
-- purchase invoices show settlement badge, cash paid, returns applied, outstanding or vendor credit, and settlement timing
-- sales invoices show settlement summary from received payments
+- purchase invoices show settlement badge, cash paid, returns applied, outstanding or supplier credit, and settlement timing
+- sales invoices show settlement summary from received payments and linked sales returns
 
 Purchase wording is more settlement-aware:
 
 - `Paid`
 - `Settled`
 - `Settled by Return`
-- `Vendor Credit`
+- `Supplier Credit`
+
+Sales wording is now similarly settlement-aware:
+
+- `Paid`
+- `Settled`
+- `Settled by Return`
+- `Customer Credit`
 
 ## 8. Current Phase Boundaries
 
@@ -189,18 +239,20 @@ This RFC records the current phased agreement:
 
 - operational finance tables and APIs
 - payment creation against invoices
+- auto-paid posting flow for cash purchase invoices
 - expense entry
 - business money accounts
 - invoice detail settlement summary
 - purchase-return-aware purchase invoice settlement
-- overview cards for customer receivable, supplier payable, and vendor credit
+- sales-return-aware sales invoice settlement
+- payment void endpoint for posted payment movements
+- overview cards for customer receivable, customer credit, supplier payable, and supplier credit
 
 ### Deferred
 
-- sales-return-aware sales invoice settlement
-- explicit money movement reverse / void flow
+- expense or generic non-payment void / recreate flow
 - party-level outstanding and unapplied credit views
-- unapplied customer/vendor credit UX
+- unapplied customer/supplier credit UX
 - multi-document allocation UI in one payment entry
 - attachment support
 - accounting-journal bridge
@@ -213,7 +265,12 @@ This RFC records the current phased agreement:
 3. Settlement uses tax-inclusive document totals via `grand_total`.
 4. Purchase returns may reduce purchase invoice exposure without a cash payment.
 5. Purchase returns do not create standalone customer receivables or supplier payables in finance overview rollups.
-6. Sales returns remain separate from sales settlement math until the next phase.
+6. Sales returns may reduce sales invoice exposure without a receipt entry.
+7. Overview terminology should stay symmetric:
+   - `Customer Receivable`
+   - `Customer Credit`
+   - `Supplier Payable`
+   - `Supplier Credit`
 
 ## 10. Recommended Next Phase
 

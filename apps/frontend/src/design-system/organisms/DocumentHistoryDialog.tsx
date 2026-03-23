@@ -50,6 +50,12 @@ const SALES_DOCUMENT_TYPE_LABELS = {
 const toSentenceCase = (value: string) =>
   value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
 
+const toTitleCase = (value: string) =>
+  value
+    .split(" ")
+    .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
+    .join(" ");
+
 const formatDocumentTypeLabel = (value: unknown) => {
   if (typeof value !== "string") {
     return null;
@@ -87,6 +93,18 @@ const getConversionDocumentContext = (entry: DocumentHistoryEntry) => {
 };
 
 const formatEventTitle = (entry: DocumentHistoryEntry) => {
+  if (
+    entry.eventType === "STATUS_CHANGED" &&
+    entry.metadata?.reason === "AUTO_PAYMENT_RECORDED"
+  ) {
+    return "Cash payment recorded automatically";
+  }
+  if (
+    entry.eventType === "STATUS_CHANGED" &&
+    entry.metadata?.reason === "AUTO_PAYMENT_VOIDED"
+  ) {
+    return "Cash payment voided automatically";
+  }
   if (entry.eventType === "CREATED") {
     return "Draft created";
   }
@@ -140,6 +158,43 @@ const formatEventDetails = (entry: DocumentHistoryEntry) => {
     if (direction === "TO_TARGET" && targetDocumentType && targetDocumentNumber) {
       return `Target document: ${toSentenceCase(targetDocumentType)} ${targetDocumentNumber}.`;
     }
+  }
+
+  if (
+    entry.eventType === "STATUS_CHANGED" &&
+    entry.metadata?.reason === "AUTO_PAYMENT_RECORDED"
+  ) {
+    const accountName =
+      typeof entry.metadata?.paymentAccountName === "string" &&
+      entry.metadata.paymentAccountName.trim()
+        ? entry.metadata.paymentAccountName.trim()
+        : null;
+    const reference =
+      typeof entry.metadata?.paymentReference === "string" && entry.metadata.paymentReference.trim()
+        ? ` (${entry.metadata.paymentReference.trim()})`
+        : "";
+    if (accountName) {
+      return `Cash payment from ${accountName}${reference} was recorded automatically during posting.`;
+    }
+    return `Cash payment${reference} was recorded automatically during posting.`;
+  }
+
+  if (
+    entry.eventType === "STATUS_CHANGED" &&
+    entry.metadata?.reason === "AUTO_PAYMENT_VOIDED"
+  ) {
+    const accountNames = Array.isArray(entry.metadata?.paymentAccountNames)
+      ? entry.metadata.paymentAccountNames.filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0,
+        )
+      : [];
+    if (accountNames.length === 1) {
+      return `Cash payment from ${accountNames[0]} was voided automatically.`;
+    }
+    if (accountNames.length > 1) {
+      return `Cash payments from ${accountNames.join(", ")} were voided automatically.`;
+    }
+    return "Cash payment was voided automatically.";
   }
 
   if (typeof entry.metadata?.cancelReason === "string") {
@@ -211,7 +266,7 @@ export function DocumentHistoryDialog({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-foreground">
-                          {formatEventTitle(entry)}
+                          {toTitleCase(formatEventTitle(entry))}
                         </p>
                         {details ? (
                           <p className="mt-0.5 text-[11px] text-muted-foreground">

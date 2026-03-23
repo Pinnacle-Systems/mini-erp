@@ -2,7 +2,7 @@
 
 This checklist tracks implementation order and task status for [RFC: Sales Engine V2](/home/ajay/workspace/mini-erp/docs/rfcs/sales-engine-v2.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: updated against tracked repository state on 2026-03-17. The Phase 1 schema remains present in the current `init` migration, including `documents.DocumentLineLink`, the supporting indexes, and `inventory.StockLedger.location_id`. The backend sales services and policy wiring are present in `apps/backend/src/modules/sales`, and the shared sales workspace consumes the backend conversion-balance endpoint with explicit `sourceLineId` handling for linked versus ad-hoc rows. Focused backend Vitest coverage exists for document linking, balance calculations, inventory responsibility, stock posting, and posted-document policy guards. Manual acceptance runs are still not represented in the repository and remain open.
+Status review note: updated against tracked repository state on 2026-03-23. The sales engine’s line-link, conversion-balance, inventory-responsibility, cancellation, and return rules are implemented in the backend and consumed by the shared sales workspace. Sales invoice settlement is now sales-return-aware, the summary rails have been compacted into the same math-first pattern used by purchases, and posted-document policy guards remain covered by focused backend tests. Remaining work is primarily in manual acceptance coverage and any future reporting or allocation UX that sits beyond this RFC’s core operational scope.
 
 ## Phase 1: Data Foundation
 
@@ -113,6 +113,8 @@ Goal: make the shared sales workspace consume backend authority.
 - [x] Lock item identity for linked rows while keeping quantity editable
 - [x] Warn before removing linked rows from converted drafts
 - [x] Show a same-item mixed-origin helper hint when an ad-hoc row coexists with unused linked parent balance
+- [x] Keep sales settlement summary compact and math-first, with metadata separated from primary totals
+- [x] Use hover help for customer-credit explanation instead of large inline explanation blocks
 
 ## Phase 7: Testing and Acceptance
 
@@ -140,10 +142,10 @@ Goal: verify the RFC end to end.
 - [x] Test ad-hoc converted lines do not create `DocumentLineLink`
 - [x] Test invalid explicit `sourceLineId` values are rejected
 - [x] Test challan-backed mixed-origin invoice deducts stock only for ad-hoc product lines
-- [ ] Manual run: Direct Invoice -> post -> stock reduced
-- [ ] Manual run: Order -> Challan -> Invoice -> stock reduced only at challan stage
-- [ ] Manual run: Order -> Invoice -> stock reduced at invoice stage
-- [ ] Manual run: Return over ceiling -> blocked
+- [x] Manual run: Direct Invoice -> post -> stock reduced
+- [x] Manual run: Order -> Challan -> Invoice -> stock reduced only at challan stage
+- [x] Manual run: Order -> Invoice -> stock reduced at invoice stage
+- [x] Manual run: Return over ceiling -> blocked
 - [ ] Manual run: Order -> Challan -> Challan-linked Return -> order shipment balance restored
 - [ ] Manual run: Challan -> partial return -> Invoice defaults to net delivered quantity
 - [ ] Manual run: Challan -> Invoice with linked lines plus ad-hoc item -> only ad-hoc item deducts stock at invoice stage

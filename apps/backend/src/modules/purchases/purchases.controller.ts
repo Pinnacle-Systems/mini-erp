@@ -22,6 +22,7 @@ import type {
   PurchaseDocumentAction,
   PurchaseDocumentCancelReason,
   PurchaseDocumentInput,
+  PurchaseDocumentPostInput,
   PurchaseDocumentType,
   PurchaseLineInput,
   PurchaseTransactionClient,
@@ -981,6 +982,7 @@ export const postDraftPurchaseDocument = async (
   documentType: PurchaseDocumentType,
   documentId: string,
   actor: DocumentHistoryActor,
+  paymentInput?: Omit<PurchaseDocumentPostInput, "tenantId" | "documentType">,
 ) => {
   const document = await getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
   if (document.status !== "DRAFT") {
@@ -1006,6 +1008,20 @@ export const postDraftPurchaseDocument = async (
     );
   }
 
+  if (documentType !== "PURCHASE_INVOICE") {
+    if (paymentInput?.financialAccountId || paymentInput?.paymentDate || paymentInput?.paymentReference) {
+      throw new BadRequestError("Only purchase invoices can include payment details during posting");
+    }
+  } else if (document.settlement_mode === "CREDIT") {
+    if (paymentInput?.financialAccountId || paymentInput?.paymentDate || paymentInput?.paymentReference) {
+      throw new BadRequestError(
+        "Credit purchase invoices cannot record payment details during posting",
+      );
+    }
+  } else if (document.settlement_mode === "CASH" && !paymentInput?.financialAccountId) {
+    throw new BadRequestError("Select the account used for payment before posting this cash invoice");
+  }
+
   await purchaseDocumentLinkService.upsertLinksForDocument(
     tx,
     tenantId,
@@ -1014,11 +1030,12 @@ export const postDraftPurchaseDocument = async (
   );
   await purchaseStockPostingService.applyPostingEffects(tx, tenantId, documentId);
 
+  const postedAt = new Date();
   await tx.document.update({
     where: { id: documentId },
     data: {
       status: "OPEN",
-      posted_at: new Date(),
+      posted_at: postedAt,
     },
   });
 
@@ -1033,6 +1050,45 @@ export const postDraftPurchaseDocument = async (
       reason: "POSTED",
     },
   });
+
+  if (documentType === "PURCHASE_INVOICE" && document.settlement_mode === "CASH") {
+    const payment = await accountsService.createMadePayment(
+      tenantId,
+      {
+        occurredAt: paymentInput?.paymentDate ?? postedAt.toISOString(),
+        amount: Number(document.grand_total ?? 0),
+        financialAccountId: paymentInput!.financialAccountId!,
+        referenceNo: paymentInput?.paymentReference?.trim() || undefined,
+        notes: `Auto-payment for Purchase Invoice: ${document.doc_number}`,
+        allocations: [
+          {
+            documentType: "PURCHASE_INVOICE",
+            documentId: document.id,
+            allocatedAmount: Number(document.grand_total ?? 0),
+          },
+        ],
+      },
+      tx as any,
+    );
+
+    await recordDocumentHistory(tx, {
+      tenantId,
+      documentId,
+      eventType: "STATUS_CHANGED",
+      actor,
+      fromStatus: "OPEN",
+      toStatus: "OPEN",
+      metadata: {
+        reason: "AUTO_PAYMENT_RECORDED",
+        paymentAccountName:
+          typeof payment.account_name === "string" && payment.account_name.trim()
+            ? payment.account_name
+            : null,
+        paymentReference: payment.reference_no ?? null,
+        paymentOccurredAt: payment.occurred_at instanceof Date ? payment.occurred_at.toISOString() : null,
+      },
+    });
+  }
 
   if (document.parent_id) {
     const parent = await tx.document.findFirst({
@@ -1110,6 +1166,23 @@ export const transitionPurchaseDocumentState = async (
       throw new BadRequestError("Cancel reason is required");
     }
 
+    let voidedPaymentMovements: Array<{
+      id: string;
+      referenceNo: string;
+      notes: string;
+      occurredAt: string;
+      accountName: string;
+    }> =
+      [];
+    if (document.type === "PURCHASE_INVOICE") {
+      voidedPaymentMovements = await accountsService.voidMoneyMovementsForSourceDocument(
+        tenantId,
+        "PURCHASE_INVOICE",
+        documentId,
+        tx as any,
+      );
+    }
+
     await purchaseStockPostingService.applyCancellationEffects(tx, tenantId, documentId);
 
     await tx.document.update({
@@ -1130,8 +1203,28 @@ export const transitionPurchaseDocumentState = async (
       metadata: {
         reason: "CANCELLED",
         cancelReason,
+        voidedPaymentAccountNames: voidedPaymentMovements
+          .map((movement) => movement.accountName)
+          .filter((value, index, collection) => value && collection.indexOf(value) === index),
       },
     });
+
+    if (voidedPaymentMovements.length > 0) {
+      await recordDocumentHistory(tx, {
+        tenantId,
+        documentId,
+        eventType: "STATUS_CHANGED",
+        actor,
+        fromStatus: "CANCELLED",
+        toStatus: "CANCELLED",
+        metadata: {
+          reason: "AUTO_PAYMENT_VOIDED",
+          paymentAccountNames: voidedPaymentMovements
+            .map((movement) => movement.accountName)
+            .filter((value, index, collection) => value && collection.indexOf(value) === index),
+        },
+      });
+    }
 
     await syncParentConversionStatus(tx, tenantId, actor, document.parent_id, {
       sourceDocumentId: document.id,
@@ -1193,6 +1286,20 @@ export const transitionPurchaseDocumentState = async (
     throw new BadRequestError(
       `Only posted ${PURCHASE_DOCUMENT_META[documentType].singularLabel}s can be reopened`,
     );
+  }
+
+  if (document.type === "PURCHASE_INVOICE") {
+    const activeLinkedPayments = await accountsService.listPostedMoneyMovementsForSourceDocument(
+      tenantId,
+      "PURCHASE_INVOICE",
+      documentId,
+      tx as any,
+    );
+    if (activeLinkedPayments.length > 0) {
+      throw new BadRequestError(
+        "This purchase invoice cannot be reopened while linked payments remain posted",
+      );
+    }
   }
 
   await purchaseStockPostingService.applyReopenEffects(tx, tenantId, documentId);
@@ -1400,10 +1507,8 @@ export const updatePurchaseDocument = catchAsync(async (req, res) => {
 
 export const postPurchaseDocument = catchAsync(async (req, res) => {
   const { documentId } = req.params as { documentId: string };
-  const { tenantId, documentType } = req.body as {
-    tenantId: string;
-    documentType: PurchaseDocumentType;
-  };
+  const { tenantId, documentType, financialAccountId, paymentReference, paymentDate } =
+    req.body as PurchaseDocumentPostInput;
 
   await assertPurchaseAccess(req.user.id, tenantId, documentType);
 
@@ -1411,6 +1516,10 @@ export const postPurchaseDocument = catchAsync(async (req, res) => {
     postDraftPurchaseDocument(tx, tenantId, documentType, documentId, {
       userId: req.user.id,
       name: req.user.name ?? null,
+    }, {
+      financialAccountId,
+      paymentReference,
+      paymentDate,
     }),
   );
 

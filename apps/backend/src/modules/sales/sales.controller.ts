@@ -824,11 +824,62 @@ const enrichSalesDocumentsWithSettlement = async (
       })),
   );
 
+  const challanReturnProgressEntries = await Promise.all(
+    documents
+      .filter(
+        (document) =>
+          document.documentType === "DELIVERY_CHALLAN" &&
+          Boolean(document.postedAt) &&
+          !["CANCELLED", "VOID"].includes(document.status ?? ""),
+      )
+      .map(async (document) => {
+        const lineBalances = await salesBalanceService.getInvoiceableLineBalances(
+          prisma,
+          tenantId,
+          document.id,
+        );
+        const totals = lineBalances.reduce(
+          (summary, line) => ({
+            originalQuantity: summary.originalQuantity + line.originalQuantity,
+            remainingQuantity: summary.remainingQuantity + line.remainingQuantity,
+          }),
+          { originalQuantity: 0, remainingQuantity: 0 },
+        );
+        const returnedQuantity = Math.max(
+          0,
+          Math.round((totals.originalQuantity - totals.remainingQuantity) * 1000) / 1000,
+        );
+
+        if (returnedQuantity <= 0.001) {
+          return [document.id, null] as const;
+        }
+
+        return [
+          document.id,
+          {
+            status:
+              totals.remainingQuantity <= 0.001
+                ? "RETURNED_IN_FULL"
+                : "PARTIAL_RETURNED",
+            label:
+              totals.remainingQuantity <= 0.001
+                ? "Returned in Full"
+                : "Partially Returned",
+          },
+        ] as const;
+      }),
+  );
+  const challanReturnProgressById = new Map(challanReturnProgressEntries);
+
   return documents.map((document) => ({
     ...document,
     settlement:
       document.documentType === "SALES_INVOICE"
         ? (settlementById.get(document.id) ?? null)
+        : null,
+    returnProgress:
+      document.documentType === "DELIVERY_CHALLAN"
+        ? (challanReturnProgressById.get(document.id) ?? null)
         : null,
   }));
 };

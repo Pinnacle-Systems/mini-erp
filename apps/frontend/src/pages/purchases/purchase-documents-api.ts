@@ -31,6 +31,12 @@ export type PurchaseDocumentLineDraft = {
   unit: string;
 };
 
+export type PurchaseDocumentPostInput = {
+  financialAccountId?: string;
+  paymentReference?: string;
+  paymentDate?: string;
+};
+
 export type PurchaseDocumentDraft = {
   id: string;
   documentType: PurchaseDocumentType;
@@ -252,11 +258,12 @@ export const postPurchaseDocumentDraft = async (
   documentId: string,
   tenantId: string,
   documentType: PurchaseDocumentType,
+  input: PurchaseDocumentPostInput = {},
 ): Promise<PurchaseDocumentDraft> => {
   const response = await apiFetch(`/api/purchases/documents/${encodeURIComponent(documentId)}/post`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tenantId, documentType }),
+    body: JSON.stringify({ tenantId, documentType, ...input }),
   });
 
   if (!response.ok) {

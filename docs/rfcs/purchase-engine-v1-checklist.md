@@ -2,7 +2,7 @@
 
 This checklist tracks implementation order and task status for [RFC: Purchase Engine V1](/home/ajay/workspace/mini-erp/docs/rfcs/purchase-engine-v1.md). It is execution-focused and should be updated as work progresses without changing the RFC itself.
 
-Status review note: initialized against repository state on 2026-03-20. The shared `documents.DocumentType` enum already includes `PURCHASE_ORDER`, `GOODS_RECEIPT_NOTE`, `PURCHASE_INVOICE`, and `PURCHASE_RETURN`, and licensing already includes `TXN_PURCHASE_CREATE` and `TXN_PURCHASE_RETURN`. No dedicated purchase backend module, purchase frontend pages, purchase route gating, or purchase workflow tests are present yet in tracked repository state.
+Status review note: updated against tracked repository state on 2026-03-23. The purchase engine is now implemented as a first-class module with dedicated backend routes, dense frontend purchase workspaces, conversion-balance APIs, line-link enforcement, stock-responsibility handling, cancel/reopen stock reversal behavior, and purchase-return-aware invoice settlement. Cash purchase-invoice post-and-pay is also implemented, including posting-time account selection, atomic invoice-plus-payment creation, cancel-time payment voiding, and reopen blocking while linked posted payment exists. The main open areas are projection/reporting work, broader automated/manual acceptance coverage, and checklist cleanup for items that still need explicit verification.
 
 ## Phase 1: Shared Document Foundation
 
@@ -49,6 +49,7 @@ Goal: make draft create, update, delete, and post flows work for purchase docume
 - [x] Implement document history read flow
 - [x] Implement post draft flow
 - [x] Implement action transition flow for `CANCEL`, `VOID`, and `REOPEN`
+- [x] Restrict payment-driving `settlement_mode` behavior to `PURCHASE_INVOICE`
 
 ## Phase 4: Purchase Line-Link and Balance Engine
 
@@ -106,6 +107,8 @@ Goal: enforce posted-document rules and reversible stock effects.
 - [x] On reopening stock-responsible purchase invoice, reapply positive stock rows
 - [x] On reopening posted purchase return, reapply negative stock rows
 - [x] Ensure cancelled and voided purchase docs no longer contribute to active balance
+- [x] Block reopening purchase invoices to draft while linked posted cash-payment movement exists
+- [x] Auto-void linked cash-post payment movement when cancelling a cash-posted purchase invoice
 
 ## Phase 7: Frontend Module and Route Gating
 
@@ -141,6 +144,11 @@ Goal: add purchase pages that reuse the dense shared document workspace pattern.
 - [x] Support purchase return creation from posted purchase invoice
 - [x] Surface backend validation and stock errors inline
 - [x] Hide or disable `VOID` for posted purchase docs
+- [x] Open a posting-time payment modal for `PURCHASE_INVOICE + CASH`
+- [x] Require financial account selection before confirming cash invoice posting
+- [x] Show safe empty-account guard state instead of allowing a stuck cash-post flow
+- [x] Keep settlement summary focused on purchase invoices rather than purchase returns
+- [x] Prefer hover help over inline explanation blocks in compact settlement summaries
 
 ## Phase 9: Reporting and Downstream Effects
 
@@ -158,19 +166,19 @@ Goal: verify the purchase engine end to end.
 
 - [ ] Test shared document-header migration for sales compatibility
 - [ ] Test purchase document number uniqueness and suggestion behavior
-- [ ] Test standalone GRN stock-in
+- [x] Test standalone GRN stock-in
 - [ ] Test PO-linked GRN stock-in
 - [ ] Test standalone purchase invoice stock-in
-- [ ] Test order-linked purchase invoice stock-in
-- [ ] Test GRN-linked purchase invoice does not stock-in again
-- [ ] Test GRN-backed mixed-origin purchase invoice adds stock only for stock-responsible rows
+- [x] Test order-linked purchase invoice stock-in
+- [x] Test GRN-linked purchase invoice does not stock-in again
+- [x] Test GRN-backed mixed-origin purchase invoice adds stock only for stock-responsible rows
 - [ ] Test purchase return from GRN deducts stock
 - [ ] Test purchase return from purchase invoice deducts stock
 - [x] Test purchase return respects return ceiling
-- [ ] Test purchase return is blocked when it would make stock negative and `ALLOW_NEGATIVE_STOCK=false`
-- [ ] Test purchase return is allowed when `ALLOW_NEGATIVE_STOCK=true`
-- [ ] Test service lines skip stock movement
-- [ ] Test invalid explicit `sourceLineId` values are rejected
+- [x] Test purchase return is blocked when it would make stock negative and `ALLOW_NEGATIVE_STOCK=false`
+- [x] Test purchase return is allowed when `ALLOW_NEGATIVE_STOCK=true`
+- [x] Test service lines skip stock movement
+- [x] Test invalid explicit `sourceLineId` values are rejected
 - [x] Test cancelled purchase docs no longer count as active links
 - [x] Test posted purchase docs cannot be voided
 - [x] Test cancelling posted GRN creates negative reversal rows
@@ -179,20 +187,24 @@ Goal: verify the purchase engine end to end.
 - [x] Test reopening GRN reapplies stock-in rows
 - [x] Test reopening stock-responsible purchase invoice reapplies stock-in rows
 - [x] Test reopening purchase return reapplies stock-out rows
+- [ ] Test `PURCHASE_INVOICE + CASH` posts invoice and payment atomically
+- [x] Test cancelling cash-posted purchase invoice voids linked payment
+- [x] Test reopening blocked while linked posted cash-payment movement exists
 - [ ] Manual run: Standalone GRN -> post -> stock increased
 - [ ] Manual run: PO -> GRN -> post -> stock increased at GRN stage
 - [ ] Manual run: PO -> purchase invoice -> post -> stock increased at invoice stage
 - [ ] Manual run: GRN -> purchase invoice -> post -> stock not increased again for linked rows
 - [ ] Manual run: GRN-backed purchase invoice with linked lines plus ad-hoc item -> only stock-responsible rows add stock on invoice post
+- [ ] Manual run: Cash purchase invoice -> select account -> confirm & post -> invoice lands paid immediately
 - [ ] Manual run: Purchase return over ceiling -> blocked
 - [ ] Manual run: Cancel posted GRN -> stock reduced by reversal
 - [ ] Manual run: Cancel posted purchase return -> stock restored
 
 ## Notes
 
-- [ ] Keep controllers thin; place business rules in services and policies
-- [ ] Keep all posting side effects inside a single Prisma transaction
-- [ ] Validate first, mark document posted last within the transaction
-- [ ] Do not add `parent_type`
-- [ ] Do not move conversion math into the frontend
-- [ ] Do not model posted purchase documents as generic sync entities
+- [x] Keep controllers thin; place business rules in services and policies
+- [x] Keep all posting side effects inside a single Prisma transaction
+- [x] Validate first, mark document posted last within the transaction
+- [x] Do not add `parent_type`
+- [x] Do not move conversion math into the frontend
+- [x] Do not model posted purchase documents as generic sync entities
