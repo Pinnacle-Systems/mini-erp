@@ -295,18 +295,6 @@ export function AdjustmentsPage() {
     setPendingFocusRowId(nextRow.id);
   };
 
-  const focusRowVariant = (rowId: string) => {
-    const targetId = isDesktopViewport()
-      ? `stock-desktop-variant-${rowId}`
-      : `stock-mobile-variant-${rowId}`;
-    window.requestAnimationFrame(() => {
-      const target = document.getElementById(targetId);
-      if (target instanceof HTMLElement) {
-        target.focus();
-      }
-    });
-  };
-
   const clearRow = (rowId: string) => {
     setRows((current) =>
       current.map((row) =>
