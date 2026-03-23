@@ -129,14 +129,21 @@
     margin: 0;
     display: block;
     width: 100%;
-    min-height: 100vh;
+    min-height: 100dvh;
     background:
       radial-gradient(1200px 500px at -10% -20%, hsl(204 72% 93%), transparent 70%),
       radial-gradient(900px 400px at 100% -10%, hsl(220 46% 94%), transparent 70%),
       hsl(var(--background));
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
     @apply bg-background text-foreground;
+  }
+
+  html,
+  body {
+    background-color: hsl(var(--background));
   }
 
   select,
@@ -148,7 +155,8 @@
 
   #root {
     width: 100%;
-    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: hsl(var(--background));
   }
 
   html[data-theme="dark"] body {

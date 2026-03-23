@@ -3,6 +3,7 @@ import { SessionProvider } from "./features/auth/SessionProvider";
 import { SyncProvider } from "./features/sync/SyncProvider";
 import { ThemeProvider } from "./features/theme/ThemeProvider";
 import { ToastProvider } from "./features/toast/ToastProvider";
+import { MobilePlatformBridge } from "./platform/MobilePlatformBridge";
 import { AppRoutes } from "./routes/AppRoutes";
 
 function App() {
@@ -12,7 +13,9 @@ function App() {
         <ToastProvider>
           <SessionProvider>
             <SyncProvider>
-              <AppRoutes />
+              <MobilePlatformBridge>
+                <AppRoutes />
+              </MobilePlatformBridge>
             </SyncProvider>
           </SessionProvider>
         </ToastProvider>

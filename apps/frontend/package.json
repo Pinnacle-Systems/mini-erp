@@ -7,11 +7,21 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "android:assets": "capacitor-assets generate --android",
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android",
+    "android:run": "cap run android",
+    "android:build:debug": "cap sync android && cd android && ./gradlew assembleDebug",
+    "android:prepare:release": "node ./scripts/prepare-android-release.mjs",
+    "android:build:release": "pnpm run android:prepare:release && cap sync android && cd android && ./gradlew bundleRelease",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/core": "^7.1.2",
+    "@capacitor/network": "^7.0.4",
     "browser-image-compression": "^2.0.2",
     "dexie": "^4.3.0",
     "framer-motion": "^12.23.24",
@@ -24,6 +34,9 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.1.2",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.1.2",
     "@eslint/js": "^9.39.2",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/react": "^19.2.4",
