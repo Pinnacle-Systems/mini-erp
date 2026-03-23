@@ -256,6 +256,8 @@ const resetLine = (lineId: string): BillLine => ({
   id: lineId,
 });
 
+const MINIMUM_VISIBLE_DOCUMENT_LINES = 5;
+
 const getDefaultStarterLineCount = () => {
   if (typeof window === "undefined") {
     return DESKTOP_GROW_AS_NEEDED_STARTER_ROWS;
@@ -267,7 +269,24 @@ const getDefaultStarterLineCount = () => {
 };
 
 const buildStarterLines = (count = getDefaultStarterLineCount()) =>
-  Array.from({ length: count }, () => createLine());
+  Array.from(
+    { length: Math.max(count, MINIMUM_VISIBLE_DOCUMENT_LINES) },
+    () => createLine(),
+  );
+
+const padLinesForDisplay = (
+  lines: BillLine[],
+  minimumCount = Math.max(getDefaultStarterLineCount(), MINIMUM_VISIBLE_DOCUMENT_LINES),
+) => {
+  if (lines.length >= minimumCount) {
+    return lines;
+  }
+
+  return [
+    ...lines,
+    ...Array.from({ length: minimumCount - lines.length }, () => createLine()),
+  ];
+};
 
 const getNextBillNumber = (
   prefix: string,
@@ -487,6 +506,12 @@ export const formatSalesDocumentTypeLabel = (documentType: SalesDocumentType) =>
         : documentType === "SALES_INVOICE"
           ? "invoice"
           : "sales return";
+
+const formatSalesDocumentTypeActionLabel = (documentType: SalesDocumentType) =>
+  formatSalesDocumentTypeLabel(documentType)
+    .split(" ")
+    .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
+    .join(" ");
 
 const convertUnitPriceForTaxMode = (input: {
   amount: number;
@@ -1083,7 +1108,17 @@ export function useSalesDocumentWorkspace({
       return [];
     }
 
-    return conversionConfig[document.documentType] ?? [];
+    return (conversionConfig[document.documentType] ?? []).filter((conversion) => {
+      if (
+        document.documentType === "DELIVERY_CHALLAN" &&
+        ["SALES_RETURN", "SALES_INVOICE"].includes(conversion.targetDocumentType) &&
+        document.returnProgress?.status === "RETURNED_IN_FULL"
+      ) {
+        return false;
+      }
+
+      return true;
+    });
   };
 
   const duplicateSalesDocumentDraft = (source: SavedBillDraft | SalesDocumentDraft) => {
@@ -1263,11 +1298,15 @@ export function useSalesDocumentWorkspace({
   };
 
   const getRowMenuActions = (row: InvoiceListRow): RowMenuAction[] => {
+    const documentLabel =
+      row.source === "server"
+        ? formatSalesDocumentTypeActionLabel(row.invoice.documentType)
+        : formatSalesDocumentTypeActionLabel(config.documentType);
     if (row.status === "DRAFT") {
       const actions: RowMenuAction[] = [
         {
           key: "open",
-          label: "Edit Draft",
+          label: `Edit ${documentLabel} Draft`,
           icon: Eye,
           onSelect: () => {
             if (row.source === "local") {
@@ -1279,7 +1318,7 @@ export function useSalesDocumentWorkspace({
         },
         {
           key: "delete",
-          label: "Delete",
+          label: `Delete ${documentLabel} Draft`,
           icon: Trash2,
           tone: "danger",
           disabled: draftMutationLoading,
@@ -1291,7 +1330,7 @@ export function useSalesDocumentWorkspace({
 
       actions.splice(1, 0, {
         key: "duplicate",
-        label: "Duplicate",
+        label: `Duplicate ${documentLabel}`,
         icon: Copy,
         onSelect: () => {
           duplicateSalesDocumentDraft(row.source === "local" ? row.draft : row.invoice);
@@ -1308,7 +1347,7 @@ export function useSalesDocumentWorkspace({
     const actions: RowMenuAction[] = [];
     actions.push({
       key: "open",
-      label: "View Document",
+      label: `View ${documentLabel}`,
       icon: Eye,
       onSelect: () => {
         loadServerDraft(row.invoice);
@@ -1316,7 +1355,7 @@ export function useSalesDocumentWorkspace({
     });
     actions.push({
       key: "history",
-      label: "View History",
+      label: `View ${documentLabel} History`,
       icon: History,
       onSelect: () => {
         void openDocumentHistory(row.invoice);
@@ -1324,7 +1363,7 @@ export function useSalesDocumentWorkspace({
     });
     actions.push({
       key: "duplicate",
-      label: "Duplicate",
+      label: `Duplicate ${documentLabel}`,
       icon: Copy,
       onSelect: () => {
         duplicateSalesDocumentDraft(row.invoice);
@@ -1345,7 +1384,7 @@ export function useSalesDocumentWorkspace({
     for (const action of getServerDocumentActions(row.invoice)) {
       actions.push({
         key: action,
-        label: action === "CANCEL" ? "Cancel" : "Reopen",
+        label: action === "CANCEL" ? `Cancel ${documentLabel}` : `Reopen ${documentLabel}`,
         icon: action === "REOPEN" ? RotateCcw : XCircle,
         tone: "default",
         disabled: serverActionDocumentId === row.id,
@@ -1432,8 +1471,8 @@ export function useSalesDocumentWorkspace({
       setDuplicateMeta(normalizeSalesDocumentDuplicateMeta(draft.duplicateMeta));
       setLines(
         Array.isArray(draft.lines) && draft.lines.length > 0
-          ? draft.lines.map(normalizeStoredLine)
-          : [createLine()],
+          ? padLinesForDisplay(draft.lines.map(normalizeStoredLine))
+          : buildStarterLines(),
       );
       if (!routeState.createdCustomer && !routeState.customerMessage) {
         setSaveMessage(
@@ -1943,7 +1982,7 @@ export function useSalesDocumentWorkspace({
         setDispatchDate(savedServerDraft.dispatchDate);
         setDispatchCarrier(savedServerDraft.dispatchCarrier);
         setDispatchReference(savedServerDraft.dispatchReference);
-        setLines(savedServerDraft.lines.map(normalizeStoredLine));
+        setLines(padLinesForDisplay(savedServerDraft.lines.map(normalizeStoredLine)));
         setSaveMessage(`${config.createTitle} draft saved to the server.`);
       } else {
         if (!storageKey) {
@@ -1966,7 +2005,7 @@ export function useSalesDocumentWorkspace({
         setDispatchDate(nextDraft.dispatchDate);
         setDispatchCarrier(nextDraft.dispatchCarrier);
         setDispatchReference(nextDraft.dispatchReference);
-        setLines(nextDraft.lines);
+        setLines(padLinesForDisplay(nextDraft.lines));
         setSaveMessage(
           `${config.createTitle} draft saved locally on this device.`,
         );
@@ -2010,7 +2049,7 @@ export function useSalesDocumentWorkspace({
     setDispatchCarrier(draft.dispatchCarrier);
     setDispatchReference(draft.dispatchReference);
     setNotes(draft.notes);
-    setLines(draft.lines.map((line) => ({ ...line })));
+    setLines(padLinesForDisplay(draft.lines.map((line) => ({ ...line }))));
     setDuplicateMeta(draft.duplicateMeta ?? getPersistedDuplicateMeta(draft.id));
     setNumberConflict(null);
     setSaveMessage(null);
@@ -2044,7 +2083,7 @@ export function useSalesDocumentWorkspace({
     setDispatchCarrier(draft.dispatchCarrier);
     setDispatchReference(draft.dispatchReference);
     setNotes(draft.notes);
-    setLines(draft.lines.map(normalizeStoredLine));
+    setLines(padLinesForDisplay(draft.lines.map(normalizeStoredLine)));
     setDuplicateMeta(getPersistedDuplicateMeta(draft.id));
     setNumberConflict(null);
     setSaveMessage(null);

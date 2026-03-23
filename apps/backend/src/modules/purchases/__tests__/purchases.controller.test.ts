@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import tenantService from "../../tenant/tenant.service.js";
+import accountsService from "../../accounts/accounts.service.js";
 import { purchaseDocumentLinkService } from "../purchase-document-link.service.js";
+import { purchaseStockPostingService } from "../purchase-stock-posting.service.js";
 import {
   assertPurchaseAccess,
   getPurchaseCapabilityRequired,
@@ -548,5 +550,163 @@ describe("purchases.controller", () => {
         },
       ),
     ).rejects.toThrow("Posted purchase invoices cannot be voided");
+  });
+
+  it("records a linked payment when posting a cash purchase invoice", async () => {
+    const tx = createPurchaseTxMock();
+    const postedAt = new Date("2026-03-23T10:45:00.000Z");
+
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "invoice-1",
+        business_id: "tenant-1",
+        type: "PURCHASE_INVOICE",
+        status: "DRAFT",
+        posted_at: null,
+        deleted_at: null,
+        cancel_reason: null,
+        settlement_mode: "CASH",
+        doc_number: "PINV-0001",
+        parent_id: null,
+        grand_total: 118,
+        party_id: "supplier-1",
+        party_snapshot: {
+          role: "supplier",
+          name: "Supply Co",
+          phone: "999",
+          address: "Warehouse Road",
+          taxId: "GSTIN-1",
+        },
+        children: [],
+        lineItems: [
+          {
+            id: "line-1",
+            target_links: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "invoice-1",
+        business_id: "tenant-1",
+        type: "PURCHASE_INVOICE",
+        status: "OPEN",
+        posted_at: postedAt,
+        deleted_at: null,
+        cancel_reason: null,
+        settlement_mode: "CASH",
+        doc_number: "PINV-0001",
+        parent_id: null,
+        grand_total: 118,
+        party_id: "supplier-1",
+        party_snapshot: {
+          role: "supplier",
+          name: "Supply Co",
+          phone: "999",
+          address: "Warehouse Road",
+          taxId: "GSTIN-1",
+        },
+        children: [],
+        lineItems: [
+          {
+            id: "line-1",
+            target_links: [],
+          },
+        ],
+      });
+
+    vi.spyOn(purchaseDocumentLinkService, "upsertLinksForDocument").mockResolvedValue();
+    vi.spyOn(purchaseStockPostingService, "applyPostingEffects").mockResolvedValue();
+    const createMadePaymentSpy = vi
+      .spyOn(accountsService, "createMadePayment")
+      .mockResolvedValue({
+        id: "movement-1",
+        reference_no: null,
+        occurred_at: postedAt,
+      } as never);
+
+    await expect(
+      postDraftPurchaseDocument(
+        tx as never,
+        "tenant-1",
+        "PURCHASE_INVOICE",
+        "invoice-1",
+        {
+          userId: "user-1",
+          name: "Buyer",
+        },
+        {
+          financialAccountId: "account-1",
+        },
+      ),
+    ).resolves.toMatchObject({
+      id: "invoice-1",
+      status: "OPEN",
+    });
+
+    expect(createMadePaymentSpy).toHaveBeenCalledWith(
+      "tenant-1",
+      expect.objectContaining({
+        amount: 118,
+        financialAccountId: "account-1",
+        allocations: [
+          {
+            documentType: "PURCHASE_INVOICE",
+            documentId: "invoice-1",
+            allocatedAmount: 118,
+          },
+        ],
+      }),
+      tx,
+    );
+  });
+
+  it("blocks reopening a cancelled purchase invoice while linked payments remain posted", async () => {
+    const tx = createPurchaseTxMock();
+    tx.document.findFirst.mockResolvedValue({
+      id: "invoice-1",
+      business_id: "tenant-1",
+      type: "PURCHASE_INVOICE",
+      status: "CANCELLED",
+      posted_at: new Date("2026-03-20T00:00:00.000Z"),
+      deleted_at: null,
+      cancel_reason: "OTHER",
+      settlement_mode: "CASH",
+      doc_number: "PINV-0001",
+      parent_id: null,
+      party_snapshot: {
+        role: "supplier",
+        name: "Supply Co",
+        phone: null,
+        address: null,
+        taxId: null,
+      },
+      children: [],
+      lineItems: [],
+    });
+
+    vi.spyOn(accountsService, "listPostedMoneyMovementsForSourceDocument").mockResolvedValue([
+      {
+        id: "movement-1",
+        referenceNo: "",
+        notes: "",
+        occurredAt: "2026-03-20T00:00:00.000Z",
+      },
+    ]);
+
+    await expect(
+      transitionPurchaseDocumentState(
+        tx as never,
+        "tenant-1",
+        "PURCHASE_INVOICE",
+        "invoice-1",
+        "REOPEN",
+        {
+          userId: "user-1",
+          name: "Buyer",
+        },
+      ),
+    ).rejects.toThrow(
+      "This purchase invoice cannot be reopened while linked payments remain posted",
+    );
   });
 });

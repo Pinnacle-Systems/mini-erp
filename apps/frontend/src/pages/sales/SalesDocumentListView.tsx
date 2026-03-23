@@ -63,6 +63,11 @@ const getPaymentStatusClassName = (value: "N_A" | "UNPAID" | "PARTIAL" | "PAID" 
   }
 };
 
+const getReturnProgressClassName = (status: "PARTIAL_RETURNED" | "RETURNED_IN_FULL") =>
+  status === "RETURNED_IN_FULL"
+    ? "border-sky-200 bg-sky-50 text-sky-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
+
 type SalesDocumentListViewProps = {
   config: SalesDocumentPageConfig;
   saveMessage: string | null;
@@ -95,13 +100,16 @@ export function SalesDocumentListView({
   const lastSaveMessageRef = useRef<string | null>(null);
   const showSourceColumn = config.documentType !== "SALES_ESTIMATE";
   const showPaymentColumn = config.documentType === "SALES_INVOICE";
+  const isDeliveryChallanList = config.documentType === "DELIVERY_CHALLAN";
   const desktopGridTemplate = withTabularSerialNumberColumn(
     showSourceColumn
       ? showPaymentColumn
-        ? "minmax(0,1fr) minmax(0,1.35fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,1fr) 4.5rem"
-        : "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem"
+        ? "minmax(0,1fr) minmax(0,1.35fr) minmax(0,0.8fr) minmax(0,0.75fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,1fr) 4.5rem"
+        : isDeliveryChallanList
+          ? "minmax(0,1.05fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,1.2fr) minmax(0,0.8fr) minmax(0,1fr) 4.5rem"
+          : "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem"
       : showPaymentColumn
-        ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem"
+        ? "minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,0.75fr) minmax(0,1.05fr) minmax(0,0.9fr) minmax(0,1.05fr) 4.5rem"
         : "minmax(0,1.2fr) minmax(0,1.8fr) minmax(0,0.85fr) minmax(0,0.95fr) minmax(0,1.05fr) 4.5rem",
   );
   const getParentDocumentNumber = (row: InvoiceListRow) => {
@@ -198,6 +206,17 @@ export function SalesDocumentListView({
                   <div className="mt-2">
                     <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(getSettlementStatus(row.invoice.settlement))}`}>
                       {getPaymentStatusLabel(row.invoice.settlement)}
+                    </span>
+                  </div>
+                ) : null}
+                {config.documentType === "DELIVERY_CHALLAN" &&
+                row.source === "server" &&
+                row.invoice.returnProgress ? (
+                  <div className="mt-2">
+                    <span
+                      className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getReturnProgressClassName(row.invoice.returnProgress.status)}`}
+                    >
+                      {row.invoice.returnProgress.label}
                     </span>
                   </div>
                 ) : null}
@@ -318,12 +337,31 @@ export function SalesDocumentListView({
                         {getParentDocumentNumber(row)}
                       </TabularCell>
                     ) : null}
-                    <TabularCell>{row.status}</TabularCell>
+                    <TabularCell>
+                      <div
+                        className={
+                          isDeliveryChallanList
+                            ? "flex items-center gap-2 whitespace-nowrap"
+                            : "flex flex-col gap-1"
+                        }
+                      >
+                        <span>{row.status}</span>
+                        {config.documentType === "DELIVERY_CHALLAN" &&
+                        row.source === "server" &&
+                        row.invoice.returnProgress ? (
+                          <span
+                            className={`inline-flex w-fit whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getReturnProgressClassName(row.invoice.returnProgress.status)}`}
+                          >
+                            {row.invoice.returnProgress.label}
+                          </span>
+                        ) : null}
+                      </div>
+                    </TabularCell>
                     {showPaymentColumn ? (
                       <TabularCell>
                         {row.source === "server" && row.invoice.settlement ? (
                           <span
-                            className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(getSettlementStatus(row.invoice.settlement))}`}
+                            className={`inline-flex whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(getSettlementStatus(row.invoice.settlement))}`}
                             title={getSettlementStatus(row.invoice.settlement) === "OVERPAID" ? "Total receipts and returns exceed the original invoice amount." : undefined}
                           >
                             {getPaymentStatusLabel(row.invoice.settlement)}

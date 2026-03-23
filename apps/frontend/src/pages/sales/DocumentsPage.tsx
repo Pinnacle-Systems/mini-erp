@@ -92,6 +92,13 @@ const getPaymentStatusToneClassName = (row: Pick<FinancialDocumentBalanceRow, "s
   }
 };
 
+const getDeliveryChallanReturnProgressToneClassName = (
+  status: "PARTIAL_RETURNED" | "RETURNED_IN_FULL",
+) =>
+  status === "RETURNED_IN_FULL"
+    ? "border-sky-200 bg-sky-50 text-sky-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
+
 const SALES_DOCUMENT_PAGE_CONFIG: Record<
   SalesDocumentType,
   SalesDocumentPageConfig
@@ -421,6 +428,7 @@ function SalesDocumentWorkspace({
       cancelled = true;
     };
   }, [activeStore, config.documentType, isFinancialSalesDocument, isViewingPostedDocument, viewedFinancialDocumentId]);
+
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -643,9 +651,10 @@ function SalesDocumentWorkspace({
 
   const customerLookupHighlightClassName =
     !isViewingPostedDocument &&
-    usesTransactionType(config.documentType) &&
-    transactionType === "CREDIT" &&
-    !activeCustomer
+    ((usesTransactionType(config.documentType) &&
+      transactionType === "CREDIT" &&
+      !activeCustomer) ||
+      (!usesTransactionType(config.documentType) && !customerName.trim()))
       ? "border-warning/45 bg-warning/10 focus:border-warning/60 focus:ring-warning/20"
       : undefined;
 
@@ -968,6 +977,18 @@ function SalesDocumentWorkspace({
               activeDraftId={activeDraftId}
               isPosMode={isPosMode}
               documentStatus={activeServerDocument?.status}
+              secondaryStatusLabel={
+                activeServerDocument?.returnProgress
+                  ? `Returns: ${activeServerDocument.returnProgress.label}`
+                  : null
+              }
+              secondaryStatusToneClassName={
+                activeServerDocument?.returnProgress
+                  ? getDeliveryChallanReturnProgressToneClassName(
+                      activeServerDocument.returnProgress.status,
+                    )
+                  : null
+              }
               isOnline={isOnline}
               draftMutationLoading={draftMutationLoading}
               linesCount={normalizeLines(lines).length}
@@ -998,6 +1019,18 @@ function SalesDocumentWorkspace({
             activeDraftId={activeDraftId}
             isPosMode={isPosMode}
             documentStatus={activeServerDocument?.status}
+            secondaryStatusLabel={
+              activeServerDocument?.returnProgress
+                ? `Returns: ${activeServerDocument.returnProgress.label}`
+                : null
+            }
+            secondaryStatusToneClassName={
+              activeServerDocument?.returnProgress
+                ? getDeliveryChallanReturnProgressToneClassName(
+                    activeServerDocument.returnProgress.status,
+                  )
+                : null
+            }
             isOnline={isOnline}
             draftMutationLoading={draftMutationLoading}
             linesCount={normalizeLines(lines).length}
@@ -1059,6 +1092,7 @@ function SalesDocumentWorkspace({
                 <SalesDocumentLineEditor
                   config={config}
                   lines={lines}
+                  linesCount={validLineCount || 1}
                   itemOptions={itemOptions}
                   lookupLoading={lookupLoading}
                   isViewingPostedDocument={isViewingPostedDocument}
@@ -1095,8 +1129,6 @@ function SalesDocumentWorkspace({
                   config={config}
                   activeBusinessName={activeBusinessName}
                   totals={totals}
-                  linesCountSource={lines}
-                  sourceDocumentNumber={parentDocumentNumber}
                   validUntil={validUntil}
                   dispatchDate={dispatchDate}
                   dispatchReference={dispatchReference}
@@ -1299,6 +1331,7 @@ function SalesDocumentWorkspace({
           <SalesDocumentLineEditor
             config={config}
             lines={lines}
+            linesCount={validLineCount || 1}
             itemOptions={itemOptions}
             lookupLoading={lookupLoading}
             isViewingPostedDocument={isViewingPostedDocument}
@@ -1394,8 +1427,6 @@ function SalesDocumentWorkspace({
               config={config}
               activeBusinessName={activeBusinessName}
               totals={totals}
-              linesCountSource={lines}
-              sourceDocumentNumber={parentDocumentNumber}
               validUntil={validUntil}
               dispatchDate={dispatchDate}
               dispatchReference={dispatchReference}

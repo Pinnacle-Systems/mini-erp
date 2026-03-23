@@ -42,6 +42,7 @@ type PurchaseLineFieldKey =
 type PurchaseDocumentLineEditorProps = {
   config: PurchaseDocumentPageConfig;
   lines: PurchaseLine[];
+  linesCount: number;
   itemOptions: PurchaseItemOption[];
   lookupLoading: boolean;
   isViewingPostedDocument: boolean;
@@ -90,6 +91,7 @@ const getPurchaseOriginBadgeClassName = (line: PurchaseLine) =>
 export function PurchaseDocumentLineEditor({
   config,
   lines,
+  linesCount,
   itemOptions,
   lookupLoading,
   isViewingPostedDocument,
@@ -100,7 +102,16 @@ export function PurchaseDocumentLineEditor({
 }: PurchaseDocumentLineEditorProps) {
   const desktopTableRef = useRef<HTMLDivElement | null>(null);
   const desktopGridTemplate = withTabularSerialNumberColumn(
-    "minmax(0,2.8fr) minmax(4.25rem,1fr) minmax(4.5rem,1fr) minmax(5rem,1.1fr) minmax(3.75rem,0.8fr) minmax(4.5rem,0.95fr) minmax(5rem,1fr) 2.25rem",
+    [
+      "minmax(0,2.8fr)",
+      "minmax(4.25rem,1fr)",
+      "minmax(4.5rem,1fr)",
+      "minmax(5rem,1.1fr)",
+      "minmax(3.75rem,0.8fr)",
+      "minmax(4.5rem,0.95fr)",
+      "minmax(5rem,1fr)",
+      ...(!isViewingPostedDocument ? ["2.25rem"] : []),
+    ].join(" "),
   );
 
   const getLineFieldOrder = (lineId: string): PurchaseLineFieldKey[] => {
@@ -137,20 +148,28 @@ export function PurchaseDocumentLineEditor({
     });
 
   return (
-    <div className="flex min-h-[14rem] flex-1 flex-col gap-1.5 pt-1 md:min-h-[18rem] md:overflow-hidden">
+    <div className="flex min-h-[14rem] flex-1 flex-col gap-1.5 pt-1 md:min-h-0 md:overflow-hidden">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-          {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
+        <div className="flex items-center gap-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+            {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
+          </div>
+          <span
+            className={cn(
+              "rounded px-1.5 py-0.5 text-[10px] font-medium",
+              isViewingPostedDocument
+                ? "border border-border/45 bg-transparent text-muted-foreground/85"
+                : "border border-border/70 bg-muted/55 text-muted-foreground",
+            )}
+          >
+            {linesCount} {linesCount === 1 ? "line" : "lines"}
+          </span>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={isViewingPostedDocument}
-          onClick={onAppendLine}
-        >
-          Add Line
-        </Button>
+        {!isViewingPostedDocument ? (
+          <Button type="button" variant="outline" size="sm" onClick={onAppendLine}>
+            Add Line
+          </Button>
+        ) : null}
       </div>
 
       <div className="space-y-2 md:hidden">
@@ -160,17 +179,18 @@ export function PurchaseDocumentLineEditor({
             <div key={line.id} className="rounded-lg border border-border/80 bg-muted/55 p-2">
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-xs font-semibold text-foreground">Line {index + 1}</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto p-1.5 text-[11px] font-semibold text-destructive hover:bg-destructive/12 hover:text-destructive"
-                  disabled={isViewingPostedDocument}
-                  onClick={() => onRemoveLine(line.id)}
-                >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Remove
-                </Button>
+                {!isViewingPostedDocument ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-1.5 text-[11px] font-semibold text-destructive hover:bg-destructive/12 hover:text-destructive"
+                    onClick={() => onRemoveLine(line.id)}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Remove
+                  </Button>
+                ) : null}
               </div>
               <div className="grid gap-2">
                 <div className="space-y-1">
@@ -272,12 +292,12 @@ export function PurchaseDocumentLineEditor({
         })}
       </div>
 
-      <div className="hidden min-h-[14rem] flex-1 flex-col overflow-hidden md:flex">
+      <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex">
         <TabularSurface
           ref={desktopTableRef}
           role="grid"
           aria-label={`${config.singularLabel} lines`}
-          className="min-h-0 flex-1 overflow-hidden"
+          className="min-h-0 h-full flex-1 overflow-y-auto overflow-x-hidden"
         >
           <TabularHeader>
             <TabularRow columns={desktopGridTemplate}>
@@ -297,7 +317,9 @@ export function PurchaseDocumentLineEditor({
               <TabularCell variant="header" align="end">
                 Total
               </TabularCell>
-              <TabularCell variant="header" align="center" />
+              {!isViewingPostedDocument ? (
+                <TabularCell variant="header" align="center" />
+              ) : null}
             </TabularRow>
           </TabularHeader>
           <TabularBody>
@@ -442,19 +464,20 @@ export function PurchaseDocumentLineEditor({
                       {formatCurrency(lineTotals.total)}
                     </span>
                   </TabularCell>
-                  <TabularCell align="center" className="p-0">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-[var(--tabular-row-height)] w-full rounded-none p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                      disabled={isViewingPostedDocument}
-                      onClick={() => onRemoveLine(line.id)}
-                      title="Remove line"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TabularCell>
+                  {!isViewingPostedDocument ? (
+                    <TabularCell align="center" className="p-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-[var(--tabular-row-height)] w-full rounded-none p-0 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                        onClick={() => onRemoveLine(line.id)}
+                        title="Remove line"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TabularCell>
+                  ) : null}
                 </TabularRow>
               );
             })}

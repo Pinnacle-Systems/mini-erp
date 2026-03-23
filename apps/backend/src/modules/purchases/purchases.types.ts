@@ -37,6 +37,14 @@ export type PurchaseDocumentInput = {
   lines: PurchaseLineInput[];
 };
 
+export type PurchaseDocumentPostInput = {
+  tenantId: string;
+  documentType: PurchaseDocumentType;
+  financialAccountId?: string;
+  paymentReference?: string;
+  paymentDate?: string;
+};
+
 export type PurchaseTransactionClient = Parameters<typeof prisma.$transaction>[0] extends (
   tx: infer T,
 ) => Promise<unknown>

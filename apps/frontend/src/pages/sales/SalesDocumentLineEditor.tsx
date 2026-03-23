@@ -39,6 +39,7 @@ import {
 type SalesDocumentLineEditorProps = {
   config: SalesDocumentPageConfig;
   lines: BillLine[];
+  linesCount: number;
   itemOptions: SalesItemOption[];
   lookupLoading: boolean;
   isViewingPostedDocument: boolean;
@@ -74,6 +75,7 @@ const hasEditableLineContent = (line: BillLine) =>
 export function SalesDocumentLineEditor({
   config,
   lines,
+  linesCount,
   itemOptions,
   lookupLoading,
   isViewingPostedDocument,
@@ -160,18 +162,26 @@ export function SalesDocumentLineEditor({
             isPosMode ? "md:hidden" : ""
           }`}
         >
-          <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-            {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
+          <div className="flex items-center gap-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+              {`${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} Lines`}
+            </div>
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                isViewingPostedDocument
+                  ? "border border-border/45 bg-transparent text-muted-foreground/85"
+                  : "border border-border/70 bg-muted/55 text-muted-foreground",
+              )}
+            >
+              {linesCount} {linesCount === 1 ? "line" : "lines"}
+            </span>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isViewingPostedDocument}
-            onClick={onAppendLine}
-          >
-            Add Line
-          </Button>
+          {!isViewingPostedDocument ? (
+            <Button type="button" variant="outline" size="sm" onClick={onAppendLine}>
+              Add Line
+            </Button>
+          ) : null}
         </div>
         {lineHeaderSlot}
       </div>
@@ -213,17 +223,18 @@ export function SalesDocumentLineEditor({
                 <div className="text-xs font-semibold text-foreground">
                   Line {index + 1}
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto p-1.5 text-[11px] font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => onRemoveLine(line.id)}
-                  disabled={isViewingPostedDocument}
-                >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Remove
-                </Button>
+                {!isViewingPostedDocument ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-1.5 text-[11px] font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => onRemoveLine(line.id)}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Remove
+                  </Button>
+                ) : null}
               </div>
               <div className="grid gap-2">
                 <div className="space-y-1">

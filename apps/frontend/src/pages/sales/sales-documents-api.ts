@@ -64,6 +64,10 @@ export type SalesDocumentDraft = {
   postedAt?: string | null;
   grandTotal?: number;
   settlement?: InvoiceSettlementSummary | null;
+  returnProgress?: {
+    status: "PARTIAL_RETURNED" | "RETURNED_IN_FULL";
+    label: string;
+  } | null;
   billNumber: string;
   transactionType: "CASH" | "CREDIT";
   customerId: string | null;

@@ -139,6 +139,26 @@ This keeps V1 aligned with the shared line-link model:
 - fulfillment links move ordered quantity into receipt or invoice fulfillment
 - return links reverse previously received or invoiced quantity
 
+### 5.2.1 Commercial Settlement on Purchase Invoices
+
+`settlement_mode` only has operational meaning for purchase invoices in this phase.
+
+Rules:
+
+- `PURCHASE_ORDER`, `GOODS_RECEIPT_NOTE`, and `PURCHASE_RETURN` do not use `settlement_mode` to drive payment behavior
+- `PURCHASE_INVOICE + CREDIT`
+  - posting creates only the document and any stock side effects
+  - settlement remains derived from later payments and linked returns
+- `PURCHASE_INVOICE + CASH`
+  - posting requires a selected financial account
+  - posting creates the invoice and the linked made-payment allocation inside the same transaction
+  - the created payment movement uses the invoice `location_id` as attribution
+
+Lifecycle implications:
+
+- cancelling a cash-posted purchase invoice must also void the linked auto-created payment movement
+- reopening to draft is blocked while linked posted payment movements still exist
+
 ### 5.3 Mixed-Origin Document Policy
 
 Purchase child documents may contain both linked and ad-hoc rows.
@@ -151,6 +171,16 @@ Rules:
 4. If the user needs quantity above the linked cap, the excess quantity must be entered as a separate ad-hoc row.
 5. Ad-hoc rows do not consume parent balance and do not create `DocumentLineLink` rows.
 6. Ad-hoc rows still follow the child document's own inventory and validation rules.
+
+### 5.4 Purchase Summary Surface Scope
+
+Purchase document summaries should stay type-aware and math-first.
+
+Rules:
+
+- purchase invoice summaries may show settlement math because invoices are the payable-side financial documents in this phase
+- purchase return summaries should focus on return math; they should not duplicate source-document metadata or reuse the same settlement block as invoices
+- explanatory settlement copy should prefer compact hover affordances over large inline paragraphs when the explanation is supporting rather than primary
 
 ## 6. Inventory Responsibility (The "Stock-In" Rule)
 

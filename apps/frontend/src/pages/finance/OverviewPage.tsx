@@ -60,8 +60,9 @@ export function OverviewPage() {
   const metrics = overview
     ? [
         { label: "Customer Receivable", value: formatCurrency(overview.receivableTotal) },
+        { label: "Customer Credit", value: formatCurrency(overview.customerCreditTotal) },
         { label: "Supplier Payable", value: formatCurrency(overview.payableTotal) },
-        { label: "Vendor Credit", value: formatCurrency(overview.vendorCreditTotal) },
+        { label: "Supplier Credit", value: formatCurrency(overview.vendorCreditTotal) },
         { label: "This Month In", value: formatCurrency(overview.thisMonthInflow) },
         { label: "This Month Out", value: formatCurrency(overview.thisMonthOutflow) },
         { label: "Expense Total", value: formatCurrency(overview.thisMonthExpenseTotal) },
@@ -84,11 +85,14 @@ export function OverviewPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <CardContent className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7">
           {metrics.map((metric) => (
-            <div key={metric.label} className="rounded-lg border border-border/80 bg-muted/55 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground">{metric.label}</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{metric.value}</p>
+            <div
+              key={metric.label}
+              className="min-w-0 rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2"
+            >
+              <p className="truncate text-[10px] text-muted-foreground">{metric.label}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-foreground">{metric.value}</p>
             </div>
           ))}
         </CardContent>

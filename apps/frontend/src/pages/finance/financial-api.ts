@@ -101,6 +101,7 @@ type FinancialDocumentType =
 
 export type FinancialOverview = {
   receivableTotal: number;
+  customerCreditTotal: number;
   payableTotal: number;
   vendorCreditTotal: number;
   thisMonthInflow: number;

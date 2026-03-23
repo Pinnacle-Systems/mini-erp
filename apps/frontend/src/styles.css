@@ -224,7 +224,9 @@
   }
 
   .tabular-grid-row > .tabular-grid-cell:last-child {
-    box-shadow: inset 0 -1px 0 var(--tabular-grid-line-color);
+    box-shadow:
+      inset -1px 0 0 var(--tabular-grid-line-color),
+      inset 0 -1px 0 var(--tabular-grid-line-color);
   }
 
   html[data-theme="light"] .tabular-grid-row:first-child > .tabular-grid-cell {

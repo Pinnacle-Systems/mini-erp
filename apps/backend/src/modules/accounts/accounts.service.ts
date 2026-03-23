@@ -2,6 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import { BadRequestError, NotFoundError } from "../../shared/utils/errors.js";
 
 const prismaAny = prisma as any;
+type AccountsDbClient = typeof prismaAny;
 
 const DEFAULT_FINANCIAL_ACCOUNTS = [
   { name: "Cash on Hand", accountType: "CASH" },
@@ -177,6 +178,7 @@ const deriveSettlementStatus = (
 const buildSettlementMap = async (
   tenantId: string,
   documents: SettlementSourceDocument[],
+  dbClient: AccountsDbClient = prismaAny,
 ): Promise<Map<string, SettlementSummary>> => {
   const invoiceDocuments = documents.filter(
     (document) =>
@@ -213,7 +215,7 @@ const buildSettlementMap = async (
     ["PURCHASE_INVOICE", "OUTFLOW"],
   ]);
 
-  const allocationRows = await prismaAny.moneyMovementAllocation.findMany({
+  const allocationRows = await dbClient.moneyMovementAllocation.findMany({
     where: {
       business_id: tenantId,
       document_id: {
@@ -260,7 +262,7 @@ const buildSettlementMap = async (
     groupedRows.set(row.document_id, current);
   }
 
-  const purchaseReturnRows = await prismaAny.document.findMany({
+  const purchaseReturnRows = await dbClient.document.findMany({
     where: {
       business_id: tenantId,
       type: "PURCHASE_RETURN",
@@ -302,7 +304,7 @@ const buildSettlementMap = async (
     groupedReturns.set(row.parent_id, current);
   }
 
-  const salesReturnRows = await prismaAny.document.findMany({
+  const salesReturnRows = await dbClient.document.findMany({
     where: {
       business_id: tenantId,
       type: "SALES_RETURN",
@@ -449,9 +451,10 @@ const getPostedDocumentsForFlow = async (
   tenantId: string,
   flow: DocumentFlow,
   limit?: number,
+  dbClient: AccountsDbClient = prismaAny,
 ): Promise<OpenFinancialDocumentSummary[]> => {
   const allowedTypes = flow === "RECEIVABLE" ? RECEIVABLE_DOCUMENT_TYPES : PAYABLE_DOCUMENT_TYPES;
-  const rows = await prismaAny.document.findMany({
+  const rows = await dbClient.document.findMany({
     where: {
       business_id: tenantId,
       type: {
@@ -487,6 +490,7 @@ const getPostedDocumentsForFlow = async (
       status: row.status as SettlementSourceDocument["status"],
       grandTotal: Number(row.grand_total ?? 0),
     })),
+    dbClient,
   );
 
   return rows
@@ -521,8 +525,12 @@ const getPostedDocumentsForFlow = async (
     );
 };
 
-const getFinancialAccountOrThrow = async (tenantId: string, accountId: string) => {
-  const account = await prismaAny.financialAccount.findFirst({
+const getFinancialAccountOrThrow = async (
+  tenantId: string,
+  accountId: string,
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  const account = await dbClient.financialAccount.findFirst({
     where: {
       id: accountId,
       business_id: tenantId,
@@ -560,6 +568,7 @@ const validateAllocations = async (
   flow: DocumentFlow,
   amount: number,
   allocations: Array<{ documentType: FinancialDocumentType; documentId: string; allocatedAmount: number }>,
+  dbClient: AccountsDbClient = prismaAny,
 ) => {
   if (allocations.length === 0) {
     return {
@@ -581,7 +590,7 @@ const validateAllocations = async (
     throw new BadRequestError("Payment amount must match the allocated amount total");
   }
 
-  const rows = await prismaAny.document.findMany({
+  const rows = await dbClient.document.findMany({
     where: {
       id: {
         in: allocations.map((allocation) => allocation.documentId),
@@ -613,7 +622,7 @@ const validateAllocations = async (
     throw new BadRequestError("One or more selected documents cannot accept payment");
   }
 
-  const openDocuments = await getPostedDocumentsForFlow(tenantId, flow);
+  const openDocuments = await getPostedDocumentsForFlow(tenantId, flow, undefined, dbClient);
   const openById = new Map(openDocuments.map((document) => [document.id, document]));
   const partyIds = new Set<string>();
   let sourceDocumentType: FinancialDocumentType | null = null;
@@ -1076,14 +1085,25 @@ const recordPayment = async (
     notes?: string;
     allocations: Array<{ documentType: FinancialDocumentType; documentId: string; allocatedAmount: number }>;
   },
+  txClient?: AccountsDbClient,
 ) => {
   await ensureDefaults(tenantId);
-  await getFinancialAccountOrThrow(tenantId, input.financialAccountId);
-  const allocationContext = await validateAllocations(tenantId, flow, input.amount, input.allocations);
+  const dbClient = txClient ?? prismaAny;
+  const financialAccount = await getFinancialAccountOrThrow(
+    tenantId,
+    input.financialAccountId,
+    dbClient,
+  );
+  const allocationContext = await validateAllocations(
+    tenantId,
+    flow,
+    input.amount,
+    input.allocations,
+    dbClient,
+  );
 
-  return prisma.$transaction(async (tx) => {
-    const txAny = tx as any;
-    const movement = await txAny.moneyMovement.create({
+  const writePayment = async (writeClient: AccountsDbClient) => {
+    const movement = await writeClient.moneyMovement.create({
       data: {
         business_id: tenantId,
         direction: flow === "RECEIVABLE" ? "INFLOW" : "OUTFLOW",
@@ -1104,7 +1124,7 @@ const recordPayment = async (
     });
 
     if (input.allocations.length > 0) {
-      await txAny.moneyMovementAllocation.createMany({
+      await writeClient.moneyMovementAllocation.createMany({
         data: input.allocations.map((allocation) => ({
           business_id: tenantId,
           money_movement_id: movement.id,
@@ -1115,8 +1135,86 @@ const recordPayment = async (
       });
     }
 
-    return movement;
+    return {
+      ...movement,
+      account_name: financialAccount.name,
+    };
+  };
+
+  if (txClient) {
+    return writePayment(txClient);
+  }
+
+  return prisma.$transaction(async (tx) => writePayment(tx as AccountsDbClient));
+};
+
+const listPostedMoneyMovementsForSourceDocument = async (
+  tenantId: string,
+  sourceDocumentType: FinancialDocumentType,
+  sourceDocumentId: string,
+  dbClient: AccountsDbClient = prismaAny,
+) =>
+  dbClient.moneyMovement.findMany({
+    where: {
+      business_id: tenantId,
+      source_document_type: sourceDocumentType,
+      source_document_id: sourceDocumentId,
+      source_kind: {
+        in: ["PAYMENT_RECEIVED", "PAYMENT_MADE"],
+      },
+      status: "POSTED",
+    },
+    select: {
+      id: true,
+      reference_no: true,
+      notes: true,
+      occurred_at: true,
+      financial_account: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      occurred_at: "asc",
+    },
   });
+
+const voidMoneyMovementsForSourceDocument = async (
+  tenantId: string,
+  sourceDocumentType: FinancialDocumentType,
+  sourceDocumentId: string,
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  const movements = await listPostedMoneyMovementsForSourceDocument(
+    tenantId,
+    sourceDocumentType,
+    sourceDocumentId,
+    dbClient,
+  );
+
+  if (movements.length === 0) {
+    return [];
+  }
+
+  await dbClient.moneyMovement.updateMany({
+    where: {
+      id: {
+        in: movements.map((movement) => movement.id),
+      },
+    },
+    data: {
+      status: "VOIDED",
+    },
+  });
+
+  return movements.map((movement) => ({
+    id: String(movement.id),
+    referenceNo: typeof movement.reference_no === "string" ? movement.reference_no : "",
+    notes: typeof movement.notes === "string" ? movement.notes : "",
+    occurredAt: movement.occurred_at.toISOString(),
+    accountName: String(movement.financial_account.name),
+  }));
 };
 
 const createExpense = async (
@@ -1283,10 +1381,11 @@ const getOverview = async (tenantId: string) => {
 
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const activeRecentMovements = recentMovements.filter((movement) => movement.status === "POSTED");
 
   let thisMonthInflow = 0;
   let thisMonthOutflow = 0;
-  for (const movement of recentMovements) {
+  for (const movement of activeRecentMovements) {
     if (new Date(movement.occurredAt) < monthStart) {
       continue;
     }
@@ -1314,6 +1413,12 @@ const getOverview = async (tenantId: string) => {
 
   return {
     receivableTotal: receivables.reduce((sum, row) => sum + row.outstandingAmount, 0),
+    customerCreditTotal: receivables.reduce((sum, row) => {
+      if (row.documentType !== "SALES_INVOICE" || row.netOutstandingAmount >= -SETTLEMENT_EPSILON) {
+        return sum;
+      }
+      return sum + Math.abs(row.netOutstandingAmount);
+    }, 0),
     payableTotal: payables.reduce((sum, row) => sum + row.outstandingAmount, 0),
     vendorCreditTotal: payables.reduce((sum, row) => {
       if (row.documentType !== "PURCHASE_INVOICE" || row.netOutstandingAmount >= -SETTLEMENT_EPSILON) {
@@ -1325,7 +1430,7 @@ const getOverview = async (tenantId: string) => {
     thisMonthOutflow,
     thisMonthExpenseTotal,
     accountBalances: accounts,
-    recentMovements,
+    recentMovements: activeRecentMovements,
     expenseByCategory: [...expenseByCategoryMap.values()].sort((left, right) => right.amount - left.amount),
   };
 };
@@ -1417,11 +1522,15 @@ export default {
   createReceivedPayment: (
     tenantId: string,
     input: Parameters<typeof recordPayment>[2],
-  ) => recordPayment(tenantId, "RECEIVABLE", input),
+    txClient?: AccountsDbClient,
+  ) => recordPayment(tenantId, "RECEIVABLE", input, txClient),
   createMadePayment: (
     tenantId: string,
     input: Parameters<typeof recordPayment>[2],
-  ) => recordPayment(tenantId, "PAYABLE", input),
+    txClient?: AccountsDbClient,
+  ) => recordPayment(tenantId, "PAYABLE", input, txClient),
+  listPostedMoneyMovementsForSourceDocument,
+  voidMoneyMovementsForSourceDocument,
   createExpense,
   getOverview,
   getDocumentBalance,

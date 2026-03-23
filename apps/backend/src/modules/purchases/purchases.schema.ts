@@ -99,6 +99,9 @@ export const postPurchaseDocumentSchema = z.object({
   body: z.object({
     tenantId: z.uuid(),
     documentType: purchaseDocumentTypeSchema,
+    financialAccountId: z.uuid().optional(),
+    paymentReference: z.string().trim().max(80).optional(),
+    paymentDate: z.string().datetime().optional(),
   }),
 });
 

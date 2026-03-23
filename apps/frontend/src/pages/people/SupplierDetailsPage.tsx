@@ -345,7 +345,7 @@ export function SupplierDetailsPage() {
                         </div>
                       </div>
                       <div className="rounded-md border border-border/70 bg-background px-3 py-2">
-                        <div className="text-[11px] text-muted-foreground">Vendor Credit</div>
+                        <div className="text-[11px] text-muted-foreground">Supplier Credit</div>
                         <div className="text-sm font-semibold text-foreground">
                           {formatCurrency(financialSummary.documentCreditAmount)}
                         </div>

@@ -1,8 +1,8 @@
+import { Info } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
 import type { FinancialDocumentBalanceRow } from "../finance/financial-api";
 import {
   formatCurrency,
-  normalizeLines,
   type SalesDocumentPageConfig,
 } from "./useSalesDocumentWorkspace";
 
@@ -14,8 +14,6 @@ type SalesDocumentSummaryPanelProps = {
     taxTotal: number;
     grandTotal: number;
   };
-  linesCountSource: Parameters<typeof normalizeLines>[0];
-  sourceDocumentNumber?: string;
   validUntil: string;
   dispatchDate: string;
   dispatchReference: string;
@@ -29,78 +27,10 @@ type SalesDocumentSummaryPanelProps = {
   className?: string;
 };
 
-const getSettlementStatus = (
-  row: Pick<FinancialDocumentBalanceRow, "settlementStatus" | "paymentStatus">,
-) => row.settlementStatus ?? row.paymentStatus;
-
-const getSalesSettlementLabel = (
-  row: Pick<
-    FinancialDocumentBalanceRow,
-    "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount"
-  >,
-) => {
-  const value = getSettlementStatus(row);
-  switch (value) {
-    case "N_A":
-      return "N/A";
-    case "UNPAID":
-      return "Unpaid";
-    case "PARTIAL":
-      return "Partial";
-    case "PAID":
-      if (row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
-        return "Settled by Return";
-      }
-      if (row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
-        return "Settled";
-      }
-      return "Paid";
-    case "OVERPAID":
-      return "Customer Credit";
-  }
-};
-
-const getPaymentStatusClassName = (value: NonNullable<FinancialDocumentBalanceRow["paymentStatus"]>) => {
-  switch (value) {
-    case "PAID":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    case "PARTIAL":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-    case "OVERPAID":
-      return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
-    case "N_A":
-      return "border-border/70 bg-muted/55 text-muted-foreground";
-    case "UNPAID":
-    default:
-      return "border-border/70 bg-muted/55 text-muted-foreground";
-    }
-};
-
-const getSalesSettlementTitle = (
-  row: Pick<
-    FinancialDocumentBalanceRow,
-    "settlementStatus" | "paymentStatus" | "paidAmount" | "appliedReturnAmount"
-  >,
-) => {
-  const value = getSettlementStatus(row);
-  if (value === "OVERPAID") {
-    return "Total payments and returns exceed the original invoice amount.";
-  }
-  if (value === "PAID" && row.paidAmount <= 0.01 && row.appliedReturnAmount > 0.01) {
-    return "The invoice balance was fully settled by linked sales returns without a cash receipt.";
-  }
-  if (value === "PAID" && row.paidAmount > 0.01 && row.appliedReturnAmount > 0.01) {
-    return "Receipts and linked sales returns together fully settled the invoice.";
-  }
-  return undefined;
-};
-
 export function SalesDocumentSummaryPanel({
   config,
   activeBusinessName,
   totals,
-  linesCountSource,
-  sourceDocumentNumber,
   validUntil,
   dispatchDate,
   dispatchReference,
@@ -113,7 +43,25 @@ export function SalesDocumentSummaryPanel({
   desktopRailInset = true,
   className,
 }: SalesDocumentSummaryPanelProps) {
-  const normalizedLineCount = normalizeLines(linesCountSource).length;
+  const paidAtPosting =
+    Boolean(financialBalance?.lastPaymentAt) &&
+    Boolean(financialBalance?.postedAt) &&
+    financialBalance?.lastPaymentAt === financialBalance?.postedAt;
+  const settlementSummaryDate =
+    financialBalance?.fullySettledAt ?? financialBalance?.lastPaymentAt ?? null;
+  const settlementSummaryDateLabel = settlementSummaryDate
+    ? config.documentType === "SALES_INVOICE"
+      ? paidAtPosting
+        ? "Collected"
+        : financialBalance?.fullySettledAt
+          ? "Settled"
+          : "Last receipt"
+      : paidAtPosting
+        ? "Paid"
+        : financialBalance?.fullySettledAt
+          ? "Settled"
+          : "Last payout"
+    : null;
 
   return (
     <div
@@ -138,98 +86,111 @@ export function SalesDocumentSummaryPanel({
         <span className="truncate text-muted-foreground">{activeBusinessName}</span>
       </div>
       <div className="space-y-2 pt-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Subtotal</span>
-          <span className="font-semibold text-foreground">
-            {formatCurrency(totals.subTotal)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Tax</span>
-          <span className="font-semibold text-foreground">
-            {formatCurrency(totals.taxTotal)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Lines</span>
-          <span className="font-semibold text-foreground">
-            {normalizedLineCount || 1}
-          </span>
+        <div className="space-y-1.5 px-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[11px] leading-tight">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="font-semibold text-foreground">
+              {formatCurrency(totals.subTotal)}
+            </span>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[11px] leading-tight">
+            <span className="text-muted-foreground">Tax</span>
+            <span className="font-semibold text-foreground">
+              {formatCurrency(totals.taxTotal)}
+            </span>
+          </div>
         </div>
         {financialBalance ? (
           <>
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="text-muted-foreground">Settlement status</span>
-              <span
-                className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getPaymentStatusClassName(getSettlementStatus(financialBalance))}`}
-                title={getSalesSettlementTitle(financialBalance)}
-              >
-                {getSalesSettlementLabel(financialBalance)}
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 text-xs">
+              <span className="font-semibold text-foreground">Grand total</span>
+              <span className="text-sm font-extrabold text-foreground">
+                {formatCurrency(totals.grandTotal)}
               </span>
             </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                {config.documentType === "SALES_INVOICE" ? "Cash collected" : "Paid out"}
-              </span>
-              <span className="font-semibold text-foreground">
-                {formatCurrency(financialBalance.paidAmount)}
-              </span>
-            </div>
-            {financialBalance.appliedReturnAmount > 0 ? (
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Returns applied</span>
+            <div className="border-t border-border/70" />
+            <div className="space-y-1 rounded-lg border border-border/70 bg-muted/50 py-1.5">
+              <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
+                Settlement
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-2 text-xs">
+                <div className="mb-1.5 min-w-0">
+                  <div className="text-muted-foreground">
+                    {config.documentType === "SALES_INVOICE" ? "Cash collected" : "Paid out"}
+                  </div>
+                  {settlementSummaryDate && settlementSummaryDateLabel ? (
+                    <div className="text-[10px] leading-snug text-muted-foreground/75">
+                      {settlementSummaryDateLabel}:{" "}
+                      {new Date(settlementSummaryDate).toLocaleDateString()}
+                    </div>
+                  ) : null}
+                </div>
                 <span className="font-semibold text-foreground">
-                  {formatCurrency(financialBalance.appliedReturnAmount)}
+                  {formatCurrency(financialBalance.paidAmount)}
                 </span>
               </div>
-            ) : null}
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                {financialBalance.netOutstandingAmount < 0 ? "Customer credit" : "Outstanding"}
-              </span>
-              <span className="font-semibold text-foreground">
-                {formatCurrency(Math.abs(financialBalance.netOutstandingAmount))}
-              </span>
+              {financialBalance.appliedReturnAmount > 0 ? (
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 text-xs">
+                  <span className="text-muted-foreground">Returns applied</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(financialBalance.appliedReturnAmount)}
+                  </span>
+                </div>
+              ) : null}
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-card px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-1">
+                  <span
+                    className={
+                      financialBalance.netOutstandingAmount < 0
+                        ? "font-semibold text-fuchsia-700"
+                        : "font-semibold text-foreground"
+                    }
+                  >
+                    {financialBalance.netOutstandingAmount < 0 ? "Customer credit" : "Outstanding"}
+                  </span>
+                  {financialBalance.netOutstandingAmount < 0 ? (
+                    <span
+                      className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-fuchsia-200/80 bg-fuchsia-50/80 text-fuchsia-700/85"
+                      title="Receipts and returns exceed the invoice total. A customer credit or refund is due."
+                      aria-label="Customer credit explanation"
+                    >
+                      <Info className="h-2 w-2" aria-hidden="true" />
+                    </span>
+                  ) : null}
+                </div>
+                <span
+                  className={
+                    financialBalance.netOutstandingAmount < 0
+                      ? "font-semibold text-fuchsia-700"
+                      : "font-semibold text-foreground"
+                  }
+                >
+                  {formatCurrency(Math.abs(financialBalance.netOutstandingAmount))}
+                </span>
+              </div>
+              {financialBalance.netOutstandingAmount >= 0 &&
+              financialBalance.paidAmount <= 0.01 &&
+              financialBalance.appliedReturnAmount > 0.01 ? (
+                <div className="px-2 text-[11px] text-muted-foreground">
+                  This invoice is settled by linked sales returns. No cash receipt has been recorded.
+                </div>
+              ) : financialBalance.netOutstandingAmount >= 0 &&
+                financialBalance.paidAmount > 0.01 &&
+                financialBalance.appliedReturnAmount > 0.01 ? (
+                <div className="px-2 text-[11px] text-muted-foreground">
+                  This invoice is settled by a combination of cash receipts and linked sales returns.
+                </div>
+              ) : null}
             </div>
-            {financialBalance.lastPaymentAt ? (
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-muted-foreground">Last payment</span>
-                <span className="truncate font-semibold text-foreground">
-                  {new Date(financialBalance.lastPaymentAt).toLocaleDateString()}
-                </span>
-              </div>
-            ) : null}
-            {financialBalance.fullySettledAt ? (
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-muted-foreground">Fully settled</span>
-                <span className="truncate font-semibold text-foreground">
-                  {new Date(financialBalance.fullySettledAt).toLocaleDateString()}
-                </span>
-              </div>
-            ) : null}
-            {financialBalance.netOutstandingAmount < 0 ? (
-              <div className="rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 py-1 text-[11px] text-fuchsia-700">
-                Total receipts and returns exceed the original invoice amount. A customer credit or refund is due.
-              </div>
-            ) : financialBalance.paidAmount <= 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
-              <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
-                This invoice is settled by linked sales returns. No cash receipt has been recorded.
-              </div>
-            ) : financialBalance.paidAmount > 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
-              <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
-                This invoice is settled by a combination of cash receipts and linked sales returns.
-              </div>
-            ) : null}
           </>
-        ) : null}
-        {sourceDocumentNumber ? (
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-muted-foreground">Source</span>
-            <span className="truncate font-semibold text-foreground">
-              {sourceDocumentNumber}
+        ) : (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 text-xs">
+            <span className="font-semibold text-foreground">Grand total</span>
+            <span className="text-sm font-extrabold text-foreground">
+              {formatCurrency(totals.grandTotal)}
             </span>
           </div>
-        ) : null}
+        )}
         {config.documentType === "SALES_ESTIMATE" && validUntil ? (
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Valid until</span>
@@ -271,14 +232,7 @@ export function SalesDocumentSummaryPanel({
               {formatCurrency(totals.grandTotal)}
             </div>
           </div>
-        ) : (
-          <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 text-xs">
-            <span className="font-semibold text-foreground">Grand total</span>
-            <span className="font-semibold text-foreground">
-              {formatCurrency(totals.grandTotal)}
-            </span>
-          </div>
-        )}
+        ) : null}
         {isPosMode ? (
           <div className="border-t border-border/70 pt-2">
             {onOpenPosPayment ? (

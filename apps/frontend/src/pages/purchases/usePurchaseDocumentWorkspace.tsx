@@ -34,6 +34,7 @@ import {
   listPurchaseDocuments,
   postPurchaseDocumentDraft,
   PurchaseDocumentApiError,
+  type PurchaseDocumentPostInput,
   transitionPurchaseDocument,
   updatePurchaseDocumentDraft,
   type PurchaseConversionBalanceLine,
@@ -72,6 +73,8 @@ export type PurchaseDocumentConversionConfig = {
 export type PurchaseLine = PurchaseDocumentLineDraft & {
   linkedRemainingQuantity?: string | null;
 };
+
+const MINIMUM_VISIBLE_DOCUMENT_LINES = 5;
 
 export type PurchaseDocumentDuplicateMeta = {
   sourceBillNumber: string;
@@ -251,7 +254,24 @@ const getDefaultStarterLineCount = () => {
 };
 
 export const buildPurchaseStarterLines = (count = getDefaultStarterLineCount()) =>
-  Array.from({ length: count }, () => createPurchaseLine());
+  Array.from(
+    { length: Math.max(count, MINIMUM_VISIBLE_DOCUMENT_LINES) },
+    () => createPurchaseLine(),
+  );
+
+const padPurchaseLinesForEditing = (
+  lines: PurchaseLine[],
+  minimumCount = Math.max(getDefaultStarterLineCount(), MINIMUM_VISIBLE_DOCUMENT_LINES),
+) => {
+  if (lines.length >= minimumCount) {
+    return lines;
+  }
+
+  return [
+    ...lines,
+    ...Array.from({ length: minimumCount - lines.length }, () => createPurchaseLine()),
+  ];
+};
 
 const getNextBillNumber = (
   prefix: string,
@@ -314,6 +334,12 @@ export const formatPurchaseDocumentTypeLabel = (documentType: PurchaseDocumentTy
       : documentType === "PURCHASE_INVOICE"
         ? "purchase invoice"
         : "purchase return";
+
+const formatPurchaseDocumentTypeActionLabel = (documentType: PurchaseDocumentType) =>
+  formatPurchaseDocumentTypeLabel(documentType)
+    .split(" ")
+    .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
+    .join(" ");
 
 const normalizePurchaseDocumentDuplicateMeta = (
   rawValue: unknown,
@@ -677,20 +703,7 @@ export function usePurchaseDocumentWorkspace({
 
   const applyDocumentToWorkspace = useCallback(
     (document: PurchaseDocumentDraft, readOnly: boolean) => {
-      setActiveDraftId(readOnly ? null : document.id);
-      setViewingDocumentId(readOnly ? document.id : null);
-      setParentId(document.parentId ?? null);
-      setParentDocumentNumber("");
-      setBillNumber(document.billNumber);
-      setSettlementMode(document.settlementMode ?? config.defaultSettlementMode ?? "CASH");
-      setSupplierId(document.supplierId ?? null);
-      setSupplierName(document.supplierName);
-      setSupplierPhone(document.supplierPhone);
-      setSupplierAddress(document.supplierAddress);
-      setSupplierTaxId(document.supplierTaxId);
-      setNotes(document.notes);
-      setDuplicateMeta(getPersistedDuplicateMeta(document.id));
-      setLines(
+      const hydratedLines =
         document.lines.length > 0
           ? document.lines.map((line) =>
               createPurchaseLine({
@@ -702,8 +715,22 @@ export function usePurchaseDocumentWorkspace({
                     : null,
               }),
             )
-          : buildPurchaseStarterLines(),
-      );
+          : buildPurchaseStarterLines();
+
+      setActiveDraftId(readOnly ? null : document.id);
+      setViewingDocumentId(readOnly ? document.id : null);
+      setParentId(document.parentId ?? null);
+      setParentDocumentNumber(document.parentDocumentNumber ?? "");
+      setBillNumber(document.billNumber);
+      setSettlementMode(document.settlementMode ?? config.defaultSettlementMode ?? "CASH");
+      setSupplierId(document.supplierId ?? null);
+      setSupplierName(document.supplierName);
+      setSupplierPhone(document.supplierPhone);
+      setSupplierAddress(document.supplierAddress);
+      setSupplierTaxId(document.supplierTaxId);
+      setNotes(document.notes);
+      setDuplicateMeta(getPersistedDuplicateMeta(document.id));
+      setLines(padPurchaseLinesForEditing(hydratedLines));
       setFormError(null);
     },
     [config.defaultSettlementMode, getPersistedDuplicateMeta],
@@ -839,7 +866,11 @@ export function usePurchaseDocumentWorkspace({
         );
         setNotes("");
         setDuplicateMeta(null);
-        setLines(convertedLines.length > 0 ? convertedLines : buildPurchaseStarterLines());
+        setLines(
+          convertedLines.length > 0
+            ? padPurchaseLinesForEditing(convertedLines)
+            : buildPurchaseStarterLines(),
+        );
         setPostValidationMessage(null);
       })
       .catch((error) => {
@@ -897,7 +928,9 @@ export function usePurchaseDocumentWorkspace({
       setDuplicateMeta(normalizePurchaseDocumentDuplicateMeta(draft.duplicateMeta));
       setLines(
         draft.lines.length > 0
-          ? draft.lines.map((line) => createPurchaseLine({ ...line }))
+          ? padPurchaseLinesForEditing(
+              draft.lines.map((line) => createPurchaseLine({ ...line })),
+            )
           : buildPurchaseStarterLines(),
       );
       setFormError(null);
@@ -1136,31 +1169,33 @@ export function usePurchaseDocumentWorkspace({
       const duplicateLineMeta: PurchaseDocumentDuplicateMeta["lines"] = {};
       const duplicatedLines =
         document.lines.length > 0
-          ? document.lines.map((line) => {
-              const nextLineId = crypto.randomUUID();
-              const sourceVariantId = line.variantId?.trim() ?? "";
-              const currentOption = sourceVariantId
-                ? itemOptionsByVariantId.get(sourceVariantId)
-                : null;
+          ? padPurchaseLinesForEditing(
+              document.lines.map((line) => {
+                const nextLineId = crypto.randomUUID();
+                const sourceVariantId = line.variantId?.trim() ?? "";
+                const currentOption = sourceVariantId
+                  ? itemOptionsByVariantId.get(sourceVariantId)
+                  : null;
 
-              if (sourceVariantId) {
-                duplicateLineMeta[nextLineId] = {
-                  sourceVariantId,
-                  originalUnitPrice: line.unitPrice,
-                  originalTaxRate: line.taxRate,
-                  originalTaxMode: line.taxMode,
-                  isAvailable: Boolean(currentOption),
-                };
-              }
+                if (sourceVariantId) {
+                  duplicateLineMeta[nextLineId] = {
+                    sourceVariantId,
+                    originalUnitPrice: line.unitPrice,
+                    originalTaxRate: line.taxRate,
+                    originalTaxMode: line.taxMode,
+                    isAvailable: Boolean(currentOption),
+                  };
+                }
 
-              return createPurchaseLine({
-                ...line,
-                id: nextLineId,
-                sourceLineId: null,
-                linkedRemainingQuantity: null,
-                variantId: currentOption ? sourceVariantId : "",
-              });
-            })
+                return createPurchaseLine({
+                  ...line,
+                  id: nextLineId,
+                  sourceLineId: null,
+                  linkedRemainingQuantity: null,
+                  variantId: currentOption ? sourceVariantId : "",
+                });
+              }),
+            )
           : buildPurchaseStarterLines();
 
       setActiveDraftId(null);
@@ -1230,9 +1265,15 @@ export function usePurchaseDocumentWorkspace({
     );
   }, [duplicateWarnings.priceDiscrepancies, itemOptionsByVariantId]);
 
-  const persistDraft = async (mode: "save" | "post") => {
+  const persistDraft = async (
+    mode: "save" | "post",
+    options?: {
+      postInput?: PurchaseDocumentPostInput;
+      successMessage?: string;
+    },
+  ) => {
     if (!activeStore) {
-      return;
+      return false;
     }
 
     const normalizedPurchaseLines = normalizeLines(lines);
@@ -1241,7 +1282,7 @@ export function usePurchaseDocumentWorkspace({
         title: `Enter at least one line, supplier detail, note, or source before saving this ${config.singularLabel} draft.`,
         tone: "error",
       });
-      return;
+      return false;
     }
 
     setDraftMutationLoading(true);
@@ -1269,7 +1310,12 @@ export function usePurchaseDocumentWorkspace({
 
       let nextDocument = saved;
       if (mode === "post") {
-        nextDocument = await postPurchaseDocumentDraft(saved.id, activeStore, config.documentType);
+        nextDocument = await postPurchaseDocumentDraft(
+          saved.id,
+          activeStore,
+          config.documentType,
+          options?.postInput,
+        );
       }
       if (mode === "post") {
         setPersistedDuplicateMeta(saved.id, null);
@@ -1282,7 +1328,7 @@ export function usePurchaseDocumentWorkspace({
 
       if (mode === "post") {
         showToast({
-          title: `${config.createTitle.replace("Create ", "")} posted.`,
+          title: options?.successMessage ?? `${config.createTitle.replace("Create ", "")} posted.`,
           tone: "success",
         });
         resetWorkspace(nextDocuments);
@@ -1294,18 +1340,20 @@ export function usePurchaseDocumentWorkspace({
       navigate(mode === "post" ? config.routePath : `${config.routePath}/${nextDocument.id}`, {
         replace: true,
       });
+      return true;
     } catch (error) {
       const message =
         error instanceof PurchaseDocumentApiError ? error.message : "Unable to save purchase draft.";
       if (isInlineValidationError(message)) {
         setFormError(null);
-        return;
+        return false;
       }
       setFormError(message);
       showToast({
         title: message,
         tone: "error",
       });
+      return false;
     } finally {
       setDraftMutationLoading(false);
     }
@@ -1417,16 +1465,17 @@ export function usePurchaseDocumentWorkspace({
   };
 
   const getRowMenuActions = (row: PurchaseListRow): FloatingActionMenuItem[] => {
+    const documentLabel = formatPurchaseDocumentTypeActionLabel(row.documentType);
     const actions: FloatingActionMenuItem[] = [
       {
         key: "view",
-        label: row.status === "DRAFT" ? "Edit Draft" : "View Document",
+        label: row.status === "DRAFT" ? `Edit ${documentLabel} Draft` : `View ${documentLabel}`,
         icon: Eye,
         onSelect: () => navigate(`${config.routePath}/${row.id}`),
       },
       {
         key: "history",
-        label: "View History",
+        label: `View ${documentLabel} History`,
         icon: History,
         onSelect: () => {
           void openHistory(row);
@@ -1437,7 +1486,7 @@ export function usePurchaseDocumentWorkspace({
     if (row.status === "DRAFT") {
       actions.push({
         key: "duplicate",
-        label: "Duplicate",
+        label: `Duplicate ${documentLabel}`,
         icon: Copy,
         onSelect: () => {
           duplicateDocument(row);
@@ -1445,7 +1494,7 @@ export function usePurchaseDocumentWorkspace({
       });
       actions.push({
         key: "delete",
-        label: "Delete Draft",
+        label: `Delete ${documentLabel} Draft`,
         icon: Trash2,
         tone: "danger",
         onSelect: () => {
@@ -1457,7 +1506,7 @@ export function usePurchaseDocumentWorkspace({
 
     actions.push({
       key: "duplicate",
-      label: "Duplicate",
+      label: `Duplicate ${documentLabel}`,
       icon: Copy,
       onSelect: () => {
         duplicateDocument(row);
@@ -1492,7 +1541,7 @@ export function usePurchaseDocumentWorkspace({
     if (row.status === "OPEN" || row.status === "PARTIAL") {
       actions.push({
         key: "cancel",
-        label: "Cancel Document",
+        label: `Cancel ${documentLabel}`,
         icon: XCircle,
         tone: "danger",
         onSelect: () => {
@@ -1505,7 +1554,7 @@ export function usePurchaseDocumentWorkspace({
     if (row.status === "CANCELLED") {
       actions.push({
         key: "reopen",
-        label: "Reopen Document",
+        label: `Reopen ${documentLabel}`,
         icon: RotateCcw,
         onSelect: () => {
           void transitionDocument(row, "REOPEN");

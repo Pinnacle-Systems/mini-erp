@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { Info, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { IconButton } from "../../design-system/atoms/IconButton";
@@ -25,8 +25,11 @@ import { FloatingActionMenu } from "../../design-system/organisms/FloatingAction
 import { useSessionStore } from "../../features/auth/session-business";
 import {
   getFinancialDocumentBalance,
+  listFinancialAccounts,
+  type FinancialAccountRow,
   type FinancialDocumentBalanceRow,
 } from "../finance/financial-api";
+import { PostCashInvoiceDialog } from "./PostCashInvoiceDialog";
 import {
   type PurchaseDocumentCancelReason,
   type PurchaseDocumentType,
@@ -170,7 +173,7 @@ const getPurchaseSettlementLabel = (
       }
       return "Paid";
     case "OVERPAID":
-      return "Vendor Credit";
+      return "Supplier Credit";
   }
 };
 
@@ -225,6 +228,15 @@ const formatPurchaseQuantity = (value: number) => {
     ? String(normalized)
     : String(Number(normalized.toFixed(3)));
 };
+
+const getTodayDateInputValue = () => new Date().toISOString().slice(0, 10);
+
+const getPreferredFinancialAccountId = (accounts: FinancialAccountRow[]) =>
+  accounts.find((account) => account.accountType === "CASH")?.id ??
+  accounts.find((account) => account.accountType === "BANK")?.id ??
+  accounts.find((account) => account.accountType === "UPI")?.id ??
+  accounts[0]?.id ??
+  "";
 
 function PurchaseDocumentPage({ config }: { config: PurchaseDocumentPageConfig }) {
   const activeStore = useSessionStore((state) => state.activeStore);
@@ -308,6 +320,7 @@ function PurchaseDocumentWorkspace({
     setSupplierTaxId,
     settlementMode,
     supplierAddress,
+    supplierId,
     supplierName,
     supplierOptions,
     supplierPhone,
@@ -322,7 +335,22 @@ function PurchaseDocumentWorkspace({
   });
   const showSourceColumn = config.documentType !== "PURCHASE_ORDER";
   const showPaymentColumn = config.documentType === "PURCHASE_INVOICE";
+  const supplierLookupHighlightClassName =
+    !isViewingPostedDocument &&
+    ((usesSettlementMode(config.documentType) &&
+      settlementMode === "CREDIT" &&
+      !supplierId) ||
+      !supplierName.trim())
+      ? "border-warning/45 bg-warning/10 focus:border-warning/60 focus:ring-warning/20"
+      : undefined;
   const [financialBalance, setFinancialBalance] = useState<FinancialDocumentBalanceRow | null>(null);
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccountRow[]>([]);
+  const [cashPostDialogOpen, setCashPostDialogOpen] = useState(false);
+  const [cashPostError, setCashPostError] = useState<string | null>(null);
+  const [selectedFinancialAccountId, setSelectedFinancialAccountId] = useState("");
+  const [paymentReferenceDraft, setPaymentReferenceDraft] = useState("");
+  const [paymentDateDraft, setPaymentDateDraft] = useState(getTodayDateInputValue());
+  const [paymentDateTouched, setPaymentDateTouched] = useState(false);
   const isFinancialPurchaseDocument =
     config.documentType === "PURCHASE_INVOICE" || config.documentType === "PURCHASE_RETURN";
   const viewedFinancialDocumentId = activeDocument?.id ?? null;
@@ -330,7 +358,44 @@ function PurchaseDocumentWorkspace({
     isViewingPostedDocument &&
     config.documentType === "PURCHASE_INVOICE" &&
     Boolean(viewedFinancialDocumentId) &&
-    !["CANCELLED", "VOID"].includes(activeDocument?.status ?? "");
+    !["CANCELLED", "VOID"].includes(activeDocument?.status ?? "") &&
+    Boolean(financialBalance && financialBalance.outstandingAmount > 0.01);
+  const isCashPurchaseInvoiceDraft =
+    config.documentType === "PURCHASE_INVOICE" &&
+    !isViewingPostedDocument &&
+    settlementMode === "CASH";
+  const cashPostingAccount = financialAccounts.find(
+    (account) => account.id === selectedFinancialAccountId,
+  );
+  const paidAtPosting =
+    Boolean(financialBalance?.lastPaymentAt) &&
+    Boolean(financialBalance?.postedAt) &&
+    financialBalance?.lastPaymentAt === financialBalance?.postedAt;
+  const shouldShowCashSettlementRow = Boolean(
+    financialBalance && financialBalance.paidAmount > 0.01,
+  );
+  const shouldShowPurchaseSettlementSummary =
+    config.documentType === "PURCHASE_INVOICE" && Boolean(financialBalance);
+  const settlementSummaryDate =
+    shouldShowCashSettlementRow
+      ? financialBalance?.fullySettledAt ?? financialBalance?.lastPaymentAt ?? null
+      : null;
+  const settlementSummaryDateLabel = settlementSummaryDate
+    ? paidAtPosting
+      ? "Paid"
+      : financialBalance?.fullySettledAt
+        ? "Settled"
+        : "Last pay"
+    : null;
+  const settlementExplanation = financialBalance
+    ? financialBalance.netOutstandingAmount < 0
+      ? "Payments and returns exceed the invoice total. A supplier credit or refund is due."
+      : financialBalance.paidAmount <= 0.01 && financialBalance.appliedReturnAmount > 0.01
+        ? "This invoice is settled by linked purchase returns. No cash payment has been recorded."
+        : financialBalance.paidAmount > 0.01 && financialBalance.appliedReturnAmount > 0.01
+          ? "This invoice is settled by a combination of cash payments and linked purchase returns."
+          : null
+    : null;
 
   useEffect(() => {
     if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !isFinancialPurchaseDocument) {
@@ -356,6 +421,98 @@ function PurchaseDocumentWorkspace({
       cancelled = true;
     };
   }, [activeStore, config.documentType, isFinancialPurchaseDocument, isViewingPostedDocument, viewedFinancialDocumentId]);
+
+  useEffect(() => {
+    if (!activeStore || config.documentType !== "PURCHASE_INVOICE") {
+      setFinancialAccounts([]);
+      setSelectedFinancialAccountId("");
+      return;
+    }
+
+    let cancelled = false;
+    void listFinancialAccounts(activeStore)
+      .then((accounts) => {
+        if (cancelled) {
+          return;
+        }
+        setFinancialAccounts(accounts.filter((account) => account.isActive));
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!cancelled) {
+          setFinancialAccounts([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStore, config.documentType]);
+
+  useEffect(() => {
+    if (!financialAccounts.length) {
+      setSelectedFinancialAccountId("");
+      return;
+    }
+
+    setSelectedFinancialAccountId((current) =>
+      financialAccounts.some((account) => account.id === current)
+        ? current
+        : getPreferredFinancialAccountId(financialAccounts),
+    );
+  }, [financialAccounts]);
+
+  const openCashPostDialog = () => {
+    setCashPostError(null);
+    setPaymentReferenceDraft("");
+    setPaymentDateDraft(getTodayDateInputValue());
+    setPaymentDateTouched(false);
+    setSelectedFinancialAccountId(
+      financialAccounts.some((account) => account.id === selectedFinancialAccountId)
+        ? selectedFinancialAccountId
+        : getPreferredFinancialAccountId(financialAccounts),
+    );
+    setCashPostDialogOpen(true);
+  };
+
+  const handlePostClick = async () => {
+    if (!isCashPurchaseInvoiceDraft) {
+      await persistDraft("post");
+      return;
+    }
+
+    openCashPostDialog();
+  };
+
+  const handleConfirmCashPost = async () => {
+    if (!selectedFinancialAccountId) {
+      setCashPostError("Select the account used for payment before posting this cash invoice.");
+      return;
+    }
+
+    if (paymentDateTouched && !paymentDateDraft) {
+      setCashPostError("Select a valid payment date before confirming this cash invoice.");
+      return;
+    }
+
+    const paymentDate = paymentDateTouched
+      ? new Date(`${paymentDateDraft}T00:00:00.000Z`).toISOString()
+      : undefined;
+
+    const didPost = await persistDraft("post", {
+      postInput: {
+        financialAccountId: selectedFinancialAccountId,
+        paymentReference: paymentReferenceDraft.trim() || undefined,
+        paymentDate,
+      },
+      successMessage: `Purchase invoice posted and payment of ${formatCurrency(totals.grandTotal)} recorded from ${cashPostingAccount?.name ?? "the selected account"}.`,
+    });
+    if (didPost) {
+      setCashPostDialogOpen(false);
+    } else {
+      setCashPostError("Unable to post and pay this purchase invoice. Review the details and try again.");
+    }
+  };
 
   const getParentDocumentNumber = (row: (typeof documentRows)[number]) => {
     if (!row.parentId) {
@@ -620,7 +777,7 @@ function PurchaseDocumentWorkspace({
                   <Button type="button" variant="outline" size="sm" disabled={draftMutationLoading} onClick={() => void persistDraft("save")}>
                     {draftMutationLoading ? "Saving..." : `Save Draft (${normalizeLines(lines).length || 1})`}
                   </Button>
-                  <Button type="button" size="sm" disabled={draftMutationLoading || Boolean(postValidationMessage)} onClick={() => void persistDraft("post")}>
+                  <Button type="button" size="sm" disabled={draftMutationLoading || Boolean(postValidationMessage)} onClick={() => void handlePostClick()}>
                     {draftMutationLoading ? "Working..." : config.postActionLabel}
                   </Button>
                 </>
@@ -678,6 +835,7 @@ function PurchaseDocumentWorkspace({
                       loading={lookupLoading}
                       loadingLabel="Loading suppliers"
                       placeholder="Search supplier"
+                      inputClassName={supplierLookupHighlightClassName}
                       onOptionSelect={(supplier) => {
                         setSupplierId(supplier.entityId);
                         setSupplierName(supplier.name);
@@ -774,6 +932,7 @@ function PurchaseDocumentWorkspace({
               <PurchaseDocumentLineEditor
                 config={config}
                 lines={lines}
+                linesCount={normalizeLines(lines).length || 1}
                 itemOptions={itemOptions}
                 lookupLoading={lookupLoading}
                 isViewingPostedDocument={isViewingPostedDocument}
@@ -846,7 +1005,7 @@ function PurchaseDocumentWorkspace({
                 }
               />
 
-              <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-card p-1.5 md:mt-auto md:flex-row md:items-start md:shrink-0">
+              <div className="flex flex-col gap-2 rounded-xl border border-border/85 bg-card p-1.5 md:flex-row md:items-start md:shrink-0">
                 <div className="flex flex-col gap-1 md:min-h-0 md:flex-1">
                   <Label htmlFor="purchase-notes">Notes</Label>
                   <Textarea
@@ -876,91 +1035,105 @@ function PurchaseDocumentWorkspace({
                     <span className="truncate text-muted-foreground">{activeBusinessName}</span>
                   </div>
                   <div className="space-y-2 pt-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-semibold text-foreground">{formatCurrency(totals.subTotal)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Tax</span>
-                      <span className="font-semibold text-foreground">{formatCurrency(totals.taxTotal)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Lines</span>
-                      <span className="font-semibold text-foreground">{normalizeLines(lines).length || 1}</span>
-                    </div>
-                    {financialBalance ? (
-                      <>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Settlement status</span>
-                            <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${getSettlementStatusClassName(getSettlementStatus(financialBalance))}`}>
-                            {getPurchaseSettlementLabel(financialBalance)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">
-                            {config.documentType === "PURCHASE_INVOICE" ? "Cash paid" : "Received back"}
-                          </span>
-                          <span className="font-semibold text-foreground">
-                            {formatCurrency(financialBalance.paidAmount)}
-                          </span>
-                        </div>
-                        {financialBalance.appliedReturnAmount > 0 ? (
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">Returns applied</span>
-                            <span className="font-semibold text-foreground">
-                              {formatCurrency(financialBalance.appliedReturnAmount)}
-                            </span>
-                          </div>
-                        ) : null}
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">
-                            {financialBalance.netOutstandingAmount < 0 ? "Vendor credit" : "Outstanding"}
-                          </span>
-                          <span className="font-semibold text-foreground">
-                            {formatCurrency(Math.abs(financialBalance.netOutstandingAmount))}
-                          </span>
-                        </div>
-                        {financialBalance.lastPaymentAt ? (
-                          <div className="flex items-center justify-between gap-3 text-xs">
-                            <span className="text-muted-foreground">Last payment</span>
-                            <span className="truncate font-semibold text-foreground">
-                              {new Date(financialBalance.lastPaymentAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : null}
-                        {financialBalance.fullySettledAt ? (
-                          <div className="flex items-center justify-between gap-3 text-xs">
-                            <span className="text-muted-foreground">Fully settled</span>
-                            <span className="truncate font-semibold text-foreground">
-                              {new Date(financialBalance.fullySettledAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ) : null}
-                        {financialBalance.netOutstandingAmount < 0 ? (
-                          <div className="rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 py-1 text-[11px] text-fuchsia-700">
-                            Total payments and returns exceed the original invoice amount. A vendor credit or refund is due.
-                          </div>
-                        ) : financialBalance.paidAmount <= 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
-                          <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
-                            This invoice is settled by linked purchase returns. No cash payment has been recorded.
-                          </div>
-                        ) : financialBalance.paidAmount > 0.01 && financialBalance.appliedReturnAmount > 0.01 ? (
-                          <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
-                            This invoice is settled by a combination of cash payments and linked purchase returns.
-                          </div>
-                        ) : null}
-                      </>
-                    ) : null}
-                    {parentDocumentNumber ? (
-                      <div className="flex items-center justify-between gap-3 text-xs">
-                        <span className="text-muted-foreground">Source</span>
-                        <span className="truncate font-semibold text-foreground">{parentDocumentNumber}</span>
+                    <div className="space-y-1.5 px-2">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[11px] leading-tight">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-semibold text-foreground">{formatCurrency(totals.subTotal)}</span>
                       </div>
-                    ) : null}
-                    <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 text-xs">
-                      <span className="font-semibold text-foreground">Grand total</span>
-                      <span className="font-semibold text-foreground">{formatCurrency(totals.grandTotal)}</span>
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[11px] leading-tight">
+                        <span className="text-muted-foreground">Tax</span>
+                        <span className="font-semibold text-foreground">{formatCurrency(totals.taxTotal)}</span>
+                      </div>
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-muted/55 py-1.5 text-xs">
+                        <span className="font-semibold text-foreground">Grand total</span>
+                        <span className="text-[15px] font-extrabold text-foreground">{formatCurrency(totals.grandTotal)}</span>
+                      </div>
                     </div>
+                    {shouldShowPurchaseSettlementSummary ? <div className="border-t border-border/70" /> : null}
+                    {shouldShowPurchaseSettlementSummary && financialBalance
+                      ? (() => {
+                          const settlement = financialBalance;
+                          return (
+                            <div className="space-y-1 rounded-lg border border-border/70 bg-muted/50 py-1.5">
+                              <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
+                                Settlement
+                              </div>
+                              {shouldShowCashSettlementRow ? (
+                                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-2 text-xs">
+                                  <div className="mb-1.5 min-w-0">
+                                    <div className="text-muted-foreground">
+                                      {config.documentType === "PURCHASE_INVOICE"
+                                        ? "Cash paid"
+                                        : "Received back"}
+                                    </div>
+                                    {settlementSummaryDate && settlementSummaryDateLabel ? (
+                                      <div className="text-[10px] leading-snug text-muted-foreground/75">
+                                        {settlementSummaryDateLabel}:{" "}
+                                        {new Date(settlementSummaryDate).toLocaleDateString()}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <span className="font-semibold text-foreground">
+                                    {formatCurrency(settlement.paidAmount)}
+                                  </span>
+                                </div>
+                              ) : null}
+                              {settlement.appliedReturnAmount > 0 ? (
+                                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 text-xs">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-muted-foreground">Returns applied</span>
+                                    {settlementExplanation && settlement.netOutstandingAmount >= 0 ? (
+                                      <span
+                                        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-border/70 bg-card text-muted-foreground/80"
+                                        title={settlementExplanation}
+                                        aria-label="Settlement explanation"
+                                      >
+                                        <Info className="h-2 w-2" aria-hidden="true" />
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <span className="font-semibold text-foreground">
+                                    {formatCurrency(settlement.appliedReturnAmount)}
+                                  </span>
+                                </div>
+                              ) : null}
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-card px-2 py-1.5 text-xs">
+                                <div className="flex items-center gap-1">
+                                  <span
+                                    className={
+                                      settlement.netOutstandingAmount < 0
+                                        ? "font-semibold text-fuchsia-700"
+                                        : "font-semibold text-foreground"
+                                    }
+                                  >
+                                    {settlement.netOutstandingAmount < 0
+                                      ? "Supplier credit"
+                                      : "Outstanding"}
+                                  </span>
+                                  {settlement.netOutstandingAmount < 0 ? (
+                                    <span
+                                      className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-fuchsia-200/80 bg-fuchsia-50/80 text-fuchsia-700/85"
+                                      title={settlementExplanation ?? undefined}
+                                      aria-label="Supplier credit explanation"
+                                    >
+                                      <Info className="h-2 w-2" aria-hidden="true" />
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <span
+                                  className={
+                                    settlement.netOutstandingAmount < 0
+                                      ? "font-semibold text-fuchsia-700"
+                                      : "font-semibold text-foreground"
+                                  }
+                                >
+                                  {formatCurrency(Math.abs(settlement.netOutstandingAmount))}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()
+                      : null}
                   </div>
                 </div>
               </div>
@@ -1017,6 +1190,39 @@ function PurchaseDocumentWorkspace({
           }}
         />
       ) : null}
+
+      <PostCashInvoiceDialog
+        open={cashPostDialogOpen}
+        totalLabel={formatCurrency(totals.grandTotal)}
+        documentLabel={billNumber.trim() || "this purchase invoice"}
+        accountOptions={financialAccounts}
+        selectedAccountId={selectedFinancialAccountId}
+        paymentReference={paymentReferenceDraft}
+        paymentDate={paymentDateDraft}
+        loading={draftMutationLoading}
+        error={cashPostError}
+        onSelectedAccountIdChange={(value) => {
+          setCashPostError(null);
+          setSelectedFinancialAccountId(value);
+        }}
+        onPaymentReferenceChange={(value) => {
+          setCashPostError(null);
+          setPaymentReferenceDraft(value);
+        }}
+        onPaymentDateChange={(value) => {
+          setCashPostError(null);
+          setPaymentDateDraft(value);
+          setPaymentDateTouched(true);
+        }}
+        onClose={() => {
+          if (draftMutationLoading) {
+            return;
+          }
+          setCashPostDialogOpen(false);
+          setCashPostError(null);
+        }}
+        onConfirm={() => void handleConfirmCashPost()}
+      />
     </div>
   );
 }
