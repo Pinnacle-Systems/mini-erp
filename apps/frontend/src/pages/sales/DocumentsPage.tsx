@@ -404,6 +404,11 @@ function SalesDocumentWorkspace({
     ? config.documentType
     : null;
   const viewedFinancialDocumentId = activeServerDocument?.id ?? activeDraftId ?? null;
+  const [prevViewedId, setPrevViewedId] = useState(viewedFinancialDocumentId);
+  if (viewedFinancialDocumentId !== prevViewedId) {
+    setPrevViewedId(viewedFinancialDocumentId);
+    setFinancialBalance(null);
+  }
   const canRecordSettlement =
     isViewingPostedDocument &&
     config.documentType === "SALES_INVOICE" &&
@@ -412,7 +417,6 @@ function SalesDocumentWorkspace({
 
   useEffect(() => {
     if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !financialSalesDocumentType) {
-      setFinancialBalance(null);
       return;
     }
 

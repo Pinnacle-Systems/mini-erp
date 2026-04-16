@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
@@ -69,7 +69,7 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     [documentId, documents],
   );
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!activeStore || !isBusinessSelected) return;
     setLoading(true);
     try {
@@ -101,11 +101,11 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [accountId, activeStore, flow, isBusinessSelected, requestedDocumentId]);
 
   useEffect(() => {
     void load();
-  }, [accountId, activeStore, flow, isBusinessSelected, requestedDocumentId]);
+  }, [load]);
 
   const handleDocumentChange = (nextDocumentId: string) => {
     setDocumentId(nextDocumentId);

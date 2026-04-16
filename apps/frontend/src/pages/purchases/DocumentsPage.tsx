@@ -349,17 +349,41 @@ function PurchaseDocumentWorkspace({
       ? "border-warning/45 bg-warning/10 focus:border-warning/60 focus:ring-warning/20"
       : undefined;
   const [financialBalance, setFinancialBalance] = useState<FinancialDocumentBalanceRow | null>(null);
+  const viewedFinancialDocumentId = activeDocument?.id ?? null;
+  const [prevViewedId, setPrevViewedId] = useState(viewedFinancialDocumentId);
+  if (viewedFinancialDocumentId !== prevViewedId) {
+    setPrevViewedId(viewedFinancialDocumentId);
+    setFinancialBalance(null);
+  }
+
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccountRow[]>([]);
   const [cashPostDialogOpen, setCashPostDialogOpen] = useState(false);
   const [cashPostError, setCashPostError] = useState<string | null>(null);
   const [selectedFinancialAccountId, setSelectedFinancialAccountId] = useState("");
+
+  const [prevAccounts, setPrevAccounts] = useState(financialAccounts);
+  if (financialAccounts !== prevAccounts) {
+    setPrevAccounts(financialAccounts);
+    if (financialAccounts.length === 0) {
+      if (selectedFinancialAccountId !== "") {
+        setSelectedFinancialAccountId("");
+      }
+    } else {
+      const nextAccountId = financialAccounts.some((account) => account.id === selectedFinancialAccountId)
+        ? selectedFinancialAccountId
+        : getPreferredFinancialAccountId(financialAccounts);
+      if (nextAccountId !== selectedFinancialAccountId) {
+        setSelectedFinancialAccountId(nextAccountId);
+      }
+    }
+  }
+
   const [paymentReferenceDraft, setPaymentReferenceDraft] = useState("");
   const [paymentDateDraft, setPaymentDateDraft] = useState(getTodayDateInputValue());
   const [paymentDateTouched, setPaymentDateTouched] = useState(false);
   const financialPurchaseDocumentType = isFinancialPurchaseDocumentType(config.documentType)
     ? config.documentType
     : null;
-  const viewedFinancialDocumentId = activeDocument?.id ?? null;
   const canRecordSettlement =
     isViewingPostedDocument &&
     config.documentType === "PURCHASE_INVOICE" &&
@@ -405,7 +429,6 @@ function PurchaseDocumentWorkspace({
 
   useEffect(() => {
     if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !financialPurchaseDocumentType) {
-      setFinancialBalance(null);
       return;
     }
 
@@ -439,8 +462,6 @@ function PurchaseDocumentWorkspace({
 
   useEffect(() => {
     if (!activeStore || config.documentType !== "PURCHASE_INVOICE") {
-      setFinancialAccounts([]);
-      setSelectedFinancialAccountId("");
       return;
     }
 
@@ -464,18 +485,7 @@ function PurchaseDocumentWorkspace({
     };
   }, [activeStore, config.documentType]);
 
-  useEffect(() => {
-    if (!financialAccounts.length) {
-      setSelectedFinancialAccountId("");
-      return;
-    }
 
-    setSelectedFinancialAccountId((current) =>
-      financialAccounts.some((account) => account.id === current)
-        ? current
-        : getPreferredFinancialAccountId(financialAccounts),
-    );
-  }, [financialAccounts]);
 
   const openCashPostDialog = () => {
     setCashPostError(null);
