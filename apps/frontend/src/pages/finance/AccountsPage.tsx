@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
@@ -31,7 +31,7 @@ export function AccountsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!activeStore || !isBusinessSelected) return;
     setLoading(true);
     try {
@@ -43,11 +43,11 @@ export function AccountsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeStore, isBusinessSelected]);
 
   useEffect(() => {
     void load();
-  }, [activeStore, isBusinessSelected]);
+  }, [load]);
 
   const onCreate = async () => {
     if (!activeStore || !name.trim()) {

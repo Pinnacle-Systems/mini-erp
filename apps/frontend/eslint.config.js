@@ -10,7 +10,7 @@ import tseslint from "typescript-eslint";
 const tsconfigRootDir = dirname(fileURLToPath(import.meta.url));
 
 export default tseslint.config(
-  { ignores: ["dist", "dev-dist", "node_modules"] },
+  { ignores: ["dist", "dev-dist", "node_modules", "android", "ios"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

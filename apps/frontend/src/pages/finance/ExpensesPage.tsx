@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
@@ -51,7 +51,7 @@ export function ExpensesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!activeStore || !isBusinessSelected) return;
     setLoading(true);
     try {
@@ -72,11 +72,11 @@ export function ExpensesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeStore, isBusinessSelected, financialAccountId, expenseCategoryId]);
 
   useEffect(() => {
     void load();
-  }, [activeStore, isBusinessSelected]);
+  }, [load]);
 
   const onSubmit = async () => {
     if (!activeStore || !payeeName.trim() || !expenseCategoryId || !financialAccountId) {
