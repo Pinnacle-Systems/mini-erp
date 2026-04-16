@@ -1,6 +1,6 @@
 import { BadRequestError } from "../../shared/utils/errors.js";
 import { salesBalanceService } from "./sales-balance.service.js";
-import type { SalesDocumentType, SalesTransactionClient } from "./sales.types.js";
+import type { SalesTransactionClient } from "./sales.types.js";
 
 type LinkType = "FULFILLMENT" | "RETURN";
 

@@ -1,4 +1,3 @@
-import { useSessionStore } from "../features/auth/session-business";
 import { isNativeAndroidApp } from "../platform/capacitor";
 
 const ACCESS_TOKEN_KEY = "mini_erp_frontend_access_token";
@@ -53,8 +52,20 @@ type ApiFetchOptions = {
   retryOnUnauthorized?: boolean;
 };
 
+export type ApiContext = {
+  activeStore: string | null;
+  isBusinessSelected: boolean;
+};
+
+let getApiContext: (() => ApiContext) | null = null;
+
+export const registerApiContext = (getter: () => ApiContext) => {
+  getApiContext = getter;
+};
+
 const refreshAccessToken = async () => {
-  const { activeStore, isBusinessSelected } = useSessionStore.getState();
+  const context = getApiContext?.() ?? { activeStore: null, isBusinessSelected: false };
+  const { activeStore, isBusinessSelected } = context;
   const currentBusinessId = isBusinessSelected ? activeStore : null;
   const response = await fetch(apiUrl("/api/auth/refresh"), {
     method: "POST",

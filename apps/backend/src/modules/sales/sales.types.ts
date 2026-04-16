@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/prisma.js";
+import type { prisma } from "../../lib/prisma.js";
 
 export type SalesDocumentType =
   | "SALES_ESTIMATE"

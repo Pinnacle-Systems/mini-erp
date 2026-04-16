@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/prisma.js";
+import type { prisma } from "../../lib/prisma.js";
 import type {
   StockActivityRecordInput,
   StockActivitySnapshot,

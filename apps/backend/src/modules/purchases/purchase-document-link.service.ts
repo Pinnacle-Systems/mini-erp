@@ -1,6 +1,6 @@
 import { BadRequestError } from "../../shared/utils/errors.js";
 import { purchaseBalanceService } from "./purchase-balance.service.js";
-import type { PurchaseDocumentType, PurchaseTransactionClient } from "./purchases.types.js";
+import type { PurchaseTransactionClient } from "./purchases.types.js";
 
 type LinkType = "FULFILLMENT" | "RETURN";
 
