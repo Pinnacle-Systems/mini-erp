@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { registerApiContext } from "../../lib/api";
 
 export const BUSINESS_CONTEXT_KEY = "mini_erp_business_context_v1";
 
@@ -412,3 +413,11 @@ export const clearSessionBusinessContext = () => {
     isBusinessSelected: false,
   });
 };
+
+registerApiContext(() => {
+  const state = useSessionStore.getState();
+  return {
+    activeStore: state.activeStore,
+    isBusinessSelected: state.isBusinessSelected,
+  };
+});
