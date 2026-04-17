@@ -141,7 +141,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="min-h-[100dvh] w-full lg:h-screen lg:overflow-hidden">
       {isAuthenticated ? (
-        <div className="fixed inset-x-0 top-0 z-40 border-b border-border/70 bg-background/84 backdrop-blur-md shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="fixed inset-x-0 top-0 z-40 border-b border-border/70 bg-background/84 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="px-2 py-2 sm:px-3 md:px-4">
             <SessionHeader
               showBack={shouldShowUserBack}
@@ -154,7 +154,7 @@ function AppLayout({ onLogout }: { onLogout: () => void }) {
         </div>
       ) : null}
       <div
-        className={`overflow-visible overflow-x-hidden lg:h-full lg:min-h-0 lg:overflow-hidden ${isAuthenticated ? "pt-14 sm:pt-16" : ""}`}
+        className={`overflow-visible overflow-x-hidden lg:h-full lg:min-h-0 lg:overflow-hidden ${isAuthenticated ? "pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:pt-[calc(4rem+env(safe-area-inset-top,0px))]" : ""}`}
       >
         <Outlet />
       </div>

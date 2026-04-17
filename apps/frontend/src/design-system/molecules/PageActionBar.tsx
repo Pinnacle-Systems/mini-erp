@@ -25,7 +25,7 @@ type PageActionBarProps = {
   trailingDesktopContent?: ReactNode;
 };
 
-const MOBILE_NAV_OFFSET_CLASS = "bottom-[4.5rem]";
+const MOBILE_NAV_OFFSET_CLASS = "bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))]";
 
 export function PageActionBar({
   primaryLabel,
