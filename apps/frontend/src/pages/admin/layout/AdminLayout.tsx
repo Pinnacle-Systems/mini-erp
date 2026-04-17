@@ -27,7 +27,7 @@ export function AdminLayout() {
   const location = useLocation();
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] w-full px-2 pt-1 pb-20 sm:min-h-[calc(100vh-4rem)] sm:px-3 sm:pt-1 sm:pb-24 lg:h-[calc(100vh-4rem)] lg:overflow-hidden lg:pb-3">
+    <main className="min-h-[calc(100vh-3.5rem)] w-full px-2 pt-1 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:min-h-[calc(100vh-4rem)] sm:px-3 sm:pt-1 sm:pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:h-[calc(100vh-4rem)] lg:overflow-hidden lg:pb-3">
       <div className="grid w-full gap-2 lg:h-full lg:grid-cols-[180px_minmax(0,1fr)]">
         <aside className="hidden h-full overflow-y-auto rounded-xl border border-border/80 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_24px_-20px_rgba(15,23,42,0.18)] lg:block">
           <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -62,7 +62,7 @@ export function AdminLayout() {
         </section>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-white p-1.5 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-white p-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))] shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
         <div className="flex w-full gap-1">
           {adminMenu.map((menu) => {
             const isActive =

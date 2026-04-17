@@ -1066,7 +1066,7 @@ export function AppHomePage() {
   };
 
   return (
-    <main className="h-auto w-full pb-20 sm:pb-24 lg:h-full lg:min-h-0 lg:pb-3">
+    <main className="h-auto w-full pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:h-full lg:min-h-0 lg:pb-3">
       <div
         className={`grid w-full gap-2 lg:h-full ${isDesktopSidebarCollapsed ? "lg:grid-cols-[56px_minmax(0,1fr)]" : "lg:grid-cols-[300px_minmax(0,1fr)]"}`}
       >
@@ -1327,7 +1327,7 @@ export function AppHomePage() {
         </section>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border/80 bg-card p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border/80 bg-card p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden">
         {showSessionMenu ? (
           <div className="absolute inset-x-2 bottom-full z-50 mb-2 rounded-lg border border-border/80 bg-card p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
             <div className="grid gap-1">
