@@ -6,6 +6,45 @@ Current decision: build business modules first, and defer the full server-driven
 
 This keeps the current sync model moving while preserving a clean upgrade path later.
 
+## Data Flow Decision Rule (Canonical)
+
+Choose data flow based on domain characteristics:
+
+**Use Sync Engine when:**
+- Handling entity-style data
+- Eventual consistency is acceptable
+- There are no immediate cross-entity side effects
+- It is safe to replay mutations
+
+**Use Real-Time APIs when:**
+- Executing transactional workflows
+- There are stock/ledger side effects
+- Document numbering or uniqueness is required
+- Cross-document integrity must be enforced
+- Immutable posting semantics are required
+
+## Domain Boundary Rule
+
+The recurring architectural pattern separating backend and frontend responsibilities is:
+
+- **Authoritative writes and invariants stay on backend APIs.**
+- **Derived views, summaries, and bounded browse/read models can be local or synced.**
+
+This applies uniformly across the codebase:
+- **Inventory**: Stock mutations (adjustments, transfers) are backend-owned real-time operations; stock levels are synced as read models.
+- **Documents**: Document posting and transitions are real-time and backend-owned; document summaries and history displays are bounded projections.
+- **Finance**: Payments, expenses, and account operations use dedicated API endpoints; settlement rollups and finance overviews are derived views.
+- **Conversions**: Conversion ceilings and remaining quantities are evaluated by backend endpoints (e.g. `GET /api/sales/conversion-balance/:documentId`); the UI consumes these for prefills and hints.
+
+## Offline Capabilities
+
+Offline support is intentionally scoped and is not uniform across all data types.
+
+- **Offline reviewing of Synced Entities**: Allowed. Entities have a bounded local cache and can be viewed locally between sync cycles.
+- **Offline editing of Local Drafts**: Allowed. Unposted document drafts (sales, purchases) can be captured offline.
+- **Offline Posting & Authoritative Transitions**: Not allowed. These require immediate backend validation and side-effect guarantees.
+- **Offline Viewing of Posted Documents**: Not explicitly supported. Transactional documents (sales, purchases) are primarily real-time resources. If offline viewing becomes a requirement, it must be explicitly built as a bounded read-side sync projection, not by treating documents as generic synced entities.
+
 ## API Contract Rule
 
 Rejected mutations must return structured data, not only a human-readable message string.

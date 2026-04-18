@@ -19,6 +19,7 @@ import {
 import { documentLinkService } from "./document-link.service.js";
 import { stockPostingService } from "./stock-posting.service.js";
 import { salesBalanceService } from "./sales-balance.service.js";
+import { appendSyncChange } from "../sync/sync.service.js";
 import type {
   SalesDocumentAction,
   SalesDocumentCancelReason,
@@ -144,6 +145,50 @@ const parsePartySnapshot = (value: unknown): PartySnapshot | null => {
     address,
     taxId,
   };
+};
+
+const emitSalesReadModelSnapshot = async (
+  tx: any,
+  tenantId: string,
+  document: any,
+  options?: { isTombstone?: boolean }
+) => {
+  if (options?.isTombstone) {
+    await appendSyncChange(
+      tx,
+      tenantId,
+      "sales_document_read_model",
+      document.id,
+      "UPDATE",
+      { id: document.id, isActive: false, deletedAt: new Date().toISOString() }
+    );
+    return;
+  }
+
+  const partySnapshot = parsePartySnapshot(document.party_snapshot);
+  
+  await appendSyncChange(
+    tx,
+    tenantId,
+    "sales_document_read_model",
+    document.id,
+    "UPDATE",
+    {
+      id: document.id,
+      documentType: document.type,
+      documentNumber: document.doc_number,
+      status: document.status,
+      postedAt: document.posted_at?.toISOString() ?? null,
+      subTotal: Number(document.sub_total ?? 0),
+      taxTotal: Number(document.tax_total ?? 0),
+      grandTotal: Number(document.grand_total ?? 0),
+      settlementSnapshot: null,
+      customerId: document.party_id,
+      customerName: partySnapshot?.name ?? "",
+      isActive: true,
+      updatedAt: document.updated_at.toISOString()
+    }
+  );
 };
 
 const requiresCustomerDetails = (documentType: SalesDocumentType) =>
@@ -1256,7 +1301,9 @@ export const postDraftDocument = async (
     sourceDocumentNumber: document.doc_number,
   });
 
-  return getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  const updatedDoc = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  await emitSalesReadModelSnapshot(tx, tenantId, updatedDoc, { isTombstone: updatedDoc.status === 'DRAFT' || updatedDoc.status === 'VOID' });
+  return updatedDoc;
 };
 
 export const transitionDocumentState = async (
@@ -1309,7 +1356,9 @@ export const transitionDocumentState = async (
       sourceDocumentNumber: document.doc_number,
     });
 
-    return getDocumentOrThrow(tx, tenantId, documentType, documentId);
+    const updatedDoc = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  await emitSalesReadModelSnapshot(tx, tenantId, updatedDoc, { isTombstone: updatedDoc.status === 'DRAFT' || updatedDoc.status === 'VOID' });
+  return updatedDoc;
   }
 
   if (action === "VOID") {
@@ -1351,7 +1400,9 @@ export const transitionDocumentState = async (
       sourceDocumentNumber: document.doc_number,
     });
 
-    return getDocumentOrThrow(tx, tenantId, documentType, documentId);
+    const updatedDoc = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  await emitSalesReadModelSnapshot(tx, tenantId, updatedDoc, { isTombstone: updatedDoc.status === 'DRAFT' || updatedDoc.status === 'VOID' });
+  return updatedDoc;
   }
 
   if (document.status !== "CANCELLED") {
@@ -1393,7 +1444,9 @@ export const transitionDocumentState = async (
     sourceDocumentNumber: document.doc_number,
   });
 
-  return getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  const updatedDoc = await getDocumentOrThrow(tx, tenantId, documentType, documentId);
+  await emitSalesReadModelSnapshot(tx, tenantId, updatedDoc, { isTombstone: updatedDoc.status === 'DRAFT' || updatedDoc.status === 'VOID' });
+  return updatedDoc;
 };
 
 export const listSalesDocuments = catchAsync(async (req, res) => {

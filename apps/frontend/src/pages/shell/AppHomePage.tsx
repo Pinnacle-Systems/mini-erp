@@ -738,23 +738,30 @@ export function AppHomePage() {
     [activeFolderId, visibleFolders],
   );
   const activeFolderNavEntries = useMemo<UserFolderNavEntry[]>(
-    () =>
-      activeFolder
-        ? [
-            {
-              key: `${activeFolder.id}-home`,
-              label: `${activeFolder.label} Home`,
-              Icon: LayoutGrid,
-              isHome: true,
-            },
-            ...activeFolder.apps.map((app) => ({
-              key: app.id,
-              label: app.label,
-              Icon: app.Icon,
-              appId: app.id,
-            })),
-          ]
-        : [],
+    () => {
+      if (!activeFolder) return [];
+
+      const baseApps = activeFolder.apps.map((app) => ({
+        key: app.id,
+        label: app.label,
+        Icon: app.Icon,
+        appId: app.id,
+      }));
+
+      if (activeFolder.id === "finance") {
+        return baseApps;
+      }
+
+      return [
+        {
+          key: `${activeFolder.id}-home`,
+          label: `${activeFolder.label} Home`,
+          Icon: LayoutGrid,
+          isHome: true,
+        },
+        ...baseApps,
+      ];
+    },
     [activeFolder],
   );
   const shouldShowCollapsedFolderFlyout =

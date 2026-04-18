@@ -92,12 +92,25 @@ const refreshAccessToken = async () => {
   return false;
 };
 
+export class ConnectivityError extends Error {
+  constructor(message = "Network connection lost or backend unreachable") {
+    super(message);
+    this.name = "ConnectivityError";
+  }
+}
+
 export const apiFetch = async (
   path: string,
   init: RequestInit = {},
-  options: ApiFetchOptions = {}
+  options: ApiFetchOptions = {},
 ): Promise<Response> => {
   const { auth = true, retryOnUnauthorized = true } = options;
+
+  // Fast-fail: suppressed obvious network work if browser definitely knows it's offline.
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new ConnectivityError("Browser is offline");
+  }
+
   const headers = new Headers(init.headers ?? {});
 
   if (auth) {
@@ -107,11 +120,21 @@ export const apiFetch = async (
     }
   }
 
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    headers,
-    credentials: "include"
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), {
+      ...init,
+      headers,
+      credentials: "include",
+    });
+  } catch (err) {
+    // Intentional aborts (navigation, etc) should NOT be classified as connectivity errors
+    if (err instanceof Error && err.name === "AbortError") {
+      throw err;
+    }
+    // Network failures (DNS, timeout, connection refused) are classified as connectivity errors
+    throw new ConnectivityError();
+  }
 
   if (!auth || !retryOnUnauthorized || response.status !== 401) {
     return response;
@@ -128,9 +151,16 @@ export const apiFetch = async (
     retriedHeaders.set("Authorization", `Bearer ${refreshedToken}`);
   }
 
-  return fetch(apiUrl(path), {
-    ...init,
-    headers: retriedHeaders,
-    credentials: "include"
-  });
+  try {
+    return await fetch(apiUrl(path), {
+      ...init,
+      headers: retriedHeaders,
+      credentials: "include",
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw err;
+    }
+    throw new ConnectivityError();
+  }
 };

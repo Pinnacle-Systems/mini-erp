@@ -1478,7 +1478,7 @@ const assertEntityBaseVersion = async (
   }
 };
 
-const appendSyncChange = async (
+export const appendSyncChange = async (
   txAny,
   tenantId,
   entity,

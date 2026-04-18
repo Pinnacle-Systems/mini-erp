@@ -125,7 +125,24 @@ export function SyncProvider({ children }: SyncProviderProps) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [lastSyncCompletedAt, setLastSyncCompletedAt] = useState<number | null>(null);
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
   const authRedirectHandledRef = useRef(false);
+  const wasOfflineRef = useRef(!isOnline);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (identityId) {
@@ -256,7 +273,14 @@ export function SyncProvider({ children }: SyncProviderProps) {
   }, [activeStore, isBusinessSelected, loadItems, reportAppliedSyncResults, reportSyncError]);
 
   useEffect(() => {
-    if (!activeStore || role !== "USER" || !isBusinessSelected || isHydratingSession) return;
+    if (
+      !activeStore ||
+      role !== "USER" ||
+      !isBusinessSelected ||
+      isHydratingSession ||
+      !isOnline
+    )
+      return;
 
     let cancelled = false;
 
@@ -277,10 +301,26 @@ export function SyncProvider({ children }: SyncProviderProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeStore, isBusinessSelected, isHydratingSession, loadItems, reportAppliedSyncResults, reportSyncError, role]);
+  }, [
+    activeStore,
+    isBusinessSelected,
+    isHydratingSession,
+    isOnline,
+    loadItems,
+    reportAppliedSyncResults,
+    reportSyncError,
+    role,
+  ]);
 
   useEffect(() => {
-    if (!activeStore || role !== "USER" || !isBusinessSelected || isHydratingSession) return;
+    if (
+      !activeStore ||
+      role !== "USER" ||
+      !isBusinessSelected ||
+      isHydratingSession ||
+      !isOnline
+    )
+      return;
 
     const interval = window.setInterval(() => {
       void syncOnce(activeStore)
@@ -296,7 +336,38 @@ export function SyncProvider({ children }: SyncProviderProps) {
     }, 15000);
 
     return () => window.clearInterval(interval);
-  }, [activeStore, isBusinessSelected, isHydratingSession, loadItems, reportAppliedSyncResults, reportSyncError, role]);
+  }, [
+    activeStore,
+    isBusinessSelected,
+    isHydratingSession,
+    isOnline,
+    loadItems,
+    reportAppliedSyncResults,
+    reportSyncError,
+    role,
+  ]);
+
+  // Handle immediate sync on reconnect
+  useEffect(() => {
+    if (isOnline && wasOfflineRef.current) {
+      if (
+        activeStore &&
+        isBusinessSelected &&
+        !isHydratingSession &&
+        role === "USER"
+      ) {
+        void onSyncNow();
+      }
+    }
+    wasOfflineRef.current = !isOnline;
+  }, [
+    isOnline,
+    activeStore,
+    isBusinessSelected,
+    isHydratingSession,
+    role,
+    onSyncNow,
+  ]);
 
   return (
     <SyncContext.Provider

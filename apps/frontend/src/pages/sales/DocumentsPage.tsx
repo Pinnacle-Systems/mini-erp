@@ -416,7 +416,13 @@ function SalesDocumentWorkspace({
     !["CANCELLED", "VOID"].includes(activeServerDocument?.status ?? "");
 
   useEffect(() => {
-    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !financialSalesDocumentType) {
+    if (
+      !activeStore ||
+      !viewedFinancialDocumentId ||
+      !isViewingPostedDocument ||
+      !financialSalesDocumentType ||
+      !isOnline
+    ) {
       return;
     }
 
@@ -444,6 +450,7 @@ function SalesDocumentWorkspace({
   }, [
     activeStore,
     financialSalesDocumentType,
+    isOnline,
     isViewingPostedDocument,
     viewedFinancialDocumentId,
   ]);
