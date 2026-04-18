@@ -1,5 +1,6 @@
 import { apiFetch } from "../../lib/api";
 import type { InvoiceSettlementSummary } from "../finance/financial-api";
+import { listEntities } from "../../features/sync/db";
 
 export type SalesDocumentType =
   | "SALES_ESTIMATE"
@@ -166,6 +167,48 @@ const parseError = async (response: Response, fallback: string) => {
   });
 };
 
+// Reads the local Dexie projection only — no network call.
+// Used when the app is known to be offline to skip the failed request entirely.
+export const listLocalSalesDocuments = async (
+  tenantId: string,
+  documentType: SalesDocumentType,
+  limit = 50,
+): Promise<SalesDocumentDraft[]> => {
+  const records = await listEntities(tenantId, "sales_document_read_model");
+  return records
+    .filter((r) => {
+      const data = r.data as Record<string, unknown>;
+      return data.isActive === true && data.documentType === documentType;
+    })
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, limit)
+    .map((r) => {
+      const data = r.data as Record<string, unknown>;
+      return {
+        id: r.entityId,
+        documentType: data.documentType as SalesDocumentType,
+        billNumber: String(data.documentNumber ?? ""),
+        status: data.status as SalesDocumentDraft["status"],
+        postedAt: typeof data.postedAt === "string" ? data.postedAt : null,
+        grandTotal: typeof data.grandTotal === "number" ? data.grandTotal : 0,
+        customerId: typeof data.customerId === "string" ? data.customerId : null,
+        customerName: String(data.customerName ?? ""),
+        customerPhone: "",
+        customerAddress: "",
+        customerGstNo: "",
+        transactionType: "CASH" as const,
+        validUntil: "",
+        dispatchDate: "",
+        dispatchCarrier: "",
+        dispatchReference: "",
+        notes: "",
+        savedAt: r.updatedAt,
+        lines: [],
+        settlement: null,
+      };
+    });
+};
+
 export const listSalesDocuments = async (
   tenantId: string,
   documentType: SalesDocumentType,
@@ -176,16 +219,32 @@ export const listSalesDocuments = async (
     documentType,
     limit: String(limit),
   });
-  const response = await apiFetch(`/api/sales/documents?${query.toString()}`, {
-    method: "GET",
-  });
 
-  if (!response.ok) {
-    throw await parseError(response, "Unable to load documents");
+  try {
+    const response = await apiFetch(`/api/sales/documents?${query.toString()}`, {
+      method: "GET",
+    });
+
+    // Auth errors must not silently fall back — surface them so the caller handles properly
+    if (response.status === 401 || response.status === 403) {
+      throw await parseError(response, "Access denied");
+    }
+
+    if (!response.ok) {
+      throw await parseError(response, "Unable to load documents");
+    }
+
+    const payload = (await response.json()) as { documents?: SalesDocumentDraft[] };
+    return payload.documents ?? [];
+  } catch (err) {
+    // Re-throw auth errors immediately — do not mask them with stale local data
+    if (err instanceof SalesDocumentApiError && (err.status === 401 || err.status === 403)) {
+      throw err;
+    }
+
+    // Network failure or server error: fall back to the local read model projection
+    return listLocalSalesDocuments(tenantId, documentType, limit);
   }
-
-  const payload = (await response.json()) as { documents?: SalesDocumentDraft[] };
-  return payload.documents ?? [];
 };
 
 export const getSalesDocumentHistory = async (

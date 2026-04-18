@@ -19,7 +19,8 @@
     "db:reset": "prisma migrate reset --force && prisma generate && prisma db seed",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:backfill-docs": "tsx src/scripts/backfill-document-read-models.ts"
   },
   "keywords": [],
   "author": "",
