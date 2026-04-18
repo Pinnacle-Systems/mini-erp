@@ -64,7 +64,7 @@ jobs:
             pnpm install --prod --frozen-lockfile --filter backend...
             pnpm --dir apps/backend exec prisma migrate deploy
 
-            node apps/backend/prisma/seed.js
+            # node apps/backend/prisma/seed.js
 
             pm2 reload mini-erp-backend --update-env || pm2 start apps/backend/server.js --name mini-erp-backend
 

@@ -150,7 +150,10 @@ const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
 };
 
 const APP_ID_BY_ROUTE_SEGMENT = Object.fromEntries(
-  Object.entries(APP_ROUTE_SEGMENT_BY_ID).map(([appId, segment]) => [segment, appId]),
+  Object.entries(APP_ROUTE_SEGMENT_BY_ID).map(([appId, segment]) => [
+    segment,
+    appId,
+  ]),
 ) as Record<string, RoutableAppId>;
 
 const getFolderIdForAppId = (appId: UserAppId | null): UserFolderId | null => {
@@ -158,7 +161,10 @@ const getFolderIdForAppId = (appId: UserAppId | null): UserFolderId | null => {
     return null;
   }
 
-  return folders.find((folder) => folder.apps.some((app) => app.id === appId))?.id ?? null;
+  return (
+    folders.find((folder) => folder.apps.some((app) => app.id === appId))?.id ??
+    null
+  );
 };
 
 const inferFolderIdFromPathname = (pathname: string): UserFolderId | null => {
@@ -521,7 +527,9 @@ export function AppHomePage() {
   const { loading: isSyncing, onSyncNow } = useSyncActions();
   const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
-  const activeBusinessModules = useSessionStore((state) => state.activeBusinessModules);
+  const activeBusinessModules = useSessionStore(
+    (state) => state.activeBusinessModules,
+  );
   const activeBusiness = useMemo(
     () => businesses.find((business) => business.id === activeStore) ?? null,
     [activeStore, businesses],
@@ -532,7 +540,8 @@ export function AppHomePage() {
   );
   const routeDrivenAppId: UserAppId | null = useMemo(() => {
     if (!location.pathname.startsWith("/app/")) return null;
-    const appSegment = location.pathname.slice("/app/".length).split("/")[0] ?? "";
+    const appSegment =
+      location.pathname.slice("/app/".length).split("/")[0] ?? "";
     if (!appSegment) return null;
     return APP_ID_BY_ROUTE_SEGMENT[appSegment] ?? null;
   }, [location.pathname]);
@@ -540,8 +549,11 @@ export function AppHomePage() {
     () => getFolderIdForAppId(routeDrivenAppId),
     [routeDrivenAppId],
   );
-  const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(() =>
-    typeof window === "undefined" ? null : inferFolderIdFromPathname(window.location.pathname),
+  const [activeFolderId, setActiveFolderId] = useState<UserFolderId | null>(
+    () =>
+      typeof window === "undefined"
+        ? null
+        : inferFolderIdFromPathname(window.location.pathname),
   );
   const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
   const [showSessionMenu, setShowSessionMenu] = useState(false);
@@ -559,19 +571,22 @@ export function AppHomePage() {
   const previousPathnameRef = useRef(location.pathname);
   const [showAppTabsLeftFade, setShowAppTabsLeftFade] = useState(false);
   const [showAppTabsRightFade, setShowAppTabsRightFade] = useState(false);
-  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
+    () => {
+      if (typeof window === "undefined") {
+        return false;
+      }
 
-    const initialActiveStore = useSessionStore.getState().activeStore;
-    return (
-      window.localStorage.getItem(
-        `user-shell-sidebar-collapsed:${initialActiveStore ?? "global"}`,
-      ) === "true"
-    );
-  });
-  const [showCollapsedFolderFlyout, setShowCollapsedFolderFlyout] = useState(false);
+      const initialActiveStore = useSessionStore.getState().activeStore;
+      return (
+        window.localStorage.getItem(
+          `user-shell-sidebar-collapsed:${initialActiveStore ?? "global"}`,
+        ) === "true"
+      );
+    },
+  );
+  const [showCollapsedFolderFlyout, setShowCollapsedFolderFlyout] =
+    useState(false);
   const enabledModules = useMemo(
     () =>
       activeBusinessModules ?? {
@@ -634,79 +649,87 @@ export function AppHomePage() {
       return;
     }
 
-    window.localStorage.setItem(desktopSidebarStorageKey, String(isDesktopSidebarCollapsed));
+    window.localStorage.setItem(
+      desktopSidebarStorageKey,
+      String(isDesktopSidebarCollapsed),
+    );
   }, [desktopSidebarStorageKey, isDesktopSidebarCollapsed]);
 
-  const visibleFolders = useMemo(
-    () => {
-      const filteredFolders = folders
-        .filter(
-          (folder) =>
-            !folder.requiredModule || enabledModules[folder.requiredModule],
-        )
-        .map((folder) => ({
-          ...folder,
-          apps: folder.apps.filter(
-            (app) => {
-              if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
-                return false;
-              }
-
-              return (
-                !app.requiredAnyCapability?.length ||
-                app.requiredAnyCapability.some((capability) =>
-                  hasAssignedStoreCapability(activeBusiness, capability),
-                )
-              );
-            },
-          ),
-        }))
-        .filter((folder) => folder.apps.length > 0);
-
-      const hasRouteFolder = routeDrivenAppId
-        ? filteredFolders.some((folder) =>
-            folder.apps.some((app) => app.id === routeDrivenAppId),
-          )
-        : true;
-
-      if (!hasRouteFolder && routeDrivenAppId) {
-        const routeFolder = folders.find((folder) =>
-          folder.apps.some((app) => app.id === routeDrivenAppId),
-        );
-
-        if (routeFolder) {
-          const routeFolderApps = routeFolder.apps.filter((app) => {
-            if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
-              return false;
-            }
-
-            return (
-              !app.requiredAnyCapability?.length ||
-              app.requiredAnyCapability.some((capability) =>
-                hasAssignedStoreCapability(activeBusiness, capability),
-              )
-            );
-          });
-
-          if (routeFolderApps.length > 0) {
-            filteredFolders.push({
-              ...routeFolder,
-              apps: routeFolderApps,
-            });
+  const visibleFolders = useMemo(() => {
+    const filteredFolders = folders
+      .filter(
+        (folder) =>
+          !folder.requiredModule || enabledModules[folder.requiredModule],
+      )
+      .map((folder) => ({
+        ...folder,
+        apps: folder.apps.filter((app) => {
+          if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
+            return false;
           }
+
+          return (
+            !app.requiredAnyCapability?.length ||
+            app.requiredAnyCapability.some((capability) =>
+              hasAssignedStoreCapability(activeBusiness, capability),
+            )
+          );
+        }),
+      }))
+      .filter((folder) => folder.apps.length > 0);
+
+    const hasRouteFolder = routeDrivenAppId
+      ? filteredFolders.some((folder) =>
+          folder.apps.some((app) => app.id === routeDrivenAppId),
+        )
+      : true;
+
+    if (!hasRouteFolder && routeDrivenAppId) {
+      const routeFolder = folders.find((folder) =>
+        folder.apps.some((app) => app.id === routeDrivenAppId),
+      );
+
+      if (routeFolder) {
+        const routeFolderApps = routeFolder.apps.filter((app) => {
+          if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
+            return false;
+          }
+
+          return (
+            !app.requiredAnyCapability?.length ||
+            app.requiredAnyCapability.some((capability) =>
+              hasAssignedStoreCapability(activeBusiness, capability),
+            )
+          );
+        });
+
+        if (routeFolderApps.length > 0) {
+          filteredFolders.push({
+            ...routeFolder,
+            apps: routeFolderApps,
+          });
         }
       }
+    }
 
-      return filteredFolders;
-    },
-    [activeBusiness, enabledModules, isMobileViewport, isOnline, routeDrivenAppId],
-  );
+    return filteredFolders;
+  }, [
+    activeBusiness,
+    enabledModules,
+    isMobileViewport,
+    isOnline,
+    routeDrivenAppId,
+  ]);
   const visibleAppIds = useMemo(
-    () => new Set(visibleFolders.flatMap((folder) => folder.apps.map((app) => app.id))),
+    () =>
+      new Set(
+        visibleFolders.flatMap((folder) => folder.apps.map((app) => app.id)),
+      ),
     [visibleFolders],
   );
   const visibleLandingQuickActions = useMemo(
-    () => landingQuickActions.filter((action) => visibleAppIds.has(action.appId)),
+    () =>
+      landingQuickActions.filter((action) => visibleAppIds.has(action.appId)),
     [visibleAppIds],
   );
 
@@ -735,38 +758,39 @@ export function AppHomePage() {
     [activeFolder],
   );
   const shouldShowCollapsedFolderFlyout =
-    isDesktopSidebarCollapsed && showCollapsedFolderFlyout && Boolean(activeFolder);
-  const mobileVisibleFolders = useMemo(
-    () => {
-      if (visibleFolders.length <= mobileVisibleFolderCount) {
-        return visibleFolders;
-      }
+    isDesktopSidebarCollapsed &&
+    showCollapsedFolderFlyout &&
+    Boolean(activeFolder);
+  const mobileVisibleFolders = useMemo(() => {
+    if (visibleFolders.length <= mobileVisibleFolderCount) {
+      return visibleFolders;
+    }
 
-      const baseVisible = visibleFolders.slice(0, mobileVisibleFolderCount);
-      if (!activeFolderId) {
-        return baseVisible;
-      }
+    const baseVisible = visibleFolders.slice(0, mobileVisibleFolderCount);
+    if (!activeFolderId) {
+      return baseVisible;
+    }
 
-      if (baseVisible.some((folder) => folder.id === activeFolderId)) {
-        return baseVisible;
-      }
+    if (baseVisible.some((folder) => folder.id === activeFolderId)) {
+      return baseVisible;
+    }
 
-      const activeFolderEntry = visibleFolders.find((folder) => folder.id === activeFolderId);
-      if (!activeFolderEntry) {
-        return baseVisible;
-      }
+    const activeFolderEntry = visibleFolders.find(
+      (folder) => folder.id === activeFolderId,
+    );
+    if (!activeFolderEntry) {
+      return baseVisible;
+    }
 
-      return [...baseVisible.slice(0, Math.max(0, mobileVisibleFolderCount - 1)), activeFolderEntry];
-    },
-    [activeFolderId, mobileVisibleFolderCount, visibleFolders],
-  );
-  const mobileOverflowFolders = useMemo(
-    () => {
-      const visibleIds = new Set(mobileVisibleFolders.map((folder) => folder.id));
-      return visibleFolders.filter((folder) => !visibleIds.has(folder.id));
-    },
-    [mobileVisibleFolders, visibleFolders],
-  );
+    return [
+      ...baseVisible.slice(0, Math.max(0, mobileVisibleFolderCount - 1)),
+      activeFolderEntry,
+    ];
+  }, [activeFolderId, mobileVisibleFolderCount, visibleFolders]);
+  const mobileOverflowFolders = useMemo(() => {
+    const visibleIds = new Set(mobileVisibleFolders.map((folder) => folder.id));
+    return visibleFolders.filter((folder) => !visibleIds.has(folder.id));
+  }, [mobileVisibleFolders, visibleFolders]);
 
   const updateAppTabsOverflow = useCallback(() => {
     const container = appTabsScrollRef.current;
@@ -797,7 +821,10 @@ export function AppHomePage() {
       return;
     }
 
-    if (!activeFolderId || !visibleFolders.some((folder) => folder.id === activeFolderId)) {
+    if (
+      !activeFolderId ||
+      !visibleFolders.some((folder) => folder.id === activeFolderId)
+    ) {
       queueMicrotask(() => {
         setActiveFolderId(visibleFolders[0]?.id ?? null);
       });
@@ -848,7 +875,9 @@ export function AppHomePage() {
       inline: "nearest",
     });
 
-    const animationFrameId = window.requestAnimationFrame(updateAppTabsOverflow);
+    const animationFrameId = window.requestAnimationFrame(
+      updateAppTabsOverflow,
+    );
     return () => {
       window.cancelAnimationFrame(animationFrameId);
     };
@@ -888,7 +917,10 @@ export function AppHomePage() {
       const slotWidth = MOBILE_NAV_BUTTON_WIDTH_PX + MOBILE_NAV_BUTTON_GAP_PX;
       const nextCount = Math.max(
         1,
-        Math.min(visibleFolders.length, Math.floor((availableWidth + MOBILE_NAV_BUTTON_GAP_PX) / slotWidth)),
+        Math.min(
+          visibleFolders.length,
+          Math.floor((availableWidth + MOBILE_NAV_BUTTON_GAP_PX) / slotWidth),
+        ),
       );
       setMobileVisibleFolderCount(nextCount);
     };
@@ -957,32 +989,37 @@ export function AppHomePage() {
           <CardHeader className="mb-0">
             <CardTitle className="text-base">Today Ops</CardTitle>
             <CardDescription className="text-xs">
-              Placeholder dashboard for <strong>{activeBusinessName}</strong>. Replace each card with live data as modules are implemented.
+              Placeholder dashboard for <strong>{activeBusinessName}</strong>.
+              Replace each card with live data as modules are implemented.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 sm:grid-cols-3">
-              {visibleLandingQuickActions.map((action) => (
-                <LandingQuickActionButton
-                  key={action.label}
-                  type="button"
-                  Icon={action.Icon}
-                  label={action.label}
-                  description={action.description}
-                  onClick={() => {
-                    setActiveFolderId(action.folderId);
-                    handleAppSelect(action.appId);
-                  }}
-                />
-              ))}
+            {visibleLandingQuickActions.map((action) => (
+              <LandingQuickActionButton
+                key={action.label}
+                type="button"
+                Icon={action.Icon}
+                label={action.label}
+                description={action.description}
+                onClick={() => {
+                  setActiveFolderId(action.folderId);
+                  handleAppSelect(action.appId);
+                }}
+              />
+            ))}
           </CardContent>
-          </Card>
+        </Card>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:col-span-4">
           {landingBusinessPulse.map((metric) => (
             <Card key={metric.label} className="p-2">
               <CardContent className="p-0">
-                <p className="text-[11px] text-muted-foreground">{metric.label}</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">{metric.value}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {metric.label}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {metric.value}
+                </p>
               </CardContent>
             </Card>
           ))}
@@ -990,12 +1027,12 @@ export function AppHomePage() {
 
         <div className="grid gap-2 lg:col-span-8 lg:min-h-0 lg:grid-cols-2">
           <Card className="p-2">
-          <CardHeader className="mb-1 p-0">
-            <CardTitle className="text-sm">Needs Attention</CardTitle>
-            <CardDescription className="text-xs">
-              Placeholder alert layout for future operational exceptions.
-            </CardDescription>
-          </CardHeader>
+            <CardHeader className="mb-1 p-0">
+              <CardTitle className="text-sm">Needs Attention</CardTitle>
+              <CardDescription className="text-xs">
+                Placeholder alert layout for future operational exceptions.
+              </CardDescription>
+            </CardHeader>
             <CardContent className="grid gap-2 p-0">
               {landingAttentionCards.map((card) => (
                 <LandingAttentionCard
@@ -1009,12 +1046,12 @@ export function AppHomePage() {
           </Card>
 
           <Card className="p-2">
-          <CardHeader className="mb-1 p-0">
-            <CardTitle className="text-sm">Recent Work</CardTitle>
-            <CardDescription className="text-xs">
-              Placeholder activity layout until real history is wired in.
-            </CardDescription>
-          </CardHeader>
+            <CardHeader className="mb-1 p-0">
+              <CardTitle className="text-sm">Recent Work</CardTitle>
+              <CardDescription className="text-xs">
+                Placeholder activity layout until real history is wired in.
+              </CardDescription>
+            </CardHeader>
             <CardContent className="p-0">
               <ul className="space-y-1.5">
                 {landingRecentActivity.slice(0, 4).map((entry) => (
@@ -1034,18 +1071,20 @@ export function AppHomePage() {
           </CardHeader>
           <CardContent className="grid gap-2 p-0">
             <div className="rounded-lg border border-dashed border-border/80 bg-muted/65 px-3 py-2 text-[11px] text-muted-foreground">
-              Search controls will appear here when global lookup is implemented.
+              Search controls will appear here when global lookup is
+              implemented.
             </div>
             <div className="rounded-lg border border-border/80 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
+              <p>Sync summary placeholder for the current business.</p>
               <p>
-                Sync summary placeholder for the current business.
-              </p>
-              <p>
-                Current queued item count can be shown here once the shell status card is finalized.
+                Current queued item count can be shown here once the shell
+                status card is finalized.
               </p>
               <p>
                 Current local outbox count:{" "}
-                <span className="font-semibold text-foreground">{pendingOutboxCount}</span>
+                <span className="font-semibold text-foreground">
+                  {pendingOutboxCount}
+                </span>
               </p>
             </div>
             <div className="flex justify-end">
@@ -1097,7 +1136,9 @@ export function AppHomePage() {
                     label={folder.label}
                     active={activeFolder?.id === folder.id}
                     iconOnly
-                    aria-current={activeFolder?.id === folder.id ? "page" : undefined}
+                    aria-current={
+                      activeFolder?.id === folder.id ? "page" : undefined
+                    }
                   />
                 ))}
               </div>
@@ -1158,7 +1199,11 @@ export function AppHomePage() {
                           }}
                           Icon={entry.Icon}
                           label={entry.label}
-                          active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
+                          active={
+                            entry.isHome
+                              ? !routeDrivenAppId
+                              : routeDrivenAppId === entry.appId
+                          }
                           stacked
                           className="border-border/60 bg-transparent shadow-none hover:bg-card/55"
                         />
@@ -1196,7 +1241,9 @@ export function AppHomePage() {
                       Icon={folder.Icon}
                       label={folder.label}
                       active={activeFolder?.id === folder.id}
-                      aria-current={activeFolder?.id === folder.id ? "page" : undefined}
+                      aria-current={
+                        activeFolder?.id === folder.id ? "page" : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -1223,7 +1270,11 @@ export function AppHomePage() {
                         }}
                         Icon={entry.Icon}
                         label={entry.label}
-                        active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
+                        active={
+                          entry.isHome
+                            ? !routeDrivenAppId
+                            : routeDrivenAppId === entry.appId
+                        }
                         stacked
                         className="border-border/60 bg-transparent shadow-none hover:bg-card/55"
                       />
@@ -1268,7 +1319,7 @@ export function AppHomePage() {
           )}
         </aside>
 
-        <section className="min-w-0 space-y-2 lg:flex lg:min-h-0 lg:flex-col">
+        <section className="min-w-0 space-y-2 pb-[calc(env(safe-area-inset-bottom)+5rem)] lg:pb-0 lg:flex lg:min-h-0 lg:flex-col">
           <div className="min-w-0 rounded-xl border border-border/80 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_24px_-20px_rgba(15,23,42,0.18)] lg:hidden">
             <div className="mb-3">
               <p className="text-xs font-semibold tracking-[0.01em] text-foreground/90">
@@ -1300,7 +1351,11 @@ export function AppHomePage() {
                     }}
                     Icon={entry.Icon}
                     label={entry.label}
-                    active={entry.isHome ? !routeDrivenAppId : routeDrivenAppId === entry.appId}
+                    active={
+                      entry.isHome
+                        ? !routeDrivenAppId
+                        : routeDrivenAppId === entry.appId
+                    }
                   />
                 ))}
               </div>
@@ -1389,7 +1444,9 @@ export function AppHomePage() {
                   label={folder.label}
                   active={activeFolder?.id === folder.id}
                   compact
-                  aria-current={activeFolder?.id === folder.id ? "page" : undefined}
+                  aria-current={
+                    activeFolder?.id === folder.id ? "page" : undefined
+                  }
                 />
               ))}
             </div>
