@@ -50,6 +50,12 @@ class SyncDatabase extends Dexie {
       entities: "[tenantId+entity+entityId], tenantId, entity, updatedAt",
       syncResults: "&mutationId, [tenantId+processedAt], tenantId, processedAt, resultStatus, entity"
     });
+    this.version(3).stores({
+      outbox: "&mutationId, [tenantId+status], tenantId, status, entity, createdAt",
+      syncMeta: "[tenantId+key], tenantId, key",
+      entities: "[tenantId+entity+entityId], tenantId, entity, updatedAt",
+      syncResults: "&mutationId, [tenantId+processedAt], tenantId, processedAt, resultStatus, entity"
+    });
   }
 }
 

@@ -46,6 +46,7 @@ import {
   deleteSalesDocumentDraft,
   getSalesConversionBalance,
   getSalesDocumentHistory,
+  listLocalSalesDocuments,
   listSalesDocuments,
   postSalesDocumentDraft,
   SalesDocumentApiError,
@@ -967,17 +968,17 @@ export function useSalesDocumentWorkspace({
       return;
     }
 
-    if (!isOnline) {
-      setServerInvoicesLoading(false);
-      setServerInvoicesError(null);
-      return;
-    }
-
     let cancelled = false;
     setServerInvoicesLoading(true);
     setServerInvoicesError(null);
 
-    void listSalesDocuments(activeStore, config.documentType)
+    // When offline: skip the network call entirely and read directly from the local
+    // projection. When online: attempt the API call with Dexie as the error fallback.
+    const fetchDocuments = isOnline
+      ? listSalesDocuments(activeStore, config.documentType)
+      : listLocalSalesDocuments(activeStore, config.documentType);
+
+    void fetchDocuments
       .then((invoices) => {
         if (cancelled) return;
         setServerInvoices(invoices);
@@ -2109,6 +2110,18 @@ export function useSalesDocumentWorkspace({
     try {
       setDraftMutationLoading(true);
       if (source === "server") {
+        if (!isOnline) {
+          const message = `Cannot delete server drafts while offline. Connect to the internet to perform this action.`;
+          setSaveMessage(message);
+          showToast({
+            title: "Action unavailable",
+            description: message,
+            tone: "error",
+            durationMs: 5000,
+          });
+          return;
+        }
+
         if (!activeStore) {
           throw new Error(
             `Select a business before deleting this ${config.singularLabel} draft.`,
@@ -2420,10 +2433,16 @@ export function useSalesDocumentWorkspace({
   };
 
   const postDraft = async (options?: PostDraftOptions): Promise<PostDraftResult> => {
-    if (postValidationMessage) {
-      setSaveMessage(postValidationMessage);
-      showPostErrorToast(postValidationMessage);
-      return { ok: false, errorMessage: postValidationMessage };
+    if (!isOnline) {
+      const message = `Internet connection required to post this ${config.singularLabel}. Your progress is saved as a local draft.`;
+      setSaveMessage(message);
+      showToast({
+        title: "Connection required",
+        description: message,
+        tone: "error",
+        durationMs: 7000,
+      });
+      return { ok: false, errorMessage: message };
     }
 
     setDraftMutationLoading(true);
@@ -2529,6 +2548,18 @@ export function useSalesDocumentWorkspace({
     action: SalesDocumentAction,
     cancelReason?: SalesDocumentCancelReason | null,
   ) => {
+    if (!isOnline) {
+      const message = `Connection required to update ${config.singularLabel} status.`;
+      setSaveMessage(message);
+      showToast({
+        title: "Connection required",
+        description: message,
+        tone: "error",
+        durationMs: 5000,
+      });
+      return;
+    }
+
     if (!activeStore || serverActionDocumentId) {
       return;
     }
