@@ -35,6 +35,7 @@ import {
   type StockVariantOption,
 } from "../../features/sync/engine";
 import { useToast } from "../../features/toast/useToast";
+import { useConnectivity } from "../../hooks/useConnectivity";
 
 const STOCK_REASON_OPTIONS: Array<{
   value: StockAdjustmentReason;
@@ -119,6 +120,7 @@ export function AdjustmentsPage() {
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const setActiveLocation = useSessionStore((state) => state.setActiveLocation);
   const { showToast } = useToast();
+  const { isOnline, classifyError } = useConnectivity();
   const [options, setOptions] = useState<StockVariantOption[]>([]);
   const [rows, setRows] = useState<AdjustmentDraftRow[]>(() => buildInitialRows());
   const [isLoadingOptions, setIsLoadingOptions] = useState(false);
@@ -225,7 +227,9 @@ export function AdjustmentsPage() {
     const load = async () => {
       setIsLoadingOptions(true);
       try {
-        await syncOnce(activeStore);
+        if (isOnline) {
+          await syncOnce(activeStore);
+        }
         const nextOptions = await getLocalStockVariantOptions(activeStore);
         if (cancelled) return;
 
@@ -260,7 +264,7 @@ export function AdjustmentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeStore, isBusinessSelected]);
+  }, [activeStore, isBusinessSelected, isOnline]);
 
   useEffect(() => {
     if (!pendingFocusRowId) {
@@ -377,7 +381,17 @@ export function AdjustmentsPage() {
           locationId: resolvedLocationId,
         });
       }
-      await syncOnce(activeStore);
+      let queuedOffline = !isOnline;
+      if (isOnline) {
+        try {
+          await syncOnce(activeStore);
+        } catch (syncError) {
+          if (!classifyError(syncError).isConnectivityError) {
+            throw syncError;
+          }
+          queuedOffline = true;
+        }
+      }
 
       const submittedRowIds = new Set(readyRows.map(({ row }) => row.id));
       setRows((current) =>
@@ -388,13 +402,13 @@ export function AdjustmentsPage() {
         ),
       );
       const nextMessage =
-        navigator.onLine
+        queuedOffline
           ? readyRows.length === 1
-            ? `1 stock adjustment recorded for ${activeLocation?.name ?? "the selected location"}.`
-            : `${readyRows.length} stock adjustments recorded for ${activeLocation?.name ?? "the selected location"}.`
-          : readyRows.length === 1
             ? `1 stock adjustment queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`
-            : `${readyRows.length} stock adjustments queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`;
+            : `${readyRows.length} stock adjustments queued offline for ${activeLocation?.name ?? "the selected location"} and will sync automatically.`
+          : readyRows.length === 1
+            ? `1 stock adjustment recorded for ${activeLocation?.name ?? "the selected location"}.`
+            : `${readyRows.length} stock adjustments recorded for ${activeLocation?.name ?? "the selected location"}.`;
       setMessage(nextMessage);
       showAdjustmentToast("success", nextMessage);
     } catch (nextError) {

@@ -4,6 +4,7 @@ import { catchAsync } from "../../shared/utils/catchAsync.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../shared/utils/errors.js";
 import { getBusinessCapabilitiesFromLicense } from "../license/license.service.js";
 import accountsService from "../accounts/accounts.service.js";
+import { appendSyncChange } from "../sync/sync.service.js";
 import {
   mapDocumentHistoryEntries,
   recordDocumentHistory,
@@ -200,6 +201,49 @@ const parsePartySnapshot = (value: unknown): PartySnapshot | null => {
     address,
     taxId,
   };
+};
+
+const emitPurchaseReadModelSnapshot = async (
+  tx: PurchaseTransactionClient,
+  tenantId: string,
+  document: PurchaseDocumentRecord | { id: string },
+  options?: { isTombstone?: boolean },
+) => {
+  if (options?.isTombstone) {
+    await appendSyncChange(tx, tenantId, "purchase_document_read_model", document.id, "UPDATE", {
+      id: document.id,
+      isActive: false,
+      deletedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const fullDocument = document as PurchaseDocumentRecord;
+  const partySnapshot = parsePartySnapshot(fullDocument.party_snapshot);
+
+  await appendSyncChange(
+    tx,
+    tenantId,
+    "purchase_document_read_model",
+    fullDocument.id,
+    "UPDATE",
+    {
+      id: fullDocument.id,
+      documentType: fullDocument.type,
+      documentNumber: fullDocument.doc_number,
+      status: fullDocument.status,
+      postedAt: fullDocument.posted_at?.toISOString() ?? null,
+      grandTotal: Number(fullDocument.grand_total ?? 0),
+      settlementSnapshot: null,
+      supplierId: fullDocument.party_id,
+      supplierName: partySnapshot?.name ?? "",
+      locationId: fullDocument.location_id ?? null,
+      locationName: fullDocument.location_name_snapshot ?? "",
+      isActive: true,
+      deletedAt: null,
+      updatedAt: fullDocument.updated_at.toISOString(),
+    },
+  );
 };
 
 const parseDocumentNumberSequence = (value: string, prefix: string) => {
@@ -904,7 +948,16 @@ export const saveDraftPurchaseDocument = async (
       },
     });
 
-    return getPurchaseDocumentOrThrow(tx, input.tenantId, input.documentType, documentId);
+    const updatedDocument = await getPurchaseDocumentOrThrow(
+      tx,
+      input.tenantId,
+      input.documentType,
+      documentId,
+    );
+    await emitPurchaseReadModelSnapshot(tx, input.tenantId, updatedDocument, {
+      isTombstone: updatedDocument.status === "DRAFT" || updatedDocument.status === "VOID",
+    });
+    return updatedDocument;
   }
 
   const created = await tx.document.create({
@@ -973,7 +1026,16 @@ export const saveDraftPurchaseDocument = async (
     },
   });
 
-  return getPurchaseDocumentOrThrow(tx, input.tenantId, input.documentType, created.id);
+  const createdDocument = await getPurchaseDocumentOrThrow(
+    tx,
+    input.tenantId,
+    input.documentType,
+    created.id,
+  );
+  await emitPurchaseReadModelSnapshot(tx, input.tenantId, createdDocument, {
+    isTombstone: createdDocument.status === "DRAFT" || createdDocument.status === "VOID",
+  });
+  return createdDocument;
 };
 
 export const postDraftPurchaseDocument = async (
@@ -1142,7 +1204,11 @@ export const postDraftPurchaseDocument = async (
     sourceDocumentNumber: document.doc_number,
   });
 
-  return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+  const postedDocument = await getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+  await emitPurchaseReadModelSnapshot(tx, tenantId, postedDocument, {
+    isTombstone: postedDocument.status === "DRAFT" || postedDocument.status === "VOID",
+  });
+  return postedDocument;
 };
 
 export const transitionPurchaseDocumentState = async (
@@ -1232,7 +1298,11 @@ export const transitionPurchaseDocumentState = async (
       sourceDocumentNumber: document.doc_number,
     });
 
-    return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+    const cancelledDocument = await getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+    await emitPurchaseReadModelSnapshot(tx, tenantId, cancelledDocument, {
+      isTombstone: cancelledDocument.status === "DRAFT" || cancelledDocument.status === "VOID",
+    });
+    return cancelledDocument;
   }
 
   if (action === "VOID") {
@@ -1274,7 +1344,11 @@ export const transitionPurchaseDocumentState = async (
       sourceDocumentNumber: document.doc_number,
     });
 
-    return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+    const voidedDocument = await getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+    await emitPurchaseReadModelSnapshot(tx, tenantId, voidedDocument, {
+      isTombstone: voidedDocument.status === "DRAFT" || voidedDocument.status === "VOID",
+    });
+    return voidedDocument;
   }
 
   if (document.status !== "CANCELLED") {
@@ -1330,7 +1404,11 @@ export const transitionPurchaseDocumentState = async (
     sourceDocumentNumber: document.doc_number,
   });
 
-  return getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+  const reopenedDocument = await getPurchaseDocumentOrThrow(tx, tenantId, documentType, documentId);
+  await emitPurchaseReadModelSnapshot(tx, tenantId, reopenedDocument, {
+    isTombstone: reopenedDocument.status === "DRAFT" || reopenedDocument.status === "VOID",
+  });
+  return reopenedDocument;
 };
 
 export const listPurchaseDocuments = catchAsync(async (req, res) => {
@@ -1591,6 +1669,8 @@ export const deletePurchaseDocument = catchAsync(async (req, res) => {
         id: documentId,
       },
     });
+
+    await emitPurchaseReadModelSnapshot(tx, tenantId, { id: documentId }, { isTombstone: true });
   });
 
   res.json({ success: true });

@@ -43,7 +43,7 @@ Offline support is intentionally scoped and is not uniform across all data types
 - **Offline reviewing of Synced Entities**: Allowed. Entities have a bounded local cache and can be viewed locally between sync cycles.
 - **Offline editing of Local Drafts**: Allowed. Unposted document drafts (sales, purchases) can be captured offline.
 - **Offline Posting & Authoritative Transitions**: Not allowed. These require immediate backend validation and side-effect guarantees.
-- **Offline Viewing of Posted Documents**: Not explicitly supported. Transactional documents (sales, purchases) are primarily real-time resources. If offline viewing becomes a requirement, it must be explicitly built as a bounded read-side sync projection, not by treating documents as generic synced entities.
+- **Offline Viewing of Posted Documents**: Not supported by default. Sales and purchases may expose bounded offline list/review through dedicated synced read-side projections such as `sales_document_read_model` and `purchase_document_read_model`, but this exception is limited to browse/list use. Transactional documents must not be treated as generic synced entities, and full authoritative detail workflows remain online-only unless explicitly designed.
 
 ## API Contract Rule
 
