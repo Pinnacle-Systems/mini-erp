@@ -14,8 +14,8 @@
     "android:build:debug:win": "pnpm cap:sync && cd android && gradlew assembleDebug",
     "android:build:debug:unix": "pnpm cap:sync && cd android && ./gradlew assembleDebug",
     "android:prepare:release": "node ./scripts/prepare-android-release.mjs",
-    "android:build:release:win": "pnpm run android:prepare:release && pnpm cap:sync && cd android && gradlew bundleRelease",
-    "android:build:release:unix": "pnpm run android:prepare:release && pnpm cap:sync && cd android && ./gradlew bundleRelease",
+    "android:build:release:win": "pnpm run android:prepare:release && pnpm cap:sync && cd android && gradlew assembleRelease",
+    "android:build:release:unix": "pnpm run android:prepare:release && pnpm cap:sync && cd android && ./gradlew assembleRelease",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"

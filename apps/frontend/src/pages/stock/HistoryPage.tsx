@@ -30,6 +30,7 @@ import {
   type StockActivitySourceType,
 } from "../../features/sync/engine";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
+import { useConnectivity } from "../../hooks/useConnectivity";
 
 const SOURCE_FILTER_OPTIONS: Array<{
   value: "ALL" | StockActivitySourceType;
@@ -99,7 +100,8 @@ export function HistoryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debouncedQuery = useDebouncedValue(query, 250);
-  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+  const { isOnline, classifyError } = useConnectivity();
+  const isOffline = !isOnline;
 
   useEffect(() => {
     if (!activeStore || !isBusinessSelected) {
@@ -117,16 +119,22 @@ export function HistoryPage() {
         if (!cancelled) {
           setRecentRows(localRows);
         }
-        await syncOnce(activeStore);
-        const syncedRows = await getInitialLocalStockActivityHistory(activeStore);
-        if (!cancelled) {
-          setRecentRows(syncedRows);
-          setError(null);
+        if (isOnline) {
+          await syncOnce(activeStore);
+          const syncedRows = await getInitialLocalStockActivityHistory(activeStore);
+          if (!cancelled) {
+            setRecentRows(syncedRows);
+            setError(null);
+          }
         }
       } catch (nextError) {
         console.error(nextError);
         if (!cancelled) {
-          setError(toUserStockHistoryErrorMessage(nextError));
+          setError(
+            classifyError(nextError).isConnectivityError
+              ? "Showing recent local stock activity. Fresh sync will resume when the connection recovers."
+              : toUserStockHistoryErrorMessage(nextError),
+          );
         }
       } finally {
         if (!cancelled) {
@@ -140,7 +148,7 @@ export function HistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeStore, isBusinessSelected]);
+  }, [activeStore, classifyError, isBusinessSelected, isOnline]);
 
   useEffect(() => {
     if (mode !== "HISTORICAL" || !activeStore || !isBusinessSelected || isOffline) {
@@ -198,13 +206,19 @@ export function HistoryPage() {
         setHasMore(result.hasMore);
         setAuditStartDate(result.auditStartDate);
       } else {
-        await syncOnce(activeStore);
+        if (isOnline) {
+          await syncOnce(activeStore);
+        }
         setRecentRows(await getInitialLocalStockActivityHistory(activeStore));
       }
       setError(null);
     } catch (nextError) {
       console.error(nextError);
-      setError(toUserStockHistoryErrorMessage(nextError));
+      setError(
+        classifyError(nextError).isConnectivityError
+          ? "Showing recent local stock activity. Fresh sync will resume when the connection recovers."
+          : toUserStockHistoryErrorMessage(nextError),
+      );
     } finally {
       setLoading(false);
     }

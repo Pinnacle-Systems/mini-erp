@@ -290,6 +290,7 @@ function PurchaseDocumentWorkspace({
     historyEntries,
     historyError,
     historyLoading,
+    isOnline,
     isEditorRoute,
     isViewingPostedDocument,
     itemOptions,
@@ -297,6 +298,7 @@ function PurchaseDocumentWorkspace({
     lookupError,
     lookupLoading,
     notes,
+    openDocumentRow,
     openSupplierCreate,
     openRowMenuId,
     parentDocumentNumber,
@@ -428,7 +430,13 @@ function PurchaseDocumentWorkspace({
     : null;
 
   useEffect(() => {
-    if (!activeStore || !viewedFinancialDocumentId || !isViewingPostedDocument || !financialPurchaseDocumentType) {
+    if (
+      !activeStore ||
+      !viewedFinancialDocumentId ||
+      !isViewingPostedDocument ||
+      !financialPurchaseDocumentType ||
+      !isOnline
+    ) {
       return;
     }
 
@@ -456,6 +464,7 @@ function PurchaseDocumentWorkspace({
   }, [
     activeStore,
     financialPurchaseDocumentType,
+    isOnline,
     isViewingPostedDocument,
     viewedFinancialDocumentId,
   ]);
@@ -629,7 +638,7 @@ function PurchaseDocumentWorkspace({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => navigate(`${config.routePath}/${row.id}`)}
+                      onClick={() => openDocumentRow(row)}
                     >
                       {row.status === "DRAFT" ? "Open Draft" : "View"}
                     </Button>

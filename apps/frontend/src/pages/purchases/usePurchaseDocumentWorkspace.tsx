@@ -31,6 +31,7 @@ import {
   deletePurchaseDocumentDraft,
   getPurchaseConversionBalance,
   getPurchaseDocumentHistory,
+  listLocalPurchaseDocuments,
   listPurchaseDocuments,
   postPurchaseDocumentDraft,
   PurchaseDocumentApiError,
@@ -45,6 +46,7 @@ import {
   type PurchaseDocumentLineDraft,
   type PurchaseDocumentType,
 } from "./purchase-documents-api";
+import { useConnectivity } from "../../hooks/useConnectivity";
 
 export type PurchaseDocumentPageConfig = {
   documentType: PurchaseDocumentType;
@@ -105,7 +107,14 @@ export type PurchaseDocumentDuplicateWarnings = {
   }>;
 };
 
+type PurchaseDraftSource = "local" | "server";
+
+type SavedPurchaseDraft = PurchaseDocumentDraft & {
+  duplicateMeta?: PurchaseDocumentDuplicateMeta | null;
+};
+
 export type PurchaseListRow = PurchaseDocumentDraft & {
+  source: PurchaseDraftSource;
   total: number;
   timestamp: string;
 };
@@ -499,6 +508,71 @@ const toConvertedLine = (line: PurchaseConversionBalanceLine) =>
     linkedRemainingQuantity: line.remainingQuantity,
   });
 
+const loadStoredDrafts = (
+  activeStore: string | null,
+  documentType: PurchaseDocumentType,
+  numberPrefix: string,
+) => {
+  if (!activeStore || typeof window === "undefined") {
+    return [] as SavedPurchaseDraft[];
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(
+      `mini_erp_${documentType.toLowerCase()}_drafts_v1:${activeStore}`,
+    );
+    const parsed = storedValue ? (JSON.parse(storedValue) as unknown) : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map((entry, index) => {
+      const draft =
+        entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+      const lines = Array.isArray(draft.lines)
+        ? draft.lines.map((line) =>
+            createPurchaseLine(
+              line && typeof line === "object" ? (line as Partial<PurchaseLine>) : undefined,
+            ),
+          )
+        : buildPurchaseStarterLines();
+
+      return {
+        id:
+          typeof draft.id === "string" && draft.id.trim()
+            ? draft.id
+            : `draft-${index + 1}`,
+        documentType,
+        billNumber:
+          typeof draft.billNumber === "string" && draft.billNumber.trim()
+            ? draft.billNumber
+            : getNextDocumentNumber(numberPrefix, [], 4),
+        settlementMode: draft.settlementMode === "CREDIT" ? "CREDIT" : "CASH",
+        supplierId: typeof draft.supplierId === "string" ? draft.supplierId : null,
+        supplierName: typeof draft.supplierName === "string" ? draft.supplierName : "",
+        supplierPhone: typeof draft.supplierPhone === "string" ? draft.supplierPhone : "",
+        supplierAddress:
+          typeof draft.supplierAddress === "string" ? draft.supplierAddress : "",
+        supplierTaxId: typeof draft.supplierTaxId === "string" ? draft.supplierTaxId : "",
+        notes: typeof draft.notes === "string" ? draft.notes : "",
+        parentId: typeof draft.parentId === "string" ? draft.parentId : null,
+        parentDocumentNumber:
+          typeof draft.parentDocumentNumber === "string" ? draft.parentDocumentNumber : "",
+        locationId: typeof draft.locationId === "string" ? draft.locationId : null,
+        locationName: typeof draft.locationName === "string" ? draft.locationName : "",
+        savedAt:
+          typeof draft.savedAt === "string" && draft.savedAt.trim()
+            ? draft.savedAt
+            : new Date().toISOString(),
+        lines,
+        duplicateMeta: normalizePurchaseDocumentDuplicateMeta(draft.duplicateMeta),
+      } satisfies SavedPurchaseDraft;
+    });
+  } catch {
+    return [] as SavedPurchaseDraft[];
+  }
+};
+
 export function usePurchaseDocumentWorkspace({
   config,
   activeStore,
@@ -515,12 +589,20 @@ export function usePurchaseDocumentWorkspace({
   const { documentId } = useParams<PurchaseDocumentRouteParams>();
   const { showToast } = useToast();
   const handledReturnStateKeyRef = useRef<string | null>(null);
+  const storageKey = activeStore
+    ? `mini_erp_${config.documentType.toLowerCase()}_drafts_v1:${activeStore}`
+    : null;
+  const { isOnline, classifyError } = useConnectivity();
   const businesses = useSessionStore((state) => state.businesses);
   const activeBusiness = useMemo(
     () => businesses.find((business) => business.id === activeStore) ?? null,
     [activeStore, businesses],
   );
   const activeBusinessName = activeBusiness?.name ?? "Active Business";
+  const [initialDrafts] = useState<SavedPurchaseDraft[]>(() =>
+    loadStoredDrafts(activeStore, config.documentType, config.numberPrefix),
+  );
+  const [drafts, setDrafts] = useState<SavedPurchaseDraft[]>(initialDrafts);
   const [documents, setDocuments] = useState<PurchaseDocumentDraft[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
@@ -538,6 +620,7 @@ export function usePurchaseDocumentWorkspace({
   const [selectedCancelReason, setSelectedCancelReason] =
     useState<PurchaseDocumentCancelReason>("OTHER");
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [activeDraftSource, setActiveDraftSource] = useState<PurchaseDraftSource | null>(null);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [parentId, setParentId] = useState<string | null>(null);
   const [parentDocumentNumber, setParentDocumentNumber] = useState("");
@@ -621,15 +704,27 @@ export function usePurchaseDocumentWorkspace({
     [loadPersistedDuplicateMetaMap],
   );
 
+  const persistDrafts = useCallback(
+    (nextDrafts: SavedPurchaseDraft[]) => {
+      setDrafts(nextDrafts);
+      if (storageKey && typeof window !== "undefined") {
+        window.localStorage.setItem(storageKey, JSON.stringify(nextDrafts));
+      }
+    },
+    [storageKey],
+  );
+
   const isViewingPostedDocument = useMemo(() => {
     const current = documents.find((entry) => entry.id === viewingDocumentId);
-    return Boolean(current && current.status !== "DRAFT");
-  }, [documents, viewingDocumentId]);
+    return activeDraftSource === "server" && Boolean(current && current.status !== "DRAFT");
+  }, [activeDraftSource, documents, viewingDocumentId]);
 
-  const activeDocument = useMemo(
-    () => documents.find((entry) => entry.id === (viewingDocumentId ?? activeDraftId)) ?? null,
-    [activeDraftId, documents, viewingDocumentId],
-  );
+  const activeDocument = useMemo(() => {
+    if (activeDraftSource === "local") {
+      return drafts.find((entry) => entry.id === activeDraftId) ?? null;
+    }
+    return documents.find((entry) => entry.id === (viewingDocumentId ?? activeDraftId)) ?? null;
+  }, [activeDraftId, activeDraftSource, documents, drafts, viewingDocumentId]);
 
   const totals = useMemo(
     () =>
@@ -671,21 +766,31 @@ export function usePurchaseDocumentWorkspace({
 
   const documentRows = useMemo<PurchaseListRow[]>(
     () =>
-      documents.map((document) => ({
-        ...document,
-        total: getDocumentTotal(document),
-        timestamp: document.savedAt ?? document.postedAt ?? "",
-      })),
-    [documents],
+      [
+        ...drafts.map((draft) => ({
+          ...draft,
+          source: "local" as const,
+          total: getDocumentTotal(draft),
+          timestamp: draft.savedAt ?? "",
+        })),
+        ...documents.map((document) => ({
+          ...document,
+          source: "server" as const,
+          total: getDocumentTotal(document),
+          timestamp: document.savedAt ?? document.postedAt ?? "",
+        })),
+      ].sort((left, right) => right.timestamp.localeCompare(left.timestamp)),
+    [documents, drafts],
   );
 
   const resetWorkspace = useCallback(
     (nextDocuments: PurchaseDocumentDraft[]) => {
       setActiveDraftId(null);
+      setActiveDraftSource(null);
       setViewingDocumentId(null);
       setParentId(null);
       setParentDocumentNumber("");
-      setBillNumber(getNextBillNumber(config.numberPrefix, nextDocuments));
+      setBillNumber(getNextBillNumber(config.numberPrefix, [...nextDocuments, ...drafts]));
       setSettlementMode(config.defaultSettlementMode ?? "CASH");
       setSupplierId(null);
       setSupplierName("");
@@ -698,11 +803,11 @@ export function usePurchaseDocumentWorkspace({
       setPostValidationMessage(null);
       setFormError(null);
     },
-    [config.defaultSettlementMode, config.numberPrefix],
+    [config.defaultSettlementMode, config.numberPrefix, drafts],
   );
 
   const applyDocumentToWorkspace = useCallback(
-    (document: PurchaseDocumentDraft, readOnly: boolean) => {
+    (document: PurchaseDocumentDraft, source: PurchaseDraftSource, readOnly: boolean) => {
       const hydratedLines =
         document.lines.length > 0
           ? document.lines.map((line) =>
@@ -718,7 +823,8 @@ export function usePurchaseDocumentWorkspace({
           : buildPurchaseStarterLines();
 
       setActiveDraftId(readOnly ? null : document.id);
-      setViewingDocumentId(readOnly ? document.id : null);
+      setActiveDraftSource(readOnly ? "server" : source);
+      setViewingDocumentId(readOnly ? document.id : source === "server" ? null : null);
       setParentId(document.parentId ?? null);
       setParentDocumentNumber(document.parentDocumentNumber ?? "");
       setBillNumber(document.billNumber);
@@ -729,7 +835,11 @@ export function usePurchaseDocumentWorkspace({
       setSupplierAddress(document.supplierAddress);
       setSupplierTaxId(document.supplierTaxId);
       setNotes(document.notes);
-      setDuplicateMeta(getPersistedDuplicateMeta(document.id));
+      setDuplicateMeta(
+        source === "local"
+          ? (document as SavedPurchaseDraft).duplicateMeta ?? getPersistedDuplicateMeta(document.id)
+          : getPersistedDuplicateMeta(document.id),
+      );
       setLines(padPurchaseLinesForEditing(hydratedLines));
       setFormError(null);
     },
@@ -776,11 +886,15 @@ export function usePurchaseDocumentWorkspace({
 
     setDocumentsLoading(true);
     setDocumentsError(null);
-    void listPurchaseDocuments(activeStore, config.documentType)
+    const fetchDocuments = isOnline
+      ? listPurchaseDocuments(activeStore, config.documentType)
+      : listLocalPurchaseDocuments(activeStore, config.documentType);
+
+    void fetchDocuments
       .then((nextDocuments) => {
         setDocuments(nextDocuments);
         if (!isEditorRoute && !routeState?.parentDocumentId) {
-          setBillNumber(getNextBillNumber(config.numberPrefix, nextDocuments));
+          setBillNumber(getNextBillNumber(config.numberPrefix, [...nextDocuments, ...drafts]));
         }
       })
       .catch((error) => {
@@ -795,6 +909,8 @@ export function usePurchaseDocumentWorkspace({
     activeStore,
     config.documentType,
     config.numberPrefix,
+    drafts,
+    isOnline,
     isEditorRoute,
     routeState?.parentDocumentId,
   ]);
@@ -831,6 +947,16 @@ export function usePurchaseDocumentWorkspace({
       return;
     }
 
+    if (!isOnline) {
+      showToast({
+        title: "Connection required",
+        description: `Internet connection required to convert this ${config.singularLabel}.`,
+        tone: "error",
+      });
+      navigate(config.routePath, { replace: true });
+      return;
+    }
+
     const sourceDocumentId = routeState.parentDocumentId;
     const sourceDocumentNumber = routeState.parentDocumentNumber ?? "";
     const parentSupplier = routeState.parentSupplier;
@@ -842,6 +968,7 @@ export function usePurchaseDocumentWorkspace({
           .map((line) => toConvertedLine(line));
 
         setActiveDraftId(null);
+        setActiveDraftSource(null);
         setViewingDocumentId(null);
         setParentId(sourceDocumentId);
         setParentDocumentNumber(sourceDocumentNumber);
@@ -872,21 +999,29 @@ export function usePurchaseDocumentWorkspace({
             : buildPurchaseStarterLines(),
         );
         setPostValidationMessage(null);
+        navigate(location.pathname, { replace: true, state: null });
       })
       .catch((error) => {
         showToast({
-          title: error instanceof Error ? error.message : "Unable to prepare conversion.",
+          title:
+            classifyError(error).isConnectivityError
+              ? "Internet connection required to prepare this conversion."
+              : error instanceof Error
+                ? error.message
+                : "Unable to prepare conversion.",
           tone: "error",
         });
-      })
-      .finally(() => {
-        navigate(location.pathname, { replace: true, state: null });
+        navigate(config.routePath, { replace: true });
       });
   }, [
     activeStore,
+    classifyError,
     config.defaultSettlementMode,
     config.numberPrefix,
+    config.routePath,
+    config.singularLabel,
     documents,
+    isOnline,
     location.pathname,
     navigate,
     routeState?.parentDocumentId,
@@ -914,6 +1049,7 @@ export function usePurchaseDocumentWorkspace({
       setIsListRouteEditorOpen(location.pathname === config.routePath);
       const draft = routeState.purchaseDraft;
       setActiveDraftId(draft.activeDraftId ?? null);
+      setActiveDraftSource("local");
       setViewingDocumentId(null);
       setParentId(draft.parentId ?? null);
       setParentDocumentNumber(draft.parentDocumentNumber ?? "");
@@ -1008,7 +1144,11 @@ export function usePurchaseDocumentWorkspace({
         return;
       }
 
-      applyDocumentToWorkspace(matchedDocument, matchedDocument.status !== "DRAFT");
+      applyDocumentToWorkspace(
+        matchedDocument,
+        "server",
+        matchedDocument.status !== "DRAFT",
+      );
       return;
     }
 
@@ -1199,10 +1339,11 @@ export function usePurchaseDocumentWorkspace({
           : buildPurchaseStarterLines();
 
       setActiveDraftId(null);
+      setActiveDraftSource(null);
       setViewingDocumentId(null);
       setParentId(null);
       setParentDocumentNumber("");
-      setBillNumber(getNextBillNumber(config.numberPrefix, documents));
+      setBillNumber(getNextBillNumber(config.numberPrefix, [...documents, ...drafts]));
       setSettlementMode(document.settlementMode ?? config.defaultSettlementMode ?? "CASH");
       setSupplierId(document.supplierId ?? null);
       setSupplierName(document.supplierName);
@@ -1230,6 +1371,7 @@ export function usePurchaseDocumentWorkspace({
       config.numberPrefix,
       createRoutePath,
       documents,
+      drafts,
       itemOptionsByVariantId,
       navigate,
       showToast,
@@ -1265,6 +1407,47 @@ export function usePurchaseDocumentWorkspace({
     );
   }, [duplicateWarnings.priceDiscrepancies, itemOptionsByVariantId]);
 
+  const buildNormalizedDraft = useCallback(() => {
+    const normalizedPurchaseLines = normalizeLines(lines);
+    return {
+      id: activeDraftId ?? crypto.randomUUID(),
+      documentType: config.documentType,
+      parentId,
+      parentDocumentNumber,
+      locationId: isStockAffectingDocument(config.documentType) ? activeLocationId ?? null : null,
+      billNumber: billNumber.trim() || getNextBillNumber(config.numberPrefix, [...documents, ...drafts]),
+      settlementMode: usesSettlementMode(config.documentType) ? settlementMode : "CASH",
+      supplierId,
+      supplierName: supplierName.trim(),
+      supplierPhone: supplierPhone.trim(),
+      supplierAddress: supplierAddress.trim(),
+      supplierTaxId: supplierTaxId.trim(),
+      notes: notes.trim(),
+      savedAt: new Date().toISOString(),
+      lines: normalizedPurchaseLines,
+      duplicateMeta,
+    } satisfies SavedPurchaseDraft;
+  }, [
+    activeDraftId,
+    activeLocationId,
+    billNumber,
+    config.documentType,
+    config.numberPrefix,
+    documents,
+    drafts,
+    duplicateMeta,
+    lines,
+    notes,
+    parentDocumentNumber,
+    parentId,
+    settlementMode,
+    supplierAddress,
+    supplierId,
+    supplierName,
+    supplierPhone,
+    supplierTaxId,
+  ]);
+
   const persistDraft = async (
     mode: "save" | "post",
     options?: {
@@ -1276,7 +1459,6 @@ export function usePurchaseDocumentWorkspace({
       return false;
     }
 
-    const normalizedPurchaseLines = normalizeLines(lines);
     if (mode === "save" && !hasMeaningfulDraftContent()) {
       showToast({
         title: `Enter at least one line, supplier detail, note, or source before saving this ${config.singularLabel} draft.`,
@@ -1285,28 +1467,61 @@ export function usePurchaseDocumentWorkspace({
       return false;
     }
 
+    if (mode === "post" && !isOnline) {
+      const message = `Internet connection required to post this ${config.singularLabel}. Your progress is saved as a local draft.`;
+      setFormError(message);
+      showToast({
+        title: "Connection required",
+        description: message,
+        tone: "error",
+      });
+      return false;
+    }
+
     setDraftMutationLoading(true);
     setFormError(null);
     try {
+      const nextDraft = buildNormalizedDraft();
+
+      if (mode === "save" && !isOnline) {
+        const nextDrafts =
+          activeDraftSource === "local" && activeDraftId
+            ? drafts.map((draft) => (draft.id === activeDraftId ? nextDraft : draft))
+            : [nextDraft, ...drafts];
+        persistDrafts(nextDrafts);
+        setPersistedDuplicateMeta(nextDraft.id, duplicateMeta);
+        setActiveDraftId(nextDraft.id);
+        setActiveDraftSource("local");
+        setViewingDocumentId(null);
+        setBillNumber(nextDraft.billNumber);
+        setLines(padPurchaseLinesForEditing(nextDraft.lines.map((line) => ({ ...line }))));
+        showToast({
+          title: `${config.createTitle.replace("Create ", "")} draft saved locally on this device.`,
+          tone: "success",
+        });
+        return true;
+      }
+
       const payload = {
         tenantId: activeStore,
         documentType: config.documentType,
-        parentId,
-        locationId: isStockAffectingDocument(config.documentType) ? activeLocationId ?? null : null,
-        billNumber: billNumber.trim(),
-        settlementMode: usesSettlementMode(config.documentType) ? settlementMode : "CASH",
-        supplierId,
-        supplierName: supplierName.trim(),
-        supplierPhone: supplierPhone.trim(),
-        supplierAddress: supplierAddress.trim(),
-        supplierTaxId: supplierTaxId.trim(),
-        notes: notes.trim(),
-        lines: normalizedPurchaseLines,
+        parentId: nextDraft.parentId,
+        locationId: nextDraft.locationId,
+        billNumber: nextDraft.billNumber,
+        settlementMode: nextDraft.settlementMode,
+        supplierId: nextDraft.supplierId,
+        supplierName: nextDraft.supplierName,
+        supplierPhone: nextDraft.supplierPhone,
+        supplierAddress: nextDraft.supplierAddress,
+        supplierTaxId: nextDraft.supplierTaxId,
+        notes: nextDraft.notes,
+        lines: nextDraft.lines,
       };
 
-      const saved = activeDraftId
-        ? await updatePurchaseDocumentDraft(activeDraftId, payload)
-        : await createPurchaseDocumentDraft(payload);
+      const saved =
+        activeDraftSource === "server" && activeDraftId
+          ? await updatePurchaseDocumentDraft(activeDraftId, payload)
+          : await createPurchaseDocumentDraft(payload);
 
       let nextDocument = saved;
       if (mode === "post") {
@@ -1323,6 +1538,11 @@ export function usePurchaseDocumentWorkspace({
         setPersistedDuplicateMeta(saved.id, duplicateMeta);
       }
 
+      if (activeDraftSource === "local" && activeDraftId) {
+        persistDrafts(drafts.filter((draft) => draft.id !== activeDraftId));
+        setPersistedDuplicateMeta(activeDraftId, null);
+      }
+
       const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
       setDocuments(nextDocuments);
 
@@ -1334,7 +1554,7 @@ export function usePurchaseDocumentWorkspace({
         resetWorkspace(nextDocuments);
         setIsListRouteEditorOpen(false);
       } else {
-        applyDocumentToWorkspace(nextDocument, false);
+        applyDocumentToWorkspace(nextDocument, "server", false);
       }
 
       navigate(mode === "post" ? config.routePath : `${config.routePath}/${nextDocument.id}`, {
@@ -1364,6 +1584,15 @@ export function usePurchaseDocumentWorkspace({
       return;
     }
 
+    if (!isOnline) {
+      showToast({
+        title: "Connection required",
+        description: `Internet connection required to view ${config.singularLabel} history.`,
+        tone: "error",
+      });
+      return;
+    }
+
     setHistoryDocument(document);
     setHistoryLoading(true);
     setHistoryError(null);
@@ -1386,6 +1615,17 @@ export function usePurchaseDocumentWorkspace({
       return;
     }
 
+    if (!isOnline) {
+      const message = `Connection required to update ${config.singularLabel} status.`;
+      setFormError(message);
+      showToast({
+        title: "Connection required",
+        description: message,
+        tone: "error",
+      });
+      return;
+    }
+
     setDraftMutationLoading(true);
     setFormError(null);
     try {
@@ -1400,7 +1640,7 @@ export function usePurchaseDocumentWorkspace({
       setDocuments(nextDocuments);
 
       if (documentId === document.id || viewingDocumentId === document.id) {
-        applyDocumentToWorkspace(nextDocument, nextDocument.status !== "DRAFT");
+        applyDocumentToWorkspace(nextDocument, "server", nextDocument.status !== "DRAFT");
       }
 
       showToast({
@@ -1424,7 +1664,7 @@ export function usePurchaseDocumentWorkspace({
     }
   };
 
-  const deleteDraft = async (document: PurchaseDocumentDraft) => {
+  const deleteDraft = async (document: PurchaseListRow) => {
     if (!activeStore) {
       return;
     }
@@ -1437,17 +1677,37 @@ export function usePurchaseDocumentWorkspace({
     setDraftMutationLoading(true);
     setFormError(null);
     try {
-      await deletePurchaseDocumentDraft(document.id, activeStore, config.documentType);
-      setPersistedDuplicateMeta(document.id, null);
-      const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
-      setDocuments(nextDocuments);
-      if (
-        documentId === document.id ||
-        activeDraftId === document.id ||
-        viewingDocumentId === document.id
-      ) {
-        resetWorkspace(nextDocuments);
-        navigate(config.routePath, { replace: true });
+      if (document.source === "server") {
+        if (!isOnline) {
+          const message = `Cannot delete server drafts while offline. Connect to the internet to perform this action.`;
+          setFormError(message);
+          showToast({
+            title: "Action unavailable",
+            description: message,
+            tone: "error",
+          });
+          return;
+        }
+
+        await deletePurchaseDocumentDraft(document.id, activeStore, config.documentType);
+        setPersistedDuplicateMeta(document.id, null);
+        const nextDocuments = await listPurchaseDocuments(activeStore, config.documentType);
+        setDocuments(nextDocuments);
+        if (
+          documentId === document.id ||
+          activeDraftId === document.id ||
+          viewingDocumentId === document.id
+        ) {
+          resetWorkspace(nextDocuments);
+          navigate(config.routePath, { replace: true });
+        }
+      } else {
+        persistDrafts(drafts.filter((draft) => draft.id !== document.id));
+        setPersistedDuplicateMeta(document.id, null);
+        if (activeDraftId === document.id) {
+          resetWorkspace(documents);
+          navigate(config.routePath, { replace: true });
+        }
       }
       showToast({
         title: `${config.singularLabel} draft deleted.`,
@@ -1464,6 +1724,20 @@ export function usePurchaseDocumentWorkspace({
     }
   };
 
+  const openDocumentRow = useCallback(
+    (row: PurchaseListRow) => {
+      if (row.source === "local") {
+        applyDocumentToWorkspace(row, "local", false);
+        setIsListRouteEditorOpen(false);
+        navigate(createRoutePath);
+        return;
+      }
+
+      navigate(`${config.routePath}/${row.id}`);
+    },
+    [applyDocumentToWorkspace, config.routePath, createRoutePath, navigate],
+  );
+
   const getRowMenuActions = (row: PurchaseListRow): FloatingActionMenuItem[] => {
     const documentLabel = formatPurchaseDocumentTypeActionLabel(row.documentType);
     const actions: FloatingActionMenuItem[] = [
@@ -1471,12 +1745,13 @@ export function usePurchaseDocumentWorkspace({
         key: "view",
         label: row.status === "DRAFT" ? `Edit ${documentLabel} Draft` : `View ${documentLabel}`,
         icon: Eye,
-        onSelect: () => navigate(`${config.routePath}/${row.id}`),
+        onSelect: () => openDocumentRow(row),
       },
       {
         key: "history",
         label: `View ${documentLabel} History`,
         icon: History,
+        disabled: row.source === "local",
         onSelect: () => {
           void openHistory(row);
         },
@@ -1517,8 +1792,9 @@ export function usePurchaseDocumentWorkspace({
       for (const conversion of conversions[row.documentType] ?? []) {
         actions.push({
           key: `convert-${conversion.targetDocumentType}`,
-          label: conversion.actionLabel,
+          label: isOnline ? conversion.actionLabel : `${conversion.actionLabel} (Online only)`,
           icon: Copy,
+          disabled: !isOnline,
           onSelect: () =>
             navigate(`${conversion.targetRoutePath}/new`, {
               state: {
@@ -1608,6 +1884,7 @@ export function usePurchaseDocumentWorkspace({
     historyEntries,
     historyError,
     historyLoading,
+    isOnline,
     isCreateRoute,
     isDocumentRoute,
     isEditorRoute,
@@ -1618,6 +1895,7 @@ export function usePurchaseDocumentWorkspace({
     lookupError,
     lookupLoading,
     notes,
+    openDocumentRow,
     openSupplierCreate,
     openRowMenuId,
     parentDocumentNumber,

@@ -1,4 +1,5 @@
-import { apiFetch } from "../../lib/api";
+import { ConnectivityError, apiFetch } from "../../lib/api";
+import { listEntities } from "../../features/sync/db";
 import type { InvoiceSettlementSummary } from "../finance/financial-api";
 
 export type PurchaseDocumentType =
@@ -164,16 +165,71 @@ export const listPurchaseDocuments = async (
     documentType,
     limit: String(limit),
   });
-  const response = await apiFetch(`/api/purchases/documents?${query.toString()}`, {
-    method: "GET",
-  });
+  try {
+    const response = await apiFetch(`/api/purchases/documents?${query.toString()}`, {
+      method: "GET",
+    });
 
-  if (!response.ok) {
-    throw await parseError(response, "Unable to load purchase documents");
+    if (response.status === 401 || response.status === 403) {
+      throw await parseError(response, "Access denied");
+    }
+
+    if (!response.ok) {
+      throw await parseError(response, "Unable to load purchase documents");
+    }
+
+    const payload = (await response.json()) as { documents?: PurchaseDocumentDraft[] };
+    return payload.documents ?? [];
+  } catch (error) {
+    if (
+      error instanceof PurchaseDocumentApiError &&
+      (error.status === 401 || error.status === 403)
+    ) {
+      throw error;
+    }
+    if (error instanceof ConnectivityError || error instanceof PurchaseDocumentApiError) {
+      return listLocalPurchaseDocuments(tenantId, documentType, limit);
+    }
+    throw error;
   }
+};
 
-  const payload = (await response.json()) as { documents?: PurchaseDocumentDraft[] };
-  return payload.documents ?? [];
+export const listLocalPurchaseDocuments = async (
+  tenantId: string,
+  documentType: PurchaseDocumentType,
+  limit = 50,
+): Promise<PurchaseDocumentDraft[]> => {
+  const records = await listEntities(tenantId, "purchase_document_read_model");
+  return records
+    .filter((record) => {
+      const data = record.data as Record<string, unknown>;
+      return data.isActive === true && data.documentType === documentType;
+    })
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .slice(0, limit)
+    .map((record) => {
+      const data = record.data as Record<string, unknown>;
+      return {
+        id: record.entityId,
+        documentType: data.documentType as PurchaseDocumentType,
+        billNumber: String(data.documentNumber ?? ""),
+        status: data.status as PurchaseDocumentDraft["status"],
+        postedAt: typeof data.postedAt === "string" ? data.postedAt : null,
+        grandTotal: typeof data.grandTotal === "number" ? data.grandTotal : 0,
+        settlement: null,
+        settlementMode: "CASH",
+        supplierId: typeof data.supplierId === "string" ? data.supplierId : null,
+        supplierName: String(data.supplierName ?? ""),
+        supplierPhone: "",
+        supplierAddress: "",
+        supplierTaxId: "",
+        locationId: typeof data.locationId === "string" ? data.locationId : null,
+        locationName: typeof data.locationName === "string" ? data.locationName : "",
+        notes: "",
+        savedAt: record.updatedAt,
+        lines: [],
+      };
+    });
 };
 
 export const getPurchaseDocumentHistory = async (
