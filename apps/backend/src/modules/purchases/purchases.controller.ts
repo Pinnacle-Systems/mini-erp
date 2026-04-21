@@ -1120,6 +1120,7 @@ export const postDraftPurchaseDocument = async (
         occurredAt: paymentInput?.paymentDate ?? postedAt.toISOString(),
         amount: Number(document.grand_total ?? 0),
         financialAccountId: paymentInput!.financialAccountId!,
+        partyId: document.party_id ?? undefined,
         referenceNo: paymentInput?.paymentReference?.trim() || undefined,
         notes: `Auto-payment for Purchase Invoice: ${document.doc_number}`,
         allocations: [

@@ -52,10 +52,12 @@ export type MoneyMovementRow = {
   accountId: string;
   accountName: string;
   partyId: string | null;
-  partyName: string;
+  partyName: string | null;
   locationId: string | null;
   referenceNo: string;
   notes: string;
+  allocatedAmount: number;
+  unallocatedAmount: number;
 };
 
 export type ExpenseRow = {
@@ -258,8 +260,10 @@ export const listExpenses = async (
 export const listOpenDocuments = async (
   tenantId: string,
   flow: "RECEIVABLE" | "PAYABLE",
+  partyId?: string,
 ): Promise<FinancialDocumentBalanceRow[]> => {
   const query = new URLSearchParams({ tenantId, flow, limit: "50" });
+  if (partyId) query.set("partyId", partyId);
   const response = await apiFetch(`/api/accounts/open-documents?${query.toString()}`, { method: "GET" });
   if (!response.ok) throw await parseError(response, "Unable to load open documents");
   const payload = (await response.json()) as { documents?: FinancialDocumentBalanceRow[] };
@@ -292,9 +296,10 @@ export const recordReceivedPayment = async (input: {
   occurredAt: string;
   amount: number;
   financialAccountId: string;
+  partyId: string;
   referenceNo?: string;
   notes?: string;
-  allocations: Array<{
+  allocations?: Array<{
     documentType: FinancialDocumentBalanceRow["documentType"];
     documentId: string;
     allocatedAmount: number;
@@ -313,9 +318,10 @@ export const recordMadePayment = async (input: {
   occurredAt: string;
   amount: number;
   financialAccountId: string;
+  partyId: string;
   referenceNo?: string;
   notes?: string;
-  allocations: Array<{
+  allocations?: Array<{
     documentType: FinancialDocumentBalanceRow["documentType"];
     documentId: string;
     allocatedAmount: number;
@@ -327,6 +333,25 @@ export const recordMadePayment = async (input: {
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await parseError(response, "Unable to record payment made");
+};
+
+export const allocatePayment = async (input: {
+  movementId: string;
+  allocations: Array<{
+    documentType: FinancialDocumentBalanceRow["documentType"];
+    documentId: string;
+    allocatedAmount: number;
+  }>;
+}) => {
+  const response = await apiFetch(
+    `/api/accounts/payments/${encodeURIComponent(input.movementId)}/allocate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allocations: input.allocations }),
+    },
+  );
+  if (!response.ok) throw await parseError(response, "Unable to apply payment");
 };
 
 export const createExpense = async (input: {

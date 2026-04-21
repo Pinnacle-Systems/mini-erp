@@ -15,6 +15,25 @@ const allocationSchema = z.object({
   allocatedAmount: z.coerce.number().positive(),
 });
 
+const allocationBatchSchema = z
+  .array(allocationSchema)
+  .max(10)
+  .superRefine((allocations, context) => {
+    const seen = new Set<string>();
+    for (let index = 0; index < allocations.length; index += 1) {
+      const allocation = allocations[index];
+      if (seen.has(allocation.documentId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Duplicate allocation rows for the same document are not allowed",
+          path: [index, "documentId"],
+        });
+        continue;
+      }
+      seen.add(allocation.documentId);
+    }
+  });
+
 export const accountsOverviewSchema = z.object({
   query: z.object({
     tenantId: z.uuid(),
@@ -72,9 +91,19 @@ export const paymentCreateSchema = z.object({
     occurredAt: z.string().datetime(),
     amount: z.coerce.number().positive(),
     financialAccountId: z.uuid(),
+    partyId: z.uuid().optional(),
     referenceNo: z.string().trim().max(80).optional(),
     notes: z.string().trim().max(500).optional(),
-    allocations: z.array(allocationSchema).max(10).optional().default([]),
+    allocations: allocationBatchSchema.optional().default([]),
+  }),
+});
+
+export const allocatePaymentSchema = z.object({
+  params: z.object({
+    movementId: z.uuid(),
+  }),
+  body: z.object({
+    allocations: allocationBatchSchema.min(1),
   }),
 });
 
@@ -113,6 +142,7 @@ export const listOpenDocumentsSchema = z.object({
   query: z.object({
     tenantId: z.uuid(),
     flow: z.enum(["RECEIVABLE", "PAYABLE"]),
+    partyId: z.uuid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   }),
 });
