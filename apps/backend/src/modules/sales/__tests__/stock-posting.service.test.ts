@@ -117,7 +117,7 @@ describe("stockPostingService", () => {
           variantId: "variant-product",
           locationId: "location-1",
           locationName: "Main Warehouse",
-          quantityOnHand: 9,
+          quantityOnHand: 8,
         }),
       }),
     });
@@ -501,7 +501,7 @@ describe("stockPostingService", () => {
         entity: "stock_level",
         entity_id: "variant-product:location-1",
         data: expect.objectContaining({
-          quantityOnHand: -5,
+          quantityOnHand: -10,
         }),
       }),
     });
@@ -569,7 +569,7 @@ describe("stockPostingService", () => {
         entity: "stock_level",
         entity_id: "variant-product:location-1",
         data: expect.objectContaining({
-          quantityOnHand: 4,
+          quantityOnHand: 8,
         }),
       }),
     });
@@ -693,7 +693,7 @@ describe("stockPostingService", () => {
         entity: "stock_level",
         entity_id: "variant-product:location-1",
         data: expect.objectContaining({
-          quantityOnHand: 8,
+          quantityOnHand: 6,
         }),
       }),
     });

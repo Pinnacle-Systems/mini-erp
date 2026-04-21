@@ -65,6 +65,27 @@ type OpenFinancialDocumentSummary = {
   lastPaymentAt: string | null;
   fullySettledAt: string | null;
 };
+type AllocationInput = {
+  documentType: FinancialDocumentType;
+  documentId: string;
+  allocatedAmount: number;
+};
+type AllocationContext = {
+  sourceDocumentType: FinancialDocumentType | null;
+  sourceDocumentId: string | null;
+  partyId: string | null;
+  partyName: string | null;
+  locationId: string | null;
+  allocatedAmount: number;
+  unallocatedAmount: number;
+};
+type AllocationRowView = {
+  id: string;
+  documentType: FinancialDocumentType;
+  documentId: string;
+  allocatedAmount: number;
+  createdAt: string;
+};
 
 type PartyFinancialSummary = {
   partyId: string;
@@ -91,6 +112,8 @@ type PartyFinancialSummary = {
     locationId: string | null;
     referenceNo: string;
     notes: string;
+    allocatedAmount: number;
+    unallocatedAmount: number;
   }>;
 };
 
@@ -152,6 +175,27 @@ const assertSystemCurrency = (currency: string | null | undefined) => {
   }
   return normalized;
 };
+
+const getAllowedTypesForFlow = (flow: DocumentFlow) =>
+  flow === "RECEIVABLE" ? RECEIVABLE_DOCUMENT_TYPES : PAYABLE_DOCUMENT_TYPES;
+
+const getFlowForMovementDirection = (direction: "INFLOW" | "OUTFLOW"): DocumentFlow =>
+  direction === "INFLOW" ? "RECEIVABLE" : "PAYABLE";
+
+const getExpectedDirectionForFlow = (flow: DocumentFlow): "INFLOW" | "OUTFLOW" =>
+  flow === "RECEIVABLE" ? "INFLOW" : "OUTFLOW";
+
+const assertNoDuplicateAllocationDocuments = (allocations: AllocationInput[]) => {
+  const seen = new Set<string>();
+  for (const allocation of allocations) {
+    if (seen.has(allocation.documentId)) {
+      throw new BadRequestError("Duplicate allocation rows for the same document are not allowed");
+    }
+    seen.add(allocation.documentId);
+  }
+};
+
+const roundMoney = (value: number) => Number(value.toFixed(2));
 
 const deriveSettlementStatus = (
   status: SettlementSourceDocument["status"],
@@ -451,6 +495,7 @@ const getPostedDocumentsForFlow = async (
   tenantId: string,
   flow: DocumentFlow,
   limit?: number,
+  partyId?: string,
   dbClient: AccountsDbClient = prismaAny,
 ): Promise<OpenFinancialDocumentSummary[]> => {
   const allowedTypes = flow === "RECEIVABLE" ? RECEIVABLE_DOCUMENT_TYPES : PAYABLE_DOCUMENT_TYPES;
@@ -464,6 +509,7 @@ const getPostedDocumentsForFlow = async (
         not: null,
       },
       deleted_at: null,
+      ...(partyId ? { party_id: partyId } : {}),
     },
     select: {
       id: true,
@@ -476,9 +522,7 @@ const getPostedDocumentsForFlow = async (
       party_snapshot: true,
       status: true,
     },
-    orderBy: {
-      posted_at: "desc",
-    },
+    orderBy: [{ posted_at: "asc" }, { doc_number: "asc" }, { id: "asc" }],
     ...(typeof limit === "number" ? { take: limit } : {}),
   });
 
@@ -563,31 +607,156 @@ const getExpenseCategoryOrThrow = async (tenantId: string, categoryId: string) =
   return category;
 };
 
-const validateAllocations = async (
+const getPartyReferenceOrThrow = async (
   tenantId: string,
-  flow: DocumentFlow,
-  amount: number,
-  allocations: Array<{ documentType: FinancialDocumentType; documentId: string; allocatedAmount: number }>,
+  partyId: string,
   dbClient: AccountsDbClient = prismaAny,
 ) => {
+  const party = await dbClient.party.findFirst({
+    where: {
+      id: partyId,
+      business_id: tenantId,
+      deleted_at: null,
+      is_active: true,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!party) {
+    throw new BadRequestError("Selected party is not available");
+  }
+
+  return {
+    id: String(party.id),
+    name: String(party.name),
+  };
+};
+
+const getActiveAllocationRowsForMovements = async (
+  tenantId: string,
+  movementIds: string[],
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  if (movementIds.length === 0) {
+    return [];
+  }
+
+  const allocationRows = await dbClient.moneyMovementAllocation.findMany({
+    where: {
+      business_id: tenantId,
+      money_movement_id: {
+        in: movementIds,
+      },
+    },
+    select: {
+      id: true,
+      money_movement_id: true,
+      document_id: true,
+      document_type: true,
+      allocated_amount: true,
+      created_at: true,
+      money_movement: {
+        select: {
+          status: true,
+          source_kind: true,
+        },
+      },
+    },
+  });
+
+  const activeDocumentIds = new Set(
+    (
+      await dbClient.document.findMany({
+        where: {
+          id: {
+            in: [...new Set(allocationRows.map((row) => String(row.document_id)))],
+          },
+          business_id: tenantId,
+          posted_at: {
+            not: null,
+          },
+          deleted_at: null,
+          status: {
+            notIn: ["CANCELLED", "VOID"],
+          },
+        },
+        select: {
+          id: true,
+        },
+      })
+    ).map((document: any) => String(document.id)),
+  );
+
+  return allocationRows.filter(
+    (row: any) =>
+      row.money_movement.status === "POSTED" &&
+      ["PAYMENT_RECEIVED", "PAYMENT_MADE"].includes(String(row.money_movement.source_kind)) &&
+      activeDocumentIds.has(String(row.document_id)),
+  );
+};
+
+const getActiveAllocatedAmountForMovement = async (
+  tenantId: string,
+  movementId: string,
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  const rows = await getActiveAllocationRowsForMovements(tenantId, [movementId], dbClient);
+  return roundMoney(
+    rows.reduce((sum: number, row: any) => sum + Number(row.allocated_amount ?? 0), 0),
+  );
+};
+
+const getActiveAllocationTotalsByMovementIds = async (
+  tenantId: string,
+  movementIds: string[],
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  const totals = new Map<string, number>();
+  const rows = await getActiveAllocationRowsForMovements(tenantId, movementIds, dbClient);
+  for (const row of rows) {
+    const movementId = String(row.money_movement_id);
+    const current = totals.get(movementId) ?? 0;
+    totals.set(movementId, roundMoney(current + Number(row.allocated_amount ?? 0)));
+  }
+  return totals;
+};
+
+const getUnallocatedAmountForMovement = async (
+  tenantId: string,
+  movementId: string,
+  movementAmount: number,
+  dbClient: AccountsDbClient = prismaAny,
+) => roundMoney(Math.max(0, movementAmount - (await getActiveAllocatedAmountForMovement(tenantId, movementId, dbClient))));
+
+const validateAllocationBatch = async (
+  tenantId: string,
+  flow: DocumentFlow,
+  amountLimit: number,
+  allocations: AllocationInput[],
+  requiredPartyId: string | null,
+  dbClient: AccountsDbClient = prismaAny,
+): Promise<AllocationContext> => {
+  assertNoDuplicateAllocationDocuments(allocations);
+  const allowedTypes = getAllowedTypesForFlow(flow);
+  const allocationTotal = allocations.reduce((sum, allocation) => sum + Number(allocation.allocatedAmount), 0);
+
+  if (allocationTotal - amountLimit > 0.001) {
+    throw new BadRequestError("Payment amount cannot be less than total allocated amount");
+  }
+
   if (allocations.length === 0) {
     return {
       sourceDocumentType: null,
       sourceDocumentId: null,
-      partyId: null,
+      partyId: requiredPartyId,
       partyName: null,
       locationId: null,
+      allocatedAmount: roundMoney(allocationTotal),
+      unallocatedAmount: roundMoney(amountLimit - allocationTotal),
     };
-  }
-
-  const allowedTypes = flow === "RECEIVABLE" ? RECEIVABLE_DOCUMENT_TYPES : PAYABLE_DOCUMENT_TYPES;
-  const expectedAllocationTotal = allocations.reduce(
-    (sum, allocation) => sum + Number(allocation.allocatedAmount),
-    0,
-  );
-
-  if (Math.abs(expectedAllocationTotal - amount) > 0.001) {
-    throw new BadRequestError("Payment amount must match the allocated amount total");
   }
 
   const rows = await dbClient.document.findMany({
@@ -619,10 +788,16 @@ const validateAllocations = async (
   });
 
   if (rows.length !== allocations.length) {
-    throw new BadRequestError("One or more selected documents cannot accept payment");
+    throw new BadRequestError("One or more selected documents cannot accept allocation");
   }
 
-  const openDocuments = await getPostedDocumentsForFlow(tenantId, flow, undefined, dbClient);
+  const openDocuments = await getPostedDocumentsForFlow(
+    tenantId,
+    flow,
+    undefined,
+    requiredPartyId ?? undefined,
+    dbClient,
+  );
   const openById = new Map(openDocuments.map((document) => [document.id, document]));
   const partyIds = new Set<string>();
   let sourceDocumentType: FinancialDocumentType | null = null;
@@ -637,7 +812,7 @@ const validateAllocations = async (
 
     const openDocument = openById.get(allocation.documentId);
     if (!openDocument) {
-      throw new BadRequestError("One or more selected documents are not open for payment");
+      throw new BadRequestError("One or more selected documents cannot accept allocation");
     }
 
     if (allocation.allocatedAmount - openDocument.outstandingAmount > 0.001) {
@@ -654,15 +829,22 @@ const validateAllocations = async (
   }
 
   if (partyIds.size > 1) {
-    throw new BadRequestError("A single payment cannot span multiple parties in v1");
+    throw new BadRequestError("Allocation party does not match payment party");
+  }
+
+  const resolvedPartyId = partyIds.size === 1 ? [...partyIds][0] : null;
+  if (requiredPartyId && resolvedPartyId !== requiredPartyId) {
+    throw new BadRequestError("Allocation party does not match payment party");
   }
 
   return {
     sourceDocumentType,
     sourceDocumentId,
-    partyId: partyIds.size === 1 ? [...partyIds][0] : null,
+    partyId: requiredPartyId ?? resolvedPartyId,
     partyName,
     locationId,
+    allocatedAmount: roundMoney(allocationTotal),
+    unallocatedAmount: roundMoney(amountLimit - allocationTotal),
   };
 };
 
@@ -782,6 +964,10 @@ const mapMoneyMovementRows = async (
   tenantId: string,
   rows: any[],
 ): Promise<MoneyMovementListRow[]> => {
+  const allocationTotalsByMovementId = await getActiveAllocationTotalsByMovementIds(
+    tenantId,
+    rows.map((row: any) => String(row.id)),
+  );
   const sourceDocumentIds = rows
     .map((row: any) => row.source_document_id)
     .filter((value: unknown): value is string => typeof value === "string");
@@ -827,6 +1013,10 @@ const mapMoneyMovementRows = async (
     locationId: typeof row.location_id === "string" ? row.location_id : null,
     referenceNo: typeof row.reference_no === "string" ? row.reference_no : "",
     notes: typeof row.notes === "string" ? row.notes : "",
+    allocatedAmount: roundMoney(allocationTotalsByMovementId.get(String(row.id)) ?? 0),
+    unallocatedAmount: roundMoney(
+      Math.max(0, Number(row.amount ?? 0) - (allocationTotalsByMovementId.get(String(row.id)) ?? 0)),
+    ),
   }));
 };
 
@@ -876,6 +1066,68 @@ const listMoneyMovements = async (
   return mapMoneyMovementRows(tenantId, rows);
 };
 
+const getMoneyMovementView = async (
+  tenantId: string,
+  movementId: string,
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  const rows = await dbClient.moneyMovement.findMany({
+    where: {
+      id: movementId,
+      business_id: tenantId,
+    },
+    select: {
+      id: true,
+      direction: true,
+      status: true,
+      source_kind: true,
+      source_document_type: true,
+      source_document_id: true,
+      occurred_at: true,
+      amount: true,
+      currency: true,
+      party_id: true,
+      party_name_snapshot: true,
+      location_id: true,
+      reference_no: true,
+      notes: true,
+      financial_account: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+    take: 1,
+  });
+
+  if (rows.length === 0) {
+    throw new NotFoundError("Money movement not found");
+  }
+
+  return (await mapMoneyMovementRows(tenantId, rows))[0];
+};
+
+const getMoneyMovementTenantIdOrThrow = async (
+  movementId: string,
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  const movement = await dbClient.moneyMovement.findFirst({
+    where: {
+      id: movementId,
+    },
+    select: {
+      business_id: true,
+    },
+  });
+
+  if (!movement) {
+    throw new NotFoundError("Money movement not found");
+  }
+
+  return String(movement.business_id);
+};
+
 const getPartyFinancialSummary = async (
   tenantId: string,
   partyId: string,
@@ -884,7 +1136,7 @@ const getPartyFinancialSummary = async (
   await ensureDefaults(tenantId);
 
   const [documents, paymentRows] = await Promise.all([
-    getPostedDocumentsForFlow(tenantId, flow),
+    getPostedDocumentsForFlow(tenantId, flow, undefined, partyId),
     prismaAny.moneyMovement.findMany({
       where: {
         business_id: tenantId,
@@ -914,11 +1166,6 @@ const getPartyFinancialSummary = async (
             name: true,
           },
         },
-        allocations: {
-          select: {
-            allocated_amount: true,
-          },
-        },
       },
       orderBy: {
         occurred_at: "desc",
@@ -938,15 +1185,11 @@ const getPartyFinancialSummary = async (
     }
     return sum + Math.abs(document.netOutstandingAmount);
   }, 0);
-
-  const unappliedAmount = paymentRows.reduce((sum: number, row: any) => {
-    const allocatedAmount = (row.allocations ?? []).reduce(
-      (allocatedSum: number, allocation: any) =>
-        allocatedSum + Number(allocation.allocated_amount ?? 0),
-      0,
-    );
-    return sum + Math.max(0, Number(row.amount ?? 0) - allocatedAmount);
-  }, 0);
+  const recentMovements = await mapMoneyMovementRows(tenantId, paymentRows);
+  const unappliedAmount = recentMovements.reduce(
+    (sum, row) => sum + row.unallocatedAmount,
+    0,
+  );
 
   return {
     partyId,
@@ -955,7 +1198,7 @@ const getPartyFinancialSummary = async (
     openDocumentCount,
     unappliedAmount: Number(unappliedAmount.toFixed(2)),
     documentCreditAmount: Number(documentCreditAmount.toFixed(2)),
-    recentMovements: await mapMoneyMovementRows(tenantId, paymentRows),
+    recentMovements,
   };
 };
 
@@ -1047,30 +1290,13 @@ const voidMoneyMovement = async (tenantId: string, movementId: string) => {
         )
       : new Map<string, string>();
 
+  const movementView = await getMoneyMovementView(tenantId, String(updated.id));
   return {
-    id: String(updated.id),
-    direction: updated.direction,
-    status: updated.status,
-    sourceKind: updated.source_kind,
-    sourceDocumentType:
-      typeof updated.source_document_type === "string" ? updated.source_document_type : null,
-    sourceDocumentId:
-      typeof updated.source_document_id === "string" ? updated.source_document_id : null,
+    ...movementView,
     sourceDocumentNumber:
       typeof updated.source_document_id === "string"
         ? (documentNumberById.get(updated.source_document_id) ?? null)
-        : null,
-    occurredAt: updated.occurred_at.toISOString(),
-    amount: Number(updated.amount ?? 0),
-    currency: String(updated.currency),
-    accountId: String(updated.financial_account.id),
-    accountName: String(updated.financial_account.name),
-    partyId: typeof updated.party_id === "string" ? updated.party_id : null,
-    partyName:
-      typeof updated.party_name_snapshot === "string" ? updated.party_name_snapshot : "",
-    locationId: typeof updated.location_id === "string" ? updated.location_id : null,
-    referenceNo: typeof updated.reference_no === "string" ? updated.reference_no : "",
-    notes: typeof updated.notes === "string" ? updated.notes : "",
+        : movementView.sourceDocumentNumber,
   };
 };
 
@@ -1081,9 +1307,10 @@ const recordPayment = async (
     occurredAt: string;
     amount: number;
     financialAccountId: string;
+    partyId?: string;
     referenceNo?: string;
     notes?: string;
-    allocations: Array<{ documentType: FinancialDocumentType; documentId: string; allocatedAmount: number }>;
+    allocations: AllocationInput[];
   },
   txClient?: AccountsDbClient,
 ) => {
@@ -1094,11 +1321,18 @@ const recordPayment = async (
     input.financialAccountId,
     dbClient,
   );
-  const allocationContext = await validateAllocations(
+
+  if (!input.partyId) {
+    throw new BadRequestError("Payment party is required for allocatable payments");
+  }
+
+  const party = await getPartyReferenceOrThrow(tenantId, input.partyId, dbClient);
+  const allocationContext = await validateAllocationBatch(
     tenantId,
     flow,
     input.amount,
     input.allocations,
+    party.id,
     dbClient,
   );
 
@@ -1115,8 +1349,8 @@ const recordPayment = async (
         amount: input.amount,
         currency: SYSTEM_CURRENCY,
         financial_account_id: input.financialAccountId,
-        party_id: allocationContext.partyId,
-        party_name_snapshot: allocationContext.partyName,
+        party_id: party.id,
+        party_name_snapshot: allocationContext.partyName ?? party.name,
         location_id: allocationContext.locationId,
         reference_no: input.referenceNo?.trim() || null,
         notes: input.notes?.trim() || null,
@@ -1138,6 +1372,8 @@ const recordPayment = async (
     return {
       ...movement,
       account_name: financialAccount.name,
+      allocated_amount: allocationContext.allocatedAmount,
+      unallocated_amount: allocationContext.unallocatedAmount,
     };
   };
 
@@ -1147,6 +1383,143 @@ const recordPayment = async (
 
   return prisma.$transaction(async (tx) => writePayment(tx as AccountsDbClient));
 };
+
+const getAllocatablePaymentOrThrow = async (
+  tenantId: string,
+  movementId: string,
+  dbClient: AccountsDbClient = prismaAny,
+) => {
+  const movement = await dbClient.moneyMovement.findFirst({
+    where: {
+      id: movementId,
+      business_id: tenantId,
+    },
+    select: {
+      id: true,
+      direction: true,
+      status: true,
+      source_kind: true,
+      amount: true,
+      party_id: true,
+      party_name_snapshot: true,
+    },
+  });
+
+  if (!movement) {
+    throw new NotFoundError("Money movement not found");
+  }
+
+  if (
+    movement.status !== "POSTED" ||
+    !["PAYMENT_RECEIVED", "PAYMENT_MADE"].includes(String(movement.source_kind))
+  ) {
+    throw new BadRequestError("Money movement is not eligible for allocation");
+  }
+
+  if (typeof movement.party_id !== "string" || !movement.party_id) {
+    throw new BadRequestError("Money movement is not eligible for allocation");
+  }
+
+  return {
+    id: String(movement.id),
+    direction: movement.direction as "INFLOW" | "OUTFLOW",
+    amount: Number(movement.amount ?? 0),
+    partyId: String(movement.party_id),
+    partyName:
+      typeof movement.party_name_snapshot === "string" ? movement.party_name_snapshot : "",
+    flow: getFlowForMovementDirection(movement.direction as "INFLOW" | "OUTFLOW"),
+  };
+};
+
+const createAllocationsForMovement = async (
+  tenantId: string,
+  movementId: string,
+  allocations: AllocationInput[],
+  dbClient: AccountsDbClient = prismaAny,
+): Promise<AllocationRowView[]> => {
+  const createdRows: AllocationRowView[] = [];
+  for (const allocation of allocations) {
+    const created = await dbClient.moneyMovementAllocation.create({
+      data: {
+        business_id: tenantId,
+        money_movement_id: movementId,
+        document_type: allocation.documentType,
+        document_id: allocation.documentId,
+        allocated_amount: allocation.allocatedAmount,
+      },
+      select: {
+        id: true,
+        document_type: true,
+        document_id: true,
+        allocated_amount: true,
+        created_at: true,
+      },
+    });
+
+    createdRows.push({
+      id: String(created.id),
+      documentType: created.document_type as FinancialDocumentType,
+      documentId: String(created.document_id),
+      allocatedAmount: Number(created.allocated_amount ?? 0),
+      createdAt: created.created_at.toISOString(),
+    });
+  }
+
+  return createdRows;
+};
+
+const allocatePayment = async (
+  tenantId: string,
+  movementId: string,
+  allocations: AllocationInput[],
+) =>
+  prisma.$transaction(async (tx) => {
+    const dbClient = tx as AccountsDbClient;
+    const movement = await getAllocatablePaymentOrThrow(tenantId, movementId, dbClient);
+    const unallocatedAmount = await getUnallocatedAmountForMovement(
+      tenantId,
+      movementId,
+      movement.amount,
+      dbClient,
+    );
+
+    if (unallocatedAmount <= SETTLEMENT_EPSILON) {
+      throw new BadRequestError("Payment has no remaining amount available for allocation");
+    }
+
+    const allocationContext = await validateAllocationBatch(
+      tenantId,
+      movement.flow,
+      unallocatedAmount,
+      allocations,
+      movement.partyId,
+      dbClient,
+    );
+
+    if (allocationContext.allocatedAmount <= SETTLEMENT_EPSILON) {
+      throw new BadRequestError("Money movement is not eligible for allocation");
+    }
+
+    const createdAllocations = await createAllocationsForMovement(
+      tenantId,
+      movementId,
+      allocations,
+      dbClient,
+    );
+
+    return {
+      movement: {
+        id: movement.id,
+        allocatedAmount: roundMoney(
+          (await getActiveAllocatedAmountForMovement(tenantId, movementId, dbClient)),
+        ),
+        unallocatedAmount: roundMoney(
+          await getUnallocatedAmountForMovement(tenantId, movementId, movement.amount, dbClient),
+        ),
+      },
+      allocations: createdAllocations,
+    };
+  });
 
 const listPostedMoneyMovementsForSourceDocument = async (
   tenantId: string,
@@ -1513,10 +1886,17 @@ export default {
   archiveFinancialAccount,
   listExpenseCategories,
   listMoneyMovements,
+  getMoneyMovementView,
+  getMoneyMovementTenantIdOrThrow,
   voidMoneyMovement,
   listExpenses,
-  listOpenDocuments: async (tenantId: string, flow: DocumentFlow, limit?: number) =>
-    (await getPostedDocumentsForFlow(tenantId, flow, limit)).filter(
+  listOpenDocuments: async (
+    tenantId: string,
+    flow: DocumentFlow,
+    limit?: number,
+    partyId?: string,
+  ) =>
+    (await getPostedDocumentsForFlow(tenantId, flow, limit, partyId)).filter(
       (document) => document.outstandingAmount > SETTLEMENT_EPSILON,
     ),
   createReceivedPayment: (
@@ -1529,6 +1909,7 @@ export default {
     input: Parameters<typeof recordPayment>[2],
     txClient?: AccountsDbClient,
   ) => recordPayment(tenantId, "PAYABLE", input, txClient),
+  allocatePayment,
   listPostedMoneyMovementsForSourceDocument,
   voidMoneyMovementsForSourceDocument,
   createExpense,

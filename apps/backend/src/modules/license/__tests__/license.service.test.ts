@@ -26,6 +26,7 @@ describe("getBusinessModulesFromLicense", () => {
     ]);
 
     await expect(getBusinessModulesFromLicense("business-1", db as never)).resolves.toEqual({
+      accounts: false,
       catalog: false,
       inventory: false,
       purchases: true,
@@ -41,6 +42,7 @@ describe("getBusinessModulesFromLicense", () => {
     ]);
 
     await expect(getBusinessModulesFromLicense("business-1", db as never)).resolves.toEqual({
+      accounts: false,
       catalog: false,
       inventory: false,
       purchases: false,

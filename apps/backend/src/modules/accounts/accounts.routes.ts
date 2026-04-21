@@ -2,6 +2,7 @@ import { Router } from "express";
 import { protect } from "../../shared/middleware/auth.middleware.js";
 import { validateRequest } from "../../shared/middleware/validate.middleware.js";
 import {
+  allocatePayment,
   archiveFinancialAccount,
   createExpense,
   createFinancialAccount,
@@ -18,6 +19,7 @@ import {
   voidMoneyMovement,
 } from "./accounts.controller.js";
 import {
+  allocatePaymentSchema,
   accountsOverviewSchema,
   archiveFinancialAccountSchema,
   createExpenseSchema,
@@ -45,6 +47,7 @@ router.get("/money-movements", validateRequest(listMoneyMovementsSchema), listMo
 router.post("/money-movements/:movementId/void", validateRequest(voidMoneyMovementSchema), voidMoneyMovement);
 router.post("/payments/received", validateRequest(paymentCreateSchema), createReceivedPayment);
 router.post("/payments/made", validateRequest(paymentCreateSchema), createMadePayment);
+router.post("/payments/:movementId/allocate", validateRequest(allocatePaymentSchema), allocatePayment);
 router.post("/expenses", validateRequest(createExpenseSchema), createExpense);
 router.get("/expenses", validateRequest(listExpensesSchema), listExpenses);
 router.get("/open-documents", validateRequest(listOpenDocumentsSchema), listOpenDocuments);

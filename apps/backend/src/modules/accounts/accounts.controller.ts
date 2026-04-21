@@ -82,15 +82,27 @@ export const voidMoneyMovement = catchAsync(async (req, res) => {
 export const createReceivedPayment = catchAsync(async (req, res) => {
   const { tenantId, ...input } = req.body as any;
   await assertMembership(req.user.id, tenantId);
-  const movement = await accountsService.createReceivedPayment(tenantId, input);
+  const created = await accountsService.createReceivedPayment(tenantId, input);
+  const movement = await accountsService.getMoneyMovementView(tenantId, String(created.id));
   res.json(successResponse({ movement }));
 });
 
 export const createMadePayment = catchAsync(async (req, res) => {
   const { tenantId, ...input } = req.body as any;
   await assertMembership(req.user.id, tenantId);
-  const movement = await accountsService.createMadePayment(tenantId, input);
+  const created = await accountsService.createMadePayment(tenantId, input);
+  const movement = await accountsService.getMoneyMovementView(tenantId, String(created.id));
   res.json(successResponse({ movement }));
+});
+
+export const allocatePayment = catchAsync(async (req, res) => {
+  const { movementId } = req.params as { movementId: string };
+  const { allocations } = req.body as { allocations: Array<any> };
+  const tenantId = await accountsService.getMoneyMovementTenantIdOrThrow(movementId);
+  await assertMembership(req.user.id, tenantId);
+  res.json(
+    successResponse(await accountsService.allocatePayment(tenantId, movementId, allocations)),
+  );
 });
 
 export const createExpense = catchAsync(async (req, res) => {
@@ -114,9 +126,14 @@ export const listExpenses = catchAsync(async (req, res) => {
 });
 
 export const listOpenDocuments = catchAsync(async (req, res) => {
-  const { tenantId, flow, limit = 50 } = req.query as any;
+  const { tenantId, flow, partyId, limit = 50 } = req.query as any;
   await assertMembership(req.user.id, tenantId);
-  const documents = await accountsService.listOpenDocuments(tenantId, flow, Number(limit));
+  const documents = await accountsService.listOpenDocuments(
+    tenantId,
+    flow,
+    Number(limit),
+    typeof partyId === "string" ? partyId : undefined,
+  );
   res.json(successResponse({ documents }));
 });
 

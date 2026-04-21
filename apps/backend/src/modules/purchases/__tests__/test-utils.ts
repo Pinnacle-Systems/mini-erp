@@ -1,6 +1,9 @@
 import { vi } from "vitest";
 
-export const createPurchaseTxMock = () => ({
+export const createPurchaseTxMock = () => {
+  const stockLedgerCreateMany = vi.fn();
+
+  return ({
   document: {
     findFirst: vi.fn(),
     findMany: vi.fn(),
@@ -32,12 +35,17 @@ export const createPurchaseTxMock = () => ({
     create: vi.fn(),
   },
   stockLedger: {
+    create: vi.fn(async ({ data }) => stockLedgerCreateMany({ data: [data] })),
     findMany: vi.fn(),
-    createMany: vi.fn(),
+    createMany: stockLedgerCreateMany,
+  },
+  stockActivity: {
+    create: vi.fn(),
   },
   party: {
     findFirst: vi.fn(),
   },
-});
+  });
+};
 
 export type PurchaseTxMock = ReturnType<typeof createPurchaseTxMock>;

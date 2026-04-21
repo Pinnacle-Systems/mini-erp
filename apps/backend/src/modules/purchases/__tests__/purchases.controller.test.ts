@@ -562,6 +562,8 @@ describe("purchases.controller", () => {
         business_id: "tenant-1",
         type: "PURCHASE_INVOICE",
         status: "DRAFT",
+        created_at: postedAt,
+        updated_at: postedAt,
         posted_at: null,
         deleted_at: null,
         cancel_reason: null,
@@ -590,6 +592,8 @@ describe("purchases.controller", () => {
         business_id: "tenant-1",
         type: "PURCHASE_INVOICE",
         status: "OPEN",
+        created_at: postedAt,
+        updated_at: postedAt,
         posted_at: postedAt,
         deleted_at: null,
         cancel_reason: null,
@@ -648,6 +652,7 @@ describe("purchases.controller", () => {
       expect.objectContaining({
         amount: 118,
         financialAccountId: "account-1",
+        partyId: "supplier-1",
         allocations: [
           {
             documentType: "PURCHASE_INVOICE",
