@@ -561,11 +561,6 @@ export function AppHomePage() {
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
-  const [isMobileViewport, setIsMobileViewport] = useState(() =>
-    typeof window === "undefined"
-      ? false
-      : window.matchMedia("(max-width: 1023px)").matches,
-  );
   const appTabsScrollRef = useRef<HTMLDivElement | null>(null);
   const desktopSidebarRef = useRef<HTMLDivElement | null>(null);
   const previousPathnameRef = useRef(location.pathname);
@@ -618,18 +613,6 @@ export function AppHomePage() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 1023px)");
-    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
-
-    updateViewport();
-    mediaQuery.addEventListener("change", updateViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", updateViewport);
-    };
-  }, []);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -664,7 +647,7 @@ export function AppHomePage() {
       .map((folder) => ({
         ...folder,
         apps: folder.apps.filter((app) => {
-          if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
+          if (app.id === "sales-pos" && !isOnline) {
             return false;
           }
 
@@ -691,7 +674,7 @@ export function AppHomePage() {
 
       if (routeFolder) {
         const routeFolderApps = routeFolder.apps.filter((app) => {
-          if (app.id === "sales-pos" && (!isOnline || isMobileViewport)) {
+          if (app.id === "sales-pos" && !isOnline) {
             return false;
           }
 
@@ -716,7 +699,6 @@ export function AppHomePage() {
   }, [
     activeBusiness,
     enabledModules,
-    isMobileViewport,
     isOnline,
     routeDrivenAppId,
   ]);
