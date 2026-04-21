@@ -360,6 +360,7 @@ function SalesDocumentWorkspace({
     removeLine,
     saveDraft,
     saveMessage,
+    saveMessageTone,
     serverInvoicesError,
     serverInvoicesLoading,
     setBillNumber,
@@ -626,6 +627,7 @@ function SalesDocumentWorkspace({
         <SalesDocumentListView
           config={config}
           saveMessage={saveMessage}
+          saveMessageTone={saveMessageTone}
           serverInvoicesError={serverInvoicesError}
           serverInvoicesLoading={serverInvoicesLoading}
           invoiceRows={invoiceRows}
@@ -1220,7 +1222,15 @@ function SalesDocumentWorkspace({
                       {postValidationMessage}
                     </div>
                   ) : saveMessage ? (
-                    <div className="rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground">
+                    <div
+                      className={`rounded-md px-2 py-1 text-[11px] ${
+                        saveMessageTone === "error"
+                          ? "border border-destructive/35 bg-destructive/12 text-destructive"
+                          : saveMessageTone === "success"
+                            ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border border-border/70 bg-muted/55 text-muted-foreground"
+                      }`}
+                    >
                       {saveMessage}
                     </div>
                   ) : null}
@@ -1443,7 +1453,15 @@ function SalesDocumentWorkspace({
                     {postValidationMessage}
                   </div>
                 ) : saveMessage ? (
-                  <div className="rounded-md border border-border/70 bg-slate-50 px-2 py-1 text-[11px] text-muted-foreground">
+                  <div
+                    className={`rounded-md px-2 py-1 text-[11px] ${
+                      saveMessageTone === "error"
+                        ? "border border-destructive/35 bg-destructive/12 text-destructive"
+                        : saveMessageTone === "success"
+                          ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border border-border/70 bg-slate-50 text-muted-foreground"
+                    }`}
+                  >
                     {saveMessage}
                   </div>
                 ) : null}

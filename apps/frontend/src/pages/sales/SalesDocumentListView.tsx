@@ -19,6 +19,7 @@ import {
   type InvoiceListRow,
   type RowMenuAction,
   type SalesDocumentPageConfig,
+  type SalesSaveMessageTone,
 } from "./useSalesDocumentWorkspace";
 
 const getSettlementStatus = (
@@ -71,6 +72,7 @@ const getReturnProgressClassName = (status: "PARTIAL_RETURNED" | "RETURNED_IN_FU
 type SalesDocumentListViewProps = {
   config: SalesDocumentPageConfig;
   saveMessage: string | null;
+  saveMessageTone: SalesSaveMessageTone;
   serverInvoicesError: string | null;
   serverInvoicesLoading: boolean;
   invoiceRows: InvoiceListRow[];
@@ -87,6 +89,7 @@ type SalesDocumentListViewProps = {
 export function SalesDocumentListView({
   config,
   saveMessage,
+  saveMessageTone,
   serverInvoicesError,
   serverInvoicesLoading,
   invoiceRows,
@@ -138,10 +141,15 @@ export function SalesDocumentListView({
     lastSaveMessageRef.current = saveMessage;
     showToast({
       title: saveMessage,
-      tone: "success",
-      dedupeKey: `sales-document-list:${saveMessage}`,
+      tone:
+        saveMessageTone === "error"
+          ? "error"
+          : saveMessageTone === "success"
+            ? "success"
+            : "info",
+      dedupeKey: `sales-document-list:${saveMessageTone}:${saveMessage}`,
     });
-  }, [saveMessage, showToast]);
+  }, [saveMessage, saveMessageTone, showToast]);
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
