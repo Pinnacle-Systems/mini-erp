@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 @theme {
-  --text-sm: 0.75rem;
-  --text-sm--line-height: 1rem;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.125rem;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -175,6 +177,15 @@
   }
 
   @media (min-width: 1024px) {
+    :root,
+    [data-theme="light"],
+    [data-theme="dark"] {
+      --text-xs: 0.75rem;
+      --text-xs--line-height: 1rem;
+      --text-sm: 0.75rem;
+      --text-sm--line-height: 1rem;
+    }
+
     body {
       font-size: 12px;
       line-height: 1.35;
