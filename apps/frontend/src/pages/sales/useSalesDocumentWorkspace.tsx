@@ -234,6 +234,8 @@ export type RowMenuAction = {
   onSelect: () => void;
 };
 
+export type SalesSaveMessageTone = "neutral" | "success" | "error";
+
 const CANCEL_REASON_LABELS: Record<SalesDocumentCancelReason, string> = {
   CUSTOMER_DECLINED: "Customer declined",
   INTERNAL_DROP: "Internal drop",
@@ -257,8 +259,6 @@ const resetLine = (lineId: string): BillLine => ({
   id: lineId,
 });
 
-const MINIMUM_VISIBLE_DOCUMENT_LINES = 5;
-
 const getDefaultStarterLineCount = () => {
   if (typeof window === "undefined") {
     return DESKTOP_GROW_AS_NEEDED_STARTER_ROWS;
@@ -269,23 +269,38 @@ const getDefaultStarterLineCount = () => {
     : MOBILE_GROW_AS_NEEDED_STARTER_ROWS;
 };
 
+const getMinimumVisibleDocumentLines = () => getDefaultStarterLineCount();
+
 const buildStarterLines = (count = getDefaultStarterLineCount()) =>
   Array.from(
-    { length: Math.max(count, MINIMUM_VISIBLE_DOCUMENT_LINES) },
+    { length: Math.max(count, getMinimumVisibleDocumentLines()) },
     () => createLine(),
   );
 
+const compactLinesForEditing = (lines: BillLine[]) => lines.filter(hasLineContent);
+
 const padLinesForDisplay = (
   lines: BillLine[],
-  minimumCount = Math.max(getDefaultStarterLineCount(), MINIMUM_VISIBLE_DOCUMENT_LINES),
+  minimumCount = Math.max(
+    getDefaultStarterLineCount(),
+    getMinimumVisibleDocumentLines(),
+  ),
 ) => {
-  if (lines.length >= minimumCount) {
-    return lines;
+  const compactedLines = compactLinesForEditing(lines);
+
+  if (compactedLines.length === 0) {
+    return buildStarterLines(minimumCount);
+  }
+
+  if (compactedLines.length >= minimumCount) {
+    return compactedLines;
   }
 
   return [
-    ...lines,
-    ...Array.from({ length: minimumCount - lines.length }, () => createLine()),
+    ...compactedLines,
+    ...Array.from({ length: minimumCount - compactedLines.length }, () =>
+      createLine(),
+    ),
   ];
 };
 
@@ -688,7 +703,7 @@ const loadStoredDrafts = (
           ? (entry as Record<string, unknown>)
           : {};
       const lines = Array.isArray(draft.lines)
-        ? draft.lines.map(normalizeStoredLine)
+        ? compactLinesForEditing(draft.lines.map(normalizeStoredLine))
         : [];
       return {
         id:
@@ -797,6 +812,9 @@ export function useSalesDocumentWorkspace({
   const [saveMessage, setSaveMessage] = useState<string | null>(
     activeStore ? null : `Select a business to start a ${config.singularLabel}.`,
   );
+  const [saveMessageTone, setSaveMessageTone] = useState<SalesSaveMessageTone>(
+    activeStore ? "neutral" : "error",
+  );
   const [lineHighlightRequest, setLineHighlightRequest] = useState<{
     lineId: string;
     nonce: number;
@@ -826,6 +844,14 @@ export function useSalesDocumentWorkspace({
   const [serverInvoices, setServerInvoices] = useState<SalesDocumentDraft[]>([]);
   const [serverInvoicesLoading, setServerInvoicesLoading] = useState(false);
   const [serverInvoicesError, setServerInvoicesError] = useState<string | null>(null);
+
+  const setSaveFeedback = (
+    message: string | null,
+    tone: SalesSaveMessageTone = "neutral",
+  ) => {
+    setSaveMessage(message);
+    setSaveMessageTone(message ? tone : "neutral");
+  };
   const [linkedSourceBalances, setLinkedSourceBalances] = useState<
     Record<string, LinkedSourceBalance>
   >({});
@@ -1181,8 +1207,9 @@ export function useSalesDocumentWorkspace({
     persistDrafts([duplicatedDraft, ...drafts]);
     setPersistedDuplicateMeta(duplicatedDraft.id, duplicatedDraft.duplicateMeta ?? null);
     loadDraft(duplicatedDraft);
-    setSaveMessage(
+    setSaveFeedback(
       `${formatSalesDocumentTypeLabel(source.documentType)} ${source.billNumber} duplicated into draft ${duplicatedDraft.billNumber}. Original prices were preserved.`,
+      "success",
     );
   };
 
@@ -1260,8 +1287,9 @@ export function useSalesDocumentWorkspace({
         });
 
       if (convertedLines.length === 0) {
-        setSaveMessage(
+        setSaveFeedback(
           `No quantity is currently available to convert from ${document.billNumber}.`,
+          "error",
         );
         return;
       }
@@ -1292,8 +1320,9 @@ export function useSalesDocumentWorkspace({
         } satisfies BillingRouteState,
       });
     } catch (error) {
-      setSaveMessage(
+      setSaveFeedback(
         error instanceof Error ? error.message : "Unable to start document conversion.",
+        "error",
       );
     }
   };
@@ -1476,8 +1505,9 @@ export function useSalesDocumentWorkspace({
           : buildStarterLines(),
       );
       if (!routeState.createdCustomer && !routeState.customerMessage) {
-        setSaveMessage(
+        setSaveFeedback(
           `Returned to ${config.routeAppDraftLabel}. The draft was restored.`,
+          "success",
         );
       }
     }
@@ -1523,7 +1553,10 @@ export function useSalesDocumentWorkspace({
     }
 
     if (routeState.customerMessage) {
-      setSaveMessage(routeState.customerMessage);
+      setSaveFeedback(
+        routeState.customerMessage,
+        routeState.createdCustomer ? "success" : "neutral",
+      );
     }
 
     navigate(location.pathname, { replace: true, state: null });
@@ -1831,8 +1864,9 @@ export function useSalesDocumentWorkspace({
 
   const openNewDraft = () => {
     resetEditor({ focusFirstLine: isPosMode });
-    setSaveMessage(
+    setSaveFeedback(
       activeStore ? null : `Select a business to start a ${config.singularLabel}.`,
+      activeStore ? "neutral" : "error",
     );
     setViewMode("editor");
   };
@@ -1984,7 +2018,7 @@ export function useSalesDocumentWorkspace({
         setDispatchCarrier(savedServerDraft.dispatchCarrier);
         setDispatchReference(savedServerDraft.dispatchReference);
         setLines(padLinesForDisplay(savedServerDraft.lines.map(normalizeStoredLine)));
-        setSaveMessage(`${config.createTitle} draft saved to the server.`);
+        setSaveFeedback(`${config.createTitle} draft saved to the server.`, "success");
       } else {
         if (!storageKey) {
           throw new Error(
@@ -2007,16 +2041,18 @@ export function useSalesDocumentWorkspace({
         setDispatchCarrier(nextDraft.dispatchCarrier);
         setDispatchReference(nextDraft.dispatchReference);
         setLines(padLinesForDisplay(nextDraft.lines));
-        setSaveMessage(
+        setSaveFeedback(
           `${config.createTitle} draft saved locally on this device.`,
+          "success",
         );
       }
     } catch (error) {
       console.error(error);
-      setSaveMessage(
+      setSaveFeedback(
         error instanceof Error
           ? error.message
           : `Unable to save ${config.singularLabel} draft.`,
+        "error",
       );
     } finally {
       setDraftMutationLoading(false);
@@ -2053,7 +2089,7 @@ export function useSalesDocumentWorkspace({
     setLines(padLinesForDisplay(draft.lines.map((line) => ({ ...line }))));
     setDuplicateMeta(draft.duplicateMeta ?? getPersistedDuplicateMeta(draft.id));
     setNumberConflict(null);
-    setSaveMessage(null);
+    setSaveFeedback(null);
     setViewMode("editor");
   };
 
@@ -2087,7 +2123,7 @@ export function useSalesDocumentWorkspace({
     setLines(padLinesForDisplay(draft.lines.map(normalizeStoredLine)));
     setDuplicateMeta(getPersistedDuplicateMeta(draft.id));
     setNumberConflict(null);
-    setSaveMessage(null);
+    setSaveFeedback(null);
     setViewMode("editor");
   };
 
@@ -2112,7 +2148,7 @@ export function useSalesDocumentWorkspace({
       if (source === "server") {
         if (!isOnline) {
           const message = `Cannot delete server drafts while offline. Connect to the internet to perform this action.`;
-          setSaveMessage(message);
+          setSaveFeedback(message, "error");
           showToast({
             title: "Action unavailable",
             description: message,
@@ -2144,15 +2180,17 @@ export function useSalesDocumentWorkspace({
       if (draftId === activeDraftId) {
         resetEditor();
       }
-      setSaveMessage(
+      setSaveFeedback(
         `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} draft removed.`,
+        "success",
       );
     } catch (error) {
       console.error(error);
-      setSaveMessage(
+      setSaveFeedback(
         error instanceof Error
           ? error.message
           : `Unable to remove ${config.singularLabel} draft.`,
+        "error",
       );
     } finally {
       setDraftMutationLoading(false);
@@ -2396,10 +2434,11 @@ export function useSalesDocumentWorkspace({
     }
     resetEditor({ focusFirstLine: isPosMode });
     setViewMode(isPosMode ? "editor" : "list");
-    setSaveMessage(
+    setSaveFeedback(
       isPosMode
         ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted. Ready for the next sale.`
         : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted.`,
+      "success",
     );
 
     const receiptTotals = localDraft.lines.reduce(
@@ -2435,7 +2474,7 @@ export function useSalesDocumentWorkspace({
   const postDraft = async (options?: PostDraftOptions): Promise<PostDraftResult> => {
     if (!isOnline) {
       const message = `Internet connection required to post this ${config.singularLabel}. Your progress is saved as a local draft.`;
-      setSaveMessage(message);
+      setSaveFeedback(message, "error");
       showToast({
         title: "Connection required",
         description: message,
@@ -2446,7 +2485,7 @@ export function useSalesDocumentWorkspace({
     }
 
     setDraftMutationLoading(true);
-    setSaveMessage(null);
+    setSaveFeedback(null);
     setNumberConflict(null);
     try {
       const normalizedDraft = buildNormalizedDraft();
@@ -2468,8 +2507,9 @@ export function useSalesDocumentWorkspace({
           requested: error.details.requested?.trim() || billNumber.trim(),
           suggested: error.details.suggested.trim(),
         });
-        setSaveMessage(
+        setSaveFeedback(
           `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`,
+          "error",
         );
         const message = `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || billNumber.trim()} is already in use.`;
         showPostErrorToast(message);
@@ -2479,7 +2519,7 @@ export function useSalesDocumentWorkspace({
           error instanceof Error
             ? error.message
             : `Unable to post ${config.singularLabel}.`;
-        setSaveMessage(message);
+        setSaveFeedback(message, "error");
         showPostErrorToast(message);
         return { ok: false, errorMessage: message };
       }
@@ -2494,8 +2534,9 @@ export function useSalesDocumentWorkspace({
     }
 
     if (!activeStore) {
-      setSaveMessage(
+      setSaveFeedback(
         `Select a business before posting a ${config.singularLabel}.`,
+        "error",
       );
       return;
     }
@@ -2503,8 +2544,9 @@ export function useSalesDocumentWorkspace({
     setDraftMutationLoading(true);
     assignManualBillNumber(numberConflict.suggested);
     setNumberConflict(null);
-    setSaveMessage(
+    setSaveFeedback(
       `Retrying with ${config.singularLabel} number ${numberConflict.suggested}.`,
+      "neutral",
     );
     try {
       const localDraft = {
@@ -2524,8 +2566,9 @@ export function useSalesDocumentWorkspace({
           requested: error.details.requested?.trim() || numberConflict.suggested,
           suggested: error.details.suggested.trim(),
         });
-        setSaveMessage(
+        setSaveFeedback(
           `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || numberConflict.suggested} is already in use.`,
+          "error",
         );
         showPostErrorToast(
           `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} number ${error.details.requested?.trim() || numberConflict.suggested} is already in use.`,
@@ -2535,7 +2578,7 @@ export function useSalesDocumentWorkspace({
           error instanceof Error
             ? error.message
             : `Unable to post ${config.singularLabel}.`;
-        setSaveMessage(message);
+        setSaveFeedback(message, "error");
         showPostErrorToast(message);
       }
     } finally {
@@ -2550,7 +2593,7 @@ export function useSalesDocumentWorkspace({
   ) => {
     if (!isOnline) {
       const message = `Connection required to update ${config.singularLabel} status.`;
-      setSaveMessage(message);
+      setSaveFeedback(message, "error");
       showToast({
         title: "Connection required",
         description: message,
@@ -2565,7 +2608,7 @@ export function useSalesDocumentWorkspace({
     }
 
     setServerActionDocumentId(document.id);
-    setSaveMessage(null);
+    setSaveFeedback(null);
     try {
       const updatedDocument = await transitionSalesDocument(
         document.id,
@@ -2579,19 +2622,21 @@ export function useSalesDocumentWorkspace({
           entry.id === updatedDocument.id ? updatedDocument : entry,
         ),
       );
-      setSaveMessage(
+      setSaveFeedback(
         action === "CANCEL"
           ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} cancelled${updatedDocument.cancelReason ? ` (${CANCEL_REASON_LABELS[updatedDocument.cancelReason]})` : ""}.`
           : action === "VOID"
             ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} voided.`
             : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${document.billNumber} reopened.`,
+        "success",
       );
     } catch (error) {
       console.error(error);
-      setSaveMessage(
+      setSaveFeedback(
         error instanceof Error
           ? error.message
           : `Unable to update ${config.singularLabel} status.`,
+        "error",
       );
     } finally {
       setServerActionDocumentId(null);
@@ -2600,7 +2645,10 @@ export function useSalesDocumentWorkspace({
 
   const openDocumentHistory = async (document: SalesDocumentDraft) => {
     if (!activeStore) {
-      setSaveMessage(`Select a business before viewing ${config.singularLabel} history.`);
+      setSaveFeedback(
+        `Select a business before viewing ${config.singularLabel} history.`,
+        "error",
+      );
       return;
     }
 
@@ -2722,7 +2770,7 @@ export function useSalesDocumentWorkspace({
     }
 
     setCustomerActionLoading(true);
-    setSaveMessage(null);
+    setSaveFeedback(null);
     try {
       const entityId = crypto.randomUUID();
       await queueCustomerCreate(
@@ -2752,13 +2800,15 @@ export function useSalesDocumentWorkspace({
       };
       setCustomers((current) => sortCustomers([...current, nextCustomer]));
       applyCustomer(nextCustomer);
-      setSaveMessage(
+      setSaveFeedback(
         `Customer created from phone for this cash ${config.singularLabel}.`,
+        "success",
       );
     } catch (error) {
       console.error(error);
-      setSaveMessage(
+      setSaveFeedback(
         "Unable to create a customer from this phone number right now.",
+        "error",
       );
     } finally {
       setCustomerActionLoading(false);
@@ -2825,6 +2875,7 @@ export function useSalesDocumentWorkspace({
     removeLine,
     saveDraft,
     saveMessage,
+    saveMessageTone,
     serverInvoicesError,
     serverInvoicesLoading,
     setBillNumber: assignManualBillNumber,

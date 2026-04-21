@@ -76,8 +76,6 @@ export type PurchaseLine = PurchaseDocumentLineDraft & {
   linkedRemainingQuantity?: string | null;
 };
 
-const MINIMUM_VISIBLE_DOCUMENT_LINES = 5;
-
 export type PurchaseDocumentDuplicateMeta = {
   sourceBillNumber: string;
   sourceDocumentType: PurchaseDocumentType;
@@ -262,23 +260,49 @@ const getDefaultStarterLineCount = () => {
     : MOBILE_GROW_AS_NEEDED_STARTER_ROWS;
 };
 
+const getMinimumVisibleDocumentLines = () => getDefaultStarterLineCount();
+
 export const buildPurchaseStarterLines = (count = getDefaultStarterLineCount()) =>
   Array.from(
-    { length: Math.max(count, MINIMUM_VISIBLE_DOCUMENT_LINES) },
+    { length: Math.max(count, getMinimumVisibleDocumentLines()) },
     () => createPurchaseLine(),
   );
 
+const hasPurchaseLineContent = (line: PurchaseLine) =>
+  Boolean(
+    line.description.trim() ||
+      line.unitPrice.trim() ||
+      line.variantId.trim() ||
+      (line.quantity.trim() &&
+        line.quantity.trim() !== "0" &&
+        line.quantity.trim() !== "1"),
+  );
+
+const compactPurchaseLinesForEditing = (lines: PurchaseLine[]) =>
+  lines.filter(hasPurchaseLineContent);
+
 const padPurchaseLinesForEditing = (
   lines: PurchaseLine[],
-  minimumCount = Math.max(getDefaultStarterLineCount(), MINIMUM_VISIBLE_DOCUMENT_LINES),
+  minimumCount = Math.max(
+    getDefaultStarterLineCount(),
+    getMinimumVisibleDocumentLines(),
+  ),
 ) => {
-  if (lines.length >= minimumCount) {
-    return lines;
+  const compactedLines = compactPurchaseLinesForEditing(lines);
+
+  if (compactedLines.length === 0) {
+    return buildPurchaseStarterLines(minimumCount);
+  }
+
+  if (compactedLines.length >= minimumCount) {
+    return compactedLines;
   }
 
   return [
-    ...lines,
-    ...Array.from({ length: minimumCount - lines.length }, () => createPurchaseLine()),
+    ...compactedLines,
+    ...Array.from({ length: minimumCount - compactedLines.length }, () =>
+      createPurchaseLine(),
+    ),
   ];
 };
 
