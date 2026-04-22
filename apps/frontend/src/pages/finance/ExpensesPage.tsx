@@ -177,28 +177,46 @@ export function ExpensesPage() {
           <CardTitle className="text-sm">Recent Expenses</CardTitle>
         </CardHeader>
         <CardContent className="min-h-0 lg:flex-1">
-          <TabularSurface className="min-h-0 overflow-hidden">
-            <TabularHeader>
-              <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
-                <TabularSerialNumberHeaderCell />
-                <TabularCell variant="header">When</TabularCell>
-                <TabularCell variant="header">Payee</TabularCell>
-                <TabularCell variant="header">Category</TabularCell>
-                <TabularCell variant="header" align="end">Amount</TabularCell>
-              </TabularRow>
-            </TabularHeader>
-            <TabularBody className="overflow-y-auto">
-              {expenses.map((expense, index) => (
-                <TabularRow key={expense.id} columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
-                  <TabularSerialNumberCell index={index} />
-                  <TabularCell>{new Date(expense.occurredAt).toLocaleDateString()}</TabularCell>
-                  <TabularCell>{expense.payeeName}</TabularCell>
-                  <TabularCell>{expense.categoryName}</TabularCell>
-                  <TabularCell align="end" className="text-destructive">{formatCurrency(expense.amount)}</TabularCell>
+          <div className="space-y-2 lg:hidden">
+            {expenses.map((expense) => (
+              <div key={expense.id} className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{expense.payeeName}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{expense.categoryName}</p>
+                  </div>
+                  <p className="text-sm font-semibold text-destructive">{formatCurrency(expense.amount)}</p>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {new Date(expense.occurredAt).toLocaleDateString()}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="hidden min-h-0 lg:block">
+            <TabularSurface className="min-h-0 overflow-hidden">
+              <TabularHeader>
+                <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
+                  <TabularSerialNumberHeaderCell />
+                  <TabularCell variant="header">When</TabularCell>
+                  <TabularCell variant="header">Payee</TabularCell>
+                  <TabularCell variant="header">Category</TabularCell>
+                  <TabularCell variant="header" align="end">Amount</TabularCell>
                 </TabularRow>
-              ))}
-            </TabularBody>
-          </TabularSurface>
+              </TabularHeader>
+              <TabularBody className="overflow-y-auto">
+                {expenses.map((expense, index) => (
+                  <TabularRow key={expense.id} columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
+                    <TabularSerialNumberCell index={index} />
+                    <TabularCell>{new Date(expense.occurredAt).toLocaleDateString()}</TabularCell>
+                    <TabularCell>{expense.payeeName}</TabularCell>
+                    <TabularCell>{expense.categoryName}</TabularCell>
+                    <TabularCell align="end" className="text-destructive">{formatCurrency(expense.amount)}</TabularCell>
+                  </TabularRow>
+                ))}
+              </TabularBody>
+            </TabularSurface>
+          </div>
         </CardContent>
       </Card>
     </section>

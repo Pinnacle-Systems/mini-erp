@@ -106,30 +106,52 @@ export function OverviewPage() {
             <CardTitle className="text-sm">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent className="min-h-0 lg:flex-1">
-            <TabularSurface className="min-h-0 overflow-hidden">
-              <TabularHeader>
-                <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.75fr)")}>
-                  <TabularSerialNumberHeaderCell />
-                  <TabularCell variant="header">When</TabularCell>
-                  <TabularCell variant="header">Source</TabularCell>
-                  <TabularCell variant="header">Account</TabularCell>
-                  <TabularCell variant="header" align="end">Amount</TabularCell>
-                </TabularRow>
-              </TabularHeader>
-              <TabularBody className="overflow-y-auto">
-                {(overview?.recentMovements ?? []).map((row, index) => (
-                  <TabularRow key={row.id} columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.75fr)")}>
-                    <TabularSerialNumberCell index={index} />
-                    <TabularCell>{formatDateTime(row.occurredAt)}</TabularCell>
-                    <TabularCell>{row.sourceDocumentNumber || row.sourceKind}</TabularCell>
-                    <TabularCell>{row.accountName}</TabularCell>
-                    <TabularCell align="end" className={row.direction === "INFLOW" ? "text-foreground" : "text-destructive"}>
+            <div className="space-y-2 lg:hidden">
+              {(overview?.recentMovements ?? []).map((row) => (
+                <div key={row.id} className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {row.sourceDocumentNumber || row.sourceKind}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {formatDateTime(row.occurredAt)}
+                      </p>
+                    </div>
+                    <p className={`text-sm font-semibold ${row.direction === "INFLOW" ? "text-foreground" : "text-destructive"}`}>
                       {row.direction === "INFLOW" ? "+" : "-"}{formatCurrency(row.amount)}
-                    </TabularCell>
+                    </p>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{row.accountName}</p>
+                </div>
+              ))}
+            </div>
+            <div className="hidden min-h-0 lg:block">
+              <TabularSurface className="min-h-0 overflow-hidden">
+                <TabularHeader>
+                  <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.75fr)")}>
+                    <TabularSerialNumberHeaderCell />
+                    <TabularCell variant="header">When</TabularCell>
+                    <TabularCell variant="header">Source</TabularCell>
+                    <TabularCell variant="header">Account</TabularCell>
+                    <TabularCell variant="header" align="end">Amount</TabularCell>
                   </TabularRow>
-                ))}
-              </TabularBody>
-            </TabularSurface>
+                </TabularHeader>
+                <TabularBody className="overflow-y-auto">
+                  {(overview?.recentMovements ?? []).map((row, index) => (
+                    <TabularRow key={row.id} columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.75fr)")}>
+                      <TabularSerialNumberCell index={index} />
+                      <TabularCell>{formatDateTime(row.occurredAt)}</TabularCell>
+                      <TabularCell>{row.sourceDocumentNumber || row.sourceKind}</TabularCell>
+                      <TabularCell>{row.accountName}</TabularCell>
+                      <TabularCell align="end" className={row.direction === "INFLOW" ? "text-foreground" : "text-destructive"}>
+                        {row.direction === "INFLOW" ? "+" : "-"}{formatCurrency(row.amount)}
+                      </TabularCell>
+                    </TabularRow>
+                  ))}
+                </TabularBody>
+              </TabularSurface>
+            </div>
           </CardContent>
         </Card>
 
