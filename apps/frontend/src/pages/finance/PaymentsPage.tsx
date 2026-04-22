@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowRightLeft, Trash2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
@@ -57,11 +58,11 @@ const formatDate = (value: string | null) =>
 const todayValue = () => new Date().toISOString().slice(0, 10);
 
 const PAYMENT_ROWS_TEMPLATE = withTabularSerialNumberColumn(
-  "minmax(0,0.9fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.75fr) minmax(0,0.75fr) minmax(0,0.75fr) minmax(0,0.9fr)",
+  "96px minmax(0,1.1fr) minmax(0,1fr) minmax(0,0.9fr) 88px 88px 96px 72px",
 );
 
 const DOCUMENT_ROWS_TEMPLATE = withTabularSerialNumberColumn(
-  "minmax(0,1fr) minmax(0,0.9fr) minmax(0,0.75fr) minmax(0,0.75fr) minmax(0,0.75fr) minmax(0,0.85fr)",
+  "minmax(0,1fr) minmax(0,1fr) 96px 104px 120px",
 );
 
 type PaymentsPageProps = {
@@ -86,7 +87,7 @@ const clampAllocationInput = (value: string, maxAmount?: number) => {
 };
 
 export function PaymentsPage({ flow }: PaymentsPageProps) {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const [accounts, setAccounts] = useState<FinancialAccountRow[]>([]);
@@ -106,11 +107,19 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [requestedDocumentApplied, setRequestedDocumentApplied] = useState(false);
   const requestedDocumentId = searchParams.get("documentId") ?? "";
+  const requestedMovementId = searchParams.get("movementId") ?? "";
+  const requestedMode = searchParams.get("mode") ?? "";
 
   const paymentLabel = flow === "RECEIVABLE" ? "Receipt" : "Payment";
   const counterpartyLabel = flow === "RECEIVABLE" ? "Customer" : "Supplier";
   const accountLabel = flow === "RECEIVABLE" ? "Received In" : "Paid Via";
   const sourceKind = flow === "RECEIVABLE" ? "PAYMENT_RECEIVED" : "PAYMENT_MADE";
+  const allocationModeLabel =
+    allocationMode === "AUTO"
+      ? "Auto apply oldest first"
+      : allocationMode === "ADVANCE"
+        ? "Keep as unapplied credit"
+        : "Choose invoice amounts yourself";
 
   const load = useCallback(async () => {
     if (!activeStore || !isBusinessSelected) return;
@@ -175,6 +184,14 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setRequestedDocumentApplied(false);
+  }, [requestedDocumentId]);
+
+  useEffect(() => {
+    setApplyingMovementId(requestedMovementId);
+  }, [requestedMovementId]);
+
   const selectedMovement = useMemo(
     () => movements.find((movement) => movement.id === applyingMovementId) ?? null,
     [applyingMovementId, movements],
@@ -202,12 +219,17 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     return nextValues;
   }, [availableAmount, documents]);
 
-  const effectiveAllocationInputs =
-    allocationMode === "AUTO"
-      ? autoAllocationInputs
-      : allocationMode === "ADVANCE"
-        ? {}
-        : allocationInputs;
+  const effectiveAllocationInputs = useMemo(() => {
+    if (allocationMode === "AUTO") {
+      return autoAllocationInputs;
+    }
+
+    if (allocationMode === "ADVANCE") {
+      return {};
+    }
+
+    return allocationInputs;
+  }, [allocationInputs, allocationMode, autoAllocationInputs]);
 
   const selectedAllocations = useMemo(
     () =>
@@ -242,6 +264,25 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     parties.find((party) => party.id === partyId)?.name ??
     selectedMovement?.partyName ??
     counterpartyLabel;
+  const hasPartySelected = Boolean(partyId);
+  const isWorkspaceOpen = Boolean(requestedDocumentId || requestedMovementId || requestedMode === "new");
+
+  const recordedAmount = movements
+    .filter((movement) => movement.status !== "VOIDED")
+    .reduce((sum, movement) => sum + movement.amount, 0);
+  const allocatedAmountTotal = movements
+    .filter((movement) => movement.status !== "VOIDED")
+    .reduce((sum, movement) => sum + movement.allocatedAmount, 0);
+  const remainingBalanceTotal = movements
+    .filter((movement) => movement.status !== "VOIDED")
+    .reduce((sum, movement) => sum + movement.unallocatedAmount, 0);
+  const unappliedMovementCount = movements.filter(
+    (movement) => movement.status !== "VOIDED" && movement.unallocatedAmount > 0,
+  ).length;
+  const totalOutstandingAmount = documents.reduce(
+    (sum, document) => sum + document.outstandingAmount,
+    0,
+  );
 
   const resetComposer = useCallback(() => {
     setPartyId("");
@@ -253,6 +294,34 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     setAllocationInputs({});
     setApplyingMovementId("");
   }, []);
+
+  const openNewWorkspace = (nextPartyId?: string) => {
+    if (nextPartyId) {
+      setPartyId(nextPartyId);
+      setAllocationInputs({});
+      setApplyingMovementId("");
+    }
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("mode", "new");
+      next.delete("movementId");
+      return next;
+    });
+  };
+
+  const openExistingWorkspace = (movement: MoneyMovementRow) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("movementId", movement.id);
+      next.delete("mode");
+      return next;
+    });
+  };
+
+  const closeWorkspace = () => {
+    resetComposer();
+    setSearchParams({});
+  };
 
   const handlePartyChange = (nextPartyId: string) => {
     setPartyId(nextPartyId);
@@ -271,10 +340,10 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
   };
 
   const handleApplyExistingMovement = (movement: MoneyMovementRow) => {
-    setApplyingMovementId(movement.id);
     setPartyId(movement.partyId ?? "");
     setAllocationMode("MANUAL");
     setAllocationInputs({});
+    openExistingWorkspace(movement);
     setError(null);
   };
 
@@ -379,331 +448,119 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 lg:overflow-hidden">
-      <div className="grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <Card className="p-2">
-          <CardHeader className="pb-2">
-            <CardTitle>
-              {selectedMovement
-                ? `Apply Existing ${paymentLabel}`
-                : flow === "RECEIVABLE"
-                  ? "Payments Received"
-                  : "Payments Made"}
-            </CardTitle>
-            <CardDescription>
-              Record advances, split one payment across many invoices, or apply existing unapplied
-              credit later.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2 lg:grid-cols-4">
-            <div className="space-y-1.5">
-              <Label htmlFor={`payment-party-${flow}`}>{counterpartyLabel}</Label>
-              <Select
-                id={`payment-party-${flow}`}
-                value={partyId}
-                onChange={(event) => handlePartyChange(event.target.value)}
-                disabled={loading || Boolean(selectedMovement)}
-              >
-                <option value="">Select {counterpartyLabel.toLowerCase()}</option>
-                {parties.map((party) => (
-                  <option key={party.id} value={party.id}>
-                    {party.name}
-                    {party.secondaryText ? ` • ${party.secondaryText}` : ""}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`payment-account-${flow}`}>{accountLabel}</Label>
-              <Select
-                id={`payment-account-${flow}`}
-                value={accountId}
-                onChange={(event) => setAccountId(event.target.value)}
-                disabled={loading || Boolean(selectedMovement)}
-              >
-                <option value="">Select account</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`payment-date-${flow}`}>Date</Label>
-              <Input
-                id={`payment-date-${flow}`}
-                type="date"
-                value={occurredOn}
-                onChange={(event) => setOccurredOn(event.target.value)}
-                disabled={loading || Boolean(selectedMovement)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`payment-amount-${flow}`}>
-                {selectedMovement ? "Available to Apply" : "Amount"}
-              </Label>
-              <Input
-                id={`payment-amount-${flow}`}
-                value={
-                  selectedMovement
-                    ? String(selectedMovement.unallocatedAmount)
-                    : amount
-                }
-                onChange={(event) => setAmount(event.target.value)}
-                inputMode="decimal"
-                disabled={loading || Boolean(selectedMovement)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`payment-mode-${flow}`}>Allocation Mode</Label>
-              <Select
-                id={`payment-mode-${flow}`}
-                value={allocationMode}
-                onChange={(event) => setAllocationMode(event.target.value as AllocationMode)}
-                disabled={loading}
-              >
-                <option value="MANUAL">Manual allocate</option>
-                <option value="AUTO">Auto allocate oldest</option>
-                <option value="ADVANCE">Save as advance</option>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`payment-ref-${flow}`}>Reference</Label>
-              <Input
-                id={`payment-ref-${flow}`}
-                value={referenceNo}
-                onChange={(event) => setReferenceNo(event.target.value)}
-                disabled={loading || Boolean(selectedMovement)}
-              />
-            </div>
-            <div className="space-y-1.5 lg:col-span-2">
-              <Label htmlFor={`payment-notes-${flow}`}>Notes</Label>
-              <Textarea
-                id={`payment-notes-${flow}`}
-                rows={2}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                disabled={loading || Boolean(selectedMovement)}
-              />
-            </div>
-            <div className="flex items-end justify-end gap-2">
-              {selectedMovement ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setApplyingMovementId("")}
-                  disabled={loading}
-                >
-                  Stop Applying
+      {!isWorkspaceOpen ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <Card className="p-2">
+            <CardHeader className="pb-2">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle>
+                    {flow === "RECEIVABLE" ? "Payments Received" : "Payments Made"}
+                  </CardTitle>
+                  <CardDescription>
+                    Browse posted {paymentLabel.toLowerCase()} activity, see allocated versus
+                    remaining balances, then drill into a focused workspace when you need to record
+                    or apply one payment.
+                  </CardDescription>
+                </div>
+                <Button type="button" onClick={() => openNewWorkspace()} disabled={loading}>
+                  {flow === "RECEIVABLE" ? "Record Receipt" : "Record Payment"}
                 </Button>
-              ) : null}
-              <Button type="button" onClick={() => void onSubmit()} disabled={loading}>
-                {loading
-                  ? "Saving..."
-                  : selectedMovement
-                    ? "Apply Remaining"
-                    : flow === "RECEIVABLE"
-                      ? "Record Receipt"
-                      : "Record Payment"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                <p className="text-[10px] text-muted-foreground">Recorded Total</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {formatCurrency(recordedAmount)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                <p className="text-[10px] text-muted-foreground">Applied Total</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {formatCurrency(allocatedAmountTotal)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                <p className="text-[10px] text-muted-foreground">Remaining Balance</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {formatCurrency(remainingBalanceTotal)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                <p className="text-[10px] text-muted-foreground">Unapplied {paymentLabel}s</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {unappliedMovementCount}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                <p className="text-[10px] text-muted-foreground">Open Invoice Balance</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">
+                  {formatCurrency(totalOutstandingAmount)}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="p-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Allocation Summary</CardTitle>
-            <CardDescription>
-              {selectedMovement
-                ? `Applying unapplied ${paymentLabel.toLowerCase()} for ${partyName}.`
-                : `Create a new ${paymentLabel.toLowerCase()} and decide what stays unapplied.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2">
-            <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
-              <p className="text-[10px] text-muted-foreground">
-                {selectedMovement ? "Selected Payment" : counterpartyLabel}
-              </p>
-              <p className="mt-1 truncate text-sm font-semibold text-foreground">
-                {selectedMovement?.referenceNo || selectedMovement?.id || partyName || "None selected"}
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {selectedMovement ? formatDate(selectedMovement.occurredAt) : partyName || "Pick a party first"}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
-              <p className="text-[10px] text-muted-foreground">Open Invoices</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{documents.length}</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {partyId ? "Only posted invoices for the selected party are shown." : "Select a party to load allocatable invoices."}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
-              <p className="text-[10px] text-muted-foreground">Available Amount</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(availableAmount)}</p>
-            </div>
-            <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
-              <p className="text-[10px] text-muted-foreground">Allocated Now</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(allocatedAmount)}</p>
-            </div>
-            <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
-              <p className="text-[10px] text-muted-foreground">Remaining Credit</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{formatCurrency(remainingAmount)}</p>
-            </div>
-            <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
-              <p className="text-[10px] text-muted-foreground">Mode</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">
-                {allocationMode === "AUTO"
-                  ? "Auto allocate oldest"
-                  : allocationMode === "ADVANCE"
-                    ? "Save as advance"
-                    : "Manual allocate"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      {hasOverAllocated ? (
-        <p className="text-xs text-destructive">
-          Allocation exceeds the available payment amount. Reduce one or more rows before saving.
-        </p>
-      ) : null}
-
-      <div className="grid gap-2 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <Card className="min-h-0 p-2 lg:flex lg:flex-col">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Allocatable Invoices</CardTitle>
-            <CardDescription>
-              Apply the {paymentLabel.toLowerCase()} against one or more open invoices for the
-              selected {counterpartyLabel.toLowerCase()}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="min-h-0 lg:flex-1">
-            <TabularSurface className="min-h-0 overflow-hidden">
-              <TabularHeader>
-                <TabularRow columns={DOCUMENT_ROWS_TEMPLATE}>
-                  <TabularSerialNumberHeaderCell />
-                  <TabularCell variant="header">Invoice</TabularCell>
-                  <TabularCell variant="header">Posted</TabularCell>
-                  <TabularCell variant="header" align="end">Total</TabularCell>
-                  <TabularCell variant="header" align="end">Paid</TabularCell>
-                  <TabularCell variant="header" align="end">Outstanding</TabularCell>
-                  <TabularCell variant="header" align="end">Allocate</TabularCell>
-                </TabularRow>
-              </TabularHeader>
-              <TabularBody className="overflow-y-auto">
-                {documents.length === 0 ? (
-                  <TabularRow columns={DOCUMENT_ROWS_TEMPLATE}>
-                    <TabularSerialNumberCell index={0} />
-                    <TabularCell className="col-span-6 text-muted-foreground">
-                      {partyId
-                        ? "No open invoices found for the selected party."
-                        : `Select a ${counterpartyLabel.toLowerCase()} to load open invoices.`}
-                    </TabularCell>
-                  </TabularRow>
+          <Card className="min-h-0 p-2 lg:flex lg:flex-1 lg:flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex flex-col gap-1 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle className="text-sm">
+                    {flow === "RECEIVABLE" ? "Receipts List" : "Payments List"}
+                  </CardTitle>
+                  <CardDescription>
+                    Use `Record {paymentLabel}` to create a new one, or `Apply Remaining` on a row
+                    when you need to allocate an earlier unapplied balance.
+                  </CardDescription>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/45 px-2 py-1 text-[11px] text-muted-foreground">
+                  {movements.length} row{movements.length === 1 ? "" : "s"} loaded
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="min-h-0 lg:flex-1">
+              <div className="space-y-2 lg:hidden">
+                {movements.length === 0 ? (
+                  <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2 text-[11px] text-muted-foreground">
+                    No {paymentLabel.toLowerCase()} entries found yet.
+                  </div>
                 ) : (
-                  documents.map((document, index) => (
-                    <TabularRow key={document.id} columns={DOCUMENT_ROWS_TEMPLATE}>
-                      <TabularSerialNumberCell index={index} />
-                      <TabularCell>
+                  movements.map((movement) => (
+                    <div key={movement.id} className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">{document.billNumber}</p>
-                          <p className="truncate text-[10px] text-muted-foreground">
-                            {document.partyName || "No party"}
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {movement.partyName || "No party"}
+                          </p>
+                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            {movement.referenceNo || movement.sourceDocumentNumber || "Standalone"}
                           </p>
                         </div>
-                      </TabularCell>
-                      <TabularCell>{formatDate(document.postedAt)}</TabularCell>
-                      <TabularCell align="end">{formatCurrency(document.grossDocumentAmount)}</TabularCell>
-                      <TabularCell align="end">{formatCurrency(document.paidAmount)}</TabularCell>
-                      <TabularCell align="end">{formatCurrency(document.outstandingAmount)}</TabularCell>
-                      <TabularCell align="end">
-                        {allocationMode === "ADVANCE" ? (
-                          <span className="text-[11px] text-muted-foreground">Advance</span>
-                        ) : allocationMode === "AUTO" ? (
-                          <span className="font-medium text-foreground">
-                            {formatCurrency(Number(autoAllocationInputs[document.id] ?? 0))}
-                          </span>
-                        ) : (
-                          <Input
-                            value={allocationInputs[document.id] ?? ""}
-                            onChange={(event) =>
-                              handleAllocationInputChange(document.id, event.target.value)
-                            }
-                            inputMode="decimal"
-                            className="h-7 text-right"
-                            disabled={loading}
-                          />
-                        )}
-                      </TabularCell>
-                    </TabularRow>
-                  ))
-                )}
-              </TabularBody>
-            </TabularSurface>
-          </CardContent>
-        </Card>
-
-        <Card className="min-h-0 p-2 lg:flex lg:flex-col">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Recent Entries</CardTitle>
-            <CardDescription>
-              Review posted {paymentLabel.toLowerCase()} activity, void incorrect rows, or apply
-              remaining unapplied credit.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="min-h-0 lg:flex-1">
-            <TabularSurface className="min-h-0 overflow-hidden">
-              <TabularHeader>
-                <TabularRow columns={PAYMENT_ROWS_TEMPLATE}>
-                  <TabularSerialNumberHeaderCell />
-                  <TabularCell variant="header">When</TabularCell>
-                  <TabularCell variant="header">Reference</TabularCell>
-                  <TabularCell variant="header">Account</TabularCell>
-                  <TabularCell variant="header" align="end">Amount</TabularCell>
-                  <TabularCell variant="header" align="end">Allocated</TabularCell>
-                  <TabularCell variant="header" align="end">Remaining</TabularCell>
-                  <TabularCell variant="header" align="center">Actions</TabularCell>
-                </TabularRow>
-              </TabularHeader>
-              <TabularBody className="overflow-y-auto">
-                {movements.map((movement, index) => (
-                  <TabularRow key={movement.id} columns={PAYMENT_ROWS_TEMPLATE}>
-                    <TabularSerialNumberCell index={index} />
-                    <TabularCell>{formatDate(movement.occurredAt)}</TabularCell>
-                    <TabularCell>
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-foreground">
-                          {movement.sourceDocumentNumber ||
-                            movement.referenceNo ||
-                            movement.partyName ||
-                            "Standalone"}
-                        </p>
-                        <p className="truncate text-[10px] text-muted-foreground">
-                          {movement.partyName || "No party"}
+                        <p
+                          className={`text-sm font-semibold ${
+                            movement.status === "VOIDED"
+                              ? "text-muted-foreground line-through"
+                              : flow === "RECEIVABLE"
+                                ? "text-foreground"
+                                : "text-destructive"
+                          }`}
+                        >
+                          {formatCurrency(movement.amount)}
                         </p>
                       </div>
-                    </TabularCell>
-                    <TabularCell>{movement.accountName}</TabularCell>
-                    <TabularCell
-                      align="end"
-                      className={
-                        movement.status === "VOIDED"
-                          ? "text-muted-foreground line-through"
-                          : flow === "RECEIVABLE"
-                            ? "text-foreground"
-                            : "text-destructive"
-                      }
-                    >
-                      {formatCurrency(movement.amount)}
-                    </TabularCell>
-                    <TabularCell align="end">{formatCurrency(movement.allocatedAmount)}</TabularCell>
-                    <TabularCell align="end">{formatCurrency(movement.unallocatedAmount)}</TabularCell>
-                    <TabularCell align="center">
-                      <div className="flex items-center justify-center gap-1">
-                        {movement.status !== "VOIDED" && movement.unallocatedAmount > 0 && movement.partyId ? (
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                        <p>Date: {formatDate(movement.occurredAt)}</p>
+                        <p className="truncate">Account: {movement.accountName}</p>
+                        <p>Applied: {formatCurrency(movement.allocatedAmount)}</p>
+                        <p>Remaining: {formatCurrency(movement.unallocatedAmount)}</p>
+                      </div>
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        {movement.status !== "VOIDED" &&
+                        movement.unallocatedAmount > 0 &&
+                        movement.partyId ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -711,12 +568,10 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                             onClick={() => handleApplyExistingMovement(movement)}
                             disabled={loading}
                           >
-                            Apply
+                            Apply Remaining
                           </Button>
                         ) : null}
-                        {movement.status === "VOIDED" ? (
-                          <span className="text-[11px] text-muted-foreground">Voided</span>
-                        ) : (
+                        {movement.status !== "VOIDED" ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -727,16 +582,452 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                           >
                             Void
                           </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="hidden min-h-0 lg:block">
+                <TabularSurface className="min-h-0 overflow-hidden">
+                  <TabularHeader>
+                    <TabularRow columns={PAYMENT_ROWS_TEMPLATE}>
+                      <TabularSerialNumberHeaderCell />
+                      <TabularCell variant="header">Date</TabularCell>
+                      <TabularCell variant="header">Party</TabularCell>
+                      <TabularCell variant="header">Reference</TabularCell>
+                      <TabularCell variant="header">Account</TabularCell>
+                      <TabularCell variant="header" align="end">Amount</TabularCell>
+                      <TabularCell variant="header" align="end">Applied</TabularCell>
+                      <TabularCell variant="header" align="end">Remaining</TabularCell>
+                      <TabularCell variant="header" align="center">Actions</TabularCell>
+                    </TabularRow>
+                  </TabularHeader>
+                  <TabularBody className="overflow-y-auto">
+                    {movements.length === 0 ? (
+                      <TabularRow columns={PAYMENT_ROWS_TEMPLATE}>
+                        <TabularSerialNumberCell index={0} />
+                        <TabularCell className="col-span-8 text-muted-foreground">
+                          No {paymentLabel.toLowerCase()} entries found yet.
+                        </TabularCell>
+                      </TabularRow>
+                    ) : (
+                      movements.map((movement, index) => (
+                        <TabularRow key={movement.id} columns={PAYMENT_ROWS_TEMPLATE}>
+                          <TabularSerialNumberCell index={index} />
+                          <TabularCell>{formatDate(movement.occurredAt)}</TabularCell>
+                          <TabularCell truncate hoverTitle={movement.partyName || "No party"}>
+                            {movement.partyName || "No party"}
+                          </TabularCell>
+                          <TabularCell
+                            truncate
+                            hoverTitle={movement.referenceNo || movement.sourceDocumentNumber || "Standalone"}
+                          >
+                            {movement.referenceNo || movement.sourceDocumentNumber || "Standalone"}
+                          </TabularCell>
+                          <TabularCell truncate hoverTitle={movement.accountName}>
+                            {movement.accountName}
+                          </TabularCell>
+                          <TabularCell
+                            align="end"
+                            className={
+                              movement.status === "VOIDED"
+                                ? "text-muted-foreground line-through"
+                                : flow === "RECEIVABLE"
+                                  ? "text-foreground"
+                                  : "text-destructive"
+                            }
+                          >
+                            {formatCurrency(movement.amount)}
+                          </TabularCell>
+                          <TabularCell align="end">
+                            {formatCurrency(movement.allocatedAmount)}
+                          </TabularCell>
+                          <TabularCell align="end">
+                            {formatCurrency(movement.unallocatedAmount)}
+                          </TabularCell>
+                          <TabularCell align="center">
+                            <div className="flex items-center justify-center gap-1">
+                              {movement.status !== "VOIDED" &&
+                              movement.unallocatedAmount > 0 &&
+                              movement.partyId ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  title="Apply remaining balance"
+                                  aria-label="Apply remaining balance"
+                                  onClick={() => handleApplyExistingMovement(movement)}
+                                  disabled={loading}
+                                >
+                                  <ArrowRightLeft />
+                                </Button>
+                              ) : null}
+                              {movement.status === "VOIDED" ? (
+                                <span className="text-[11px] text-muted-foreground">Voided</span>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  title={`Void ${paymentLabel.toLowerCase()}`}
+                                  aria-label={`Void ${paymentLabel.toLowerCase()}`}
+                                  className="text-destructive hover:bg-destructive/10"
+                                  onClick={() => void onVoidMovement(movement.id)}
+                                  disabled={loading}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              )}
+                            </div>
+                          </TabularCell>
+                        </TabularRow>
+                      ))
+                    )}
+                  </TabularBody>
+                </TabularSurface>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          <Card className="p-2">
+            <CardHeader className="pb-2">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle>
+                    {selectedMovement
+                      ? `Apply Existing ${paymentLabel}`
+                      : flow === "RECEIVABLE"
+                        ? "Record Receipt"
+                        : "Record Payment"}
+                  </CardTitle>
+                  <CardDescription>
+                    {selectedMovement
+                      ? `Apply the remaining balance from an existing ${paymentLabel.toLowerCase()} to open invoices for ${partyName}.`
+                      : `Create a new ${paymentLabel.toLowerCase()} and decide what gets applied right now versus what stays unapplied.`}
+                  </CardDescription>
+                </div>
+                <Button type="button" variant="outline" onClick={closeWorkspace} disabled={loading}>
+                  Back To List
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {!selectedMovement ? (
+                <div className="grid gap-1 rounded-lg border border-border/80 bg-muted/35 px-2.5 py-2 text-[11px] text-muted-foreground lg:grid-cols-3">
+                  <p>
+                    <span className="font-semibold text-foreground">1. Pick {counterpartyLabel.toLowerCase()}</span>{" "}
+                    and enter the {paymentLabel.toLowerCase()} details.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">2. Review open invoices</span> and enter the amount to apply on each row.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">3. Save</span> the {paymentLabel.toLowerCase()}.
+                    Anything left over stays as unapplied credit.
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.15fr)_180px_180px]">
+                <div className="space-y-1.5">
+                  <Label htmlFor={`payment-party-${flow}`}>Step 1: {counterpartyLabel}</Label>
+                  <Select
+                    id={`payment-party-${flow}`}
+                    value={partyId}
+                    onChange={(event) => handlePartyChange(event.target.value)}
+                    disabled={loading || Boolean(selectedMovement)}
+                  >
+                    <option value="">Select {counterpartyLabel.toLowerCase()}</option>
+                    {parties.map((party) => (
+                      <option key={party.id} value={party.id}>
+                        {party.name}
+                        {party.secondaryText ? ` • ${party.secondaryText}` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`payment-account-${flow}`}>{accountLabel}</Label>
+                  <Select
+                    id={`payment-account-${flow}`}
+                    value={accountId}
+                    onChange={(event) => setAccountId(event.target.value)}
+                    disabled={loading || Boolean(selectedMovement)}
+                  >
+                    <option value="">Select account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`payment-date-${flow}`}>Date</Label>
+                  <Input
+                    id={`payment-date-${flow}`}
+                    type="date"
+                    value={occurredOn}
+                    onChange={(event) => setOccurredOn(event.target.value)}
+                    disabled={loading || Boolean(selectedMovement)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`payment-amount-${flow}`}>
+                    {selectedMovement ? "Amount Left On This Payment" : `${paymentLabel} Amount`}
+                  </Label>
+                  <Input
+                    id={`payment-amount-${flow}`}
+                    value={selectedMovement ? String(selectedMovement.unallocatedAmount) : amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    inputMode="decimal"
+                    disabled={loading || Boolean(selectedMovement)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`payment-mode-${flow}`}>
+                    How should this {paymentLabel.toLowerCase()} be used?
+                  </Label>
+                  <Select
+                    id={`payment-mode-${flow}`}
+                    value={allocationMode}
+                    onChange={(event) => setAllocationMode(event.target.value as AllocationMode)}
+                    disabled={loading}
+                  >
+                    <option value="MANUAL">I will choose invoice amounts</option>
+                    <option value="AUTO">Auto apply to oldest invoices</option>
+                    <option value="ADVANCE">Keep entire amount as unapplied credit</option>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`payment-ref-${flow}`}>Reference</Label>
+                  <Input
+                    id={`payment-ref-${flow}`}
+                    value={referenceNo}
+                    onChange={(event) => setReferenceNo(event.target.value)}
+                    disabled={loading || Boolean(selectedMovement)}
+                  />
+                </div>
+                <div className="space-y-1.5 lg:col-span-2">
+                  <Label htmlFor={`payment-notes-${flow}`}>Notes</Label>
+                  <Textarea
+                    id={`payment-notes-${flow}`}
+                    rows={2}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    disabled={loading || Boolean(selectedMovement)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                  <p className="text-[10px] text-muted-foreground">
+                    {selectedMovement ? "Selected Payment" : counterpartyLabel}
+                  </p>
+                  <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                    {selectedMovement?.referenceNo || selectedMovement?.id || partyName || "None selected"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {selectedMovement
+                      ? formatDate(selectedMovement.occurredAt)
+                      : partyName || `Pick a ${counterpartyLabel.toLowerCase()} first`}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                  <p className="text-[10px] text-muted-foreground">Open Invoices</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{documents.length}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {hasPartySelected
+                      ? "Posted invoices for the selected party are ready to allocate."
+                      : "Select a party to load allocatable invoices."}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                  <p className="text-[10px] text-muted-foreground">Payment Amount Available</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    {formatCurrency(availableAmount)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                  <p className="text-[10px] text-muted-foreground">Applied To Invoices</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    {formatCurrency(allocatedAmount)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
+                  <p className="text-[10px] text-muted-foreground">Left Unapplied</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">
+                    {formatCurrency(remainingAmount)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {allocationModeLabel}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-border/70 pt-2 lg:flex-row lg:items-end lg:justify-between">
+                <p className="text-[11px] text-muted-foreground">
+                  {allocationMode === "ADVANCE"
+                    ? `This ${paymentLabel.toLowerCase()} will be saved without applying it to invoices right now.`
+                    : hasPartySelected
+                      ? `Step 2: review the invoice rows below and enter how much of this ${paymentLabel.toLowerCase()} should go to each one.`
+                      : `Select a ${counterpartyLabel.toLowerCase()} to load open invoices for allocation.`}
+                </p>
+                <Button type="button" onClick={() => void onSubmit()} disabled={loading}>
+                  {loading
+                    ? "Saving..."
+                    : selectedMovement
+                      ? `Apply Existing ${paymentLabel}`
+                      : flow === "RECEIVABLE"
+                        ? "Save Receipt"
+                        : "Save Payment"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          {hasOverAllocated ? (
+            <p className="text-xs text-destructive">
+              Allocation exceeds the available payment amount. Reduce one or more rows before saving.
+            </p>
+          ) : null}
+
+          <Card className="min-h-0 flex-1 p-2 lg:flex lg:flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex flex-col gap-1 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle className="text-sm">Step 2: Apply To Open Invoices</CardTitle>
+                  <CardDescription>
+                    Use this table only if part or all of the {paymentLabel.toLowerCase()} should be
+                    applied to existing invoices for the selected {counterpartyLabel.toLowerCase()}.
+                  </CardDescription>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/45 px-2 py-1 text-[11px] text-muted-foreground">
+                  {allocationMode === "ADVANCE"
+                    ? "Nothing will be applied in this mode."
+                    : `${selectedAllocations.length} invoice${selectedAllocations.length === 1 ? "" : "s"} currently selected`}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="min-h-0 lg:flex-1">
+              <div className="space-y-2 lg:hidden">
+                {documents.length === 0 ? (
+                  <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2 text-[11px] text-muted-foreground">
+                    {hasPartySelected
+                      ? "No open invoices found for the selected party."
+                      : `Select a ${counterpartyLabel.toLowerCase()} first. Their open invoices will appear here.`}
+                  </div>
+                ) : (
+                  documents.map((document) => (
+                    <div key={document.id} className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{document.billNumber}</p>
+                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            {document.partyName || "No party"}
+                          </p>
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {formatCurrency(document.outstandingAmount)}
+                        </p>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                        <p>Posted: {formatDate(document.postedAt)}</p>
+                        <p>Due</p>
+                      </div>
+                      <div className="mt-2">
+                        {allocationMode === "ADVANCE" ? (
+                          <p className="text-[11px] text-muted-foreground">Advance</p>
+                        ) : allocationMode === "AUTO" ? (
+                          <p className="text-sm font-medium text-foreground">
+                            {formatCurrency(Number(autoAllocationInputs[document.id] ?? 0))}
+                          </p>
+                        ) : (
+                          <Input
+                            value={allocationInputs[document.id] ?? ""}
+                            onChange={(event) =>
+                              handleAllocationInputChange(document.id, event.target.value)
+                            }
+                            inputMode="decimal"
+                            className="h-8 text-right"
+                            disabled={loading}
+                          />
                         )}
                       </div>
-                    </TabularCell>
-                  </TabularRow>
-                ))}
-              </TabularBody>
-            </TabularSurface>
-          </CardContent>
-        </Card>
-      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="hidden min-h-0 lg:block">
+                <TabularSurface className="min-h-0 overflow-hidden">
+                  <TabularHeader>
+                    <TabularRow columns={DOCUMENT_ROWS_TEMPLATE}>
+                      <TabularSerialNumberHeaderCell />
+                      <TabularCell variant="header">Invoice</TabularCell>
+                      <TabularCell variant="header">Party</TabularCell>
+                      <TabularCell variant="header">Posted</TabularCell>
+                      <TabularCell variant="header" align="end">Due</TabularCell>
+                      <TabularCell variant="header" align="end">Apply</TabularCell>
+                    </TabularRow>
+                  </TabularHeader>
+                  <TabularBody className="overflow-y-auto">
+                    {documents.length === 0 ? (
+                      <TabularRow columns={DOCUMENT_ROWS_TEMPLATE}>
+                        <TabularSerialNumberCell index={0} />
+                        <TabularCell className="col-span-5 text-muted-foreground">
+                          {hasPartySelected
+                            ? "No open invoices found for the selected party."
+                            : `Select a ${counterpartyLabel.toLowerCase()} first. Their open invoices will appear here.`}
+                        </TabularCell>
+                      </TabularRow>
+                    ) : (
+                      documents.map((document, index) => (
+                        <TabularRow key={document.id} columns={DOCUMENT_ROWS_TEMPLATE}>
+                          <TabularSerialNumberCell index={index} />
+                          <TabularCell truncate hoverTitle={document.billNumber}>
+                            {document.billNumber}
+                          </TabularCell>
+                          <TabularCell truncate hoverTitle={document.partyName || "No party"}>
+                            {document.partyName || "No party"}
+                          </TabularCell>
+                          <TabularCell>{formatDate(document.postedAt)}</TabularCell>
+                          <TabularCell align="end">
+                            {formatCurrency(document.outstandingAmount)}
+                          </TabularCell>
+                          <TabularCell align="end">
+                            {allocationMode === "ADVANCE" ? (
+                              <span className="text-[11px] text-muted-foreground">Advance</span>
+                            ) : allocationMode === "AUTO" ? (
+                              <span className="font-medium text-foreground">
+                                {formatCurrency(Number(autoAllocationInputs[document.id] ?? 0))}
+                              </span>
+                            ) : (
+                              <Input
+                                value={allocationInputs[document.id] ?? ""}
+                                onChange={(event) =>
+                                  handleAllocationInputChange(document.id, event.target.value)
+                                }
+                                inputMode="decimal"
+                                className="h-7 text-right"
+                                disabled={loading}
+                              />
+                            )}
+                          </TabularCell>
+                        </TabularRow>
+                      ))
+                    )}
+                  </TabularBody>
+                </TabularSurface>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </section>
   );
 }
