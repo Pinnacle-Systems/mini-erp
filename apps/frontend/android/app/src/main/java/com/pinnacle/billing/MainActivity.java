@@ -1,4 +1,4 @@
-package com.minierp.app;
+package com.pinnacle.billing;
 
 import com.getcapacitor.BridgeActivity;
 

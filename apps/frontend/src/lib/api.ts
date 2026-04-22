@@ -119,7 +119,7 @@ export const apiFetch = async (
       headers.set("Authorization", `Bearer ${token}`);
     }
   }
-
+  
   let response: Response;
   try {
     response = await fetch(apiUrl(path), {

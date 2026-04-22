@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-const appId = process.env.VITE_ANDROID_APP_ID?.trim() || "com.minierp.app";
-const appName = process.env.VITE_ANDROID_APP_NAME?.trim() || "Mini ERP";
+const appId = process.env.VITE_ANDROID_APP_ID?.trim() || "com.pinnacle.billing";
+const appName = process.env.VITE_ANDROID_APP_NAME?.trim() || "Pinnacle Billing";
 
 const config: CapacitorConfig = {
   appId,
