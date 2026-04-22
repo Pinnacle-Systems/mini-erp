@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package com.pinnacle.billing;
 
 import static org.junit.Assert.*;
 

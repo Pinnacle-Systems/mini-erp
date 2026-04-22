@@ -17,4 +17,5 @@ The app proxies `/api/*` to backend in dev by default.
 Use `apps/frontend/.env.example`:
 
 - `VITE_API_BASE_URL`: optional absolute API base for non-proxy deployments.
+- `VITE_ANDROID_API_BASE_URL`: single Android backend base URL.
 - `VITE_DEV_PROXY_TARGET`: dev proxy target (default `http://localhost:3000`).

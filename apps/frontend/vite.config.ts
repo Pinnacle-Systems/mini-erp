@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "robots.txt"],
       manifest: {
-        name: "Mini ERP Frontend",
-        short_name: "MiniERP",
-        description: "Offline-capable Mini ERP frontend built with Vite",
+        name: "Pinnacle Billing",
+        short_name: "Billing",
+        description: "Offline-capable billing app",
         theme_color: "#0e7490",
         background_color: "#f8fafc",
         display: "standalone",
