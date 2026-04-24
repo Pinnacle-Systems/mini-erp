@@ -105,6 +105,35 @@ export const allocatePayment = catchAsync(async (req, res) => {
   );
 });
 
+export const listPaymentAllocations = catchAsync(async (req, res) => {
+  const { movementId } = req.params as { movementId: string };
+  const tenantId = await accountsService.getMoneyMovementTenantIdOrThrow(movementId);
+  await assertMembership(req.user.id, tenantId);
+  res.json(
+    successResponse({
+      allocations: await accountsService.listPaymentAllocations(tenantId, movementId),
+    }),
+  );
+});
+
+export const reversePaymentAllocation = catchAsync(async (req, res) => {
+  const { movementId, allocationId } = req.params as {
+    movementId: string;
+    allocationId: string;
+  };
+  const { reason } = req.body as { reason?: string };
+  const tenantId = await accountsService.getMoneyMovementTenantIdOrThrow(movementId);
+  await assertMembership(req.user.id, tenantId);
+  res.json(
+    successResponse(
+      await accountsService.reversePaymentAllocation(tenantId, movementId, allocationId, {
+        reversedById: req.user.id,
+        reason,
+      }),
+    ),
+  );
+});
+
 export const createExpense = catchAsync(async (req, res) => {
   const { tenantId, ...input } = req.body as any;
   await assertMembership(req.user.id, tenantId);

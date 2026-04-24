@@ -86,6 +86,13 @@ type AllocationRowView = {
   allocatedAmount: number;
   createdAt: string;
 };
+type PaymentAllocationRowView = AllocationRowView & {
+  status: "ACTIVE" | "REVERSED";
+  reversedAt: string | null;
+  reversedById: string | null;
+  reversalReason: string | null;
+  documentNumber: string | null;
+};
 
 type PartyFinancialSummary = {
   partyId: string;
@@ -262,6 +269,7 @@ const buildSettlementMap = async (
   const allocationRows = await dbClient.moneyMovementAllocation.findMany({
     where: {
       business_id: tenantId,
+      status: "ACTIVE",
       document_id: {
         in: invoiceDocuments.map((document) => document.id),
       },
@@ -647,6 +655,7 @@ const getActiveAllocationRowsForMovements = async (
   const allocationRows = await dbClient.moneyMovementAllocation.findMany({
     where: {
       business_id: tenantId,
+      status: "ACTIVE",
       money_movement_id: {
         in: movementIds,
       },
@@ -963,16 +972,18 @@ const listExpenseCategories = async (tenantId: string, includeInactive = false) 
 const mapMoneyMovementRows = async (
   tenantId: string,
   rows: any[],
+  dbClient: AccountsDbClient = prismaAny,
 ): Promise<MoneyMovementListRow[]> => {
   const allocationTotalsByMovementId = await getActiveAllocationTotalsByMovementIds(
     tenantId,
     rows.map((row: any) => String(row.id)),
+    dbClient,
   );
   const sourceDocumentIds = rows
     .map((row: any) => row.source_document_id)
     .filter((value: unknown): value is string => typeof value === "string");
   const documents = sourceDocumentIds.length
-    ? await prismaAny.document.findMany({
+    ? await dbClient.document.findMany({
         where: {
           id: {
             in: sourceDocumentIds,
@@ -1105,7 +1116,7 @@ const getMoneyMovementView = async (
     throw new NotFoundError("Money movement not found");
   }
 
-  return (await mapMoneyMovementRows(tenantId, rows))[0];
+  return (await mapMoneyMovementRows(tenantId, rows, dbClient))[0];
 };
 
 const getMoneyMovementTenantIdOrThrow = async (
@@ -1468,6 +1479,93 @@ const createAllocationsForMovement = async (
   return createdRows;
 };
 
+const assertAllocatablePostedPaymentMovement = (movement: {
+  status: string;
+  source_kind: string;
+}) => {
+  if (
+    movement.status !== "POSTED" ||
+    !["PAYMENT_RECEIVED", "PAYMENT_MADE"].includes(String(movement.source_kind))
+  ) {
+    throw new BadRequestError("Money movement is not eligible for allocation correction");
+  }
+};
+
+const listPaymentAllocations = async (
+  tenantId: string,
+  movementId: string,
+  dbClient: AccountsDbClient = prismaAny,
+): Promise<PaymentAllocationRowView[]> => {
+  const movement = await dbClient.moneyMovement.findFirst({
+    where: {
+      id: movementId,
+      business_id: tenantId,
+    },
+    select: {
+      id: true,
+      status: true,
+      source_kind: true,
+    },
+  });
+
+  if (!movement) {
+    throw new NotFoundError("Money movement not found");
+  }
+  if (!["PAYMENT_RECEIVED", "PAYMENT_MADE"].includes(String(movement.source_kind))) {
+    throw new BadRequestError("Money movement is not eligible for allocation review");
+  }
+
+  const allocationRows = await dbClient.moneyMovementAllocation.findMany({
+    where: {
+      business_id: tenantId,
+      money_movement_id: movementId,
+    },
+    select: {
+      id: true,
+      document_type: true,
+      document_id: true,
+      allocated_amount: true,
+      status: true,
+      reversed_at: true,
+      reversed_by_id: true,
+      reversal_reason: true,
+      created_at: true,
+    },
+    orderBy: [{ created_at: "asc" }, { id: "asc" }],
+  });
+
+  const documentRows = allocationRows.length
+    ? await dbClient.document.findMany({
+        where: {
+          business_id: tenantId,
+          id: {
+            in: [...new Set(allocationRows.map((row: any) => String(row.document_id)))],
+          },
+        },
+        select: {
+          id: true,
+          doc_number: true,
+        },
+      })
+    : [];
+  const documentNumberById = new Map(
+    documentRows.map((document: any) => [String(document.id), String(document.doc_number)] as const),
+  );
+
+  return allocationRows.map((row: any) => ({
+    id: String(row.id),
+    documentType: row.document_type as FinancialDocumentType,
+    documentId: String(row.document_id),
+    documentNumber: documentNumberById.get(String(row.document_id)) ?? null,
+    allocatedAmount: Number(row.allocated_amount ?? 0),
+    status: row.status as "ACTIVE" | "REVERSED",
+    reversedAt: row.reversed_at instanceof Date ? row.reversed_at.toISOString() : null,
+    reversedById: typeof row.reversed_by_id === "string" ? row.reversed_by_id : null,
+    reversalReason: typeof row.reversal_reason === "string" ? row.reversal_reason : null,
+    createdAt: row.created_at.toISOString(),
+  }));
+};
+
 const allocatePayment = async (
   tenantId: string,
   movementId: string,
@@ -1518,6 +1616,98 @@ const allocatePayment = async (
         ),
       },
       allocations: createdAllocations,
+    };
+  });
+
+const reversePaymentAllocation = async (
+  tenantId: string,
+  movementId: string,
+  allocationId: string,
+  input: {
+    reversedById: string;
+    reason?: string;
+  },
+) =>
+  prisma.$transaction(async (tx) => {
+    const dbClient = tx as AccountsDbClient;
+    const allocation = await dbClient.moneyMovementAllocation.findFirst({
+      where: {
+        id: allocationId,
+        business_id: tenantId,
+        money_movement_id: movementId,
+      },
+      select: {
+        id: true,
+        document_type: true,
+        document_id: true,
+        allocated_amount: true,
+        status: true,
+        created_at: true,
+        money_movement: {
+          select: {
+            id: true,
+            status: true,
+            source_kind: true,
+          },
+        },
+      },
+    });
+
+    if (!allocation) {
+      throw new NotFoundError("Payment allocation not found");
+    }
+
+    assertAllocatablePostedPaymentMovement(allocation.money_movement);
+
+    if (allocation.status !== "ACTIVE") {
+      throw new BadRequestError("Payment allocation is already reversed");
+    }
+
+    // Future closed-period enforcement belongs here, using allocation.created_at
+    // and the eventual accounting-period lock table.
+    const reversedAt = new Date();
+    const reason = input.reason?.trim() || null;
+    const updated = await dbClient.moneyMovementAllocation.updateMany({
+      where: {
+        id: allocationId,
+        business_id: tenantId,
+        status: "ACTIVE",
+      },
+      data: {
+        status: "REVERSED",
+        reversed_at: reversedAt,
+        reversed_by_id: input.reversedById,
+        reversal_reason: reason,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new BadRequestError("Payment allocation is already reversed");
+    }
+
+    const movement = await getMoneyMovementView(tenantId, movementId, dbClient);
+    const allocations = await listPaymentAllocations(tenantId, movementId, dbClient);
+    const documentBalance = await getDocumentBalance(
+      tenantId,
+      allocation.document_type as FinancialDocumentType,
+      String(allocation.document_id),
+      dbClient,
+    );
+
+    return {
+      movement,
+      allocations,
+      reversedAllocation: {
+        id: String(allocation.id),
+        documentType: allocation.document_type as FinancialDocumentType,
+        documentId: String(allocation.document_id),
+        allocatedAmount: Number(allocation.allocated_amount ?? 0),
+        status: "REVERSED" as const,
+        reversedAt: reversedAt.toISOString(),
+        reversedById: input.reversedById,
+        reversalReason: reason,
+        createdAt: allocation.created_at.toISOString(),
+      },
+      documentBalance,
     };
   });
 
@@ -1832,8 +2022,9 @@ const getDocumentBalance = async (
   tenantId: string,
   documentType: FinancialDocumentType,
   documentId: string,
+  dbClient: AccountsDbClient = prismaAny,
 ) => {
-  const document = await prismaAny.document.findFirst({
+  const document = await dbClient.document.findFirst({
     where: {
       id: documentId,
       business_id: tenantId,
@@ -1868,7 +2059,7 @@ const getDocumentBalance = async (
         status: document.status as SettlementSourceDocument["status"],
         grandTotal: Number(document.grand_total ?? 0),
       },
-    ])
+    ], dbClient)
   ).get(String(document.id));
 
   return toOpenFinancialDocumentSummary(
@@ -1930,6 +2121,8 @@ export default {
     txClient?: AccountsDbClient,
   ) => recordPayment(tenantId, "PAYABLE", input, txClient),
   allocatePayment,
+  listPaymentAllocations,
+  reversePaymentAllocation,
   listPostedMoneyMovementsForSourceDocument,
   voidMoneyMovementsForSourceDocument,
   createExpense,

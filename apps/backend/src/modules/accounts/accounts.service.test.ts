@@ -24,6 +24,9 @@ const prismaMock = vi.hoisted(() => {
       findMany: vi.fn(),
       create: vi.fn(),
       createMany: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      findFirst: vi.fn(),
     },
     document: {
       findMany: vi.fn(),
@@ -353,6 +356,14 @@ describe("accounts.service", () => {
 
     const rows = await accountsService.listMoneyMovements("tenant-1", { limit: 10 });
 
+    expect(prismaMock.moneyMovementAllocation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          business_id: "tenant-1",
+          status: "ACTIVE",
+        }),
+      }),
+    );
     expect(rows).toEqual([
       expect.objectContaining({
         id: "movement-1",
@@ -377,5 +388,158 @@ describe("accounts.service", () => {
         take: 20,
       }),
     );
+  });
+
+  it("reverses an active allocation and returns the amount to unapplied balance", async () => {
+    const createdAt = new Date("2026-04-21T10:00:00.000Z");
+    const reversedAtMatcher = expect.any(Date);
+
+    prismaMock.moneyMovementAllocation.findFirst.mockResolvedValue({
+      id: "allocation-1",
+      document_type: "SALES_INVOICE",
+      document_id: "invoice-1",
+      allocated_amount: 40,
+      status: "ACTIVE",
+      created_at: createdAt,
+      money_movement: {
+        id: "movement-1",
+        status: "POSTED",
+        source_kind: "PAYMENT_RECEIVED",
+      },
+    });
+    prismaMock.moneyMovementAllocation.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.moneyMovement.findMany.mockResolvedValue([
+      {
+        id: "movement-1",
+        direction: "INFLOW",
+        status: "POSTED",
+        source_kind: "PAYMENT_RECEIVED",
+        source_document_type: null,
+        source_document_id: null,
+        occurred_at: new Date("2026-04-21T00:00:00.000Z"),
+        amount: 100,
+        currency: "INR",
+        party_id: "party-1",
+        party_name_snapshot: "Acme Retail",
+        location_id: null,
+        reference_no: "R-1",
+        notes: null,
+        financial_account: {
+          id: "account-1",
+          name: "Cash on Hand",
+        },
+      },
+    ]);
+    prismaMock.moneyMovement.findFirst.mockResolvedValue({
+      id: "movement-1",
+      status: "POSTED",
+      source_kind: "PAYMENT_RECEIVED",
+    });
+    prismaMock.moneyMovementAllocation.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "allocation-1",
+          document_type: "SALES_INVOICE",
+          document_id: "invoice-1",
+          allocated_amount: 40,
+          status: "REVERSED",
+          reversed_at: new Date("2026-04-22T00:00:00.000Z"),
+          reversed_by_id: "user-1",
+          reversal_reason: "Applied to wrong invoice",
+          created_at: createdAt,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    prismaMock.document.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "invoice-1",
+          doc_number: "SI-0001",
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.document.findFirst.mockResolvedValue({
+      id: "invoice-1",
+      type: "SALES_INVOICE",
+      status: "OPEN",
+      doc_number: "SI-0001",
+      grand_total: 100,
+      posted_at: new Date("2026-04-01T00:00:00.000Z"),
+      location_id: null,
+      party_id: "party-1",
+      party_snapshot: { name: "Acme Retail" },
+    });
+
+    const result = await accountsService.reversePaymentAllocation(
+      "tenant-1",
+      "movement-1",
+      "allocation-1",
+      {
+        reversedById: "user-1",
+        reason: "Applied to wrong invoice",
+      },
+    );
+
+    expect(prismaMock.moneyMovementAllocation.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "allocation-1",
+        business_id: "tenant-1",
+        status: "ACTIVE",
+      },
+      data: {
+        status: "REVERSED",
+        reversed_at: reversedAtMatcher,
+        reversed_by_id: "user-1",
+        reversal_reason: "Applied to wrong invoice",
+      },
+    });
+    expect(result.movement).toEqual(
+      expect.objectContaining({
+        id: "movement-1",
+        allocatedAmount: 0,
+        unallocatedAmount: 100,
+      }),
+    );
+    expect(result.allocations).toEqual([
+      expect.objectContaining({
+        id: "allocation-1",
+        status: "REVERSED",
+        documentNumber: "SI-0001",
+      }),
+    ]);
+    expect(result.documentBalance).toEqual(
+      expect.objectContaining({
+        id: "invoice-1",
+        paidAmount: 0,
+        outstandingAmount: 100,
+        settlementStatus: "UNPAID",
+      }),
+    );
+  });
+
+  it("blocks allocation reversal when the parent payment is voided", async () => {
+    prismaMock.moneyMovementAllocation.findFirst.mockResolvedValue({
+      id: "allocation-1",
+      document_type: "SALES_INVOICE",
+      document_id: "invoice-1",
+      allocated_amount: 40,
+      status: "ACTIVE",
+      created_at: new Date("2026-04-21T10:00:00.000Z"),
+      money_movement: {
+        id: "movement-1",
+        status: "VOIDED",
+        source_kind: "PAYMENT_RECEIVED",
+      },
+    });
+
+    await expect(
+      accountsService.reversePaymentAllocation("tenant-1", "movement-1", "allocation-1", {
+        reversedById: "user-1",
+      }),
+    ).rejects.toThrow("Money movement is not eligible for allocation correction");
+    expect(prismaMock.moneyMovementAllocation.updateMany).not.toHaveBeenCalled();
   });
 });
