@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, Trash2 } from "lucide-react";
+import { ArrowRightLeft, ListChecks, RotateCcw, Trash2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
@@ -30,17 +30,21 @@ import {
   type CustomerRow,
   type SupplierRow,
 } from "../../features/sync/engine";
+import { useToast } from "../../features/toast/useToast";
 import {
   allocatePayment,
   listFinancialAccounts,
   listMoneyMovements,
   listOpenDocuments,
+  listPaymentAllocations,
   recordMadePayment,
   recordReceivedPayment,
+  reversePaymentAllocation,
   voidMoneyMovement,
   type FinancialAccountRow,
   type FinancialDocumentBalanceRow,
   type MoneyMovementRow,
+  type PaymentAllocationRow,
 } from "./financial-api";
 
 const formatCurrency = (value: number) =>
@@ -66,6 +70,10 @@ const PAYMENT_ROWS_TEMPLATE = withTabularSerialNumberColumn(
 
 const DOCUMENT_ROWS_TEMPLATE = withTabularSerialNumberColumn(
   "minmax(0,1fr) minmax(0,1fr) 96px 104px 120px",
+);
+
+const ALLOCATION_ROWS_TEMPLATE = withTabularSerialNumberColumn(
+  "minmax(0,1fr) 104px 112px 112px 76px",
 );
 
 type PaymentsPageProps = {
@@ -109,6 +117,7 @@ const clampAllocationInput = (value: string, maxAmount?: number) => {
 };
 
 export function PaymentsPage({ flow }: PaymentsPageProps) {
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
@@ -116,6 +125,7 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
   const [parties, setParties] = useState<PartyOption[]>([]);
   const [documents, setDocuments] = useState<FinancialDocumentBalanceRow[]>([]);
   const [movements, setMovements] = useState<MoneyMovementRow[]>([]);
+  const [paymentAllocations, setPaymentAllocations] = useState<PaymentAllocationRow[]>([]);
   const [partyId, setPartyId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [amount, setAmount] = useState("");
@@ -125,6 +135,7 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
   const [allocationMode, setAllocationMode] = useState<AllocationMode>("MANUAL");
   const [allocationInputs, setAllocationInputs] = useState<Record<string, string>>({});
   const [applyingMovementId, setApplyingMovementId] = useState("");
+  const [reversingAllocationId, setReversingAllocationId] = useState("");
   const [workspaceStep, setWorkspaceStep] = useState<WorkspaceStep>("DETAILS");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -224,6 +235,24 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     if (!selectedMovement) return;
     setWorkspaceStep("REVIEW");
   }, [selectedMovement]);
+
+  const loadSelectedPaymentAllocations = useCallback(async () => {
+    if (!selectedMovement) {
+      setPaymentAllocations([]);
+      return;
+    }
+
+    try {
+      setPaymentAllocations(await listPaymentAllocations(selectedMovement.id));
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError instanceof Error ? nextError.message : "Unable to load payment allocations");
+    }
+  }, [selectedMovement]);
+
+  useEffect(() => {
+    void loadSelectedPaymentAllocations();
+  }, [loadSelectedPaymentAllocations]);
 
   const paymentAmount = Number(amount);
   const availableAmount = selectedMovement
@@ -379,6 +408,7 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     setAllocationMode("MANUAL");
     setAllocationInputs({});
     setApplyingMovementId("");
+    setPaymentAllocations([]);
     setWorkspaceStep("DETAILS");
   }, []);
 
@@ -440,6 +470,45 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     setAllocationInputs({});
     openExistingWorkspace(movement);
     setError(null);
+  };
+
+  const handleReverseAllocation = async (allocation: PaymentAllocationRow) => {
+    if (!selectedMovement) return;
+    const reason = window.prompt(
+      `Reverse allocation of ${formatCurrency(allocation.allocatedAmount)} from ${
+        allocation.documentNumber || "this invoice"
+      }?\n\nOptional reason:`,
+      "",
+    );
+    if (reason === null) {
+      return;
+    }
+
+    setReversingAllocationId(allocation.id);
+    setLoading(true);
+    try {
+      const result = await reversePaymentAllocation({
+        movementId: selectedMovement.id,
+        allocationId: allocation.id,
+        reason: reason.trim() || undefined,
+      });
+      setPaymentAllocations(result.allocations);
+      await load();
+      showToast({
+        title: "Allocation reversed",
+        description: `${formatCurrency(
+          result.reversedAllocation.allocatedAmount,
+        )} has been returned to the unapplied balance of this ${paymentLabel.toLowerCase()}.`,
+        tone: "success",
+        dedupeKey: `payment-allocation-reversed:${allocation.id}`,
+      });
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError instanceof Error ? nextError.message : "Unable to reverse allocation");
+    } finally {
+      setReversingAllocationId("");
+      setLoading(false);
+    }
   };
 
   const validateDetailsStep = () => {
@@ -696,6 +765,17 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                         <p>Remaining: {formatCurrency(getDisplayRemainingAmount(movement))}</p>
                       </div>
                       <div className="mt-2 flex items-center justify-end gap-2">
+                        {movement.status !== "VOIDED" && movement.allocatedAmount > 0 ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleApplyExistingMovement(movement)}
+                            disabled={loading}
+                          >
+                            View Allocations
+                          </Button>
+                        ) : null}
                         {movement.status !== "VOIDED" &&
                         movement.unallocatedAmount > 0 &&
                         movement.partyId ? (
@@ -786,6 +866,20 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                           </TabularCell>
                           <TabularCell align="center">
                             <div className="flex items-center justify-center gap-1">
+                              {movement.status !== "VOIDED" &&
+                              movement.allocatedAmount > 0 ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  title="View allocations"
+                                  aria-label="View allocations"
+                                  onClick={() => handleApplyExistingMovement(movement)}
+                                  disabled={loading}
+                                >
+                                  <ListChecks />
+                                </Button>
+                              ) : null}
                               {movement.status !== "VOIDED" &&
                               movement.unallocatedAmount > 0 &&
                               movement.partyId ? (
@@ -1137,6 +1231,142 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
 
           {isReviewStep ? (
             <>
+              {selectedMovement || paymentAllocations.length > 0 ? (
+                <Card className="p-2">
+                  <CardHeader className="pb-2">
+                    <div className="flex flex-col gap-1 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <CardTitle className="text-sm">Allocation History</CardTitle>
+                        <CardDescription>
+                          Review where this {paymentLabel.toLowerCase()} has been applied. Reverse
+                          only the allocation row that needs correction.
+                        </CardDescription>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-muted/45 px-2 py-1 text-[11px] text-muted-foreground">
+                        {paymentAllocations.filter((allocation) => allocation.status === "ACTIVE").length} active
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 lg:hidden">
+                      {paymentAllocations.length === 0 ? (
+                        <div className="rounded-lg border border-border/80 bg-muted/25 px-3 py-2 text-[11px] text-muted-foreground">
+                          No allocations recorded for this {paymentLabel.toLowerCase()} yet.
+                        </div>
+                      ) : (
+                        paymentAllocations.map((allocation) => (
+                          <div key={allocation.id} className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-foreground">
+                                  {allocation.documentNumber || "Invoice"}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                  {allocation.status === "ACTIVE" ? "Active" : "Reversed"}
+                                </p>
+                              </div>
+                              <p
+                                className={`text-sm font-semibold ${
+                                  allocation.status === "REVERSED"
+                                    ? "text-muted-foreground line-through"
+                                    : "text-foreground"
+                                }`}
+                              >
+                                {formatCurrency(allocation.allocatedAmount)}
+                              </p>
+                            </div>
+                            {allocation.reversalReason ? (
+                              <p className="mt-2 text-[11px] text-muted-foreground">
+                                {allocation.reversalReason}
+                              </p>
+                            ) : null}
+                            <div className="mt-2 flex justify-end">
+                              {allocation.status === "ACTIVE" ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                                  onClick={() => void handleReverseAllocation(allocation)}
+                                  disabled={loading || reversingAllocationId === allocation.id}
+                                >
+                                  Reverse Allocation
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="hidden lg:block">
+                      <TabularSurface className="overflow-hidden">
+                        <TabularHeader>
+                          <TabularRow columns={ALLOCATION_ROWS_TEMPLATE}>
+                            <TabularSerialNumberHeaderCell />
+                            <TabularCell variant="header">Invoice</TabularCell>
+                            <TabularCell variant="header" align="end">Amount</TabularCell>
+                            <TabularCell variant="header">Status</TabularCell>
+                            <TabularCell variant="header">Reason</TabularCell>
+                            <TabularCell variant="header" align="center">Actions</TabularCell>
+                          </TabularRow>
+                        </TabularHeader>
+                        <TabularBody>
+                          {paymentAllocations.length === 0 ? (
+                            <TabularRow columns={ALLOCATION_ROWS_TEMPLATE}>
+                              <TabularSerialNumberCell index={0} />
+                              <TabularCell className="col-span-5 text-muted-foreground">
+                                No allocations recorded for this {paymentLabel.toLowerCase()} yet.
+                              </TabularCell>
+                            </TabularRow>
+                          ) : (
+                            paymentAllocations.map((allocation, index) => (
+                              <TabularRow key={allocation.id} columns={ALLOCATION_ROWS_TEMPLATE}>
+                                <TabularSerialNumberCell index={index} />
+                                <TabularCell truncate hoverTitle={allocation.documentNumber || "Invoice"}>
+                                  {allocation.documentNumber || "Invoice"}
+                                </TabularCell>
+                                <TabularCell
+                                  align="end"
+                                  className={
+                                    allocation.status === "REVERSED"
+                                      ? "text-muted-foreground line-through"
+                                      : "text-foreground"
+                                  }
+                                >
+                                  {formatCurrency(allocation.allocatedAmount)}
+                                </TabularCell>
+                                <TabularCell>{allocation.status === "ACTIVE" ? "Active" : "Reversed"}</TabularCell>
+                                <TabularCell truncate hoverTitle={allocation.reversalReason || ""}>
+                                  {allocation.reversalReason || "-"}
+                                </TabularCell>
+                                <TabularCell align="center">
+                                  {allocation.status === "ACTIVE" ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      title="Reverse allocation"
+                                      aria-label="Reverse allocation"
+                                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                                      onClick={() => void handleReverseAllocation(allocation)}
+                                      disabled={loading || reversingAllocationId === allocation.id}
+                                    >
+                                      <RotateCcw />
+                                    </Button>
+                                  ) : (
+                                    <span className="text-[11px] text-muted-foreground">Reversed</span>
+                                  )}
+                                </TabularCell>
+                              </TabularRow>
+                            ))
+                          )}
+                        </TabularBody>
+                      </TabularSurface>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
               {showInvoiceReview ? (
                 <Card className="min-h-0 flex-1 p-2 lg:flex lg:flex-col">
                   <CardHeader className="pb-2">

@@ -107,6 +107,22 @@ export const allocatePaymentSchema = z.object({
   }),
 });
 
+export const listPaymentAllocationsSchema = z.object({
+  params: z.object({
+    movementId: z.uuid(),
+  }),
+});
+
+export const reversePaymentAllocationSchema = z.object({
+  params: z.object({
+    movementId: z.uuid(),
+    allocationId: z.uuid(),
+  }),
+  body: z.object({
+    reason: z.string().trim().max(500).optional(),
+  }),
+});
+
 export const createExpenseSchema = z.object({
   body: z.object({
     tenantId: z.uuid(),

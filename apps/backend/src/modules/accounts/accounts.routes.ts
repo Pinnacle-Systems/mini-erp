@@ -9,6 +9,7 @@ import {
   createMadePayment,
   createReceivedPayment,
   getDocumentBalance,
+  listPaymentAllocations,
   listExpenseCategories,
   listExpenses,
   listFinancialAccounts,
@@ -16,6 +17,7 @@ import {
   listOpenDocuments,
   overview,
   partyFinancialSummary,
+  reversePaymentAllocation,
   voidMoneyMovement,
 } from "./accounts.controller.js";
 import {
@@ -30,8 +32,10 @@ import {
   listFinancialAccountsSchema,
   listMoneyMovementsSchema,
   listOpenDocumentsSchema,
+  listPaymentAllocationsSchema,
   paymentCreateSchema,
   partyFinancialSummarySchema,
+  reversePaymentAllocationSchema,
   voidMoneyMovementSchema,
 } from "./accounts.schema.js";
 
@@ -48,6 +52,12 @@ router.post("/money-movements/:movementId/void", validateRequest(voidMoneyMoveme
 router.post("/payments/received", validateRequest(paymentCreateSchema), createReceivedPayment);
 router.post("/payments/made", validateRequest(paymentCreateSchema), createMadePayment);
 router.post("/payments/:movementId/allocate", validateRequest(allocatePaymentSchema), allocatePayment);
+router.get("/payments/:movementId/allocations", validateRequest(listPaymentAllocationsSchema), listPaymentAllocations);
+router.post(
+  "/payments/:movementId/allocations/:allocationId/reverse",
+  validateRequest(reversePaymentAllocationSchema),
+  reversePaymentAllocation,
+);
 router.post("/expenses", validateRequest(createExpenseSchema), createExpense);
 router.get("/expenses", validateRequest(listExpensesSchema), listExpenses);
 router.get("/open-documents", validateRequest(listOpenDocumentsSchema), listOpenDocuments);

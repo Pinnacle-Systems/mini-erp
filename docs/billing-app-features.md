@@ -1,6 +1,6 @@
 # Billing App Feature Inventory
 
-Last reviewed: 2026-04-20
+Last reviewed: 2026-04-24
 
 This document summarizes the current billing-app feature set implemented in this repository. It is based on the current codebase and the canonical product rules in [ARCHITECTURE.md](../ARCHITECTURE.md), [DESIGN_GUIDELINES.md](../DESIGN_GUIDELINES.md), [docs/rfcs/sales-engine-v2.md](./rfcs/sales-engine-v2.md), [docs/rfcs/sales-engine-v2-checklist.md](./rfcs/sales-engine-v2-checklist.md), [docs/rfcs/payments-operational-v1.md](./rfcs/payments-operational-v1.md), [docs/rfcs/payments-operational-v1-checklist.md](./rfcs/payments-operational-v1-checklist.md), and [docs/sync-pattern-and-sales-state.md](./sync-pattern-and-sales-state.md).
 
@@ -278,20 +278,45 @@ Settlement inputs currently considered:
 Supported billing-adjacent finance features:
 
 - Payments Received page
-- Record receipt against a posted open sales invoice
+- Record receipt for a customer with optional invoice allocation
 - Select receiving account such as cash, bank, or UPI
-- Default amount from outstanding invoice amount
+- Default amount and allocation from outstanding invoice amount when launched from invoice context
 - Reference and notes capture
 - Recent receipt entries table
 - Void action for posted payment entries
 - Record Receipt action launched from invoice context
+- Manual allocation across multiple posted open sales invoices for the selected customer
+- Auto-apply receipt amount to the customer's oldest open sales invoices
+- Save a receipt fully or partially as unapplied customer credit
+- Apply the remaining balance of an existing unapplied receipt to open sales invoices later
+- Reverse individual receipt allocation rows while preserving audit history
 
 Current payment-entry shape:
 
-- single-document allocation per payment entry
-- backend transaction creates money movement and allocation together
+- backend transaction creates money movement and any initial allocations together
+- later allocation endpoint appends allocations to an existing posted payment movement
+- allocation rows are capped at 10 documents per request
+- allocation correction uses soft-reversal metadata rather than deleting allocation rows
+- reversed allocation amounts return to the payment's unapplied balance and can be reallocated through the existing apply workflow
 
-### 8.3 Financial Accounts
+### 8.3 Payments Made
+
+Supported billing-adjacent supplier payment features:
+
+- Payments Made page
+- Record supplier payment with optional purchase invoice allocation
+- Select paid-via account such as cash, bank, UPI, credit card, or other account
+- Reference and notes capture
+- Recent supplier payment entries table
+- Void action for posted supplier payment entries
+- Record Payment action launched from purchase invoice context
+- Manual allocation across multiple posted open purchase invoices for the selected supplier
+- Auto-apply payment amount to the supplier's oldest open purchase invoices
+- Save a payment fully or partially as unapplied supplier advance/credit
+- Apply the remaining balance of an existing unapplied supplier payment to open purchase invoices later
+- Reverse individual supplier-payment allocation rows while preserving audit history
+
+### 8.4 Financial Accounts
 
 Supported features:
 
@@ -301,7 +326,7 @@ Supported features:
 - Current balance display
 - Archive unused accounts
 
-### 8.4 Financial Overview
+### 8.5 Financial Overview
 
 Supported overview metrics:
 
@@ -319,7 +344,7 @@ Supported overview panels:
 - account balances
 - expense by category
 
-### 8.5 Expenses
+### 8.6 Expenses
 
 Supported features:
 
@@ -403,11 +428,9 @@ The billing app is operationally strong, but some finance and advanced billing w
 
 Known deferred or incomplete areas:
 
-- multi-document allocation in a single payment entry
-- dedicated unapplied credit / advance allocation workflow
-- advance receipt / advance payment UX
 - attachment support for payments and expenses
 - expense void / recreate workflow
+- direct in-place editing of payment allocation rows; correction is currently handled by reversing and reallocating
 - deeper aging, settlement analytics, and richer finance reporting
 - broader export workflows
 - offline posting of sales documents
@@ -415,4 +438,4 @@ Known deferred or incomplete areas:
 
 ## 14. Summary
 
-In its current repository state, the billing app already supports a full operational sales-document chain from quotation through invoice and return, plus a POS path, receipt entry, settlement visibility, stock-linked posting behavior, and finance overviews. The main missing pieces are advanced allocation workflows, richer finance reporting, attachments, and offline posting.
+In its current repository state, the billing app already supports a full operational sales-document chain from quotation through invoice and return, plus a POS path, multi-document receipt and payment allocation, allocation reversal with audit history, unapplied credit/advance handling, settlement visibility, stock-linked posting behavior, and finance overviews. The main missing pieces are richer finance reporting, attachments, expense void/recreate, direct in-place allocation editing, and offline posting.

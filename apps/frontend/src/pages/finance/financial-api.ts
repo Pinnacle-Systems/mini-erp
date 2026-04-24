@@ -60,6 +60,19 @@ export type MoneyMovementRow = {
   unallocatedAmount: number;
 };
 
+export type PaymentAllocationRow = {
+  id: string;
+  documentType: FinancialDocumentType;
+  documentId: string;
+  documentNumber: string | null;
+  allocatedAmount: number;
+  status: "ACTIVE" | "REVERSED";
+  reversedAt: string | null;
+  reversedById: string | null;
+  reversalReason: string | null;
+  createdAt: string;
+};
+
 export type ExpenseRow = {
   id: string;
   occurredAt: string;
@@ -353,6 +366,49 @@ export const allocatePayment = async (input: {
     },
   );
   if (!response.ok) throw await parseError(response, "Unable to apply payment");
+};
+
+export const listPaymentAllocations = async (
+  movementId: string,
+): Promise<PaymentAllocationRow[]> => {
+  const response = await apiFetch(
+    `/api/accounts/payments/${encodeURIComponent(movementId)}/allocations`,
+    {
+      method: "GET",
+    },
+  );
+  if (!response.ok) throw await parseError(response, "Unable to load payment allocations");
+  const payload = (await response.json()) as { allocations?: PaymentAllocationRow[] };
+  return payload.allocations ?? [];
+};
+
+export const reversePaymentAllocation = async (input: {
+  movementId: string;
+  allocationId: string;
+  reason?: string;
+}): Promise<{
+  movement: MoneyMovementRow;
+  allocations: PaymentAllocationRow[];
+  reversedAllocation: PaymentAllocationRow;
+  documentBalance: FinancialDocumentBalanceRow;
+}> => {
+  const response = await apiFetch(
+    `/api/accounts/payments/${encodeURIComponent(input.movementId)}/allocations/${encodeURIComponent(
+      input.allocationId,
+    )}/reverse`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: input.reason?.trim() || undefined }),
+    },
+  );
+  if (!response.ok) throw await parseError(response, "Unable to reverse payment allocation");
+  return (await response.json()) as {
+    movement: MoneyMovementRow;
+    allocations: PaymentAllocationRow[];
+    reversedAllocation: PaymentAllocationRow;
+    documentBalance: FinancialDocumentBalanceRow;
+  };
 };
 
 export const createExpense = async (input: {
