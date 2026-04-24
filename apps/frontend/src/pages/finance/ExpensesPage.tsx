@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
@@ -26,6 +27,7 @@ import {
   listExpenseCategories,
   listExpenses,
   listFinancialAccounts,
+  voidMoneyMovement,
   type ExpenseCategoryRow,
   type ExpenseRow,
   type FinancialAccountRow,
@@ -33,6 +35,9 @@ import {
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value || 0);
+
+const getDisplayExpenseAmount = (expense: ExpenseRow) =>
+  expense.status === "VOIDED" ? 0 : expense.amount;
 
 export function ExpensesPage() {
   const activeStore = useSessionStore((state) => state.activeStore);
@@ -77,6 +82,30 @@ export function ExpensesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const onVoidExpense = async (expense: ExpenseRow) => {
+    if (!activeStore || expense.status === "VOIDED") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Void this expense for ${expense.payeeName}?\n\nThis will mark it as void and remove it from active balances.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await voidMoneyMovement(activeStore, expense.moneyMovementId);
+      await load();
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError instanceof Error ? nextError.message : "Unable to void expense");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const onSubmit = async () => {
     if (!activeStore || !payeeName.trim() || !expenseCategoryId || !financialAccountId) {
@@ -185,33 +214,90 @@ export function ExpensesPage() {
                     <p className="truncate text-sm font-medium text-foreground">{expense.payeeName}</p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">{expense.categoryName}</p>
                   </div>
-                  <p className="text-sm font-semibold text-destructive">{formatCurrency(expense.amount)}</p>
+                  <p
+                    className={`text-sm font-semibold ${
+                      expense.status === "VOIDED"
+                        ? "text-muted-foreground line-through"
+                        : "text-destructive"
+                    }`}
+                  >
+                    {formatCurrency(expense.amount)}
+                  </p>
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {new Date(expense.occurredAt).toLocaleDateString()}
-                </p>
+                <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                  <p>Date: {new Date(expense.occurredAt).toLocaleDateString()}</p>
+                  <p className="truncate">Account: {expense.accountName}</p>
+                  <p>Active Amount: {formatCurrency(getDisplayExpenseAmount(expense))}</p>
+                  <p>Status: {expense.status === "VOIDED" ? "Voided" : "Posted"}</p>
+                </div>
+                <div className="mt-2 flex justify-end">
+                  {expense.status === "VOIDED" ? (
+                    <span className="text-[11px] text-muted-foreground">Voided</span>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                      onClick={() => void onVoidExpense(expense)}
+                      disabled={loading}
+                    >
+                      Void Expense
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
           <div className="hidden min-h-0 lg:block">
             <TabularSurface className="min-h-0 overflow-hidden">
               <TabularHeader>
-                <TabularRow columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
+                <TabularRow columns={withTabularSerialNumberColumn("minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) 120px 100px 88px")}>
                   <TabularSerialNumberHeaderCell />
                   <TabularCell variant="header">When</TabularCell>
                   <TabularCell variant="header">Payee</TabularCell>
                   <TabularCell variant="header">Category</TabularCell>
                   <TabularCell variant="header" align="end">Amount</TabularCell>
+                  <TabularCell variant="header">Status</TabularCell>
+                  <TabularCell variant="header" align="center">Action</TabularCell>
                 </TabularRow>
               </TabularHeader>
               <TabularBody className="overflow-y-auto">
                 {expenses.map((expense, index) => (
-                  <TabularRow key={expense.id} columns={withTabularSerialNumberColumn("minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)")}>
+                  <TabularRow key={expense.id} columns={withTabularSerialNumberColumn("minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) 120px 100px 88px")}>
                     <TabularSerialNumberCell index={index} />
                     <TabularCell>{new Date(expense.occurredAt).toLocaleDateString()}</TabularCell>
                     <TabularCell>{expense.payeeName}</TabularCell>
                     <TabularCell>{expense.categoryName}</TabularCell>
-                    <TabularCell align="end" className="text-destructive">{formatCurrency(expense.amount)}</TabularCell>
+                    <TabularCell
+                      align="end"
+                      className={
+                        expense.status === "VOIDED"
+                          ? "text-muted-foreground line-through"
+                          : "text-destructive"
+                      }
+                    >
+                      {formatCurrency(expense.amount)}
+                    </TabularCell>
+                    <TabularCell>{expense.status === "VOIDED" ? "Voided" : "Posted"}</TabularCell>
+                    <TabularCell align="center">
+                      {expense.status === "VOIDED" ? (
+                        <span className="text-[11px] text-muted-foreground">Voided</span>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          title="Void expense"
+                          aria-label="Void expense"
+                          className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                          onClick={() => void onVoidExpense(expense)}
+                          disabled={loading}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
+                    </TabularCell>
                   </TabularRow>
                 ))}
               </TabularBody>

@@ -1237,8 +1237,8 @@ const voidMoneyMovement = async (tenantId: string, movementId: string) => {
   if (movement.status === "VOIDED") {
     throw new BadRequestError("Money movement is already voided");
   }
-  if (!["PAYMENT_RECEIVED", "PAYMENT_MADE", "MANUAL"].includes(String(movement.source_kind))) {
-    throw new BadRequestError("Only payment or manual money movements can be voided in this phase");
+  if (!["PAYMENT_RECEIVED", "PAYMENT_MADE", "EXPENSE", "MANUAL"].includes(String(movement.source_kind))) {
+    throw new BadRequestError("Only payment, expense, or manual money movements can be voided in this phase");
   }
 
   const updated = await prismaAny.moneyMovement.update({
@@ -1656,6 +1656,11 @@ const createExpense = async (
             name: true,
           },
         },
+        money_movement: {
+          select: {
+            status: true,
+          },
+        },
       },
     });
 
@@ -1673,6 +1678,7 @@ const createExpense = async (
       notes: typeof expense.notes === "string" ? expense.notes : "",
       locationId: typeof expense.location_id === "string" ? expense.location_id : null,
       moneyMovementId: String(expense.money_movement_id),
+      status: expense.money_movement.status as "POSTED" | "VOIDED",
     };
   });
 };
@@ -1703,6 +1709,11 @@ const listExpenses = async (
           name: true,
         },
       },
+      money_movement: {
+        select: {
+          status: true,
+        },
+      },
     },
     orderBy: {
       occurred_at: "desc",
@@ -1724,6 +1735,7 @@ const listExpenses = async (
     notes: typeof row.notes === "string" ? row.notes : "",
     locationId: typeof row.location_id === "string" ? row.location_id : null,
     moneyMovementId: String(row.money_movement_id),
+    status: row.money_movement.status as "POSTED" | "VOIDED",
   }));
 };
 
@@ -1742,6 +1754,11 @@ const getOverview = async (tenantId: string) => {
       select: {
         amount: true,
         occurred_at: true,
+        money_movement: {
+          select: {
+            status: true,
+          },
+        },
         expense_category: {
           select: {
             id: true,
@@ -1772,6 +1789,9 @@ const getOverview = async (tenantId: string) => {
   const expenseByCategoryMap = new Map<string, { categoryId: string; categoryName: string; amount: number }>();
   let thisMonthExpenseTotal = 0;
   for (const row of expenseRows) {
+    if (row.money_movement.status !== "POSTED") {
+      continue;
+    }
     if (row.occurred_at >= monthStart) {
       thisMonthExpenseTotal += Number(row.amount ?? 0);
     }
