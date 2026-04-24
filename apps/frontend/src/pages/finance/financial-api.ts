@@ -65,6 +65,7 @@ export type ExpenseRow = {
   occurredAt: string;
   amount: number;
   currency: string;
+  status: "POSTED" | "VOIDED";
   payeeName: string;
   categoryId: string;
   categoryName: string;
