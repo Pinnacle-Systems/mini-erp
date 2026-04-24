@@ -1,6 +1,15 @@
 import { isNativeAndroidApp } from "../platform/capacitor";
+import { AppHttp } from "../plugins/app-http";
 
 const ACCESS_TOKEN_KEY = "mini_erp_frontend_access_token";
+
+type NativeTransportErrorType =
+  | "offline"
+  | "dns_failure"
+  | "timeout"
+  | "connection_failure"
+  | "tls_failure"
+  | "cancelled";
 
 const normalizeBaseUrl = (value: string | undefined) => {
   const trimmed = value?.trim() ?? "";
@@ -26,6 +35,23 @@ const getApiBaseUrl = () => {
   }
 
   return "";
+};
+
+const getAndroidDnsHost = () => {
+  if (!isNativeAndroidApp()) {
+    return null;
+  }
+
+  const androidBaseUrl = normalizeBaseUrl(import.meta.env.VITE_ANDROID_API_BASE_URL);
+  if (!androidBaseUrl) {
+    return null;
+  }
+
+  try {
+    return new URL(androidBaseUrl).hostname;
+  } catch {
+    return null;
+  }
 };
 
 export const getAccessToken = () => window.localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -63,11 +89,62 @@ export const registerApiContext = (getter: () => ApiContext) => {
   getApiContext = getter;
 };
 
+const headersToObject = (headers: Headers) => {
+  const result: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    result[key] = value;
+  });
+  return result;
+};
+
+const bodyToText = async (body: RequestInit["body"]) => {
+  if (typeof body === "string") return body;
+  if (body instanceof URLSearchParams) return body.toString();
+  if (!body) return undefined;
+  if (body instanceof Blob) {
+    return await body.text();
+  }
+
+  throw new Error("Unsupported request body for native Android transport");
+};
+
+const nativeFetch = async (path: string, init: RequestInit, headers: Headers) => {
+  const bodyText = await bodyToText(init.body);
+  const payload = await AppHttp.execute({
+    url: apiUrl(path),
+    method: init.method ?? "GET",
+    headers: headersToObject(headers),
+    ...(bodyText !== undefined ? { bodyText } : {}),
+    ...(getAndroidDnsHost() ? { dnsHost: getAndroidDnsHost() ?? undefined } : {}),
+  });
+
+  return new Response(payload.bodyText, {
+    status: payload.status,
+    headers: payload.headers,
+  });
+};
+
+const fetchWithTransport = async (
+  path: string,
+  init: RequestInit,
+  headers: Headers,
+) => {
+  if (isNativeAndroidApp()) {
+    return nativeFetch(path, init, headers);
+  }
+
+  return fetch(apiUrl(path), {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+};
+
 const refreshAccessToken = async () => {
   const context = getApiContext?.() ?? { activeStore: null, isBusinessSelected: false };
   const { activeStore, isBusinessSelected } = context;
   const currentBusinessId = isBusinessSelected ? activeStore : null;
-  const response = await fetch(apiUrl("/api/auth/refresh"), {
+  const response = await fetchWithTransport("/api/auth/refresh", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -75,8 +152,9 @@ const refreshAccessToken = async () => {
     body: JSON.stringify(
       currentBusinessId ? { currentBusinessId } : {},
     ),
-    credentials: "include"
-  });
+  }, new Headers({
+    "Content-Type": "application/json",
+  }));
 
   if (!response.ok) {
     setAccessToken(null);
@@ -93,11 +171,63 @@ const refreshAccessToken = async () => {
 };
 
 export class ConnectivityError extends Error {
-  constructor(message = "Network connection lost or backend unreachable") {
+  readonly errorType?: NativeTransportErrorType;
+
+  constructor(
+    message = "Network connection lost or backend unreachable",
+    errorType?: NativeTransportErrorType,
+  ) {
     super(message);
     this.name = "ConnectivityError";
+    this.errorType = errorType;
   }
 }
+
+const isNativeTransportErrorType = (value: unknown): value is NativeTransportErrorType =>
+  value === "offline" ||
+  value === "dns_failure" ||
+  value === "timeout" ||
+  value === "connection_failure" ||
+  value === "tls_failure" ||
+  value === "cancelled";
+
+const toConnectivityError = (err: unknown) => {
+  if (err instanceof ConnectivityError) {
+    return err;
+  }
+
+  const errorTypeCandidate =
+    typeof err === "object" && err !== null
+      ? ("code" in err && typeof err.code === "string"
+          ? err.code
+          : "data" in err &&
+              typeof err.data === "object" &&
+              err.data !== null &&
+              "errorType" in err.data &&
+              typeof err.data.errorType === "string"
+            ? err.data.errorType
+            : undefined)
+      : undefined;
+
+  const errorType = isNativeTransportErrorType(errorTypeCandidate)
+    ? errorTypeCandidate
+    : undefined;
+
+  const message =
+    errorType === "dns_failure"
+      ? "Backend hostname could not be resolved"
+      : errorType === "timeout"
+        ? "Backend request timed out"
+        : errorType === "tls_failure"
+          ? "Secure connection to backend failed"
+          : errorType === "offline"
+            ? "Browser is offline"
+            : errorType === "cancelled"
+              ? "Network request was cancelled"
+              : "Network connection lost or backend unreachable";
+
+  return new ConnectivityError(message, errorType);
+};
 
 export const apiFetch = async (
   path: string,
@@ -122,18 +252,17 @@ export const apiFetch = async (
   
   let response: Response;
   try {
-    response = await fetch(apiUrl(path), {
-      ...init,
-      headers,
-      credentials: "include",
-    });
+    response = await fetchWithTransport(path, init, headers);
   } catch (err) {
     // Intentional aborts (navigation, etc) should NOT be classified as connectivity errors
     if (err instanceof Error && err.name === "AbortError") {
       throw err;
     }
+    if (err instanceof Error && /Unsupported request body/i.test(err.message)) {
+      throw err;
+    }
     // Network failures (DNS, timeout, connection refused) are classified as connectivity errors
-    throw new ConnectivityError();
+    throw toConnectivityError(err);
   }
 
   if (!auth || !retryOnUnauthorized || response.status !== 401) {
@@ -152,15 +281,14 @@ export const apiFetch = async (
   }
 
   try {
-    return await fetch(apiUrl(path), {
-      ...init,
-      headers: retriedHeaders,
-      credentials: "include",
-    });
+    return await fetchWithTransport(path, init, retriedHeaders);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw err;
     }
-    throw new ConnectivityError();
+    if (err instanceof Error && /Unsupported request body/i.test(err.message)) {
+      throw err;
+    }
+    throw toConnectivityError(err);
   }
 };
