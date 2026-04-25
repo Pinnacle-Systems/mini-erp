@@ -86,12 +86,12 @@ const getOrderedUnitGroups = (itemType: "PRODUCT" | "SERVICE") => {
   return serviceGroup ? [serviceGroup, ...remainingGroups] : UNIT_GROUPS;
 };
 type UnitOption = (typeof UNIT_GROUPS)[number]["options"][number];
-const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
-const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
-const BULK_OPTION_INPUT_CLASS = "h-6 rounded-md px-2 text-[10px]";
+const DENSE_INPUT_CLASS = "app-catalog-editor-input";
+const DENSE_SELECT_CLASS = "app-catalog-editor-select";
+const BULK_OPTION_INPUT_CLASS = "app-catalog-option-input";
 const OPTION_DISCOVERY_STORAGE_KEY = "mini-erp-option-discovery";
 const MAX_BULK_OPTION_KEYS = 3;
-const SIMPLE_ROW_INPUT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
+const SIMPLE_ROW_INPUT_CLASS = "app-catalog-simple-row-input";
 
 type PricingSnapshot = {
   amount: number | null;
@@ -1674,7 +1674,7 @@ export function ItemDetailsPage({
         <CardContent className="grid gap-1.5 pb-20 sm:pb-24 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pb-0">
           <div className="rounded-lg border border-border/80 bg-white p-1.5 lg:shrink-0">
             <div className="grid gap-1.5">
-              <div className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-foreground lg:text-[10px]">
+              <div className="app-mobile-variant-inline-control shrink-0 font-medium text-foreground lg:min-h-0 lg:gap-1.5 lg:text-[10px]">
                 <Switch
                   id="edit-variant-mode"
                   checked={showVariantEditor}
@@ -1689,7 +1689,7 @@ export function ItemDetailsPage({
                     loading ||
                     (!showVariantEditor && !canShowSimpleEditor)
                   }
-                  className="h-6 w-11 border"
+                  className="h-7 w-12 border lg:h-6 lg:w-11"
                   checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
                   uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
                 />
@@ -1944,7 +1944,7 @@ export function ItemDetailsPage({
             <div className="mt-1 grid gap-1.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
               <div className="grid gap-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
                 <div className="rounded-lg border border-border/80 bg-white p-1.5 lg:shrink-0">
-                  <p className="text-[11px] font-semibold text-foreground lg:text-[10px]">
+                  <p className="app-shell-action-title lg:text-[10px]">
                     Options
                   </p>
                   <div className="mt-1.5 space-y-1.5">
@@ -2042,12 +2042,12 @@ export function ItemDetailsPage({
                               disabled={!isEditing || loading}
                             />
                           </div>
-                          <div className="flex items-start justify-end gap-1 lg:items-center">
+                          <div className="app-mobile-action-stack lg:items-center">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-7 px-2 lg:hidden"
+                              className="app-mobile-action-button w-full lg:hidden"
                               disabled={
                                 !isEditing ||
                                 loading ||
@@ -2066,7 +2066,7 @@ export function ItemDetailsPage({
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-7 px-2 lg:hidden"
+                              className="app-mobile-action-button w-full lg:hidden"
                               disabled={
                                 !isEditing || loading || bulkOptions.length <= 1
                               }
@@ -2106,12 +2106,12 @@ export function ItemDetailsPage({
                         </div>
                       ))}
                     </div>
-                    <div className="flex flex-wrap items-center justify-between gap-1">
+                    <div className="grid gap-1.5 min-[420px]:grid-cols-2 lg:flex lg:flex-wrap lg:items-center lg:justify-between lg:gap-1">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2"
+                        className="app-mobile-action-button w-full lg:w-auto"
                         disabled={
                           !isEditing ||
                           loading ||
@@ -2129,7 +2129,7 @@ export function ItemDetailsPage({
                       <Button
                         type="button"
                         size="sm"
-                        className="h-7 px-2"
+                        className="app-mobile-action-button w-full lg:w-auto"
                         disabled={!isEditing || loading}
                         onClick={() => applyBulkOptionsToVariants()}
                       >

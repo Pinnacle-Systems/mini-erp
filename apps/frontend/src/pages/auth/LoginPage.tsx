@@ -4,8 +4,8 @@ import { LoginCard } from "../../design-system/organisms/LoginCard";
 import { useLoginFlow } from "../../features/auth/useLoginFlow";
 
 export function LoginPage() {
-  const [username, setUsername] = useState("5551234567");
-  const [password, setPassword] = useState("ChangeMe123!");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [password, setPassword] = useState("");
   const [businessSearch, setBusinessSearch] = useState("");
   const {
     loading,
@@ -19,15 +19,15 @@ export function LoginPage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center p-6 md:p-10">
       <LoginCard
-        username={username}
+        phoneNumber={phoneNumber}
         password={password}
         loading={loading}
         error={error}
-        onUsernameChange={setUsername}
+        onPhoneNumberChange={setPhoneNumber}
         onPasswordChange={setPassword}
         onSubmit={(event) => {
           event.preventDefault();
-          void submit({ username, password });
+          void submit({ phoneNumber, password });
         }}
       />
       {pendingBusinesses ? (

@@ -9,7 +9,7 @@ import {
 } from "./session-business";
 
 type Credentials = {
-  username: string;
+  phoneNumber: string;
   password: string;
 };
 
@@ -33,12 +33,12 @@ export function useLoginFlow() {
   const [pendingBusinesses, setPendingBusinesses] = useState<AssignedStore[] | null>(null);
   const [selectingBusiness, setSelectingBusiness] = useState(false);
 
-  const submit = async ({ username, password }: Credentials) => {
+  const submit = async ({ phoneNumber, password }: Credentials) => {
     setError(null);
     setLoading(true);
 
     try {
-      const auth = await login(username, password);
+      const auth = await login(phoneNumber, password);
       clearSessionBusinessContext();
       setSessionActiveStore(null);
       setSessionBusinessSelected(false);

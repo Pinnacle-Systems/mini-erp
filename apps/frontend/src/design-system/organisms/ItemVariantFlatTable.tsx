@@ -294,21 +294,21 @@ export function ItemVariantFlatTable({
   );
 
   if (!loading && visibleRows.length === 0) {
-    return <div className="card text-sm text-muted-foreground">{emptyMessage}</div>;
+    return <div className="card app-shell-description">{emptyMessage}</div>;
   }
 
   return (
     <>
       <div className="space-y-2 lg:hidden">
         {loading ? (
-          <div className="card text-sm text-muted-foreground">Loading variants...</div>
+          <div className="card app-shell-description">Loading variants...</div>
         ) : (
           visibleRows.map((row) => (
             hasAction && mobileActionTrigger === "card" ? (
               <button
                 key={row.key}
                 type="button"
-                className={`block w-full space-y-2 rounded-xl border p-3 text-left transition ${
+                className={`app-mobile-record-card block w-full ${
                   highlightInactiveRows && !row.isActive
                     ? "border-amber-400 bg-amber-100 hover:bg-amber-100"
                     : "border-border/70 bg-white hover:bg-white/90"
@@ -318,38 +318,38 @@ export function ItemVariantFlatTable({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{getPrimaryName(row)}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="app-mobile-record-title">{getPrimaryName(row)}</p>
+                    <p className="app-mobile-record-meta">
                       SKU: <span className="font-mono">{row.sku || "-"}</span>
                     </p>
                     {showUnit ? (
-                      <p className="text-[11px] text-muted-foreground">Unit: {row.unit || "-"}</p>
+                      <p className="app-mobile-record-meta">Unit: {row.unit || "-"}</p>
                     ) : null}
                     {showCommercialFields ? (
                       <>
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="app-mobile-record-meta">
                           {taxCodeLabel}: {row.hsnSac || "-"}
                         </p>
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="app-mobile-record-meta">
                           Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                         </p>
                         {showPurchasePrice ? (
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="app-mobile-record-meta">
                             Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
                           </p>
                         ) : null}
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="app-mobile-record-meta">
                           GST %: {getGstSlabDisplay(row.gstSlab)}
                         </p>
                       </>
                     ) : null}
                     {showCategory ? (
-                      <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
+                      <p className="app-mobile-record-meta">Category: {row.category || "-"}</p>
                     ) : null}
                   </div>
                   {showStatus ? (
                     <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                      className={`app-mobile-record-status ${
                         row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
                       }`}
                     >
@@ -361,7 +361,7 @@ export function ItemVariantFlatTable({
             ) : (
               <div
                 key={row.key}
-                className={`space-y-2 rounded-xl border p-3 ${
+                className={`app-mobile-record-card ${
                   highlightInactiveRows && !row.isActive
                     ? "border-amber-400 bg-amber-100"
                     : "border-border/70 bg-white"
@@ -369,38 +369,38 @@ export function ItemVariantFlatTable({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{getPrimaryName(row)}</p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="app-mobile-record-title">{getPrimaryName(row)}</p>
+                    <p className="app-mobile-record-meta">
                       SKU: <span className="font-mono">{row.sku || "-"}</span>
                     </p>
                     {showUnit ? (
-                      <p className="text-[11px] text-muted-foreground">Unit: {row.unit || "-"}</p>
+                      <p className="app-mobile-record-meta">Unit: {row.unit || "-"}</p>
                     ) : null}
                     {showCommercialFields ? (
                       <>
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="app-mobile-record-meta">
                           {taxCodeLabel}: {row.hsnSac || "-"}
                         </p>
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="app-mobile-record-meta">
                           Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                         </p>
                         {showPurchasePrice ? (
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="app-mobile-record-meta">
                             Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
                           </p>
                         ) : null}
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="app-mobile-record-meta">
                           GST %: {getGstSlabDisplay(row.gstSlab)}
                         </p>
                       </>
                     ) : null}
                     {showCategory ? (
-                      <p className="text-[11px] text-muted-foreground">Category: {row.category || "-"}</p>
+                      <p className="app-mobile-record-meta">Category: {row.category || "-"}</p>
                     ) : null}
                   </div>
                   {showStatus ? (
                     <span
-                      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                      className={`app-mobile-record-status ${
                         row.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
                       }`}
                     >
@@ -416,7 +416,7 @@ export function ItemVariantFlatTable({
                       size="sm"
                       className={
                         mobileActionButtonClassName ??
-                        "h-8 gap-1.5 px-3 text-[11px] text-[#7a1f1f] hover:bg-[#fff5f5]"
+                        "app-shell-header-control gap-1.5 px-3 text-[#7a1f1f] hover:bg-[#fff5f5]"
                       }
                       onClick={() => handleAction(row)}
                     >

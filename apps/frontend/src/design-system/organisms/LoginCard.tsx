@@ -7,27 +7,27 @@ import { Card, CardContent } from "../molecules/Card";
 import type { FormEvent } from "react";
 
 type LoginCardProps = {
-  username: string;
+  phoneNumber: string;
   password: string;
   loading: boolean;
   error: string | null;
-  onUsernameChange: (value: string) => void;
+  onPhoneNumberChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
 };
 
 export function LoginCard({
-  username,
+  phoneNumber,
   password,
   loading,
   error,
-  onUsernameChange,
+  onPhoneNumberChange,
   onPasswordChange,
   onSubmit
 }: LoginCardProps) {
-  const handleUsernameChange = (value: string) => {
+  const handlePhoneNumberChange = (value: string) => {
     const digitsOnly = value.replace(/\D/g, "").slice(0, 10);
-    onUsernameChange(digitsOnly);
+    onPhoneNumberChange(digitsOnly);
   };
 
   return (
@@ -52,15 +52,15 @@ export function LoginCard({
 
           <form onSubmit={onSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="username">Phone number</Label>
+              <Label htmlFor="phone-number">Phone number</Label>
               <Input
-                id="username"
+                id="phone-number"
                 type="text"
-                autoComplete="username"
+                autoComplete="tel"
                 inputMode="tel"
-                value={username}
-                onChange={(event) => handleUsernameChange(event.target.value)}
-                placeholder="5551234567"
+                value={phoneNumber}
+                onChange={(event) => handlePhoneNumberChange(event.target.value)}
+                placeholder="10-digit phone number"
               />
               <p className="text-xs text-muted-foreground">
                 Phone login uses 10 digits without country code.
@@ -72,9 +72,10 @@ export function LoginCard({
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(event) => onPasswordChange(event.target.value)}
-                placeholder="••••••••"
+                placeholder="Enter your password"
               />
             </div>
 

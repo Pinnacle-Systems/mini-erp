@@ -22,7 +22,7 @@ export function AppTabButton({
       className={cn(
         stacked
           ? "flex w-full min-h-8 min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-left text-[11px] transition"
-          : "flex min-h-9 min-w-[7.5rem] shrink-0 items-center gap-2 rounded-lg border px-2 py-1 text-left text-xs transition",
+          : "app-shell-tab-button",
         stacked
           ? active
             ? "border-primary/20 bg-primary/10 text-primary shadow-[inset_2px_0_0_hsl(var(--primary))]"
@@ -34,7 +34,7 @@ export function AppTabButton({
       )}
       {...props}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className={stacked ? "h-4 w-4 shrink-0" : "app-shell-tab-icon"} />
       <span className="min-w-0 truncate">{label}</span>
     </button>
   );

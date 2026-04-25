@@ -23,7 +23,7 @@ export function AppNavButton({
     return (
       <button
         className={cn(
-          "flex min-h-14 min-w-[4.8rem] flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight transition",
+          "app-shell-compact-nav-button",
           active
             ? "bg-primary/10 text-primary"
             : "text-foreground/75 hover:bg-card/80",
@@ -31,7 +31,7 @@ export function AppNavButton({
         )}
         {...props}
       >
-        <Icon className="h-4 w-4" />
+        <Icon className="app-shell-compact-nav-icon" />
         <span className="text-center">{label}</span>
       </button>
     );
@@ -57,7 +57,7 @@ export function AppNavButton({
   return (
     <button
       className={cn(
-        "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition",
+        "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-base transition lg:text-sm",
         active
           ? "bg-primary/10 text-primary shadow-[inset_2px_0_0_hsl(var(--primary))]"
           : "text-foreground/80 hover:bg-card/70",

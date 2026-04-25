@@ -109,9 +109,9 @@ const getOrderedUnitGroups = (itemType: "PRODUCT" | "SERVICE") => {
   const remainingGroups = UNIT_GROUPS.filter((group) => group.label !== "Service");
   return serviceGroup ? [serviceGroup, ...remainingGroups] : UNIT_GROUPS;
 };
-const DENSE_INPUT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
-const DENSE_SELECT_CLASS = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]";
-const BULK_OPTION_INPUT_CLASS = "h-6 rounded-md px-2 text-[10px]";
+const DENSE_INPUT_CLASS = "app-catalog-editor-input";
+const DENSE_SELECT_CLASS = "app-catalog-editor-select";
+const BULK_OPTION_INPUT_CLASS = "app-catalog-option-input";
 const QUICK_ENTRY_INPUT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
 const QUICK_ENTRY_SELECT_CLASS = "h-8 rounded-lg px-2.5 text-[11px]";
 const OPTION_DISCOVERY_STORAGE_KEY = "mini-erp-option-discovery";
@@ -2197,12 +2197,12 @@ export function AddItemPage({
                             inputAriaLabel="Option values"
                           />
                         </div>
-                        <div className="flex items-start justify-end gap-1 lg:items-center">
+                        <div className="app-mobile-action-stack lg:items-center">
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-7 px-2 lg:hidden"
+                            className="app-mobile-action-button w-full lg:hidden"
                             disabled={option.valueDraft.trim().length === 0}
                             onClick={() => commitBulkOptionValue(option.id, option.valueDraft)}
                           >
@@ -2212,7 +2212,7 @@ export function AddItemPage({
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-7 px-2 lg:hidden"
+                            className="app-mobile-action-button w-full lg:hidden"
                             disabled={bulkOptions.length <= 1}
                             onClick={() =>
                               confirmOptionKeyRemoval(option.key)
@@ -2245,12 +2245,12 @@ export function AddItemPage({
                         </div>
                       ))}
                     </div>
-                    <div className="flex flex-wrap items-center justify-between gap-1">
+                    <div className="grid gap-1.5 min-[420px]:grid-cols-2 lg:flex lg:flex-wrap lg:items-center lg:justify-between lg:gap-1">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2"
+                        className="app-mobile-action-button w-full lg:w-auto"
                         disabled={bulkOptions.length >= MAX_BULK_OPTION_KEYS}
                         onClick={() =>
                           setBulkOptions((current) => [...current, EMPTY_BULK_OPTION()])
@@ -2261,7 +2261,7 @@ export function AddItemPage({
                       <Button
                         type="button"
                         size="sm"
-                        className="h-7 px-2"
+                        className="app-mobile-action-button w-full lg:w-auto"
                         onClick={() => applyBulkOptionsToVariants()}
                       >
                         Apply Options

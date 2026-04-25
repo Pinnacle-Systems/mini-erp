@@ -24,8 +24,24 @@ export type MePayload = {
   modules?: BusinessModules | null;
 };
 
-export const login = async (username: string, password: string): Promise<LoginResult> => {
-  const trimmed = username.trim();
+const INTERNAL_ERROR_PATTERNS = [
+  /prisma\./i,
+  /invocation/i,
+  /\bat\s+\S+\s+\(/,
+  /:\d+:\d+/,
+  /\n/,
+];
+
+const getAuthErrorMessage = (message: string | undefined, fallback: string) => {
+  if (!message) return fallback;
+  if (INTERNAL_ERROR_PATTERNS.some((pattern) => pattern.test(message))) {
+    return "Sign in failed. Please check your details and try again.";
+  }
+  return message;
+};
+
+export const login = async (phoneNumber: string, password: string): Promise<LoginResult> => {
+  const trimmed = phoneNumber.trim();
   if (!/^\d{10}$/.test(trimmed)) {
     throw new Error("Phone number must be 10 digits");
   }
@@ -43,7 +59,7 @@ export const login = async (username: string, password: string): Promise<LoginRe
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? "Login failed");
+    throw new Error(getAuthErrorMessage(payload?.message, "Login failed"));
   }
 
   const payload = (await response.json()) as {

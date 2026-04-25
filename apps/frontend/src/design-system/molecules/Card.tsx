@@ -30,7 +30,7 @@ export function CardHeader({ className, children, ...props }: CardProps) {
 
 export function CardTitle({ className, children, ...props }: CardProps) {
   return (
-    <h2 className={cn("text-lg font-semibold tracking-[-0.01em] text-foreground lg:text-base", className)} {...props}>
+    <h2 className={cn("app-shell-primary-title", className)} {...props}>
       {children}
     </h2>
   );
@@ -38,7 +38,7 @@ export function CardTitle({ className, children, ...props }: CardProps) {
 
 export function CardDescription({ className, children, ...props }: CardProps) {
   return (
-    <p className={cn("mt-1 text-xs text-muted-foreground", className)} {...props}>
+    <p className={cn("app-shell-description mt-1", className)} {...props}>
       {children}
     </p>
   );
