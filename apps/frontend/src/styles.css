@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 @theme {
-  --text-xs: 0.8125rem;
-  --text-xs--line-height: 1.125rem;
-  --text-sm: 0.8125rem;
-  --text-sm--line-height: 1.125rem;
+  --text-xs: 0.9375rem;
+  --text-xs--line-height: 1.375rem;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5rem;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -226,6 +226,162 @@
     @apply m-0 text-sm font-medium text-muted-foreground;
   }
 
+  .app-shell-primary-title {
+    @apply text-xl font-semibold tracking-[-0.01em] text-foreground lg:text-base;
+  }
+
+  .app-shell-section-title {
+    @apply text-xl font-semibold tracking-[-0.01em] text-foreground lg:text-sm;
+  }
+
+  .app-shell-description {
+    @apply text-sm text-muted-foreground lg:text-xs;
+  }
+
+  .app-shell-caption {
+    @apply text-sm text-muted-foreground lg:text-xs;
+  }
+
+  .app-shell-value {
+    @apply text-lg font-semibold text-foreground lg:text-sm;
+  }
+
+  .app-shell-action-title {
+    @apply text-base font-semibold text-foreground lg:text-xs;
+  }
+
+  .app-shell-action-description {
+    @apply text-sm text-muted-foreground lg:text-xs;
+  }
+
+  .app-shell-compact-nav-button {
+    @apply flex min-h-16 min-w-20 flex-col items-center justify-center gap-1 rounded-lg px-2 text-sm leading-tight transition;
+  }
+
+  .app-shell-compact-nav-icon {
+    @apply h-5 w-5;
+  }
+
+  .app-shell-tab-button {
+    @apply flex min-h-11 min-w-36 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition lg:min-h-9 lg:min-w-32 lg:px-2 lg:py-1 lg:text-xs;
+  }
+
+  .app-shell-tab-icon {
+    @apply h-5 w-5 shrink-0 lg:h-4 lg:w-4;
+  }
+
+  .app-shell-menu-button {
+    @apply h-11 w-full justify-start gap-2 px-3 text-sm;
+  }
+
+  .app-shell-header-title {
+    @apply text-xl font-semibold tracking-[-0.01em] text-foreground lg:text-lg;
+  }
+
+  .app-shell-header-control {
+    @apply h-9 text-sm lg:h-8 lg:text-xs;
+  }
+
+  .app-shell-header-select {
+    @apply text-sm font-medium text-foreground lg:text-xs;
+  }
+
+  .app-page-title {
+    @apply text-xl font-semibold tracking-[-0.01em] text-foreground lg:text-sm;
+  }
+
+  .app-page-subtitle {
+    @apply text-base leading-snug text-muted-foreground lg:text-xs;
+  }
+
+  .app-filter-input {
+    @apply h-12 rounded-xl px-4 text-base lg:h-8 lg:px-3 lg:text-xs;
+  }
+
+  .app-filter-toggle-row {
+    @apply inline-flex min-h-10 items-center gap-3 lg:min-h-8 lg:gap-2.5;
+  }
+
+  .app-filter-toggle-label {
+    @apply shrink-0 text-base font-medium leading-none text-muted-foreground lg:text-xs;
+  }
+
+  .app-floating-action-button {
+    @apply h-12 px-5 text-base shadow-sm lg:h-8 lg:px-3.5 lg:text-xs;
+  }
+
+  .app-mobile-record-card {
+    @apply space-y-2 rounded-xl border p-4 text-left transition lg:p-3;
+  }
+
+  .app-mobile-record-title {
+    @apply text-lg font-semibold leading-snug text-foreground lg:text-sm;
+  }
+
+  .app-mobile-record-meta {
+    @apply text-base leading-relaxed text-muted-foreground lg:text-xs;
+  }
+
+  .app-mobile-record-status {
+    @apply inline-flex rounded-md px-2 py-0.5 text-sm font-semibold lg:text-xs;
+  }
+
+  .app-mobile-variant-card {
+    @apply rounded-xl border border-border/70 p-3 transition-colors duration-700;
+  }
+
+  .app-mobile-variant-grid {
+    @apply grid gap-3;
+  }
+
+  .app-mobile-variant-field {
+    @apply grid min-h-0 gap-1.5;
+  }
+
+  .app-mobile-variant-value {
+    @apply min-h-6 px-1 text-base leading-relaxed text-foreground;
+  }
+
+  .app-mobile-variant-inline-control {
+    @apply inline-flex min-h-8 items-center gap-2 text-base leading-normal text-muted-foreground;
+  }
+
+  .app-catalog-editor-input {
+    @apply h-11 rounded-lg px-3 text-base leading-6 lg:h-7 lg:px-2 lg:text-xs lg:leading-none;
+  }
+
+  .app-catalog-editor-select {
+    @apply h-11 rounded-lg px-3 text-base leading-6 lg:h-7 lg:px-2 lg:text-xs lg:leading-none;
+  }
+
+  .app-catalog-option-input {
+    @apply h-10 rounded-md px-3 text-base leading-6 lg:h-6 lg:px-2 lg:text-xs lg:leading-none;
+  }
+
+  .app-catalog-simple-row-input {
+    @apply h-11 rounded-lg px-3 text-base leading-6 lg:h-8 lg:px-2.5 lg:text-xs lg:leading-none;
+  }
+
+  .app-tokenizer {
+    @apply flex min-h-10 flex-wrap items-center gap-1.5 overflow-visible rounded-md border border-[#8fa9c7] bg-[#f7f9fb] px-2 py-1 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-[border-color,box-shadow,background-color] duration-150 focus-within:border-[#5d95d6] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#6aa5eb]/20 lg:h-7 lg:min-h-0 lg:flex-nowrap lg:gap-1 lg:overflow-x-auto lg:overflow-y-hidden lg:py-0 lg:text-xs;
+  }
+
+  .app-tokenizer-chip {
+    @apply inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border/70 bg-white px-2 py-1 text-xs leading-none lg:px-1.5 lg:py-0.5 lg:text-[10px];
+  }
+
+  .app-tokenizer-input {
+    @apply !h-8 !w-auto min-w-24 !flex-1 !border-0 !bg-transparent !p-0 !text-sm !leading-6 !text-foreground !shadow-none placeholder:!text-muted-foreground focus:!border-0 focus:!bg-transparent focus:!ring-0 lg:!h-6 lg:!text-xs lg:!leading-6;
+  }
+
+  .app-mobile-action-button {
+    @apply min-h-10 h-auto px-3 py-1.5 text-sm leading-tight whitespace-normal text-center lg:h-7 lg:min-h-0 lg:px-2 lg:py-0 lg:text-xs;
+  }
+
+  .app-mobile-action-stack {
+    @apply grid w-full grid-cols-1 gap-1.5 min-[420px]:grid-cols-2 lg:flex lg:w-auto lg:items-center lg:justify-end lg:gap-1;
+  }
+
   .app-filter-panel {
     @apply rounded-xl border border-tabular-border bg-tabular-header p-2;
   }
@@ -280,11 +436,11 @@
   }
 
   .app-filter-legend {
-    @apply rounded-full border border-tabular-border bg-secondary px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-tabular-header-text;
+    @apply rounded-full border border-tabular-border bg-secondary px-3 py-1 text-sm font-semibold uppercase tracking-[0.08em] text-tabular-header-text lg:px-2 lg:py-0.5 lg:text-xs;
   }
 
   .app-filter-help {
-    @apply mb-2 text-[11px] leading-tight text-muted-foreground;
+    @apply mb-3 text-base leading-snug text-muted-foreground lg:mb-2 lg:text-xs lg:leading-tight;
   }
 
   .app-filter-row {

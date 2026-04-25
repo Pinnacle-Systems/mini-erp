@@ -515,10 +515,10 @@ const landingBusinessPulse = [
   { label: "Avg invoice value", value: "₹493" },
 ];
 
-const MOBILE_NAV_BUTTON_WIDTH_PX = 76;
+const MOBILE_NAV_BUTTON_WIDTH_PX = 80;
 const MOBILE_NAV_BUTTON_GAP_PX = 4;
 const MOBILE_NAV_HORIZONTAL_PADDING_PX = 16;
-const MOBILE_NAV_MORE_BUTTON_WIDTH_PX = 76;
+const MOBILE_NAV_MORE_BUTTON_WIDTH_PX = 80;
 
 export function AppHomePage() {
   const location = useLocation();
@@ -976,8 +976,8 @@ export function AppHomePage() {
       <section className="space-y-2 lg:grid lg:h-full lg:grid-cols-12 lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-2 lg:space-y-0 lg:overflow-hidden">
         <Card className="p-2 lg:col-span-8">
           <CardHeader className="mb-0">
-            <CardTitle className="text-base">Today Ops</CardTitle>
-            <CardDescription className="text-xs">
+            <CardTitle>Today Ops</CardTitle>
+            <CardDescription>
               Placeholder dashboard for <strong>{activeBusinessName}</strong>.
               Replace each card with live data as modules are implemented.
             </CardDescription>
@@ -1003,10 +1003,10 @@ export function AppHomePage() {
           {landingBusinessPulse.map((metric) => (
             <Card key={metric.label} className="p-2">
               <CardContent className="p-0">
-                <p className="text-[11px] text-muted-foreground">
+                <p className="app-shell-caption">
                   {metric.label}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-foreground">
+                <p className="app-shell-value mt-1">
                   {metric.value}
                 </p>
               </CardContent>
@@ -1017,8 +1017,8 @@ export function AppHomePage() {
         <div className="grid gap-2 lg:col-span-8 lg:min-h-0 lg:grid-cols-2">
           <Card className="p-2">
             <CardHeader className="mb-1 p-0">
-              <CardTitle className="text-sm">Needs Attention</CardTitle>
-              <CardDescription className="text-xs">
+              <CardTitle className="app-shell-section-title">Needs Attention</CardTitle>
+              <CardDescription>
                 Placeholder alert layout for future operational exceptions.
               </CardDescription>
             </CardHeader>
@@ -1036,8 +1036,8 @@ export function AppHomePage() {
 
           <Card className="p-2">
             <CardHeader className="mb-1 p-0">
-              <CardTitle className="text-sm">Recent Work</CardTitle>
-              <CardDescription className="text-xs">
+              <CardTitle className="app-shell-section-title">Recent Work</CardTitle>
+              <CardDescription>
                 Placeholder activity layout until real history is wired in.
               </CardDescription>
             </CardHeader>
@@ -1053,17 +1053,17 @@ export function AppHomePage() {
 
         <Card className="p-2 lg:col-span-4 lg:min-h-0">
           <CardHeader className="mb-1 p-0">
-            <CardTitle className="text-sm">Search + Sync</CardTitle>
-            <CardDescription className="text-xs">
+            <CardTitle className="app-shell-section-title">Search + Sync</CardTitle>
+            <CardDescription>
               Reserved area for future global lookup and sync controls.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 p-0">
-            <div className="rounded-lg border border-dashed border-border/80 bg-muted/65 px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="app-shell-caption rounded-lg border border-dashed border-border/80 bg-muted/65 px-3 py-2">
               Search controls will appear here when global lookup is
               implemented.
             </div>
-            <div className="rounded-lg border border-border/80 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="app-shell-caption rounded-lg border border-border/80 bg-muted/50 px-3 py-2">
               <p>Sync summary placeholder for the current business.</p>
               <p>
                 Current queued item count can be shown here once the shell
@@ -1082,7 +1082,7 @@ export function AppHomePage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 px-3 text-[11px]"
+                className="app-shell-header-control px-3"
               >
                 Open settings
               </Button>
@@ -1311,10 +1311,10 @@ export function AppHomePage() {
         <section className="min-w-0 space-y-2 pb-[calc(env(safe-area-inset-bottom)+5rem)] lg:pb-0 lg:flex lg:min-h-0 lg:flex-col">
           <div className="min-w-0 rounded-xl border border-border/80 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_12px_24px_-20px_rgba(15,23,42,0.18)] lg:hidden">
             <div className="mb-3">
-              <p className="text-xs font-semibold tracking-[0.01em] text-foreground/90">
+              <p className="app-shell-section-title">
                 {activeFolder?.label ?? "Apps"}
               </p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="app-shell-description">
                 Choose an app to continue.
               </p>
             </div>
@@ -1381,7 +1381,7 @@ export function AppHomePage() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-9 w-full justify-start gap-2 px-3 text-[12px]"
+                  className="app-shell-menu-button"
                   onClick={() => handleFolderSelect(folder.id)}
                 >
                   <folder.Icon className="h-4 w-4" aria-hidden="true" />
@@ -1392,7 +1392,7 @@ export function AppHomePage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-9 w-full justify-start gap-2 px-3 text-[12px]"
+                className="app-shell-menu-button"
                 onClick={() => {
                   setShowSessionMenu(false);
                   void onSyncNow();
@@ -1409,7 +1409,7 @@ export function AppHomePage() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-9 w-full justify-start gap-2 px-3 text-[12px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="app-shell-menu-button text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => {
                   setShowSessionMenu(false);
                   void onLogout();
@@ -1443,12 +1443,12 @@ export function AppHomePage() {
           <Button
             type="button"
             variant="ghost"
-            className="flex min-h-14 min-w-[4.8rem] shrink-0 flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] leading-tight text-foreground/75 hover:bg-card/80"
+            className="app-shell-compact-nav-button shrink-0 text-foreground/75 hover:bg-card/80"
             onClick={() => setShowSessionMenu((current) => !current)}
             aria-expanded={showSessionMenu}
             aria-label="Open more options"
           >
-            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+            <MoreHorizontal className="app-shell-compact-nav-icon" aria-hidden="true" />
             <span className="text-center">More</span>
           </Button>
         </div>

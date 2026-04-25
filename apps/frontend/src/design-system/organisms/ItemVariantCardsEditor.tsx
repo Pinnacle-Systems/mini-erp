@@ -22,7 +22,6 @@ import {
 } from "../molecules/TabularSurface";
 import { withTabularSerialNumberColumn } from "../molecules/tabularSerialNumbers";
 import {
-  getSpreadsheetCellClassName,
   spreadsheetCellControlClassName,
   spreadsheetCellNumericClassName,
   spreadsheetCellSelectClassName,
@@ -113,7 +112,7 @@ export function ItemVariantCardsEditor({
   onResetGeneratedVariants,
   showAddVariantAction = true,
   addVariantLabel = "Add Variant",
-  denseInputClassName = "h-7 rounded-lg px-2 text-[11px] lg:text-[10px]",
+  denseInputClassName = "app-catalog-editor-input",
   showActiveToggle = false,
   showPricingFields = false,
   showPurchasePrice = true,
@@ -354,9 +353,9 @@ export function ItemVariantCardsEditor({
     <div className="grid w-full gap-1.5 lg:gap-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-border/80 lg:bg-card">
       <div className="flex items-center justify-between gap-1.5 lg:shrink-0 lg:border-b lg:border-border/70 lg:px-2 lg:py-1.5">
         <div className="flex items-center gap-2">
-          <p className="text-[11px] font-medium text-foreground lg:text-[10px]">Variants</p>
+          <p className="app-shell-action-title lg:text-[10px]">Variants</p>
           {selectedEditableVariantIds.length > 0 ? (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="app-shell-caption lg:text-[10px]">
               {selectedEditableVariantIds.length} selected
             </span>
           ) : null}
@@ -370,7 +369,7 @@ export function ItemVariantCardsEditor({
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 gap-1.5 px-2"
+              className="app-mobile-action-button gap-1.5"
               disabled={!hasSelectedVariants || disabled}
               onClick={() => setShowBulkMenu((current) => !current)}
             >
@@ -384,7 +383,7 @@ export function ItemVariantCardsEditor({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] text-[#15314e]"
+                    className="app-shell-menu-button text-[#15314e]"
                     onClick={() => handleBulkSetActive(true)}
                   >
                     Mark active
@@ -393,7 +392,7 @@ export function ItemVariantCardsEditor({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] text-[#15314e]"
+                    className="app-shell-menu-button text-[#15314e]"
                     onClick={() => handleBulkSetActive(false)}
                   >
                     Mark inactive
@@ -405,7 +404,7 @@ export function ItemVariantCardsEditor({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 w-full justify-start gap-1.5 px-2.5 text-[11px] text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
+                      className="app-shell-menu-button text-[#8a2b2b] hover:bg-[#fce8e8] hover:text-[#7a1f1f]"
                       disabled={!canBulkDelete}
                       onClick={handleBulkDelete}
                     >
@@ -422,23 +421,13 @@ export function ItemVariantCardsEditor({
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 px-2"
+              className="app-mobile-action-button"
               disabled={disabled}
               onClick={onResetGeneratedVariants}
             >
               Reset to all combinations
             </Button>
           ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={`hidden h-7 px-2 lg:inline-flex ${showManualAddAction ? "" : "lg:hidden"}`}
-            onClick={onAddVariant}
-            disabled={disabled}
-          >
-            {addVariantLabel}
-          </Button>
         </div>
       </div>
 
@@ -450,7 +439,7 @@ export function ItemVariantCardsEditor({
               type="button"
               variant="outline"
               size="sm"
-              className="mt-2 h-7 px-2"
+              className="app-mobile-action-button mt-2"
               disabled={disabled}
               onClick={onResetGeneratedVariants}
             >
@@ -473,19 +462,19 @@ export function ItemVariantCardsEditor({
               return (
                 <div
                   key={variant.id}
-                  className={`rounded-xl border border-border/70 p-1.5 transition-colors duration-700 ${
+                  className={`app-mobile-variant-card ${
                     highlightedVariantId === variant.id ? "bg-sky-50/90" : "bg-white/90"
                   }`}
                 >
                   {isLocked ? (
-                    <p className="mb-1 text-[10px] font-medium text-muted-foreground">
+                    <p className="app-shell-caption mb-2 font-medium">
                       Used in {variant.usageCount ?? 0} record
                       {(variant.usageCount ?? 0) === 1 ? "" : "s"}: SKU, name, barcode, options,
                       and delete are locked.
                     </p>
                   ) : null}
-                  <div className="grid gap-1.5">
-                    <div className={cn("grid gap-1", getSpreadsheetCellClassName({ align: "center" }))}>
+                  <div className="app-mobile-variant-grid">
+                    <div className="app-mobile-variant-field">
                       <Label>Select</Label>
                       <Checkbox
                         checked={selectedVariantIds.includes(variant.id)}
@@ -496,12 +485,12 @@ export function ItemVariantCardsEditor({
                         }
                       />
                     </div>
-                    <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                    <div className="app-mobile-variant-field">
                       <Label>Name</Label>
                       <Input
                         {...getCellDataAttributes(variant.id, "name")}
                         data-variant-grid-cell={`${variant.id}:name`}
-                        className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
+                        className={denseInputClassName}
                         value={variant.name}
                         disabled={isReadOnly}
                         onFocus={() => handleCellFocus(variant.id, "name")}
@@ -524,21 +513,21 @@ export function ItemVariantCardsEditor({
                       return (
                         <div
                           key={`${variant.id}:${column.id}`}
-                          className={cn("grid gap-1", getSpreadsheetCellClassName())}
+                          className="app-mobile-variant-field"
                         >
                           <Label>{column.label}</Label>
-                          <span className="px-2 text-[11px] text-foreground">
+                          <span className="app-mobile-variant-value">
                             {option?.value?.trim() ? option.value.toUpperCase() : "-"}
                           </span>
                         </div>
                       );
                     })}
-                    <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                    <div className="app-mobile-variant-field">
                       <Label>SKU</Label>
                       <Input
                         {...getCellDataAttributes(variant.id, "sku")}
                         data-variant-grid-cell={`${variant.id}:sku`}
-                        className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
+                        className={denseInputClassName}
                         value={variant.sku}
                         disabled={isReadOnly}
                         onFocus={() => handleCellFocus(variant.id, "sku")}
@@ -556,12 +545,12 @@ export function ItemVariantCardsEditor({
                         placeholder="Variant SKU"
                       />
                     </div>
-                    <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                    <div className="app-mobile-variant-field">
                       <Label>Barcode</Label>
                       <Input
                         {...getCellDataAttributes(variant.id, "barcode")}
                         data-variant-grid-cell={`${variant.id}:barcode`}
-                        className={cn(denseInputClassName, getDesktopInputClassName({ textPadding: true }))}
+                        className={denseInputClassName}
                         value={variant.barcode}
                         disabled={isReadOnly}
                         onFocus={() => handleCellFocus(variant.id, "barcode")}
@@ -578,15 +567,12 @@ export function ItemVariantCardsEditor({
                       />
                     </div>
                     {showPricingFields ? (
-                      <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                      <div className="app-mobile-variant-field">
                         <Label>Sales</Label>
                         <Input
                           {...getCellDataAttributes(variant.id, "salesPrice")}
                           data-variant-grid-cell={`${variant.id}:salesPrice`}
-                          className={cn(
-                            denseInputClassName,
-                            getDesktopInputClassName({ numeric: true }),
-                          )}
+                          className={denseInputClassName}
                           value={variant.salesPrice ?? ""}
                           disabled={isReadOnly}
                           onFocus={() => handleCellFocus(variant.id, "salesPrice")}
@@ -605,15 +591,12 @@ export function ItemVariantCardsEditor({
                       </div>
                     ) : null}
                     {showPricingFields && showPurchasePrice ? (
-                      <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                      <div className="app-mobile-variant-field">
                         <Label>Purchase</Label>
                         <Input
                           {...getCellDataAttributes(variant.id, "purchasePrice")}
                           data-variant-grid-cell={`${variant.id}:purchasePrice`}
-                          className={cn(
-                            denseInputClassName,
-                            getDesktopInputClassName({ numeric: true }),
-                          )}
+                          className={denseInputClassName}
                           value={variant.purchasePrice ?? ""}
                           disabled={isReadOnly}
                           onFocus={() => handleCellFocus(variant.id, "purchasePrice")}
@@ -634,12 +617,12 @@ export function ItemVariantCardsEditor({
                       </div>
                     ) : null}
                     {showPricingFields || showGstSlabField ? (
-                      <div className={cn("grid gap-1", getSpreadsheetCellClassName())}>
+                      <div className="app-mobile-variant-field">
                         <Label>GST %</Label>
                         <GstSlabSelect
                           {...getCellDataAttributes(variant.id, "gstSlab")}
                           data-variant-grid-cell={`${variant.id}:gstSlab`}
-                          className={cn(denseInputClassName, getDesktopInputClassName({ select: true }))}
+                          className={denseInputClassName}
                           value={variant.gstSlab ?? ""}
                           disabled={isReadOnly}
                           onFocus={() => handleCellFocus(variant.id, "gstSlab")}
@@ -655,15 +638,10 @@ export function ItemVariantCardsEditor({
                         />
                       </div>
                     ) : null}
-                    <div
-                      className={cn(
-                        "grid gap-1",
-                        getSpreadsheetCellClassName({ align: "center" }),
-                      )}
-                    >
+                    <div className="app-mobile-variant-field">
                       <Label>Active</Label>
                       {showActiveToggle ? (
-                        <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <label className="app-mobile-variant-inline-control">
                           <input
                             type="checkbox"
                             checked={variant.isActive ?? true}
@@ -693,7 +671,7 @@ export function ItemVariantCardsEditor({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-8 w-full"
+                  className="app-shell-header-control w-full"
                   onClick={onAddVariant}
                   disabled={disabled}
                 >

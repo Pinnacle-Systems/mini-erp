@@ -183,7 +183,7 @@ export function SessionHeader({
           <button
             type="button"
             onClick={() => navigate("/app")}
-            className="max-w-full cursor-pointer truncate rounded-md px-1 py-0.5 text-left text-base font-semibold tracking-[-0.01em] transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 sm:text-lg"
+            className="app-shell-header-title max-w-full cursor-pointer truncate rounded-md px-1 py-0.5 text-left transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             title="Back to home"
           >
             {activeBusinessName}
@@ -213,7 +213,7 @@ export function SessionHeader({
               setSwitchQuery("");
               setIsSwitcherOpen(true);
             }}
-            className="h-8 max-w-[3rem] shrink-0 gap-1.5 border-border/70 bg-muted/55 px-2 text-xs shadow-none hover:bg-muted/80 md:max-w-[13rem] md:px-2.5"
+            className="app-shell-header-control max-w-[3.25rem] shrink-0 gap-1.5 border-border/70 bg-muted/55 px-2 shadow-none hover:bg-muted/80 md:max-w-[13rem] md:px-2.5 lg:max-w-[3rem]"
             aria-label="Switch business"
             title={activeBusinessName}
           >
@@ -285,14 +285,14 @@ export function SessionHeader({
             </span>
           </div>
         ) : null}
-        <label className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/55 px-2 py-1 text-[11px] text-muted-foreground shadow-none">
+        <label className="app-shell-description flex shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 shadow-none lg:py-1">
           <span className="hidden sm:inline">Theme</span>
           <select
             value={theme}
             onChange={(event) => {
               setTheme(event.target.value as typeof theme);
             }}
-            className="min-w-[5.5rem] border-0 bg-transparent p-0 text-[11px] font-medium text-foreground outline-none"
+            className="app-shell-header-select min-w-24 border-0 bg-transparent p-0 outline-none lg:min-w-22"
             aria-label="Temporary theme switcher"
             title="Temporary theme switcher"
           >

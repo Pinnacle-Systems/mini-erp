@@ -19,7 +19,7 @@ import {
 } from "../../../features/sync/engine";
 import { useDebouncedValue } from "../../../lib/useDebouncedValue";
 
-const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
+const FILTER_INPUT_CLASS = "app-filter-input";
 
 type ItemsPageProps = {
   itemType: "PRODUCT" | "SERVICE";
@@ -111,8 +111,8 @@ export function ItemsPage({
         <CardHeader className="p-0 pb-1.5 lg:mb-1 lg:shrink-0 lg:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-1.5">
             <div>
-              <CardTitle className="text-sm">{title}</CardTitle>
-              <CardDescription className="text-[11px] lg:hidden">
+              <CardTitle className="app-page-title">{title}</CardTitle>
+              <CardDescription className="app-page-subtitle lg:hidden">
                 Browse, filter, and expand variants for catalog {title.toLowerCase()}.
               </CardDescription>
             </div>
@@ -138,18 +138,18 @@ export function ItemsPage({
             <div className="app-filter-row">
               <Label
                 htmlFor="items-search"
-                className="text-[11px] font-medium lg:shrink-0 lg:text-[10px] lg:leading-none"
+                className="lg:shrink-0 lg:leading-none"
               >
                 Search {title.toLowerCase()}
               </Label>
               <Input
                 id="items-search"
-                className={`${DENSE_INPUT_CLASS} w-full min-[642px]:flex-1 min-[642px]:min-w-[12rem]`}
+                className={`${FILTER_INPUT_CLASS} w-full min-[642px]:flex-1 min-[642px]:min-w-[12rem]`}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Name, SKU, or category"
               />
-              <div className="inline-flex min-h-8 items-center gap-2.5">
+              <div className="app-filter-toggle-row">
                 <Switch
                   id="include-inactive-items"
                   aria-label="Include inactive items"
@@ -159,7 +159,7 @@ export function ItemsPage({
                   checkedTrackClassName="border-[#2f6fb7] bg-[#4a8dd9]"
                   uncheckedTrackClassName="border-[#b8cbe0] bg-[#dfe8f3]"
                 />
-                <Label htmlFor="include-inactive-items" className="shrink-0 leading-none">
+                <Label htmlFor="include-inactive-items" className="app-filter-toggle-label">
                   Include inactive
                 </Label>
               </div>
@@ -180,21 +180,21 @@ export function ItemsPage({
 
           <div className="space-y-2 lg:h-full lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:space-y-px lg:pr-0">
             {hasVisibleInactiveRows ? (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-100 px-2 py-1.5 text-[11px] text-amber-950 lg:shrink-0 lg:text-[10px]">
+              <div className="app-shell-caption flex items-center gap-2 rounded-lg border border-amber-400 bg-amber-100 px-2 py-1.5 text-amber-950 lg:shrink-0">
                 <span className="inline-block h-2.5 w-2.5 rounded-sm border border-amber-500 bg-amber-300" aria-hidden="true" />
                 <span>Tinted rows are inactive items included by the current filter.</span>
               </div>
             ) : null}
             {isLoading ? (
-              <div className="card text-sm text-muted-foreground">Loading items...</div>
+              <div className="card app-shell-description">Loading items...</div>
             ) : visibleLoadError ? (
-              <div className="card text-sm text-red-600">{visibleLoadError}</div>
+              <div className="card app-shell-description text-red-600">{visibleLoadError}</div>
             ) : typedItems.length === 0 ? (
-              <div className="card text-sm text-muted-foreground">
+              <div className="card app-shell-description">
                 No {title.toLowerCase()} available.
               </div>
             ) : filteredItems.length === 0 ? (
-              <div className="card text-sm text-muted-foreground">
+              <div className="card app-shell-description">
                 No {title.toLowerCase()} match your current filters.
               </div>
             ) : (
@@ -218,7 +218,7 @@ export function ItemsPage({
         <Button
           type="button"
           size="sm"
-          className="h-10 px-4 shadow-sm"
+          className="app-floating-action-button"
           onClick={() => navigate(`${routeBasePath}/new`)}
         >
           Add {singularLabel}

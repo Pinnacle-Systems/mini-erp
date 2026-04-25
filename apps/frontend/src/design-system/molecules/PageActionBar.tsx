@@ -99,7 +99,7 @@ export function PageActionBar({
                     form={secondaryForm}
                     variant="outline"
                     size="sm"
-                    className="h-10 min-w-0 flex-1 px-3 text-[12px]"
+                    className="app-mobile-action-button min-w-0 flex-1"
                     onClick={onSecondaryClick}
                     disabled={secondaryDisabled}
                   >
@@ -111,7 +111,7 @@ export function PageActionBar({
                   form={primaryForm}
                   size="sm"
                   className={cn(
-                    "h-10 min-w-0 px-3 text-[12px]",
+                    "app-mobile-action-button min-w-0",
                     secondaryLabel ? "flex-1" : "w-full",
                   )}
                   onClick={onPrimaryClick}
