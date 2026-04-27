@@ -35,7 +35,7 @@ const DENSE_INPUT_CLASS = "h-8 rounded-xl px-3 text-xs";
 
 type PartyListRow = CustomerRow;
 
-type PeopleListPageProps = {
+type PartiesListPageProps = {
   title: string;
   description: string;
   singularLabel: string;
@@ -58,7 +58,7 @@ type PeopleListPageProps = {
   };
 };
 
-export function PeopleListPage({
+export function PartiesListPage({
   title,
   description,
   singularLabel,
@@ -70,7 +70,7 @@ export function PeopleListPage({
   loadPrimaryRows,
   toUserErrorMessage,
   secondaryRole,
-}: PeopleListPageProps) {
+}: PartiesListPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const identityId = useSessionStore((state) => state.identityId);

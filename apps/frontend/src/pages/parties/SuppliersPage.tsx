@@ -5,7 +5,7 @@ import {
   queueCustomerDelete,
   type SupplierRow,
 } from "../../features/sync/engine";
-import { PeopleListPage } from "./PeopleListPage";
+import { PartiesListPage } from "./PartiesListPage";
 import { toUserSupplierErrorMessage } from "./customer-utils";
 
 const addCustomerRole = async (
@@ -37,7 +37,7 @@ const removeCustomerRole = async (
 
 export function SuppliersPage() {
   return (
-    <PeopleListPage
+    <PartiesListPage
       title="Suppliers"
       description="Manage supplier master data from synced supplier records."
       singularLabel="Supplier"

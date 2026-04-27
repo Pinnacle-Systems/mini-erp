@@ -201,7 +201,7 @@ When a feature needs design-specific rules, add a subsection here under a dedica
 
 Keep those sections focused on stable rules that should apply to future work in that area.
 
-## People
+## Parties
 
 - The main customer management screen should use a dense desktop table as the default browse-and-select surface, with mobile allowed to fall back to compact stacked cards.
 - Customer creation and customer editing are explicit exceptions to the default small-record desktop batch-entry rule: use dedicated single-record pages at `customers/new` and `customers/:customerId`, then return users to the main customer table for browsing and selection.
