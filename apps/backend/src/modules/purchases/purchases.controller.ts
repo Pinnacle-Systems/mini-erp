@@ -12,12 +12,14 @@ import {
 } from "../sales/document-history.service.js";
 import { purchaseBalanceService } from "./purchase-balance.service.js";
 import { purchaseDocumentLinkService } from "./purchase-document-link.service.js";
+import { getPurchaseOverview as getPurchaseOverviewService } from "./purchases-overview.service.js";
 import { purchaseStockPostingService } from "./purchase-stock-posting.service.js";
 import {
   toPurchaseConversionBalanceView,
   toPurchaseDocumentHistoryView,
   toPurchaseDocumentListView,
   toPurchaseDocumentPayload,
+  toPurchaseOverviewView,
 } from "./purchases.response-mappers.js";
 import type {
   PurchaseDocumentAction,
@@ -1472,6 +1474,15 @@ export const listPurchaseDocuments = catchAsync(async (req, res) => {
       await enrichPurchaseDocumentsWithSettlement(tenantId, mapPurchaseDocuments(documents)),
     ),
   );
+});
+
+export const getPurchaseOverview = catchAsync(async (req, res) => {
+  const tenantId = req.user.tenantId;
+  const { locationId } = req.query as { locationId?: string };
+
+  const overview = await getPurchaseOverviewService(tenantId, locationId);
+
+  res.json(toPurchaseOverviewView(overview as unknown as Record<string, unknown>));
 });
 
 export const getPurchaseDocumentHistory = catchAsync(async (req, res) => {

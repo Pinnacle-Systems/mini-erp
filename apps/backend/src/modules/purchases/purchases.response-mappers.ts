@@ -19,3 +19,6 @@ export const toPurchaseConversionBalanceView = (lines: unknown[]) =>
   successResponse({
     lines,
   });
+
+export const toPurchaseOverviewView = (overview: Record<string, unknown>) =>
+  successResponse(overview);

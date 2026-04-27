@@ -97,6 +97,51 @@ export type PurchaseConversionBalance = {
   lines: PurchaseConversionBalanceLine[];
 };
 
+export type PurchaseAttentionReason =
+  | "PURCHASE_ORDER_PENDING_RECEIPT"
+  | "PURCHASE_ORDER_PARTIALLY_RECEIVED"
+  | "GOODS_RECEIPT_PENDING_INVOICE"
+  | "GOODS_RECEIPT_PARTIALLY_INVOICED"
+  | "PURCHASE_INVOICE_UNPAID"
+  | "PURCHASE_INVOICE_PARTIALLY_PAID";
+
+export type PurchaseNeedsAttentionItem = {
+  id: string;
+  documentType: PurchaseDocumentType;
+  documentNo: string;
+  supplierName: string;
+  status: string;
+  amount: number | null;
+  documentDate: string | null;
+  dueDate: string | null;
+  reasonCode: PurchaseAttentionReason;
+  reasonLabel: string;
+};
+
+export type RecentPurchaseActivityItem = {
+  id: string;
+  documentType: PurchaseDocumentType;
+  documentNo: string;
+  supplierName: string;
+  documentDate: string | null;
+  status: string;
+  amount: number | null;
+  updatedAt: string;
+};
+
+export type PurchaseOverview = {
+  generatedAt: string;
+  kpis: {
+    todayPurchaseAmount: number;
+    todayPurchaseDocumentCount: number;
+    openOrderCount: number;
+    pendingGoodsReceiptCount: number;
+    todayGoodsReceiptCount: number;
+  };
+  needsAttention: PurchaseNeedsAttentionItem[];
+  recentActivity: RecentPurchaseActivityItem[];
+};
+
 export type PurchaseDocumentApiErrorDetails = {
   requested?: string;
   suggested?: string;
@@ -230,6 +275,25 @@ export const listLocalPurchaseDocuments = async (
         lines: [],
       };
     });
+};
+
+export const getPurchaseOverview = async (
+  locationId?: string,
+): Promise<PurchaseOverview> => {
+  const query = new URLSearchParams();
+  if (locationId) {
+    query.set("locationId", locationId);
+  }
+
+  const response = await apiFetch(`/api/purchases/overview?${query.toString()}`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw await parseError(response, "Unable to load purchase overview");
+  }
+
+  return (await response.json()) as PurchaseOverview;
 };
 
 export const getPurchaseDocumentHistory = async (

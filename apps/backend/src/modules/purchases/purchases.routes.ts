@@ -6,6 +6,7 @@ import {
   deletePurchaseDocument,
   getPurchaseConversionBalance,
   getPurchaseDocumentHistory,
+  getPurchaseOverview,
   listPurchaseDocuments,
   postPurchaseDocument,
   transitionPurchaseDocument,
@@ -16,6 +17,7 @@ import {
   deletePurchaseDocumentSchema,
   getPurchaseConversionBalanceSchema,
   getPurchaseDocumentHistorySchema,
+  getPurchaseOverviewSchema,
   listPurchaseDocumentsSchema,
   postPurchaseDocumentSchema,
   transitionPurchaseDocumentSchema,
@@ -25,6 +27,7 @@ import {
 const router = Router();
 
 router.use(protect);
+router.get("/overview", validateRequest(getPurchaseOverviewSchema), getPurchaseOverview);
 router.get("/documents", validateRequest(listPurchaseDocumentsSchema), listPurchaseDocuments);
 router.get(
   "/documents/:documentId/history",

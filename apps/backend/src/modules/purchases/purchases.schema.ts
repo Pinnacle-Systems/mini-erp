@@ -52,6 +52,12 @@ export const listPurchaseDocumentsSchema = z.object({
   }),
 });
 
+export const getPurchaseOverviewSchema = z.object({
+  query: z.object({
+    locationId: z.uuid().optional(),
+  }),
+});
+
 export const getPurchaseDocumentHistorySchema = z.object({
   params: z.object({
     documentId: z.uuid(),
