@@ -35,6 +35,8 @@ type BusinessManagementCreateViewProps = {
   logoPreviewUrl: string | null;
   uploadingLogo: boolean;
   canCreate: boolean;
+  createDisabledReason: string | null;
+  ownerRequirementMessage: string | null;
   onNewBusinessNameChange: (value: string) => void;
   onOwnerLookupQueryChange: (value: string) => void;
   onOwnerSelect: (owner: AdminOwnerLookupResult) => void;
@@ -86,6 +88,8 @@ export function BusinessManagementCreateView({
   logoPreviewUrl,
   uploadingLogo,
   canCreate,
+  createDisabledReason,
+  ownerRequirementMessage,
   onNewBusinessNameChange,
   onOwnerLookupQueryChange,
   onOwnerSelect,
@@ -133,17 +137,23 @@ export function BusinessManagementCreateView({
           <p className="text-[11px] leading-tight text-muted-foreground">Use the avatar icons to upload or remove logo.</p>
           <p className="text-[11px] leading-tight text-muted-foreground">PNG, JPG or WEBP up to 2MB.</p>
         </div>
-        <PageActionBar
-          className="ml-auto"
-          primaryLabel="Create Business"
-          onPrimaryClick={onCreate}
-          primaryDisabled={loading || !canCreate}
-          primaryLoading={loading}
-          primaryLoadingLabel="Saving..."
-          secondaryLabel="Cancel"
-          onSecondaryClick={onBackToList}
-          secondaryDisabled={loading}
-        />
+        <div className="ml-auto flex items-center gap-2">
+          {createDisabledReason ? (
+            <p className="max-w-[18rem] text-right text-[11px] leading-tight text-amber-700">
+              {createDisabledReason}
+            </p>
+          ) : null}
+          <PageActionBar
+            primaryLabel="Create Business"
+            onPrimaryClick={onCreate}
+            primaryDisabled={loading || !canCreate}
+            primaryLoading={loading}
+            primaryLoadingLabel="Saving..."
+            secondaryLabel="Cancel"
+            onSecondaryClick={onBackToList}
+            secondaryDisabled={loading}
+          />
+        </div>
       </div>
 
       <div className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
@@ -171,33 +181,40 @@ export function BusinessManagementCreateView({
           namePlaceholder="Sunrise Traders"
           ownerPhonePlaceholder="Search owner by name, phone or email"
           ownerInput={
-            <LookupDropdownInput
-              id="new-owner-phone"
-              value={newOwnerPhone}
-              onValueChange={onOwnerLookupQueryChange}
-              placeholder="Search owner by name, phone or email"
-              disabled={loading}
-              loading={ownerLookupLoading}
-              loadingLabel="Searching owners..."
-              options={ownerLookupResults}
-              getOptionKey={(owner) => owner.id}
-              getOptionSearchText={(owner) =>
-                `${owner.name ?? ""} ${owner.phone ?? ""} ${owner.email ?? ""}`
-              }
-              onOptionSelect={onOwnerSelect}
-              renderOption={(owner) => (
-                <>
-                  <div className="truncate font-medium">
-                    {(owner.name?.trim() || "Unnamed owner") +
-                      (owner.phone ? ` | ${owner.phone}` : " | No phone")}
-                  </div>
-                  <div className="truncate text-[10px] text-muted-foreground">
-                    {owner.email || "No email"}
-                  </div>
-                </>
-              )}
-              inputClassName="h-8 w-full rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
-            />
+            <div className="space-y-1">
+              <LookupDropdownInput
+                id="new-owner-phone"
+                value={newOwnerPhone}
+                onValueChange={onOwnerLookupQueryChange}
+                placeholder="Search owner by name, phone or email"
+                disabled={loading}
+                loading={ownerLookupLoading}
+                loadingLabel="Searching owners..."
+                options={ownerLookupResults}
+                getOptionKey={(owner) => owner.id}
+                getOptionSearchText={(owner) =>
+                  `${owner.name ?? ""} ${owner.phone ?? ""} ${owner.email ?? ""}`
+                }
+                onOptionSelect={onOwnerSelect}
+                renderOption={(owner) => (
+                  <>
+                    <div className="truncate font-medium">
+                      {(owner.name?.trim() || "Unnamed owner") +
+                        (owner.phone ? ` | ${owner.phone}` : " | No phone")}
+                    </div>
+                    <div className="truncate text-[10px] text-muted-foreground">
+                      {owner.email || "No email"}
+                    </div>
+                  </>
+                )}
+                inputClassName="h-8 w-full rounded-md border border-[#c6d5e6] bg-white px-2 text-xs text-foreground"
+              />
+              {ownerRequirementMessage ? (
+                <p className="text-[11px] leading-tight text-amber-700">
+                  {ownerRequirementMessage}
+                </p>
+              ) : null}
+            </div>
           }
           rightColumnExtra={
             <BusinessLicensePane

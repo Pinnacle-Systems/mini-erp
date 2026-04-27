@@ -16,7 +16,7 @@ export const spreadsheetHeaderCellClassName = cn(
 );
 
 export const spreadsheetCellControlClassName = cn(
-  "h-full min-h-0 w-full rounded-none !border-0 !bg-transparent px-2.5 py-0 text-[11px] leading-[var(--tabular-row-height)] !shadow-none placeholder:text-foreground/45 transition-colors lg:px-2 lg:text-[10px]",
+  "h-full min-h-0 w-full min-w-0 truncate rounded-none !border-0 !bg-transparent px-2.5 py-0 text-[11px] leading-[var(--tabular-row-height)] !shadow-none placeholder:text-foreground/45 transition-colors lg:px-2 lg:text-[10px]",
   "focus:!border-transparent focus:!bg-transparent focus:!outline-none focus:!ring-0",
   "disabled:!bg-transparent",
 );

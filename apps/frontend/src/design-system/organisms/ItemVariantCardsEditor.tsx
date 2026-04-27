@@ -51,6 +51,8 @@ export type ItemVariantDraft = {
   barcode: string;
   salesPrice?: string;
   purchasePrice?: string;
+  salesTaxMode?: "EXCLUSIVE" | "INCLUSIVE";
+  purchaseTaxMode?: "EXCLUSIVE" | "INCLUSIVE";
   gstSlab?: string;
   optionRows: VariantOptionRowDraft[];
   isActive?: boolean;
@@ -88,7 +90,15 @@ const updateVariant = (
 
 const normalizeOptionKey = (value: string) => value.trim().toLowerCase();
 
-type EditableFieldKey = "name" | "sku" | "barcode" | "salesPrice" | "purchasePrice" | "gstSlab";
+type EditableFieldKey =
+  | "name"
+  | "sku"
+  | "barcode"
+  | "salesPrice"
+  | "salesTaxMode"
+  | "purchasePrice"
+  | "purchaseTaxMode"
+  | "gstSlab";
 
 const FIRST_EDITABLE_FIELD: EditableFieldKey = "name";
 
@@ -98,6 +108,17 @@ const isVariantRowEmpty = (variant: ItemVariantDraft) =>
   variant.barcode.trim().length === 0 &&
   (variant.salesPrice ?? "").trim().length === 0 &&
   (variant.purchasePrice ?? "").trim().length === 0;
+
+const normalizeTaxMode = (value: "EXCLUSIVE" | "INCLUSIVE" | undefined) =>
+  value === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE";
+
+const getNextTaxMode = (value: "EXCLUSIVE" | "INCLUSIVE" | undefined) =>
+  normalizeTaxMode(value) === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE";
+
+const groupedHeaderRows = "1.65rem 1.2rem";
+const groupedParentHeaderClassName = "h-full justify-center text-center";
+const groupedSubHeaderClassName =
+  "h-full text-[9px] font-medium tracking-[0.03em] text-muted-foreground";
 
 export function ItemVariantCardsEditor({
   variants,
@@ -237,17 +258,20 @@ export function ItemVariantCardsEditor({
     const columnsAfterName = showPricingFields
       ? showPurchasePrice
         ? [
-            "minmax(0, 1.6fr)",
-            "minmax(0, 1.3fr)",
-            "minmax(0, 1.35fr)",
-            "minmax(0, 1.35fr)",
-            "minmax(0, 1.3fr)",
+            "minmax(0, 0.95fr)",
+            "minmax(0, 0.85fr)",
+            "minmax(0, 0.95fr)",
+            "minmax(4.75rem, 0.42fr)",
+            "minmax(0, 0.95fr)",
+            "minmax(4.75rem, 0.42fr)",
+            "4.75rem",
           ]
         : [
-            "minmax(0, 1.8fr)",
-            "minmax(0, 1.2fr)",
-            "minmax(0, 1.8fr)",
-            "minmax(0, 1.4fr)",
+            "minmax(0, 0.95fr)",
+            "minmax(0, 0.85fr)",
+            "minmax(0, 0.95fr)",
+            "minmax(4.75rem, 0.42fr)",
+            "4.75rem",
           ]
       : showGstSlabField
         ? ["minmax(0, 2fr)", "minmax(0, 2fr)", "minmax(0, 1.25fr)"]
@@ -256,7 +280,7 @@ export function ItemVariantCardsEditor({
     return withTabularSerialNumberColumn(
       [
         "2rem",
-        "minmax(0, 1.8fr)",
+        "minmax(0, 1.15fr)",
         ...optionColumnWidths,
         ...columnsAfterName,
         ...(showActiveToggle ? ["4.25rem"] : []),
@@ -279,8 +303,10 @@ export function ItemVariantCardsEditor({
     const fields: EditableFieldKey[] = ["name", "sku", "barcode"];
     if (showPricingFields) {
       fields.push("salesPrice");
+      fields.push("salesTaxMode");
       if (showPurchasePrice) {
         fields.push("purchasePrice");
+        fields.push("purchaseTaxMode");
       }
     }
     if (showPricingFields || showGstSlabField) {
@@ -315,6 +341,174 @@ export function ItemVariantCardsEditor({
           }
         : undefined,
   });
+
+  const renderDesktopHeaderCells = () => {
+    let column = 1;
+    const rowSpanStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "1 / span 2",
+    });
+    const firstRowStyle = (targetColumn: number, span = 1) => ({
+      gridColumn: span > 1 ? `${targetColumn} / span ${span}` : String(targetColumn),
+      gridRow: "1",
+    });
+    const secondRowStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "2",
+    });
+    const cells = [
+      <TabularSerialNumberHeaderCell key="serial" rowSpan={2} style={rowSpanStyle(column)} />,
+    ];
+    column += 1;
+
+    cells.push(
+      <TabularCell
+        key="select"
+        variant="header"
+        align="center"
+        rowSpan={2}
+        className="px-0"
+        style={rowSpanStyle(column)}
+      >
+        <Checkbox
+          className="mx-auto"
+          checked={allSelectableSelected}
+          disabled={selectableVariantIds.length === 0}
+          aria-label="Select all variants"
+          onChange={(event) => handleToggleSelectAll(event.target.checked)}
+        />
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell key="name" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        Name
+      </TabularCell>,
+    );
+    column += 1;
+
+    for (const optionColumn of optionColumns) {
+      cells.push(
+        <TabularCell
+          key={optionColumn.id}
+          variant="header"
+          rowSpan={2}
+          style={rowSpanStyle(column)}
+        >
+          {optionColumn.label}
+        </TabularCell>,
+      );
+      column += 1;
+    }
+
+    cells.push(
+      <TabularCell key="sku" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        SKU
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell key="barcode" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        Barcode
+      </TabularCell>,
+    );
+    column += 1;
+
+    if (showPricingFields) {
+      cells.push(
+        <TabularCell
+          key="sales"
+          variant="header"
+          align="center"
+          span={2}
+          className={groupedParentHeaderClassName}
+          style={firstRowStyle(column, 2)}
+        >
+          Sales
+        </TabularCell>,
+        <TabularCell
+          key="sales-price"
+          variant="header"
+          align="end"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column)}
+        >
+          Price
+        </TabularCell>,
+        <TabularCell
+          key="sales-tax"
+          variant="header"
+          align="center"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column + 1)}
+        >
+          Tax
+        </TabularCell>,
+      );
+      column += 2;
+
+      if (showPurchasePrice) {
+        cells.push(
+          <TabularCell
+            key="purchase"
+            variant="header"
+            align="center"
+            span={2}
+            className={groupedParentHeaderClassName}
+            style={firstRowStyle(column, 2)}
+          >
+            Purchase
+          </TabularCell>,
+          <TabularCell
+            key="purchase-price"
+            variant="header"
+            align="end"
+            className={groupedSubHeaderClassName}
+            style={secondRowStyle(column)}
+          >
+            Price
+          </TabularCell>,
+          <TabularCell
+            key="purchase-tax"
+            variant="header"
+            align="center"
+            className={groupedSubHeaderClassName}
+            style={secondRowStyle(column + 1)}
+          >
+            Tax
+          </TabularCell>,
+        );
+        column += 2;
+      }
+    }
+
+    if (showPricingFields || showGstSlabField) {
+      cells.push(
+        <TabularCell key="gst" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+          GST %
+        </TabularCell>,
+      );
+      column += 1;
+    }
+
+    if (showActiveToggle) {
+      cells.push(
+        <TabularCell
+          key="active"
+          variant="header"
+          align="center"
+          rowSpan={2}
+          style={rowSpanStyle(column)}
+        >
+          Active
+        </TabularCell>,
+      );
+    }
+
+    return cells;
+  };
 
   useEffect(() => {
     if (!pendingAppendedRowFocus) {
@@ -590,6 +784,34 @@ export function ItemVariantCardsEditor({
                         />
                       </div>
                     ) : null}
+                    {showPricingFields ? (
+                      <div className="app-mobile-variant-field">
+                        <Label>Sales tax</Label>
+                        <Button
+                          {...getCellDataAttributes(variant.id, "salesTaxMode")}
+                          data-variant-grid-cell={`${variant.id}:salesTaxMode`}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={cn(denseInputClassName, "justify-center")}
+                          disabled={isReadOnly}
+                          onClick={() =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                              })),
+                            )
+                          }
+                          onFocus={() => handleCellFocus(variant.id, "salesTaxMode")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesTaxMode")}
+                        >
+                          {normalizeTaxMode(variant.salesTaxMode) === "INCLUSIVE"
+                            ? "Inclusive"
+                            : "Exclusive"}
+                        </Button>
+                      </div>
+                    ) : null}
                     {showPricingFields && showPurchasePrice ? (
                       <div className="app-mobile-variant-field">
                         <Label>Purchase</Label>
@@ -614,6 +836,36 @@ export function ItemVariantCardsEditor({
                           placeholder="Purchase price"
                           inputMode="decimal"
                         />
+                      </div>
+                    ) : null}
+                    {showPricingFields && showPurchasePrice ? (
+                      <div className="app-mobile-variant-field">
+                        <Label>Purchase tax</Label>
+                        <Button
+                          {...getCellDataAttributes(variant.id, "purchaseTaxMode")}
+                          data-variant-grid-cell={`${variant.id}:purchaseTaxMode`}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={cn(denseInputClassName, "justify-center")}
+                          disabled={isReadOnly}
+                          onClick={() =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                purchaseTaxMode: getNextTaxMode(entry.purchaseTaxMode),
+                              })),
+                            )
+                          }
+                          onFocus={() => handleCellFocus(variant.id, "purchaseTaxMode")}
+                          onKeyDown={(event) =>
+                            handleCellKeyDown(event, variant.id, "purchaseTaxMode")
+                          }
+                        >
+                          {normalizeTaxMode(variant.purchaseTaxMode) === "INCLUSIVE"
+                            ? "Inclusive"
+                            : "Exclusive"}
+                        </Button>
                       </div>
                     ) : null}
                     {showPricingFields || showGstSlabField ? (
@@ -688,43 +940,40 @@ export function ItemVariantCardsEditor({
             className="hidden lg:flex lg:max-h-[22rem] lg:min-h-0 lg:flex-1"
           >
             <TabularHeader>
-              <TabularRow columns={desktopGridTemplate}>
-                <TabularSerialNumberHeaderCell />
-                <TabularCell variant="header" align="center" className="px-0">
-                  <Checkbox
-                    className="mx-auto"
-                    checked={allSelectableSelected}
-                    disabled={selectableVariantIds.length === 0}
-                    aria-label="Select all variants"
-                    onChange={(event) => handleToggleSelectAll(event.target.checked)}
-                  />
-                </TabularCell>
-                <TabularCell variant="header">Name</TabularCell>
-                {optionColumns.map((column) => (
-                  <TabularCell key={column.id} variant="header">
-                    {column.label}
-                  </TabularCell>
-                ))}
-                <TabularCell variant="header">SKU</TabularCell>
-                <TabularCell variant="header">Barcode</TabularCell>
-                {showPricingFields ? (
-                  <TabularCell variant="header" align="end">
-                    Sales
-                  </TabularCell>
-                ) : null}
-                {showPricingFields && showPurchasePrice ? (
-                  <TabularCell variant="header" align="end">
-                    Purchase
-                  </TabularCell>
-                ) : null}
-                {showPricingFields || showGstSlabField ? (
-                  <TabularCell variant="header">GST %</TabularCell>
-                ) : null}
-                {showActiveToggle ? (
-                  <TabularCell variant="header" align="center">
-                    Active
-                  </TabularCell>
-                ) : null}
+              <TabularRow
+                columns={desktopGridTemplate}
+                rows={showPricingFields ? groupedHeaderRows : undefined}
+              >
+                {showPricingFields ? renderDesktopHeaderCells() : (
+                  <>
+                    <TabularSerialNumberHeaderCell />
+                    <TabularCell variant="header" align="center" className="px-0">
+                      <Checkbox
+                        className="mx-auto"
+                        checked={allSelectableSelected}
+                        disabled={selectableVariantIds.length === 0}
+                        aria-label="Select all variants"
+                        onChange={(event) => handleToggleSelectAll(event.target.checked)}
+                      />
+                    </TabularCell>
+                    <TabularCell variant="header">Name</TabularCell>
+                    {optionColumns.map((column) => (
+                      <TabularCell key={column.id} variant="header">
+                        {column.label}
+                      </TabularCell>
+                    ))}
+                    <TabularCell variant="header">SKU</TabularCell>
+                    <TabularCell variant="header">Barcode</TabularCell>
+                    {showGstSlabField ? (
+                      <TabularCell variant="header">GST %</TabularCell>
+                    ) : null}
+                    {showActiveToggle ? (
+                      <TabularCell variant="header" align="center">
+                        Active
+                      </TabularCell>
+                    ) : null}
+                  </>
+                )}
               </TabularRow>
             </TabularHeader>
 
@@ -882,6 +1131,31 @@ export function ItemVariantCardsEditor({
                         />
                       </TabularCell>
                     ) : null}
+                    {showPricingFields ? (
+                      <TabularCell variant="editable">
+                        <Button
+                          {...getCellDataAttributes(variant.id, "salesTaxMode")}
+                          data-variant-grid-cell={`${variant.id}:salesTaxMode`}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
+                          disabled={isReadOnly}
+                          onClick={() =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                              })),
+                            )
+                          }
+                          onFocus={() => handleCellFocus(variant.id, "salesTaxMode")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesTaxMode")}
+                        >
+                          {normalizeTaxMode(variant.salesTaxMode) === "INCLUSIVE" ? "Incl." : "Excl."}
+                        </Button>
+                      </TabularCell>
+                    ) : null}
                     {showPricingFields && showPurchasePrice ? (
                       <TabularCell variant="editable" align="end">
                         <Input
@@ -910,6 +1184,35 @@ export function ItemVariantCardsEditor({
                           placeholder="Purchase price"
                           inputMode="decimal"
                         />
+                      </TabularCell>
+                    ) : null}
+                    {showPricingFields && showPurchasePrice ? (
+                      <TabularCell variant="editable">
+                        <Button
+                          {...getCellDataAttributes(variant.id, "purchaseTaxMode")}
+                          data-variant-grid-cell={`${variant.id}:purchaseTaxMode`}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
+                          disabled={isReadOnly}
+                          onClick={() =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                purchaseTaxMode: getNextTaxMode(entry.purchaseTaxMode),
+                              })),
+                            )
+                          }
+                          onFocus={() => handleCellFocus(variant.id, "purchaseTaxMode")}
+                          onKeyDown={(event) =>
+                            handleCellKeyDown(event, variant.id, "purchaseTaxMode")
+                          }
+                        >
+                          {normalizeTaxMode(variant.purchaseTaxMode) === "INCLUSIVE"
+                            ? "Incl."
+                            : "Excl."}
+                        </Button>
                       </TabularCell>
                     ) : null}
                     {showPricingFields || showGstSlabField ? (

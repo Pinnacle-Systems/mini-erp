@@ -73,6 +73,16 @@ import { runLocalItemPreflightChecks, toUserItemErrorMessage } from "./item-util
 import { normalizeGstSlab } from "../../../lib/gst-slabs";
 import { cn } from "../../../lib/utils";
 
+type TaxMode = "EXCLUSIVE" | "INCLUSIVE";
+
+const getNextTaxMode = (value: TaxMode) =>
+  value === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE";
+
+const groupedHeaderRows = "1.65rem 1.2rem";
+const groupedParentHeaderClassName = "h-full justify-center text-center";
+const groupedSubHeaderClassName =
+  "h-full text-[9px] font-medium tracking-[0.03em] text-muted-foreground";
+
 const UNIT_GROUPS = [
   {
     label: "General",
@@ -159,6 +169,8 @@ const hasQuickRowContent = (row: QuickItemDraft) =>
       row.gstSlab.trim() ||
       row.salesPrice.trim() ||
       row.purchasePrice.trim() ||
+      row.salesTaxMode !== "EXCLUSIVE" ||
+      row.purchaseTaxMode !== "EXCLUSIVE" ||
       row.category.trim() ||
       row.unit !== "PCS",
   );
@@ -308,6 +320,8 @@ type QuickItemDraft = {
   gstSlab: string;
   salesPrice: string;
   purchasePrice: string;
+  salesTaxMode: TaxMode;
+  purchaseTaxMode: TaxMode;
   category: string;
   unit: UnitOption;
 };
@@ -317,7 +331,9 @@ type QuickEntryFieldKey =
   | "sku"
   | "hsnSac"
   | "salesPrice"
+  | "salesTaxMode"
   | "purchasePrice"
+  | "purchaseTaxMode"
   | "gstSlab"
   | "unit"
   | "category";
@@ -346,6 +362,8 @@ const EMPTY_VARIANT = (): ItemVariantDraft => ({
   barcode: "",
   salesPrice: "",
   purchasePrice: "",
+  salesTaxMode: "EXCLUSIVE",
+  purchaseTaxMode: "EXCLUSIVE",
   gstSlab: "",
   skuManuallyEdited: false,
   optionRows: [],
@@ -360,6 +378,8 @@ const EMPTY_QUICK_ROW = (): QuickItemDraft => ({
   gstSlab: "",
   salesPrice: "",
   purchasePrice: "",
+  salesTaxMode: "EXCLUSIVE",
+  purchaseTaxMode: "EXCLUSIVE",
   category: "",
   unit: "PCS",
 });
@@ -460,10 +480,10 @@ export function AddItemPage({
     forcedItemType === "SERVICE" ? "SAC (6 digits)" : "HSN (4-8 digits)";
   const quickEntryDesktopGridTemplate = showPurchasePrice
     ? withTabularSerialNumberColumn(
-        "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem",
+        "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1fr) 5.25rem minmax(0, 1fr) 5.25rem minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem",
       )
     : withTabularSerialNumberColumn(
-        "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1.05fr) minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem",
+        "minmax(0, 2fr) minmax(0, 1.35fr) minmax(0, 1.15fr) minmax(0, 1fr) 5.25rem minmax(0, 1fr) 5.75rem minmax(0, 1.6fr) 3.5rem",
       );
   const orderedUnitGroups = useMemo(
     () => getOrderedUnitGroups(forcedItemType),
@@ -477,12 +497,14 @@ export function AddItemPage({
             "sku",
             "hsnSac",
             "salesPrice",
+            "salesTaxMode",
             "purchasePrice",
+            "purchaseTaxMode",
             "gstSlab",
             "unit",
             "category",
           ]
-        : ["name", "sku", "hsnSac", "salesPrice", "gstSlab", "unit", "category"],
+        : ["name", "sku", "hsnSac", "salesPrice", "salesTaxMode", "gstSlab", "unit", "category"],
     [showPurchasePrice],
   );
   const reportError = (message: string) => {
@@ -492,6 +514,117 @@ export function AddItemPage({
       tone: "error",
       dedupeKey: `add-item-error:${message}`,
     });
+  };
+  const renderQuickEntryHeaderCells = () => {
+    let column = 1;
+    const rowSpanStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "1 / span 2",
+    });
+    const firstRowStyle = (targetColumn: number, span = 1) => ({
+      gridColumn: span > 1 ? `${targetColumn} / span ${span}` : String(targetColumn),
+      gridRow: "1",
+    });
+    const secondRowStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "2",
+    });
+    const cells = [
+      <TabularSerialNumberHeaderCell key="serial" rowSpan={2} style={rowSpanStyle(column)} />,
+    ];
+    column += 1;
+
+    for (const label of ["Name", "SKU", taxCodeLabel]) {
+      cells.push(
+        <TabularCell key={label} variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+          {label}
+        </TabularCell>,
+      );
+      column += 1;
+    }
+
+    cells.push(
+      <TabularCell
+        key="sales"
+        variant="header"
+        align="center"
+        span={2}
+        className={groupedParentHeaderClassName}
+        style={firstRowStyle(column, 2)}
+      >
+        Sales
+      </TabularCell>,
+      <TabularCell
+        key="sales-price"
+        variant="header"
+        align="end"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column)}
+      >
+        Price
+      </TabularCell>,
+      <TabularCell
+        key="sales-tax"
+        variant="header"
+        align="center"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column + 1)}
+      >
+        Tax
+      </TabularCell>,
+    );
+    column += 2;
+
+    if (showPurchasePrice) {
+      cells.push(
+        <TabularCell
+          key="purchase"
+          variant="header"
+          align="center"
+          span={2}
+          className={groupedParentHeaderClassName}
+          style={firstRowStyle(column, 2)}
+        >
+          Purchase
+        </TabularCell>,
+        <TabularCell
+          key="purchase-price"
+          variant="header"
+          align="end"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column)}
+        >
+          Price
+        </TabularCell>,
+        <TabularCell
+          key="purchase-tax"
+          variant="header"
+          align="center"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column + 1)}
+        >
+          Tax
+        </TabularCell>,
+      );
+      column += 2;
+    }
+
+    for (const label of ["GST %", "Unit", "Category", "Actions"]) {
+      cells.push(
+        <TabularCell
+          key={label}
+          variant="header"
+          align={label === "Actions" ? "center" : "start"}
+          rowSpan={2}
+          style={rowSpanStyle(column)}
+        >
+          {label}
+        </TabularCell>,
+      );
+      column += 1;
+    }
+
+    return cells;
   };
   const appendQuickRow = (focusNewRow = false) => {
     if (focusNewRow) {
@@ -1174,7 +1307,7 @@ export function AddItemPage({
               },
             ],
           });
-          if (typeof salesPrice === "number" || gstSlab) {
+          if (typeof salesPrice === "number" || gstSlab || row.salesTaxMode !== "EXCLUSIVE") {
             await queueItemPriceUpsert(
               activeStore,
               identityId,
@@ -1183,19 +1316,23 @@ export function AddItemPage({
               "INR",
               undefined,
               "SALES",
-              "EXCLUSIVE",
+              row.salesTaxMode,
               gstSlab,
             );
           }
-          if (showPurchasePrice && typeof purchasePrice === "number") {
+          if (
+            showPurchasePrice &&
+            (typeof purchasePrice === "number" || row.purchaseTaxMode !== "EXCLUSIVE")
+          ) {
             await queueItemPriceUpsert(
               activeStore,
               identityId,
               variantId,
-              purchasePrice,
+              purchasePrice ?? null,
               "INR",
               undefined,
               "PURCHASE",
+              row.purchaseTaxMode,
             );
           }
         }
@@ -1282,7 +1419,11 @@ export function AddItemPage({
           ? parsePriceDraft(variant.purchasePrice ?? "").amount
           : undefined;
         const gstSlab = normalizeGstSlabDraft(variant.gstSlab ?? "");
-        if (typeof salesPrice === "number" || gstSlab) {
+        if (
+          typeof salesPrice === "number" ||
+          gstSlab ||
+          (variant.salesTaxMode ?? "EXCLUSIVE") !== "EXCLUSIVE"
+        ) {
           await queueItemPriceUpsert(
             activeStore,
             identityId,
@@ -1291,19 +1432,24 @@ export function AddItemPage({
             "INR",
             undefined,
             "SALES",
-            "EXCLUSIVE",
+            variant.salesTaxMode ?? "EXCLUSIVE",
             gstSlab,
           );
         }
-        if (showPurchasePrice && typeof purchasePrice === "number") {
+        if (
+          showPurchasePrice &&
+          (typeof purchasePrice === "number" ||
+            (variant.purchaseTaxMode ?? "EXCLUSIVE") !== "EXCLUSIVE")
+        ) {
           await queueItemPriceUpsert(
             activeStore,
             identityId,
             variant.id,
-            purchasePrice,
+            purchasePrice ?? null,
             "INR",
             undefined,
             "PURCHASE",
+            variant.purchaseTaxMode ?? "EXCLUSIVE",
           );
         }
       }
@@ -1627,6 +1773,34 @@ export function AddItemPage({
                             inputMode="decimal"
                           />
                         </div>
+                        <div className="grid gap-1">
+                          <Label>Sales tax</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className={cn(QUICK_ENTRY_SELECT_CLASS, "w-full justify-center")}
+                            onClick={() =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? {
+                                        ...entry,
+                                        salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "salesTaxMode")}
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "salesTaxMode")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "Sales tax")}
+                          >
+                            {row.salesTaxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
+                          </Button>
+                        </div>
                         {showPurchasePrice ? (
                           <div className="grid gap-1">
                             <Label>Purchase price</Label>
@@ -1658,6 +1832,42 @@ export function AddItemPage({
                               title={rowErrors.purchasePrice}
                               inputMode="decimal"
                             />
+                          </div>
+                        ) : null}
+                        {showPurchasePrice ? (
+                          <div className="grid gap-1">
+                            <Label>Purchase tax</Label>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={cn(QUICK_ENTRY_SELECT_CLASS, "w-full justify-center")}
+                              onClick={() =>
+                                setQuickRows((current) =>
+                                  current.map((entry) =>
+                                    entry.id === row.id
+                                      ? {
+                                          ...entry,
+                                          purchaseTaxMode: getNextTaxMode(entry.purchaseTaxMode),
+                                        }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                              onFocus={() =>
+                                handleQuickEntryFieldFocus(row.id, "purchaseTaxMode")
+                              }
+                              onKeyDown={(event) =>
+                                handleQuickEntryFieldKeyDown(
+                                  event,
+                                  row.id,
+                                  "purchaseTaxMode",
+                                )
+                              }
+                              aria-label={getQuickRowAriaLabel(row, index, "Purchase tax")}
+                            >
+                              {row.purchaseTaxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
+                            </Button>
                           </div>
                         ) : null}
                         <div className="grid gap-1">
@@ -1831,19 +2041,8 @@ export function AddItemPage({
                 className="hidden overflow-hidden bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
               >
                 <TabularHeader>
-                  <TabularRow columns={quickEntryDesktopGridTemplate}>
-                    <TabularSerialNumberHeaderCell />
-                    <TabularCell variant="header">Name</TabularCell>
-                    <TabularCell variant="header">SKU</TabularCell>
-                    <TabularCell variant="header">{taxCodeLabel}</TabularCell>
-                    <TabularCell variant="header" align="end">Sales</TabularCell>
-                    {showPurchasePrice ? (
-                      <TabularCell variant="header" align="end">Purchase</TabularCell>
-                    ) : null}
-                    <TabularCell variant="header">GST %</TabularCell>
-                    <TabularCell variant="header">Unit</TabularCell>
-                    <TabularCell variant="header">Category</TabularCell>
-                    <TabularCell variant="header" align="center">Actions</TabularCell>
+                  <TabularRow columns={quickEntryDesktopGridTemplate} rows={groupedHeaderRows}>
+                    {renderQuickEntryHeaderCells()}
                   </TabularRow>
                 </TabularHeader>
                 <TabularBody className="overflow-y-auto">
@@ -1951,6 +2150,32 @@ export function AddItemPage({
                             placeholder="0.00"
                           />
                         </TabularCell>
+                        <TabularCell variant="editable">
+                          <Button
+                            {...getQuickRowCellDataAttributes(row.id, "salesTaxMode")}
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
+                            onClick={() =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? {
+                                        ...entry,
+                                        salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "salesTaxMode")}
+                            onKeyDown={(event) => handleQuickEntryFieldKeyDown(event, row.id, "salesTaxMode")}
+                            aria-label={getQuickRowAriaLabel(row, index, "Sales tax")}
+                          >
+                            {row.salesTaxMode === "INCLUSIVE" ? "Incl." : "Excl."}
+                          </Button>
+                        </TabularCell>
                         {showPurchasePrice ? (
                           <TabularCell variant="editable" align="end" error={Boolean(rowErrors.purchasePrice)}>
                             <Input
@@ -1978,6 +2203,38 @@ export function AddItemPage({
                               inputMode="decimal"
                               placeholder="0.00"
                             />
+                          </TabularCell>
+                        ) : null}
+                        {showPurchasePrice ? (
+                          <TabularCell variant="editable">
+                            <Button
+                              {...getQuickRowCellDataAttributes(row.id, "purchaseTaxMode")}
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
+                              onClick={() =>
+                                setQuickRows((current) =>
+                                  current.map((entry) =>
+                                    entry.id === row.id
+                                      ? {
+                                          ...entry,
+                                          purchaseTaxMode: getNextTaxMode(entry.purchaseTaxMode),
+                                        }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                              onFocus={() =>
+                                handleQuickEntryFieldFocus(row.id, "purchaseTaxMode")
+                              }
+                              onKeyDown={(event) =>
+                                handleQuickEntryFieldKeyDown(event, row.id, "purchaseTaxMode")
+                              }
+                              aria-label={getQuickRowAriaLabel(row, index, "Purchase tax")}
+                            >
+                              {row.purchaseTaxMode === "INCLUSIVE" ? "Incl." : "Excl."}
+                            </Button>
                           </TabularCell>
                         ) : null}
                         <TabularCell variant="editable">

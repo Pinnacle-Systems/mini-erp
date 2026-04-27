@@ -46,6 +46,8 @@ type BusinessManagementPanelProps = {
   logoPreviewUrl: string | null;
   uploadingLogo: boolean;
   canCreate: boolean;
+  createDisabledReason: string | null;
+  ownerRequirementMessage: string | null;
   onFilterBusinessNameChange: (value: string) => void;
   onFilterOwnerPhoneChange: (value: string) => void;
   onFilterIncludeDeletedChange: (value: boolean) => void;
@@ -113,6 +115,8 @@ export function BusinessManagementPanel({
   logoPreviewUrl,
   uploadingLogo,
   canCreate,
+  createDisabledReason,
+  ownerRequirementMessage,
   onFilterBusinessNameChange,
   onFilterOwnerPhoneChange,
   onFilterIncludeDeletedChange,
@@ -196,6 +200,8 @@ export function BusinessManagementPanel({
             logoPreviewUrl={logoPreviewUrl}
             uploadingLogo={uploadingLogo}
             canCreate={canCreate}
+            createDisabledReason={createDisabledReason}
+            ownerRequirementMessage={ownerRequirementMessage}
             onNewBusinessNameChange={onNewBusinessNameChange}
             onOwnerLookupQueryChange={onOwnerLookupQueryChange}
             onOwnerSelect={onOwnerSelect}
