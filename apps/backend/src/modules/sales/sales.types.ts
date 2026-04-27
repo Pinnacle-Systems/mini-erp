@@ -47,3 +47,47 @@ export type SalesTransactionClient = Parameters<typeof prisma.$transaction>[0] e
 ) => Promise<unknown>
   ? T
   : never;
+
+export type SalesAttentionReason =
+  | "ESTIMATE_EXPIRED"
+  | "ESTIMATE_EXPIRING_SOON"
+  | "PENDING_ADVANCE"
+  | "ORDER_PENDING_DELIVERY"
+  | "ORDER_PARTIALLY_DELIVERED";
+
+export interface NeedsAttentionItem {
+  id: string;
+  documentType: string;
+  documentNo: string;
+  customerName: string;
+  status: string;
+  amount: number | null;
+  documentDate: string | null;
+  dueDate: string | null;
+  reasonCode: SalesAttentionReason;
+  reasonLabel: string;
+}
+
+export interface RecentSalesActivityItem {
+  id: string;
+  documentType: string;
+  documentNo: string;
+  customerName: string;
+  documentDate: string | null;
+  status: string;
+  amount: number | null;
+  updatedAt: string;
+}
+
+export interface SalesOverview {
+  generatedAt: string;
+  kpis: {
+    todaySalesAmount: number;
+    todaySalesDocumentCount: number;
+    openEstimateCount: number;
+    pendingOrderCount: number;
+    todayDeliveryCount: number;
+  };
+  needsAttention: NeedsAttentionItem[];
+  recentActivity: RecentSalesActivityItem[];
+}

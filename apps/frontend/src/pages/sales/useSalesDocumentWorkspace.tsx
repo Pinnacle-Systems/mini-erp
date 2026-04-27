@@ -9,7 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ActionReasonDialog } from "../../design-system/organisms/ActionReasonDialog";
 import { DocumentHistoryDialog } from "../../design-system/organisms/DocumentHistoryDialog";
 import { type DraftReviewAlert } from "../../design-system/organisms/DraftReviewPanel";
@@ -769,6 +769,7 @@ export function useSalesDocumentWorkspace({
 }: UseSalesDocumentWorkspaceProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { documentId } = useParams<{ documentId: string }>();
   const identityId = useSessionStore((state) => state.identityId);
   const { showToast } = useToast();
   const businesses = useSessionStore((state) => state.businesses);
@@ -1026,6 +1027,21 @@ export function useSalesDocumentWorkspace({
       cancelled = true;
     };
   }, [activeStore, config.documentType, config.pluralLabel, isOnline]);
+
+  useEffect(() => {
+    if (!documentId || serverInvoices.length === 0) {
+      return;
+    }
+
+    const document = serverInvoices.find((candidate) => candidate.id === documentId);
+    if (!document) {
+      setServerInvoicesError(`Could not find ${config.singularLabel} with ID ${documentId}.`);
+      return;
+    }
+
+    loadServerDraft(document);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, serverInvoices, config.singularLabel]);
 
   const itemOptionsByVariantId = useMemo(
     () => new Map(itemOptions.map((option) => [option.variantId, option] as const)),

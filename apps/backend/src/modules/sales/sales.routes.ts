@@ -6,6 +6,7 @@ import {
   deleteSalesDocument,
   getSalesConversionBalance,
   getSalesDocumentHistory,
+  getSalesOverview,
   listSalesDocuments,
   postSalesDocument,
   transitionSalesDocument,
@@ -20,11 +21,13 @@ import {
   postSalesDocumentSchema,
   transitionSalesDocumentSchema,
   updateSalesDocumentSchema,
+  getSalesOverviewSchema,
 } from "./sales.schema.js";
 
 const router = Router();
 
 router.use(protect);
+router.get("/overview", validateRequest(getSalesOverviewSchema), getSalesOverview);
 router.get("/documents", validateRequest(listSalesDocumentsSchema), listSalesDocuments);
 router.get(
   "/documents/:documentId/history",
