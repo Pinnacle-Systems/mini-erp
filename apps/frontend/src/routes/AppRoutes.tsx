@@ -7,7 +7,11 @@ import { AppHomePage } from "../pages/shell";
 import { AdminLayout } from "../pages/admin/layout";
 import { AdminBusinessesPage, AdminBusinessDetailsPage } from "../pages/admin/businesses";
 import { AdminUsersPage, AdminUserDetailsPage } from "../pages/admin/users";
-import { CategoriesPage, CollectionsPage } from "../pages/catalog";
+import {
+  CategoriesPage,
+  CollectionsPage,
+  OverviewPage as CatalogOverviewPage,
+} from "../pages/catalog";
 import { ItemsPage, AddItemPage, ItemDetailsPage } from "../pages/catalog/items";
 import {
   AddCustomerPage,
@@ -15,11 +19,17 @@ import {
   CustomerDetailsPage,
   CustomerGroupsPage,
   CustomersPage,
+  OverviewPage as PartiesOverviewPage,
   SupplierDetailsPage,
   SuppliersPage,
-} from "../pages/people";
+} from "../pages/parties";
 import { AppFeaturePlaceholderPage, DataSyncAppPage, ItemSyncAppPage } from "../pages/shell/UserAppPages";
-import { AdjustmentsPage, HistoryPage, LevelsPage } from "../pages/stock";
+import {
+  AdjustmentsPage,
+  HistoryPage,
+  LevelsPage,
+  OverviewPage as StockOverviewPage,
+} from "../pages/stock";
 import { AccountsPage, ExpensesPage, OverviewPage, PaymentsPage } from "../pages/finance";
 import { OfflinePage } from "../pages/system";
 import {
@@ -27,11 +37,13 @@ import {
   DeliveryChallansPage,
   EstimatesPage,
   OrdersPage,
+  OverviewPage as SalesOverviewPage,
   PosPage,
   ReturnsPage,
 } from "../pages/sales";
 import {
   GoodsReceiptNotesPage,
+  OverviewPage as PurchasesOverviewPage,
   PurchaseInvoicesPage,
   PurchaseOrdersPage,
   PurchaseReturnsPage,
@@ -221,6 +233,9 @@ export function AppRoutes() {
                   </Route>
                 </Route>
                 <Route element={<RequireModule moduleKey="sales" />}>
+                  <Route element={<RequireAnyCapability capabilities={["TXN_SALE_CREATE", "TXN_SALE_RETURN"]} />}>
+                    <Route path="sales-overview" element={<SalesOverviewPage />} />
+                  </Route>
                   <Route
                     element={
                       <RequireAnyCapability
@@ -245,6 +260,9 @@ export function AppRoutes() {
                   </Route>
                 </Route>
                 <Route element={<RequireModule moduleKey="purchases" />}>
+                  <Route element={<RequireAnyCapability capabilities={["TXN_PURCHASE_CREATE", "TXN_PURCHASE_RETURN"]} />}>
+                    <Route path="purchases-overview" element={<PurchasesOverviewPage />} />
+                  </Route>
                   <Route element={<RequireCapability capability="PARTIES_SUPPLIERS" />}>
                     <Route element={<RequireCapability capability="TXN_PURCHASE_CREATE" />}>
                       <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
@@ -271,6 +289,15 @@ export function AppRoutes() {
                         element={<PurchaseReturnsPage />}
                       />
                     </Route>
+                  </Route>
+                </Route>
+                <Route element={<RequireModule moduleKey="catalog" />}>
+                  <Route
+                    element={
+                      <RequireAnyCapability capabilities={["ITEM_PRODUCTS", "ITEM_SERVICES"]} />
+                    }
+                  >
+                    <Route path="catalog-overview" element={<CatalogOverviewPage />} />
                   </Route>
                 </Route>
                 <Route element={<RequireCapability capability="ITEM_PRODUCTS" />}>
@@ -353,9 +380,15 @@ export function AppRoutes() {
                   <Route path="item-sync" element={<Navigate to="/app/admin-item-sync" replace />} />
                   <Route path="admin-item-sync" element={<ItemSyncAppPage />} />
                 </Route>
+                <Route element={<RequireModule moduleKey="inventory" />}>
+                  <Route path="stock-overview" element={<StockOverviewPage />} />
+                </Route>
                 <Route path="stock-levels" element={<LevelsPage />} />
                 <Route path="stock-adjustments" element={<AdjustmentsPage />} />
                 <Route path="stock-history" element={<HistoryPage />} />
+                <Route element={<RequireAnyCapability capabilities={["PARTIES_CUSTOMERS", "PARTIES_SUPPLIERS"]} />}>
+                  <Route path="parties-overview" element={<PartiesOverviewPage />} />
+                </Route>
                 <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
                   <Route path="customers" element={<CustomersPage />} />
                   <Route path="customers/new" element={<AddCustomerPage />} />

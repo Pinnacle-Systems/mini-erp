@@ -52,7 +52,7 @@ type UserFolderId =
   | "buy"
   | "products"
   | "stock"
-  | "people"
+  | "parties"
   | "promotions"
   | "reports"
   | "admin";
@@ -62,26 +62,31 @@ type UserAppId =
   | "finance-made"
   | "finance-expenses"
   | "finance-accounts"
+  | "sales-overview"
   | "sales-estimates"
   | "sales-pos"
   | "sales-bills"
   | "sales-orders"
   | "delivery-challans"
   | "sales-returns"
+  | "purchase-overview"
   | "purchase-orders"
   | "purchase-grns"
   | "purchase-invoices"
   | "purchase-returns"
+  | "catalog-overview"
   | "catalog-products"
   | "catalog-services"
   | "catalog-categories"
   | "catalog-collections"
+  | "stock-overview"
   | "stock-levels"
   | "stock-adjustments"
   | "stock-history"
-  | "people-customers"
-  | "people-groups"
-  | "people-suppliers"
+  | "parties-overview"
+  | "parties-customers"
+  | "parties-groups"
+  | "parties-suppliers"
   | "promo-rules"
   | "promo-bundles"
   | "promo-codes"
@@ -105,7 +110,6 @@ type UserFolderNavEntry = {
   label: string;
   Icon: LucideIcon;
   appId?: UserAppId;
-  isHome?: boolean;
 };
 
 const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
@@ -114,26 +118,31 @@ const APP_ROUTE_SEGMENT_BY_ID: Record<RoutableAppId, string> = {
   "finance-made": "payments-made",
   "finance-expenses": "expenses",
   "finance-accounts": "financial-accounts",
+  "sales-overview": "sales-overview",
   "sales-estimates": "sales-estimates",
   "sales-pos": "sales-pos",
   "sales-bills": "sales-bills",
   "sales-orders": "sales-orders",
   "delivery-challans": "delivery-challans",
   "sales-returns": "sales-returns",
+  "purchase-overview": "purchases-overview",
   "purchase-orders": "purchase-orders",
   "purchase-grns": "goods-receipt-notes",
   "purchase-invoices": "purchase-invoices",
   "purchase-returns": "purchase-returns",
+  "catalog-overview": "catalog-overview",
   "catalog-products": "products",
   "catalog-services": "services",
   "catalog-categories": "item-categories",
   "catalog-collections": "item-collections",
+  "stock-overview": "stock-overview",
   "stock-levels": "stock-levels",
   "stock-adjustments": "stock-adjustments",
   "stock-history": "stock-history",
-  "people-customers": "customers",
-  "people-groups": "customer-groups",
-  "people-suppliers": "suppliers",
+  "parties-overview": "parties-overview",
+  "parties-customers": "customers",
+  "parties-groups": "customer-groups",
+  "parties-suppliers": "suppliers",
   "promo-rules": "promo-rules",
   "promo-bundles": "promo-bundles",
   "promo-codes": "promo-codes",
@@ -180,40 +189,137 @@ const folders: Array<{
   apps: UserFolderApp[];
 }> = [
   {
-    id: "finance",
-    label: "Finance",
-    Icon: ReceiptText,
-    requiredModule: "accounts",
+    id: "products",
+    label: "Catalog",
+    Icon: FolderKanban,
+    requiredModule: "catalog",
     apps: [
       {
-        id: "finance-overview",
+        id: "catalog-overview",
         label: "Overview",
         Icon: LayoutGrid,
-        requiredAnyCapability: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
+        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
       },
       {
-        id: "finance-received",
-        label: "Payments Received",
-        Icon: HandCoins,
-        requiredAnyCapability: ["FINANCE_RECEIVABLES"],
+        id: "catalog-products",
+        label: "Products",
+        Icon: Package,
+        requiredAnyCapability: ["ITEM_PRODUCTS"],
       },
       {
-        id: "finance-made",
-        label: "Payments Made",
-        Icon: FileText,
-        requiredAnyCapability: ["FINANCE_PAYABLES"],
+        id: "catalog-services",
+        label: "Services",
+        Icon: Package,
+        requiredAnyCapability: ["ITEM_SERVICES"],
       },
       {
-        id: "finance-expenses",
-        label: "Expenses",
+        id: "catalog-categories",
+        label: "Categories",
+        Icon: Boxes,
+        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
+      },
+      {
+        id: "catalog-collections",
+        label: "Collections",
+        Icon: PackageSearch,
+        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
+      },
+    ],
+  },
+  {
+    id: "parties",
+    label: "Parties",
+    Icon: Users,
+    apps: [
+      {
+        id: "parties-overview",
+        label: "Overview",
+        Icon: LayoutGrid,
+        requiredAnyCapability: ["PARTIES_CUSTOMERS", "PARTIES_SUPPLIERS"],
+      },
+      {
+        id: "parties-customers",
+        label: "Customers",
+        Icon: Users,
+        requiredAnyCapability: ["PARTIES_CUSTOMERS"],
+      },
+      {
+        id: "parties-groups",
+        label: "Groups",
+        Icon: UserRoundCog,
+        requiredAnyCapability: ["PARTIES_CUSTOMERS"],
+      },
+      {
+        id: "parties-suppliers",
+        label: "Suppliers",
+        Icon: ShoppingBag,
+        requiredAnyCapability: ["PARTIES_SUPPLIERS"],
+      },
+    ],
+  },
+  {
+    id: "buy",
+    label: "Purchases",
+    Icon: ShoppingBag,
+    requiredModule: "purchases",
+    apps: [
+      {
+        id: "purchase-overview",
+        label: "Overview",
+        Icon: LayoutGrid,
+        requiredAnyCapability: ["TXN_PURCHASE_CREATE", "TXN_PURCHASE_RETURN"],
+      },
+      {
+        id: "purchase-orders",
+        label: "Orders",
+        Icon: ClipboardList,
+        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+      },
+      {
+        id: "purchase-grns",
+        label: "Goods Receipts",
         Icon: ReceiptText,
-        requiredAnyCapability: ["FINANCE_PAYABLES"],
+        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
       },
       {
-        id: "finance-accounts",
-        label: "Accounts",
-        Icon: Cog,
-        requiredAnyCapability: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
+        id: "purchase-invoices",
+        label: "Invoices",
+        Icon: FileText,
+        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+      },
+      {
+        id: "purchase-returns",
+        label: "Returns",
+        Icon: Undo2,
+        requiredAnyCapability: ["TXN_PURCHASE_RETURN"],
+      },
+    ],
+  },
+  {
+    id: "stock",
+    label: "Stock",
+    Icon: Boxes,
+    requiredModule: "inventory",
+    apps: [
+      {
+        id: "stock-overview",
+        label: "Overview",
+        Icon: LayoutGrid,
+      },
+      {
+        id: "stock-levels",
+        label: "Levels",
+        Icon: ScanBarcode,
+      },
+      {
+        id: "stock-adjustments",
+        label: "Adjustments",
+        Icon: ClipboardList,
+      },
+      {
+        id: "stock-history",
+        label: "History",
+        Icon: History,
       },
     ],
   },
@@ -223,6 +329,12 @@ const folders: Array<{
     Icon: HandCoins,
     requiredModule: "sales",
     apps: [
+      {
+        id: "sales-overview",
+        label: "Overview",
+        Icon: LayoutGrid,
+        requiredAnyCapability: ["TXN_SALE_CREATE", "TXN_SALE_RETURN"],
+      },
       {
         id: "sales-estimates",
         label: "Estimates",
@@ -262,114 +374,40 @@ const folders: Array<{
     ],
   },
   {
-    id: "buy",
-    label: "Purchases",
-    Icon: ShoppingBag,
-    requiredModule: "purchases",
+    id: "finance",
+    label: "Finance",
+    Icon: ReceiptText,
+    requiredModule: "accounts",
     apps: [
       {
-        id: "purchase-orders",
-        label: "Orders",
-        Icon: ClipboardList,
-        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+        id: "finance-overview",
+        label: "Overview",
+        Icon: LayoutGrid,
+        requiredAnyCapability: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
       },
       {
-        id: "purchase-grns",
-        label: "Goods Receipts",
-        Icon: ReceiptText,
-        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+        id: "finance-received",
+        label: "Payments Received",
+        Icon: HandCoins,
+        requiredAnyCapability: ["FINANCE_RECEIVABLES"],
       },
       {
-        id: "purchase-invoices",
-        label: "Invoices",
+        id: "finance-made",
+        label: "Payments Made",
         Icon: FileText,
-        requiredAnyCapability: ["TXN_PURCHASE_CREATE"],
+        requiredAnyCapability: ["FINANCE_PAYABLES"],
       },
       {
-        id: "purchase-returns",
-        label: "Returns",
-        Icon: Undo2,
-        requiredAnyCapability: ["TXN_PURCHASE_RETURN"],
-      },
-    ],
-  },
-  {
-    id: "products",
-    label: "Catalog",
-    Icon: FolderKanban,
-    requiredModule: "catalog",
-    apps: [
-      {
-        id: "catalog-products",
-        label: "Products",
-        Icon: Package,
-        requiredAnyCapability: ["ITEM_PRODUCTS"],
+        id: "finance-expenses",
+        label: "Expenses",
+        Icon: ReceiptText,
+        requiredAnyCapability: ["FINANCE_PAYABLES"],
       },
       {
-        id: "catalog-services",
-        label: "Services",
-        Icon: Package,
-        requiredAnyCapability: ["ITEM_SERVICES"],
-      },
-      {
-        id: "catalog-categories",
-        label: "Categories",
-        Icon: Boxes,
-        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
-      },
-      {
-        id: "catalog-collections",
-        label: "Collections",
-        Icon: PackageSearch,
-        requiredAnyCapability: ["ITEM_PRODUCTS", "ITEM_SERVICES"],
-      },
-    ],
-  },
-  {
-    id: "stock",
-    label: "Stock",
-    Icon: Boxes,
-    requiredModule: "inventory",
-    apps: [
-      {
-        id: "stock-levels",
-        label: "Levels",
-        Icon: ScanBarcode,
-      },
-      {
-        id: "stock-adjustments",
-        label: "Adjustments",
-        Icon: ClipboardList,
-      },
-      {
-        id: "stock-history",
-        label: "History",
-        Icon: History,
-      },
-    ],
-  },
-  {
-    id: "people",
-    label: "People",
-    Icon: Users,
-    apps: [
-      {
-        id: "people-customers",
-        label: "Customers",
-        Icon: Users,
-        requiredAnyCapability: ["PARTIES_CUSTOMERS"],
-      },
-      {
-        id: "people-groups",
-        label: "Groups",
-        Icon: UserRoundCog,
-        requiredAnyCapability: ["PARTIES_CUSTOMERS"],
-      },
-      {
-        id: "people-suppliers",
-        label: "Suppliers",
-        Icon: ShoppingBag,
-        requiredAnyCapability: ["PARTIES_SUPPLIERS"],
+        id: "finance-accounts",
+        label: "Accounts",
+        Icon: Cog,
+        requiredAnyCapability: ["FINANCE_RECEIVABLES", "FINANCE_PAYABLES"],
       },
     ],
   },
@@ -721,26 +759,12 @@ export function AppHomePage() {
     () => {
       if (!activeFolder) return [];
 
-      const baseApps = activeFolder.apps.map((app) => ({
+      return activeFolder.apps.map((app) => ({
         key: app.id,
         label: app.label,
         Icon: app.Icon,
         appId: app.id,
       }));
-
-      if (activeFolder.id === "finance") {
-        return baseApps;
-      }
-
-      return [
-        {
-          key: `${activeFolder.id}-home`,
-          label: `${activeFolder.label} Home`,
-          Icon: LayoutGrid,
-          isHome: true,
-        },
-        ...baseApps,
-      ];
     },
     [activeFolder],
   );
@@ -948,12 +972,6 @@ export function AppHomePage() {
     navigate(`/app/${APP_ROUTE_SEGMENT_BY_ID[appId]}`);
   };
 
-  const handleFolderHomeSelect = (folderId: UserFolderId) => {
-    setActiveFolderId(folderId);
-    setShowCollapsedFolderFlyout(false);
-    navigate("/app");
-  };
-
   const handleFolderSelect = (folderId: UserFolderId) => {
     setShowSessionMenu(false);
     if (isDesktopSidebarCollapsed) {
@@ -962,6 +980,13 @@ export function AppHomePage() {
       );
     }
     setActiveFolderId(folderId);
+
+    const overviewApp = visibleFolders
+      .find((folder) => folder.id === folderId)
+      ?.apps.find((app) => app.label === "Overview");
+    if (overviewApp) {
+      navigate(`/app/${APP_ROUTE_SEGMENT_BY_ID[overviewApp.id]}`);
+    }
   };
 
   const toggleDesktopSidebar = () => {
@@ -1176,21 +1201,13 @@ export function AppHomePage() {
                           key={entry.key}
                           type="button"
                           onClick={() => {
-                            if (entry.isHome && activeFolder) {
-                              handleFolderHomeSelect(activeFolder.id);
-                              return;
-                            }
                             if (entry.appId) {
                               handleAppSelect(entry.appId);
                             }
                           }}
                           Icon={entry.Icon}
                           label={entry.label}
-                          active={
-                            entry.isHome
-                              ? !routeDrivenAppId
-                              : routeDrivenAppId === entry.appId
-                          }
+                          active={routeDrivenAppId === entry.appId}
                           stacked
                           className="border-border/60 bg-transparent shadow-none hover:bg-card/55"
                         />
@@ -1247,21 +1264,13 @@ export function AppHomePage() {
                         key={entry.key}
                         type="button"
                         onClick={() => {
-                          if (entry.isHome && activeFolder) {
-                            handleFolderHomeSelect(activeFolder.id);
-                            return;
-                          }
                           if (entry.appId) {
                             handleAppSelect(entry.appId);
                           }
                         }}
                         Icon={entry.Icon}
                         label={entry.label}
-                        active={
-                          entry.isHome
-                            ? !routeDrivenAppId
-                            : routeDrivenAppId === entry.appId
-                        }
+                        active={routeDrivenAppId === entry.appId}
                         stacked
                         className="border-border/60 bg-transparent shadow-none hover:bg-card/55"
                       />
@@ -1328,21 +1337,13 @@ export function AppHomePage() {
                     data-app-id={entry.appId ?? entry.key}
                     type="button"
                     onClick={() => {
-                      if (entry.isHome && activeFolder) {
-                        handleFolderHomeSelect(activeFolder.id);
-                        return;
-                      }
                       if (entry.appId) {
                         handleAppSelect(entry.appId);
                       }
                     }}
                     Icon={entry.Icon}
                     label={entry.label}
-                    active={
-                      entry.isHome
-                        ? !routeDrivenAppId
-                        : routeDrivenAppId === entry.appId
-                    }
+                    active={routeDrivenAppId === entry.appId}
                   />
                 ))}
               </div>

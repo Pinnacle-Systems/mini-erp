@@ -1,3 +1,4 @@
+export { OverviewPage } from "./OverviewPage";
 export { AddCustomerPage } from "./AddCustomerPage";
 export { AddSupplierPage } from "./AddSupplierPage";
 export { CustomerDetailsPage } from "./CustomerDetailsPage";
