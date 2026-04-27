@@ -246,16 +246,28 @@ export function AppRoutes() {
                       <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
                       <Route element={<RequireCapability capability="TXN_SALE_CREATE" />}>
                         <Route path="sales-estimates" element={<EstimatesPage />} />
+                        <Route path="sales-estimates/new" element={<EstimatesPage />} />
+                        <Route path="sales-estimates/:documentId" element={<EstimatesPage />} />
                         <Route path="sales-pos" element={<PosPage />} />
+                        <Route path="sales-pos/new" element={<PosPage />} />
+                        <Route path="sales-pos/:documentId" element={<PosPage />} />
                         <Route path="sales-bills" element={<BillsPage />} />
+                        <Route path="sales-bills/new" element={<BillsPage />} />
+                        <Route path="sales-bills/:documentId" element={<BillsPage />} />
                         <Route path="sales-orders" element={<OrdersPage />} />
+                        <Route path="sales-orders/new" element={<OrdersPage />} />
+                        <Route path="sales-orders/:documentId" element={<OrdersPage />} />
                         <Route path="delivery-challans" element={<DeliveryChallansPage />} />
+                        <Route path="delivery-challans/new" element={<DeliveryChallansPage />} />
+                        <Route path="delivery-challans/:documentId" element={<DeliveryChallansPage />} />
                       </Route>
                     </Route>
                   </Route>
                   <Route element={<RequireCapability capability="PARTIES_CUSTOMERS" />}>
                     <Route element={<RequireCapability capability="TXN_SALE_RETURN" />}>
                       <Route path="sales-returns" element={<ReturnsPage />} />
+                      <Route path="sales-returns/new" element={<ReturnsPage />} />
+                      <Route path="sales-returns/:documentId" element={<ReturnsPage />} />
                     </Route>
                   </Route>
                 </Route>

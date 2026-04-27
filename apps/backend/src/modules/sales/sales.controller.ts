@@ -20,6 +20,7 @@ import { documentLinkService } from "./document-link.service.js";
 import { stockPostingService } from "./stock-posting.service.js";
 import { salesBalanceService } from "./sales-balance.service.js";
 import { appendSyncChange } from "../sync/sync.service.js";
+import { getSalesOverview as getSalesOverviewService } from "./sales-overview.service.js";
 import type {
   SalesDocumentAction,
   SalesDocumentCancelReason,
@@ -1673,4 +1674,13 @@ export const deleteSalesDocument = catchAsync(async (req, res) => {
   });
 
   res.json(successResponse());
+});
+
+export const getSalesOverview = catchAsync(async (req, res) => {
+  const tenantId = req.user.tenantId;
+  const { locationId } = req.query as { locationId?: string };
+
+  const overview = await getSalesOverviewService(tenantId, locationId);
+
+  res.json(successResponse(overview as unknown as Record<string, unknown>));
 });

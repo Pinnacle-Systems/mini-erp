@@ -119,3 +119,10 @@ export const transitionSalesDocumentSchema = z.object({
     cancelReason: salesDocumentCancelReasonSchema.nullable().optional(),
   }),
 });
+
+export const getSalesOverviewSchema = z.object({
+  query: z.object({
+    locationId: z.uuid().optional(),
+  }),
+});
+
