@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ConnectivityError } from "../lib/api";
 
 export const isConnectivityError = (error: unknown) => {
@@ -12,6 +12,12 @@ export const isConnectivityError = (error: unknown) => {
 export function useConnectivity() {
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const classifyError = useCallback(
+    (error: unknown) => ({
+      isConnectivityError: isConnectivityError(error),
+    }),
+    [],
   );
 
   useEffect(() => {
@@ -29,8 +35,6 @@ export function useConnectivity() {
 
   return {
     isOnline,
-    classifyError: (error: unknown) => ({
-      isConnectivityError: isConnectivityError(error),
-    }),
+    classifyError,
   };
 }
