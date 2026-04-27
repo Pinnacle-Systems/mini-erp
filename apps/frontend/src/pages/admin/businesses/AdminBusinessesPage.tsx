@@ -430,6 +430,32 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
     setLogoPreviewUrl(file ? URL.createObjectURL(file) : null);
   };
 
+  const normalizedNewOwnerPhone = newOwnerPhone.trim().replace(/\D/g, "");
+  const canUseNewOwnerPhone = /^\d{10}$/.test(normalizedNewOwnerPhone);
+  const hasCreateOwner = Boolean(newOwnerId || canUseNewOwnerPhone);
+  const parsedLicenseUserLimit = Number(newLicenseUserLimitValue);
+  const hasValidLicenseUserLimit =
+    newLicenseUserLimitType === "UNLIMITED" ||
+    (Number.isInteger(parsedLicenseUserLimit) &&
+      parsedLicenseUserLimit > 0 &&
+      parsedLicenseUserLimit <= 999);
+  const hasCompleteLicenseDates =
+    Boolean(newLicenseBeginsOn) === Boolean(newLicenseEndsOn);
+  const createDisabledReason = !newBusinessName.trim()
+    ? "Enter a business name to create the business."
+    : !hasCreateOwner
+      ? "Select an owner from results, or enter a 10-digit owner phone."
+      : !hasCompleteLicenseDates
+        ? "Provide both license begin and end dates."
+        : !hasValidLicenseUserLimit
+          ? "Enter a user limit from 1 to 999."
+          : null;
+  const ownerRequirementMessage = hasCreateOwner
+    ? null
+    : newOwnerPhone.trim()
+      ? "Select a matching owner result, or replace this with a 10-digit phone number."
+      : "Select an existing owner or enter a 10-digit owner phone.";
+
   return (
     <section className="h-auto space-y-2 lg:h-full lg:min-h-0">
       <BusinessManagementPanel
@@ -464,10 +490,9 @@ export function AdminBusinessesPage({ mode }: AdminBusinessesPageProps) {
         newLicenseUserLimitValue={newLicenseUserLimitValue}
         logoPreviewUrl={logoPreviewUrl}
         uploadingLogo={uploadingLogo}
-        canCreate={Boolean(
-          newBusinessName.trim() &&
-            (newOwnerId || /^\d{10}$/.test(newOwnerPhone.trim().replace(/\D/g, ""))),
-        )}
+        canCreate={!createDisabledReason}
+        createDisabledReason={createDisabledReason}
+        ownerRequirementMessage={ownerRequirementMessage}
         onFilterBusinessNameChange={setFilterBusinessName}
         onFilterOwnerPhoneChange={setFilterOwnerPhone}
         onFilterIncludeDeletedChange={setFilterIncludeDeleted}

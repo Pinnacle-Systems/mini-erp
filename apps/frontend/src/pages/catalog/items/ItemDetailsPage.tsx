@@ -1095,11 +1095,17 @@ export function ItemDetailsPage({
         const gstSlabChanged =
           (normalizeGstSlab(variant.gstSlab) ?? "") !==
           (normalizeGstSlab(initialVariant?.gstSlab) ?? "");
+        const salesTaxModeChanged =
+          variant.salesTaxMode !== initialVariant?.salesTaxMode;
+        const purchaseTaxModeChanged =
+          variant.purchaseTaxMode !== initialVariant?.purchaseTaxMode;
         const isChangedOrNew =
           variant.id.startsWith("temp-") ||
           salesPriceChanged ||
           purchasePriceChanged ||
           gstSlabChanged ||
+          salesTaxModeChanged ||
+          purchaseTaxModeChanged ||
           (initialVariant &&
             JSON.stringify(normalizeVariantForUpdate(variant)) !==
               JSON.stringify(normalizeVariantForUpdate(initialVariant)));
@@ -1181,7 +1187,11 @@ export function ItemDetailsPage({
           const purchasePrice = showPurchasePrice
             ? parsePriceDraft(variant.purchasePrice ?? "").amount
             : undefined;
-          if (typeof salesPrice === "number" || normalizeGstSlab(variant.gstSlab)) {
+          if (
+            typeof salesPrice === "number" ||
+            normalizeGstSlab(variant.gstSlab) ||
+            variant.salesTaxMode !== "EXCLUSIVE"
+          ) {
             await queueItemPriceUpsert(
               activeStore,
               identityId,
@@ -1194,12 +1204,15 @@ export function ItemDetailsPage({
               normalizeGstSlab(variant.gstSlab),
             );
           }
-          if (showPurchasePrice && typeof purchasePrice === "number") {
+          if (
+            showPurchasePrice &&
+            (typeof purchasePrice === "number" || variant.purchaseTaxMode !== "EXCLUSIVE")
+          ) {
             await queueItemPriceUpsert(
               activeStore,
               identityId,
               createdVariantId,
-              purchasePrice,
+              purchasePrice ?? null,
               variant.purchaseCurrency,
               0,
               "PURCHASE",
@@ -1229,7 +1242,11 @@ export function ItemDetailsPage({
         const initialGstSlab = normalizeGstSlab(initialVariant.gstSlab) ?? "";
         const nextSalesPrice = parsePriceDraft(variant.salesPrice ?? "").amount ?? null;
         const initialSalesPrice = parsePriceDraft(initialVariant.salesPrice ?? "").amount ?? null;
-        if (nextGstSlab !== initialGstSlab || nextSalesPrice !== initialSalesPrice) {
+        if (
+          nextGstSlab !== initialGstSlab ||
+          nextSalesPrice !== initialSalesPrice ||
+          variant.salesTaxMode !== initialVariant.salesTaxMode
+        ) {
           await queueItemPriceUpsert(
             activeStore,
             identityId,
@@ -1246,7 +1263,10 @@ export function ItemDetailsPage({
           const nextPurchasePrice = parsePriceDraft(variant.purchasePrice ?? "").amount ?? null;
           const initialPurchasePrice =
             parsePriceDraft(initialVariant.purchasePrice ?? "").amount ?? null;
-          if (nextPurchasePrice !== initialPurchasePrice) {
+          if (
+            nextPurchasePrice !== initialPurchasePrice ||
+            variant.purchaseTaxMode !== initialVariant.purchaseTaxMode
+          ) {
             await queueItemPriceUpsert(
               activeStore,
               identityId,
@@ -1784,15 +1804,23 @@ export function ItemDetailsPage({
               ) : primaryVariant ? (
                 <div className="grid gap-1.5 lg:min-w-0 lg:flex-1">
                   <div
-                    className="hidden items-center gap-1 px-1 font-semibold uppercase tracking-[0.03em] text-muted-foreground/90 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
+                    className={`hidden items-center gap-1 px-1 font-semibold uppercase tracking-[0.03em] text-muted-foreground/90 lg:grid ${
+                      showPurchasePrice
+                        ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1fr)_84px_minmax(0,1fr)_84px_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
+                        : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1fr)_84px_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
+                    }`}
                     style={{ fontSize: "10px", lineHeight: "12px" }}
                   >
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Name</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>SKU</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>{taxCodeLabel}</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Sales</span>
+                    <span style={{ fontSize: "10px", lineHeight: "12px" }}>Sales tax</span>
                     {showPurchasePrice ? (
                       <span style={{ fontSize: "10px", lineHeight: "12px" }}>Purchase</span>
+                    ) : null}
+                    {showPurchasePrice ? (
+                      <span style={{ fontSize: "10px", lineHeight: "12px" }}>Purchase tax</span>
                     ) : null}
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>GST %</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Unit</span>
@@ -1801,8 +1829,8 @@ export function ItemDetailsPage({
                   <div
                     className={`grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:items-center lg:border-0 lg:bg-transparent lg:p-0 ${
                       showPurchasePrice
-                        ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
-                        : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1.05fr)_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
+                        ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1fr)_84px_minmax(0,1fr)_84px_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
+                        : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1fr)_84px_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
                     }`}
                   >
                     <Input
@@ -1860,6 +1888,30 @@ export function ItemDetailsPage({
                       placeholder="Sales price"
                       inputMode="decimal"
                     />
+                    <Select
+                      className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}
+                      value={primaryVariant.salesTaxMode}
+                      disabled={!isEditing || loading}
+                      onChange={(event) =>
+                        setItem({
+                          ...item,
+                          variants: item.variants.map((variant, index) =>
+                            index === 0
+                              ? {
+                                  ...variant,
+                                  salesTaxMode:
+                                    event.target.value === "INCLUSIVE"
+                                      ? "INCLUSIVE"
+                                      : "EXCLUSIVE",
+                                }
+                              : variant,
+                          ),
+                        })
+                      }
+                    >
+                      <option value="EXCLUSIVE">Excl.</option>
+                      <option value="INCLUSIVE">Incl.</option>
+                    </Select>
                     {showPurchasePrice ? (
                       <Input
                         className={SIMPLE_ROW_INPUT_CLASS}
@@ -1878,6 +1930,32 @@ export function ItemDetailsPage({
                         placeholder="Purchase price"
                         inputMode="decimal"
                       />
+                    ) : null}
+                    {showPurchasePrice ? (
+                      <Select
+                        className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}
+                        value={primaryVariant.purchaseTaxMode}
+                        disabled={!isEditing || loading}
+                        onChange={(event) =>
+                          setItem({
+                            ...item,
+                            variants: item.variants.map((variant, index) =>
+                              index === 0
+                                ? {
+                                    ...variant,
+                                    purchaseTaxMode:
+                                      event.target.value === "INCLUSIVE"
+                                        ? "INCLUSIVE"
+                                        : "EXCLUSIVE",
+                                  }
+                                : variant,
+                            ),
+                          })
+                        }
+                      >
+                        <option value="EXCLUSIVE">Excl.</option>
+                        <option value="INCLUSIVE">Incl.</option>
+                      </Select>
                     ) : null}
                     <GstSlabSelect
                       className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}

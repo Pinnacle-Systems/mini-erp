@@ -1,10 +1,10 @@
 # Billing App Feature Inventory
 
-Last reviewed: 2026-04-24
+Last reviewed: 2026-04-27
 
-This document summarizes the current billing-app feature set implemented in this repository. It is based on the current codebase and the canonical product rules in [ARCHITECTURE.md](../ARCHITECTURE.md), [DESIGN_GUIDELINES.md](../DESIGN_GUIDELINES.md), [docs/rfcs/sales-engine-v2.md](./rfcs/sales-engine-v2.md), [docs/rfcs/sales-engine-v2-checklist.md](./rfcs/sales-engine-v2-checklist.md), [docs/rfcs/payments-operational-v1.md](./rfcs/payments-operational-v1.md), [docs/rfcs/payments-operational-v1-checklist.md](./rfcs/payments-operational-v1-checklist.md), and [docs/sync-pattern-and-sales-state.md](./sync-pattern-and-sales-state.md).
+This document summarizes the current billing-app feature set implemented in this repository. It is based on the current codebase and the canonical product rules in [ARCHITECTURE.md](../ARCHITECTURE.md), [DESIGN_GUIDELINES.md](../DESIGN_GUIDELINES.md), [docs/rfcs/sales-engine-v2.md](./rfcs/sales-engine-v2.md), [docs/rfcs/sales-engine-v2-checklist.md](./rfcs/sales-engine-v2-checklist.md), [docs/rfcs/purchase-engine-v1.md](./rfcs/purchase-engine-v1.md), [docs/rfcs/purchase-engine-v1-checklist.md](./rfcs/purchase-engine-v1-checklist.md), [docs/rfcs/payments-operational-v1.md](./rfcs/payments-operational-v1.md), [docs/rfcs/payments-operational-v1-checklist.md](./rfcs/payments-operational-v1-checklist.md), and [docs/sync-pattern-and-sales-state.md](./sync-pattern-and-sales-state.md).
 
-The scope here is the user-facing billing workflow around sales documents, POS, receipts, returns, and invoice settlement, plus the finance features directly tied to billing operations.
+The scope here is the user-facing billing workflow around sales and purchase documents, POS, receipts, payments, returns, invoice settlement, and finance features directly tied to billing operations.
 
 ## 1. Billing App Scope
 
@@ -16,8 +16,14 @@ The billing app currently covers:
 - sales invoices / bills
 - sales returns / credit notes
 - POS sales
+- purchase orders
+- goods receipt notes
+- purchase invoices
+- purchase returns / supplier debit notes
 - invoice receipts and settlement tracking
+- supplier payments and payable settlement tracking
 - customer-facing billing document lifecycle and history
+- supplier-facing purchase document lifecycle and history
 - business money-account setup needed for receipts and payments
 - expense capture and finance overview adjacent to billing
 
@@ -85,7 +91,7 @@ Supported features:
 
 - Create, edit, save, and post sales invoices
 - Maintain numbering with `INV-` prefix
-- Support both `CASH` and `CREDIT` transaction types
+- Support both `CASH` and `CREDIT` settlement modes
 - Capture customer, line items, taxes, notes, totals, and settlement context
 - Create standalone direct invoices
 - Create invoices from estimates, orders, and challans
@@ -124,15 +130,49 @@ Business rules:
 - Challan-linked returns refill shipment balance for the source flow
 - Sales returns add stock back for product items
 
+### 2.6 Purchase Documents
+
+Supported purchase-side billing features:
+
+- Create, edit, save, and post purchase orders
+- Create, edit, save, and post goods receipt notes
+- Create, edit, save, and post purchase invoices
+- Create, edit, save, and post purchase returns
+- Maintain backend-generated document numbering for purchase documents
+- Capture supplier, item lines, taxes, notes, totals, and location context where required
+- View purchase document history
+- Duplicate purchase documents into new drafts
+- Use a dense purchase workspace that mirrors the sales document family
+- Surface backend validation and stock errors inside purchase workflows
+
+Purchase invoice settlement features:
+
+- Support `CASH` and `CREDIT` settlement modes on purchase invoices
+- For `PURCHASE_INVOICE + CASH`, require posting-time financial account selection
+- Create the purchase invoice and linked made-payment allocation atomically for cash purchase invoices
+- Show purchase invoice settlement summaries in list and detail/workspace views
+- Include linked purchase returns in supplier payable settlement math
+- Auto-void linked cash-post payment movement when cancelling a cash-posted purchase invoice
+- Block reopening a purchase invoice while linked posted payment movement remains active
+
+Business rules:
+
+- Purchase documents are server-authoritative real-time documents
+- Purchase returns must point to a posted purchase invoice or goods receipt note
+- Purchase conversion ceilings are backend-authored
+- Posted purchase documents are immutable for ordinary editing
+- Posted purchase invoice settlement is derived from finance records and linked purchase returns, not stored as invoice truth
+
 ## 3. Shared Document Workspace Features
 
-All core sales documents use one shared dense billing workspace.
+Core sales documents use one shared dense billing workspace. Purchase documents use the same dense workspace family for supplier-side flows.
 
 Supported shared features:
 
 - Combined browse-and-edit document workspace
 - Dense tabular line-entry experience
 - Shared customer lookup and selection
+- Supplier lookup and selection in purchase workspaces
 - Shared item lookup and variant selection
 - Shared tax and totals calculation
 - Shared notes field
@@ -150,6 +190,7 @@ Document metadata supported inside the workspace:
 - dispatch carrier for challans
 - dispatch reference for challans
 - transaction type for invoices
+- settlement mode for purchase invoices
 - location selection where the workflow requires it
 
 ## 4. Line Item and Pricing Features
@@ -194,6 +235,14 @@ Supported billing conversions:
 - Delivery Challan -> Sales Invoice
 - Delivery Challan -> Sales Return
 - Sales Invoice -> Sales Return
+
+Supported purchase conversions:
+
+- Purchase Order -> Goods Receipt Note
+- Purchase Order -> Purchase Invoice
+- Goods Receipt Note -> Purchase Invoice
+- Goods Receipt Note -> Purchase Return
+- Purchase Invoice -> Purchase Return
 
 Conversion behavior:
 
@@ -315,6 +364,7 @@ Supported billing-adjacent supplier payment features:
 - Save a payment fully or partially as unapplied supplier advance/credit
 - Apply the remaining balance of an existing unapplied supplier payment to open purchase invoices later
 - Reverse individual supplier-payment allocation rows while preserving audit history
+- Cash purchase invoice posting can create the linked supplier payment automatically
 
 ### 8.4 Financial Accounts
 
@@ -354,6 +404,7 @@ Supported features:
 - Capture payee, date, amount, reference, and notes
 - Attribute expense to the active location
 - Review recent expenses list
+- Void posted expense movements so they are removed from active balances while remaining visible for audit
 
 ## 9. Inventory-Linked Billing Behavior
 
@@ -370,11 +421,18 @@ Implemented inventory behavior:
 - Posting can block on insufficient stock when negative stock is disabled
 - Cancelling posted stock-affecting sales documents writes reversal stock ledger rows
 - Cancelled documents stop contributing to active conversion balance
+- Goods receipt notes add stock on post
+- Standalone purchase invoices add stock on post
+- Order-linked purchase invoices add stock on post
+- GRN-linked purchase invoice lines do not add stock again
+- Purchase returns deduct stock on post
+- Cancelling or reopening purchase stock-affecting documents writes the corresponding reversal or reapplication stock rows
 
 Location-aware behavior:
 
 - sales flows can carry location context
 - returns use their own stored location for stock movement
+- purchase returns use their own stored location for stock movement
 - stock movement is location-aware even though finance ownership stays business-level
 
 ## 10. Lifecycle, Audit, and Control Features
@@ -386,6 +444,8 @@ Supported lifecycle controls:
 - Cancel posted document
 - Reopen supported documents where policy allows
 - Block void on posted sales documents
+- Block void on posted purchase documents
+- Auto-void linked cash-post payment when a cash purchase invoice is cancelled
 
 Supported audit/history features:
 
@@ -404,9 +464,11 @@ Implemented offline-related behavior:
 - Local billing drafts can be saved while offline
 - Recent synced browse/read models can still be reviewed locally when available
 - Sales document posting is blocked while offline
+- Purchase document posting is blocked while offline
 - The UI clearly prompts the user to reconnect before posting
 - Billing documents are not generic sync entities
 - Sales document writes, posting, history, and conversion balance use dedicated `/api/sales` endpoints
+- Purchase document writes, posting, history, and conversion balance use dedicated `/api/purchases` endpoints
 
 ## 12. Access, Capability, and Module Gating
 
@@ -415,9 +477,13 @@ Billing access is capability-driven.
 Current route and capability expectations include:
 
 - sales module enabled
+- purchases module enabled
 - customer capability for customer-facing sales workflows
+- supplier capability for supplier-facing purchase workflows
 - `TXN_SALE_CREATE` for estimates, POS, invoices, orders, and challans
 - `TXN_SALE_RETURN` for sales returns
+- `TXN_PURCHASE_CREATE` for purchase orders, goods receipt notes, and purchase invoices
+- `TXN_PURCHASE_RETURN` for purchase returns
 - finance module enabled for receipts and financial overview
 - `FINANCE_RECEIVABLES` for payments received
 - `FINANCE_PAYABLES` for payments made and expenses
@@ -429,13 +495,15 @@ The billing app is operationally strong, but some finance and advanced billing w
 Known deferred or incomplete areas:
 
 - attachment support for payments and expenses
-- expense void / recreate workflow
+- expense recreate workflow after void
 - direct in-place editing of payment allocation rows; correction is currently handled by reversing and reallocating
 - deeper aging, settlement analytics, and richer finance reporting
 - broader export workflows
 - offline posting of sales documents
+- offline posting of purchase documents
 - some remaining manual acceptance coverage around mixed-origin and challan-return edge cases
+- some remaining manual acceptance coverage around purchase stock, return, and cash-post edge cases
 
 ## 14. Summary
 
-In its current repository state, the billing app already supports a full operational sales-document chain from quotation through invoice and return, plus a POS path, multi-document receipt and payment allocation, allocation reversal with audit history, unapplied credit/advance handling, settlement visibility, stock-linked posting behavior, and finance overviews. The main missing pieces are richer finance reporting, attachments, expense void/recreate, direct in-place allocation editing, and offline posting.
+In its current repository state, the billing app already supports a full operational sales-document chain from quotation through invoice and return, a POS path, first-class purchase orders, goods receipt notes, purchase invoices, purchase returns, multi-document receipt and payment allocation, allocation reversal with audit history, unapplied credit/advance handling, settlement visibility, stock-linked posting behavior, expense voiding, and finance overviews. The main missing pieces are richer finance reporting, attachments, expense recreate after void, direct in-place allocation editing, and offline posting.

@@ -72,6 +72,11 @@ const hasEditableLineContent = (line: BillLine) =>
         line.quantity.trim() !== "1"),
   );
 
+const groupedHeaderRows = "1.65rem 1.2rem";
+const groupedParentHeaderClassName = "h-full justify-center text-center";
+const groupedSubHeaderClassName =
+  "h-full text-[9px] font-medium tracking-[0.03em] text-muted-foreground";
+
 export function SalesDocumentLineEditor({
   config,
   lines,
@@ -114,10 +119,7 @@ export function SalesDocumentLineEditor({
     if (!line.sourceLineId) {
       fields.push("description");
     }
-    fields.push("quantity", "unitPrice", "taxRate");
-    if (!isPosMode) {
-      fields.push("taxMode");
-    }
+    fields.push("quantity", "unitPrice", "taxRate", "taxMode");
     return fields;
   };
   const desktopGridTemplate = withTabularSerialNumberColumn(
@@ -125,8 +127,8 @@ export function SalesDocumentLineEditor({
       isPosMode ? "minmax(0, 3.4fr)" : "minmax(0, 2.8fr)",
       "minmax(4.25rem, 1fr)",
       "minmax(4.5rem, 1fr)",
-      "minmax(5rem, 1.2fr)",
-      ...(!isPosMode ? ["minmax(3.75rem, 0.8fr)"] : []),
+      "minmax(3.75rem, 0.7fr)",
+      "minmax(4.25rem, 0.75fr)",
       "minmax(4.5rem, 0.95fr)",
       "minmax(5rem, 1fr)",
       ...(!isViewingPostedDocument ? [isPosMode ? "2.75rem" : "2.25rem"] : []),
@@ -153,6 +155,89 @@ export function SalesDocumentLineEditor({
       onAppendLine();
     },
   });
+
+  const renderDesktopHeaderCells = () => {
+    const pricingSpan = 3;
+    let column = 1;
+    const rowSpanStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "1 / span 2",
+    });
+    const firstRowStyle = (targetColumn: number, span = 1) => ({
+      gridColumn: span > 1 ? `${targetColumn} / span ${span}` : String(targetColumn),
+      gridRow: "1",
+    });
+    const secondRowStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "2",
+    });
+    const cells = [
+      <TabularSerialNumberHeaderCell key="serial" rowSpan={2} style={rowSpanStyle(column)} />,
+    ];
+    column += 1;
+
+    cells.push(
+      <TabularCell key="item" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        Item
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell key="qty" variant="header" align="end" rowSpan={2} style={rowSpanStyle(column)}>
+        Qty
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell
+        key="pricing"
+        variant="header"
+        align="center"
+        span={pricingSpan}
+        className={groupedParentHeaderClassName}
+        style={firstRowStyle(column, pricingSpan)}
+      >
+        Pricing
+      </TabularCell>,
+      <TabularCell key="rate" variant="header" align="end" className={groupedSubHeaderClassName} style={secondRowStyle(column)}>
+        Rate
+      </TabularCell>,
+      <TabularCell key="gst" variant="header" align="center" className={groupedSubHeaderClassName} style={secondRowStyle(column + 1)}>
+        GST
+      </TabularCell>,
+    );
+
+    cells.push(
+      <TabularCell key="mode" variant="header" align="center" className={groupedSubHeaderClassName} style={secondRowStyle(column + 2)}>
+        Tax
+      </TabularCell>,
+    );
+    column += pricingSpan;
+
+    cells.push(
+      <TabularCell key="tax" variant="header" align="end" rowSpan={2} style={rowSpanStyle(column)}>
+        Tax
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell key="total" variant="header" align="end" rowSpan={2} style={rowSpanStyle(column)}>
+        Total
+      </TabularCell>,
+    );
+    column += 1;
+
+    if (!isViewingPostedDocument) {
+      cells.push(
+        <TabularCell key="actions" variant="header" align="center" rowSpan={2} style={rowSpanStyle(column)} />,
+      );
+    }
+
+    return cells;
+  };
 
   return (
     <div className="flex min-h-[14rem] flex-1 flex-col gap-1.5 pt-1 md:min-h-0 md:overflow-hidden">
@@ -418,20 +503,8 @@ export function SalesDocumentLineEditor({
             className="hidden min-h-0 flex-1 overflow-hidden bg-card md:flex"
           >
             <TabularHeader>
-              <TabularRow columns={desktopGridTemplate}>
-                <TabularSerialNumberHeaderCell />
-                <TabularCell variant="header">Item</TabularCell>
-                <TabularCell variant="header" align="end">Qty</TabularCell>
-                <TabularCell variant="header" align="end">Rate</TabularCell>
-                <TabularCell variant="header">GST %</TabularCell>
-                {!isPosMode ? (
-                  <TabularCell variant="header">Mode</TabularCell>
-                ) : null}
-                <TabularCell variant="header" align="end">Tax</TabularCell>
-                <TabularCell variant="header" align="end">Total</TabularCell>
-                {!isViewingPostedDocument ? (
-                  <TabularCell variant="header" align="center" />
-                ) : null}
+              <TabularRow columns={desktopGridTemplate} rows={groupedHeaderRows}>
+                {renderDesktopHeaderCells()}
               </TabularRow>
             </TabularHeader>
             <TabularBody>
@@ -574,30 +647,28 @@ export function SalesDocumentLineEditor({
                         placeholderOption="GST %"
                       />
                     </TabularCell>
-                    {!isPosMode ? (
-                      <TabularCell variant="editable">
-                        <Button
-                          {...getCellDataAttributes(line.id, "taxMode")}
-                          data-sales-line-cell={`${line.id}:taxMode`}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[11px] text-muted-foreground shadow-none hover:bg-slate-50 lg:text-[10px]"
-                          disabled={isViewingPostedDocument}
-                          onClick={() =>
-                            onUpdateLine(
-                              line.id,
-                              "taxMode",
-                              line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
-                            )
-                          }
-                          onFocus={() => handleCellFocus(line.id, "taxMode")}
-                          onKeyDown={(event) => handleCellKeyDown(event, line.id, "taxMode")}
-                        >
-                          {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
-                        </Button>
-                      </TabularCell>
-                    ) : null}
+                    <TabularCell variant="editable">
+                      <Button
+                        {...getCellDataAttributes(line.id, "taxMode")}
+                        data-sales-line-cell={`${line.id}:taxMode`}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[11px] text-muted-foreground shadow-none hover:bg-slate-50 lg:text-[10px]"
+                        disabled={isViewingPostedDocument}
+                        onClick={() =>
+                          onUpdateLine(
+                            line.id,
+                            "taxMode",
+                            line.taxMode === "INCLUSIVE" ? "EXCLUSIVE" : "INCLUSIVE",
+                          )
+                        }
+                        onFocus={() => handleCellFocus(line.id, "taxMode")}
+                        onKeyDown={(event) => handleCellKeyDown(event, line.id, "taxMode")}
+                      >
+                        {line.taxMode === "INCLUSIVE" ? "Incl." : "Excl."}
+                      </Button>
+                    </TabularCell>
                     <TabularCell align="end" className={tabularNumericClassName}>
                       {formatCurrency(lineTotals.taxTotal)}
                     </TabularCell>

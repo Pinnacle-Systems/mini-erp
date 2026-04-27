@@ -2,6 +2,7 @@ import {
   forwardRef,
   useLayoutEffect,
   useRef,
+  useState,
   type CSSProperties,
   type HTMLAttributes,
 } from "react";
@@ -20,6 +21,7 @@ type TabularSurfaceProps = HTMLAttributes<HTMLDivElement> & {
 
 type TabularRowProps = HTMLAttributes<HTMLDivElement> & {
   columns: string;
+  rows?: string;
   interactive?: boolean;
 };
 
@@ -29,6 +31,8 @@ type TabularCellProps = HTMLAttributes<HTMLDivElement> & {
   error?: boolean;
   truncate?: boolean;
   hoverTitle?: string | boolean;
+  span?: number;
+  rowSpan?: number;
 };
 
 type TabularSerialNumberCellProps = Omit<TabularCellProps, "children"> & {
@@ -40,8 +44,9 @@ const tabularReadOnlyCellClassName =
 
 const tabularGridCellChromeClassName = "tabular-grid-cell";
 
-const getRowStyle = (columns: string): CSSProperties => ({
+const getRowStyle = (columns: string, rows?: string): CSSProperties => ({
   gridTemplateColumns: columns,
+  ...(rows ? { gridTemplateRows: rows } : {}),
 });
 
 const getAlignClassName = (align: TabularCellProps["align"]) => {
@@ -63,6 +68,48 @@ const getHoverTitle = (
   }
 
   return undefined;
+};
+
+const getElementText = (element: HTMLDivElement | null) => {
+  if (!element) return undefined;
+
+  const editableValueElement = element.querySelector("input, textarea, select") as
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | HTMLSelectElement
+    | null;
+  if (editableValueElement) {
+    if (editableValueElement instanceof HTMLSelectElement) {
+      return (
+        editableValueElement.selectedOptions[0]?.textContent?.replace(/\s+/g, " ").trim() ||
+        editableValueElement.value ||
+        undefined
+      );
+    }
+
+    return editableValueElement.value || editableValueElement.placeholder || undefined;
+  }
+
+  const labeledElement = element.querySelector("[aria-label], [title]") as HTMLElement | null;
+  const label =
+    labeledElement?.getAttribute("aria-label") || labeledElement?.getAttribute("title");
+  if (label) return label;
+
+  return element.textContent?.replace(/\s+/g, " ").trim() || undefined;
+};
+
+const isElementOverflowing = (element: HTMLElement) =>
+  element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight;
+
+const isCellContentOverflowing = (element: HTMLDivElement) => {
+  if (isElementOverflowing(element)) {
+    return true;
+  }
+
+  const contentElement = element.querySelector("input, textarea, select, button, [data-overflow-title]") as
+    | HTMLElement
+    | null;
+  return contentElement ? isElementOverflowing(contentElement) : false;
 };
 
 export const TabularSurface = forwardRef<HTMLDivElement, TabularSurfaceProps>(
@@ -155,6 +202,7 @@ export function TabularBody({
 export function TabularRow({
   className,
   columns,
+  rows,
   interactive = false,
   children,
   ...props
@@ -167,7 +215,7 @@ export function TabularRow({
         interactive ? "group/tabular-row" : undefined,
         className,
       )}
-      style={getRowStyle(columns)}
+      style={getRowStyle(columns, rows)}
       {...props}
     >
       {children}
@@ -184,36 +232,73 @@ export function TabularCell({
   truncate = false,
   hoverTitle,
   title,
+  onMouseEnter,
+  onFocus,
+  span,
+  rowSpan,
+  style,
   ...props
 }: TabularCellProps) {
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  const [overflowTitle, setOverflowTitle] = useState<string | undefined>();
   const alignClassName = getAlignClassName(align);
-  const resolvedTitle = title ?? getHoverTitle(hoverTitle, children);
+  const fallbackTitle = getHoverTitle(hoverTitle, children);
+  const resolvedTitle = title ?? overflowTitle;
+
+  const updateOverflowTitle = () => {
+    if (title) {
+      return;
+    }
+
+    const element = cellRef.current;
+    if (!element) {
+      setOverflowTitle(undefined);
+      return;
+    }
+
+    const isOverflowing = isCellContentOverflowing(element);
+    setOverflowTitle(isOverflowing ? fallbackTitle ?? getElementText(element) : undefined);
+  };
 
   return (
     <div
+      ref={cellRef}
       role={variant === "header" ? "columnheader" : "gridcell"}
       title={resolvedTitle}
+      data-truncate={truncate ? "true" : undefined}
+      onMouseEnter={(event) => {
+        updateOverflowTitle();
+        onMouseEnter?.(event);
+      }}
+      onFocus={(event) => {
+        updateOverflowTitle();
+        onFocus?.(event);
+      }}
+      style={{
+        ...(span && span > 1 ? { gridColumn: `span ${span} / span ${span}` } : {}),
+        ...(rowSpan && rowSpan > 1 ? { gridRow: `span ${rowSpan} / span ${rowSpan}` } : {}),
+        ...style,
+      }}
       className={cn(
         variant === "header"
           ? cn(
               tabularHeaderCellClassName,
               tabularGridCellChromeClassName,
-              "flex h-[var(--tabular-row-height)] items-center bg-[var(--tabular-header-bg)] text-[10px] uppercase leading-none tracking-[0.04em] [color:var(--tabular-header-text)]",
+              rowSpan && rowSpan > 1 ? "h-full" : "h-[var(--tabular-row-height)]",
+              "flex min-w-0 items-center overflow-hidden whitespace-nowrap text-ellipsis bg-[var(--tabular-header-bg)] text-[10px] uppercase leading-none tracking-[0.04em] [color:var(--tabular-header-text)]",
               alignClassName,
             )
           : variant === "editable"
             ? cn(
                 tabularGridCellChromeClassName,
                 getSpreadsheetCellClassName({ error, align }),
-                "h-[var(--tabular-row-height)] flex items-center overflow-hidden leading-none",
-                truncate ? "min-w-0" : undefined,
+                "h-[var(--tabular-row-height)] flex min-w-0 items-center overflow-hidden leading-none",
               )
             : cn(
                 tabularCellBoxClassName,
                 tabularGridCellChromeClassName,
                 tabularReadOnlyCellClassName,
-                "flex items-center",
-                truncate ? "min-w-0 overflow-hidden whitespace-nowrap text-ellipsis" : undefined,
+                "flex min-w-0 items-center overflow-hidden whitespace-nowrap text-ellipsis",
                 alignClassName,
               ),
         className,

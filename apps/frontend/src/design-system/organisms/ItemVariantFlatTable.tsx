@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Eye, type LucideIcon } from "lucide-react";
 import { Button } from "../atoms/Button";
 import { IconButton } from "../atoms/IconButton";
@@ -60,7 +60,9 @@ export type ItemVariantFlatRow = {
   hsnSac?: string;
   gstSlab?: string | null;
   salesPrice?: number | null;
+  salesTaxMode?: "EXCLUSIVE" | "INCLUSIVE";
   purchasePrice?: number | null;
+  purchaseTaxMode?: "EXCLUSIVE" | "INCLUSIVE";
   currency?: string;
   isActive: boolean;
   pending: boolean;
@@ -83,6 +85,12 @@ const getPrimaryName = (row: ItemVariantFlatRow) => {
 };
 
 const getGstSlabDisplay = (value: string | null | undefined) => formatGstSlabLabel(value) || "-";
+const getTaxModeDisplay = (value: "EXCLUSIVE" | "INCLUSIVE" | undefined) =>
+  value === "INCLUSIVE" ? "Incl." : "Excl.";
+const groupedHeaderRows = "1.65rem 1.2rem";
+const groupedParentHeaderClassName = "h-full justify-center text-center";
+const groupedSubHeaderClassName =
+  "h-full text-[9px] font-medium tracking-[0.03em] text-muted-foreground";
 
 export function ItemVariantFlatTable({
   items = [],
@@ -108,25 +116,35 @@ export function ItemVariantFlatTable({
   const ActionIcon = actionIcon;
   const [detailsByItemId, setDetailsByItemId] = useState<Record<string, ItemDetailDisplay | null>>({});
   const [salesPriceByVariantId, setSalesPriceByVariantId] = useState<
-    Record<string, { amount: number | null; currency: string; gstSlab: string | null }>
+    Record<
+      string,
+      {
+        amount: number | null;
+        currency: string;
+        gstSlab: string | null;
+        taxMode: "EXCLUSIVE" | "INCLUSIVE";
+      }
+    >
   >({});
   const [purchasePriceByVariantId, setPurchasePriceByVariantId] = useState<
-    Record<string, { amount: number | null; currency: string }>
+    Record<string, { amount: number | null; currency: string; taxMode: "EXCLUSIVE" | "INCLUSIVE" }>
   >({});
   const { lastSyncCompletedAt } = useSyncActions();
   const hasAction = Boolean(onAction || onOpenItem);
   const desktopGridTemplate = useMemo(() => {
     const tracks = [
-      showCategory ? "minmax(10rem, 1.2fr)" : null,
-      "minmax(14rem, 2fr)",
-      "minmax(8rem, 1.1fr)",
-      showUnit ? "4.5rem" : null,
-      showCommercialFields ? "5.5rem" : null,
-      showCommercialFields ? "6.5rem" : null,
-      showCommercialFields && showPurchasePrice ? "6.5rem" : null,
-      showCommercialFields ? "5.5rem" : null,
+      showCategory ? "minmax(6.75rem, 1fr)" : null,
+      "minmax(9rem, 1.5fr)",
+      "minmax(6.25rem, 0.9fr)",
+      showUnit ? "3.5rem" : null,
+      showCommercialFields ? "4.5rem" : null,
+      showCommercialFields ? "minmax(5.25rem, 0.8fr)" : null,
+      showCommercialFields ? "minmax(4.25rem, 0.45fr)" : null,
+      showCommercialFields && showPurchasePrice ? "minmax(5.25rem, 0.8fr)" : null,
+      showCommercialFields && showPurchasePrice ? "minmax(4.25rem, 0.45fr)" : null,
+      showCommercialFields ? "4rem" : null,
       showStatus ? "minmax(7.5rem, 0.9fr)" : null,
-      hasAction ? "3.5rem" : null,
+      hasAction ? "3rem" : null,
     ].filter(Boolean);
     return withTabularSerialNumberColumn(tracks.join(" "));
   }, [hasAction, showCategory, showCommercialFields, showPurchasePrice, showStatus, showUnit]);
@@ -169,6 +187,7 @@ export function ItemVariantFlatTable({
               amount: row.amount,
               currency: row.currency,
               gstSlab: row.gstSlab,
+              taxMode: row.taxMode,
             },
           ]),
         ),
@@ -180,6 +199,7 @@ export function ItemVariantFlatTable({
             {
               amount: row.amount,
               currency: row.currency,
+              taxMode: row.taxMode,
             },
           ]),
         ),
@@ -216,8 +236,10 @@ export function ItemVariantFlatTable({
               itemType: item.itemType,
               hsnSac: item.hsnSac,
               salesPrice: salesPriceByVariantId[pendingVariant.id]?.amount ?? pendingVariant.salesPrice,
+              salesTaxMode: salesPriceByVariantId[pendingVariant.id]?.taxMode ?? "EXCLUSIVE",
               purchasePrice:
                 purchasePriceByVariantId[pendingVariant.id]?.amount ?? pendingVariant.purchasePrice,
+              purchaseTaxMode: purchasePriceByVariantId[pendingVariant.id]?.taxMode ?? "EXCLUSIVE",
               gstSlab: salesPriceByVariantId[pendingVariant.id]?.gstSlab ?? null,
               currency:
                 salesPriceByVariantId[pendingVariant.id]?.currency ??
@@ -242,7 +264,9 @@ export function ItemVariantFlatTable({
           itemType: item.itemType,
           hsnSac: item.hsnSac,
           salesPrice: null,
+          salesTaxMode: "EXCLUSIVE",
           purchasePrice: null,
+          purchaseTaxMode: "EXCLUSIVE",
           gstSlab: null,
           currency: "INR",
           isActive: item.isActive,
@@ -265,7 +289,9 @@ export function ItemVariantFlatTable({
           hsnSac: item.hsnSac,
           gstSlab: salesPriceByVariantId[variant.id]?.gstSlab ?? null,
           salesPrice: salesPriceByVariantId[variant.id]?.amount ?? null,
+          salesTaxMode: salesPriceByVariantId[variant.id]?.taxMode ?? "EXCLUSIVE",
           purchasePrice: purchasePriceByVariantId[variant.id]?.amount ?? null,
+          purchaseTaxMode: purchasePriceByVariantId[variant.id]?.taxMode ?? "EXCLUSIVE",
           currency:
             salesPriceByVariantId[variant.id]?.currency ??
             purchasePriceByVariantId[variant.id]?.currency ??
@@ -292,6 +318,166 @@ export function ItemVariantFlatTable({
     },
     [onAction, onOpenItem],
   );
+
+  const renderGroupedHeaderCells = () => {
+    const cells: ReactNode[] = [];
+    let column = 1;
+
+    const rowSpanStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "1 / span 2",
+    });
+    const firstRowStyle = (targetColumn: number, span = 1) => ({
+      gridColumn: span > 1 ? `${targetColumn} / span ${span}` : String(targetColumn),
+      gridRow: "1",
+    });
+    const secondRowStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "2",
+    });
+
+    cells.push(
+      <TabularSerialNumberHeaderCell key="serial" rowSpan={2} style={rowSpanStyle(column)} />,
+    );
+    column += 1;
+
+    if (showCategory) {
+      cells.push(
+        <TabularCell key="category" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+          Category
+        </TabularCell>,
+      );
+      column += 1;
+    }
+
+    cells.push(
+      <TabularCell key="name" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        Name
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell key="sku" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        SKU
+      </TabularCell>,
+    );
+    column += 1;
+
+    if (showUnit) {
+      cells.push(
+        <TabularCell key="unit" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+          Unit
+        </TabularCell>,
+      );
+      column += 1;
+    }
+
+    cells.push(
+      <TabularCell key="tax-code" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        {taxCodeLabel}
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell
+        key="sales"
+        variant="header"
+        align="center"
+        span={2}
+        className={groupedParentHeaderClassName}
+        style={firstRowStyle(column, 2)}
+      >
+        Sales
+      </TabularCell>,
+      <TabularCell
+        key="sales-price"
+        variant="header"
+        align="end"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column)}
+      >
+        Price
+      </TabularCell>,
+      <TabularCell
+        key="sales-tax"
+        variant="header"
+        align="center"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column + 1)}
+      >
+        Tax
+      </TabularCell>,
+    );
+    column += 2;
+
+    if (showPurchasePrice) {
+      cells.push(
+        <TabularCell
+          key="purchase"
+          variant="header"
+          align="center"
+          span={2}
+          className={groupedParentHeaderClassName}
+          style={firstRowStyle(column, 2)}
+        >
+          Purchase
+        </TabularCell>,
+        <TabularCell
+          key="purchase-price"
+          variant="header"
+          align="end"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column)}
+        >
+          Price
+        </TabularCell>,
+        <TabularCell
+          key="purchase-tax"
+          variant="header"
+          align="center"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column + 1)}
+        >
+          Tax
+        </TabularCell>,
+      );
+      column += 2;
+    }
+
+    cells.push(
+      <TabularCell key="gst" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        GST %
+      </TabularCell>,
+    );
+    column += 1;
+
+    if (showStatus) {
+      cells.push(
+        <TabularCell key="status" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+          Status
+        </TabularCell>,
+      );
+      column += 1;
+    }
+
+    if (hasAction) {
+      cells.push(
+        <TabularCell
+          key="actions"
+          variant="header"
+          align="center"
+          rowSpan={2}
+          style={rowSpanStyle(column)}
+        >
+          Actions
+        </TabularCell>,
+      );
+    }
+
+    return cells;
+  };
 
   if (!loading && visibleRows.length === 0) {
     return <div className="card app-shell-description">{emptyMessage}</div>;
@@ -333,10 +519,18 @@ export function ItemVariantFlatTable({
                         <p className="app-mobile-record-meta">
                           Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                         </p>
+                        <p className="app-mobile-record-meta">
+                          Sales tax: {getTaxModeDisplay(row.salesTaxMode)}
+                        </p>
                         {showPurchasePrice ? (
-                          <p className="app-mobile-record-meta">
-                            Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
-                          </p>
+                          <>
+                            <p className="app-mobile-record-meta">
+                              Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
+                            </p>
+                            <p className="app-mobile-record-meta">
+                              Purchase tax: {getTaxModeDisplay(row.purchaseTaxMode)}
+                            </p>
+                          </>
                         ) : null}
                         <p className="app-mobile-record-meta">
                           GST %: {getGstSlabDisplay(row.gstSlab)}
@@ -384,10 +578,18 @@ export function ItemVariantFlatTable({
                         <p className="app-mobile-record-meta">
                           Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                         </p>
+                        <p className="app-mobile-record-meta">
+                          Sales tax: {getTaxModeDisplay(row.salesTaxMode)}
+                        </p>
                         {showPurchasePrice ? (
-                          <p className="app-mobile-record-meta">
-                            Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
-                          </p>
+                          <>
+                            <p className="app-mobile-record-meta">
+                              Purchase: {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
+                            </p>
+                            <p className="app-mobile-record-meta">
+                              Purchase tax: {getTaxModeDisplay(row.purchaseTaxMode)}
+                            </p>
+                          </>
                         ) : null}
                         <p className="app-mobile-record-meta">
                           GST %: {getGstSlabDisplay(row.gstSlab)}
@@ -437,21 +639,21 @@ export function ItemVariantFlatTable({
         className="hidden overflow-hidden bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
       >
         <TabularHeader>
-          <TabularRow columns={desktopGridTemplate}>
-            <TabularSerialNumberHeaderCell />
-            {showCategory ? <TabularCell variant="header">Category</TabularCell> : null}
-            <TabularCell variant="header">Name</TabularCell>
-            <TabularCell variant="header">SKU</TabularCell>
-            {showUnit ? <TabularCell variant="header">Unit</TabularCell> : null}
-            {showCommercialFields ? <TabularCell variant="header">{taxCodeLabel}</TabularCell> : null}
-            {showCommercialFields ? <TabularCell variant="header" align="end">Sales</TabularCell> : null}
-            {showCommercialFields && showPurchasePrice ? (
-              <TabularCell variant="header" align="end">Purchase</TabularCell>
-            ) : null}
-            {showCommercialFields ? <TabularCell variant="header">GST %</TabularCell> : null}
-            {showStatus ? <TabularCell variant="header">Status</TabularCell> : null}
-            {hasAction ? <TabularCell variant="header" align="center">Actions</TabularCell> : null}
-          </TabularRow>
+          {showCommercialFields ? (
+            <TabularRow columns={desktopGridTemplate} rows={groupedHeaderRows}>
+              {renderGroupedHeaderCells()}
+            </TabularRow>
+          ) : (
+            <TabularRow columns={desktopGridTemplate}>
+              <TabularSerialNumberHeaderCell />
+              {showCategory ? <TabularCell variant="header">Category</TabularCell> : null}
+              <TabularCell variant="header">Name</TabularCell>
+              <TabularCell variant="header">SKU</TabularCell>
+              {showUnit ? <TabularCell variant="header">Unit</TabularCell> : null}
+              {showStatus ? <TabularCell variant="header">Status</TabularCell> : null}
+              {hasAction ? <TabularCell variant="header" align="center">Actions</TabularCell> : null}
+            </TabularRow>
+          )}
         </TabularHeader>
         <TabularBody className="overflow-y-auto">
           {loading ? (
@@ -505,6 +707,11 @@ export function ItemVariantFlatTable({
                     {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
                   </TabularCell>
                 ) : null}
+                {showCommercialFields ? (
+                  <TabularCell align="center" title={getTaxModeDisplay(row.salesTaxMode)}>
+                    {getTaxModeDisplay(row.salesTaxMode)}
+                  </TabularCell>
+                ) : null}
                 {showCommercialFields && showPurchasePrice ? (
                   <TabularCell
                     align="end"
@@ -512,6 +719,11 @@ export function ItemVariantFlatTable({
                     title={formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
                   >
                     {formatCurrencyDisplay(row.purchasePrice ?? null, row.currency)}
+                  </TabularCell>
+                ) : null}
+                {showCommercialFields && showPurchasePrice ? (
+                  <TabularCell align="center" title={getTaxModeDisplay(row.purchaseTaxMode)}>
+                    {getTaxModeDisplay(row.purchaseTaxMode)}
                   </TabularCell>
                 ) : null}
                 {showCommercialFields ? (

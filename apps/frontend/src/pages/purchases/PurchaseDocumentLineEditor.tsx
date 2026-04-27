@@ -88,6 +88,11 @@ const getPurchaseOriginBadgeClassName = (line: PurchaseLine) =>
     ? "bg-[#dff3ff] text-[#155b8f]"
     : "bg-slate-100 text-slate-600";
 
+const groupedHeaderRows = "1.65rem 1.2rem";
+const groupedParentHeaderClassName = "h-full justify-center text-center";
+const groupedSubHeaderClassName =
+  "h-full text-[9px] font-medium tracking-[0.03em] text-muted-foreground";
+
 export function PurchaseDocumentLineEditor({
   config,
   lines,
@@ -146,6 +151,85 @@ export function PurchaseDocumentLineEditor({
         onAppendLine();
       },
     });
+
+  const renderDesktopHeaderCells = () => {
+    let column = 1;
+    const rowSpanStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "1 / span 2",
+    });
+    const firstRowStyle = (targetColumn: number, span = 1) => ({
+      gridColumn: span > 1 ? `${targetColumn} / span ${span}` : String(targetColumn),
+      gridRow: "1",
+    });
+    const secondRowStyle = (targetColumn: number) => ({
+      gridColumn: String(targetColumn),
+      gridRow: "2",
+    });
+    const cells = [
+      <TabularSerialNumberHeaderCell key="serial" rowSpan={2} style={rowSpanStyle(column)} />,
+    ];
+    column += 1;
+
+    cells.push(
+      <TabularCell key="item" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
+        Item
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell key="qty" variant="header" align="end" rowSpan={2} style={rowSpanStyle(column)}>
+        Qty
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell
+        key="pricing"
+        variant="header"
+        align="center"
+        span={3}
+        className={groupedParentHeaderClassName}
+        style={firstRowStyle(column, 3)}
+      >
+        Pricing
+      </TabularCell>,
+      <TabularCell key="rate" variant="header" align="end" className={groupedSubHeaderClassName} style={secondRowStyle(column)}>
+        Rate
+      </TabularCell>,
+      <TabularCell key="gst" variant="header" align="center" className={groupedSubHeaderClassName} style={secondRowStyle(column + 1)}>
+        GST
+      </TabularCell>,
+      <TabularCell key="mode" variant="header" align="center" className={groupedSubHeaderClassName} style={secondRowStyle(column + 2)}>
+        Tax
+      </TabularCell>,
+    );
+    column += 3;
+
+    cells.push(
+      <TabularCell key="tax" variant="header" align="end" rowSpan={2} style={rowSpanStyle(column)}>
+        Tax
+      </TabularCell>,
+    );
+    column += 1;
+
+    cells.push(
+      <TabularCell key="total" variant="header" align="end" rowSpan={2} style={rowSpanStyle(column)}>
+        Total
+      </TabularCell>,
+    );
+    column += 1;
+
+    if (!isViewingPostedDocument) {
+      cells.push(
+        <TabularCell key="actions" variant="header" align="center" rowSpan={2} style={rowSpanStyle(column)} />,
+      );
+    }
+
+    return cells;
+  };
 
   return (
     <div className="flex min-h-[14rem] flex-1 flex-col gap-1.5 pt-1 md:min-h-0 md:overflow-hidden">
@@ -300,26 +384,8 @@ export function PurchaseDocumentLineEditor({
           className="min-h-0 h-full flex-1 overflow-y-auto overflow-x-hidden"
         >
           <TabularHeader>
-            <TabularRow columns={desktopGridTemplate}>
-              <TabularSerialNumberHeaderCell />
-              <TabularCell variant="header">Item</TabularCell>
-              <TabularCell variant="header" align="end">
-                Qty
-              </TabularCell>
-              <TabularCell variant="header" align="end">
-                Rate
-              </TabularCell>
-              <TabularCell variant="header">GST %</TabularCell>
-              <TabularCell variant="header">Mode</TabularCell>
-              <TabularCell variant="header" align="end">
-                Tax
-              </TabularCell>
-              <TabularCell variant="header" align="end">
-                Total
-              </TabularCell>
-              {!isViewingPostedDocument ? (
-                <TabularCell variant="header" align="center" />
-              ) : null}
+            <TabularRow columns={desktopGridTemplate} rows={groupedHeaderRows}>
+              {renderDesktopHeaderCells()}
             </TabularRow>
           </TabularHeader>
           <TabularBody>
@@ -453,7 +519,7 @@ export function PurchaseDocumentLineEditor({
                       onFocus={() => handleCellFocus(line.id, "taxMode")}
                       onKeyDown={(event) => handleCellKeyDown(event, line.id, "taxMode")}
                     >
-                      {line.taxMode === "INCLUSIVE" ? "Inc" : "Exc"}
+                      {line.taxMode === "INCLUSIVE" ? "Incl." : "Excl."}
                     </Button>
                   </TabularCell>
                   <TabularCell align="end" className={tabularNumericClassName}>
