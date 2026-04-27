@@ -1814,14 +1814,14 @@ export function ItemDetailsPage({
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Name</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>SKU</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>{taxCodeLabel}</span>
-                    <span style={{ fontSize: "10px", lineHeight: "12px" }}>Sales</span>
-                    <span style={{ fontSize: "10px", lineHeight: "12px" }}>Sales tax</span>
                     {showPurchasePrice ? (
                       <span style={{ fontSize: "10px", lineHeight: "12px" }}>Purchase</span>
                     ) : null}
                     {showPurchasePrice ? (
                       <span style={{ fontSize: "10px", lineHeight: "12px" }}>Purchase tax</span>
                     ) : null}
+                    <span style={{ fontSize: "10px", lineHeight: "12px" }}>Sales</span>
+                    <span style={{ fontSize: "10px", lineHeight: "12px" }}>Sales tax</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>GST %</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Unit</span>
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Category</span>
@@ -1871,47 +1871,6 @@ export function ItemDetailsPage({
                       }
                       placeholder={taxCodePlaceholder}
                     />
-                    <Input
-                      className={SIMPLE_ROW_INPUT_CLASS}
-                      value={primaryVariant.salesPrice ?? ""}
-                      disabled={!isEditing || loading}
-                      onChange={(event) =>
-                        setItem({
-                          ...item,
-                          variants: item.variants.map((variant, index) =>
-                            index === 0
-                              ? { ...variant, salesPrice: event.target.value }
-                              : variant,
-                          ),
-                        })
-                      }
-                      placeholder="Sales price"
-                      inputMode="decimal"
-                    />
-                    <Select
-                      className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}
-                      value={primaryVariant.salesTaxMode}
-                      disabled={!isEditing || loading}
-                      onChange={(event) =>
-                        setItem({
-                          ...item,
-                          variants: item.variants.map((variant, index) =>
-                            index === 0
-                              ? {
-                                  ...variant,
-                                  salesTaxMode:
-                                    event.target.value === "INCLUSIVE"
-                                      ? "INCLUSIVE"
-                                      : "EXCLUSIVE",
-                                }
-                              : variant,
-                          ),
-                        })
-                      }
-                    >
-                      <option value="EXCLUSIVE">Excl.</option>
-                      <option value="INCLUSIVE">Incl.</option>
-                    </Select>
                     {showPurchasePrice ? (
                       <Input
                         className={SIMPLE_ROW_INPUT_CLASS}
@@ -1957,6 +1916,47 @@ export function ItemDetailsPage({
                         <option value="INCLUSIVE">Incl.</option>
                       </Select>
                     ) : null}
+                    <Input
+                      className={SIMPLE_ROW_INPUT_CLASS}
+                      value={primaryVariant.salesPrice ?? ""}
+                      disabled={!isEditing || loading}
+                      onChange={(event) =>
+                        setItem({
+                          ...item,
+                          variants: item.variants.map((variant, index) =>
+                            index === 0
+                              ? { ...variant, salesPrice: event.target.value }
+                              : variant,
+                          ),
+                        })
+                      }
+                      placeholder="Sales price"
+                      inputMode="decimal"
+                    />
+                    <Select
+                      className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}
+                      value={primaryVariant.salesTaxMode}
+                      disabled={!isEditing || loading}
+                      onChange={(event) =>
+                        setItem({
+                          ...item,
+                          variants: item.variants.map((variant, index) =>
+                            index === 0
+                              ? {
+                                  ...variant,
+                                  salesTaxMode:
+                                    event.target.value === "INCLUSIVE"
+                                      ? "INCLUSIVE"
+                                      : "EXCLUSIVE",
+                                }
+                              : variant,
+                          ),
+                        })
+                      }
+                    >
+                      <option value="EXCLUSIVE">Excl.</option>
+                      <option value="INCLUSIVE">Incl.</option>
+                    </Select>
                     <GstSlabSelect
                       className={`${SIMPLE_ROW_INPUT_CLASS} w-full`}
                       value={primaryVariant.gstSlab ?? ""}

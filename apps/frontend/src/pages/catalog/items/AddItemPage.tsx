@@ -496,10 +496,10 @@ export function AddItemPage({
             "name",
             "sku",
             "hsnSac",
-            "salesPrice",
-            "salesTaxMode",
             "purchasePrice",
             "purchaseTaxMode",
+            "salesPrice",
+            "salesTaxMode",
             "gstSlab",
             "unit",
             "category",
@@ -543,38 +543,6 @@ export function AddItemPage({
       column += 1;
     }
 
-    cells.push(
-      <TabularCell
-        key="sales"
-        variant="header"
-        align="center"
-        span={2}
-        className={groupedParentHeaderClassName}
-        style={firstRowStyle(column, 2)}
-      >
-        Sales
-      </TabularCell>,
-      <TabularCell
-        key="sales-price"
-        variant="header"
-        align="end"
-        className={groupedSubHeaderClassName}
-        style={secondRowStyle(column)}
-      >
-        Price
-      </TabularCell>,
-      <TabularCell
-        key="sales-tax"
-        variant="header"
-        align="center"
-        className={groupedSubHeaderClassName}
-        style={secondRowStyle(column + 1)}
-      >
-        Tax
-      </TabularCell>,
-    );
-    column += 2;
-
     if (showPurchasePrice) {
       cells.push(
         <TabularCell
@@ -608,6 +576,38 @@ export function AddItemPage({
       );
       column += 2;
     }
+
+    cells.push(
+      <TabularCell
+        key="sales"
+        variant="header"
+        align="center"
+        span={2}
+        className={groupedParentHeaderClassName}
+        style={firstRowStyle(column, 2)}
+      >
+        Sales
+      </TabularCell>,
+      <TabularCell
+        key="sales-price"
+        variant="header"
+        align="end"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column)}
+      >
+        Price
+      </TabularCell>,
+      <TabularCell
+        key="sales-tax"
+        variant="header"
+        align="center"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column + 1)}
+      >
+        Tax
+      </TabularCell>,
+    );
+    column += 2;
 
     for (const label of ["GST %", "Unit", "Category", "Actions"]) {
       cells.push(
@@ -1742,65 +1742,6 @@ export function AddItemPage({
                             inputMode="numeric"
                           />
                         </div>
-                        <div className="grid gap-1">
-                          <Label>Sales price</Label>
-                          <Input
-                            className={getQuickEntryFieldClassName(
-                              row.id,
-                              "salesPrice",
-                              QUICK_ENTRY_INPUT_CLASS,
-                              spreadsheetCellNumericClassName,
-                            )}
-                            value={row.salesPrice}
-                            onChange={(event) =>
-                              setQuickRows((current) =>
-                                current.map((entry) =>
-                                  entry.id === row.id
-                                    ? { ...entry, salesPrice: event.target.value }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            onFocus={(event) =>
-                              handleNumericFieldFocus(event, row.id, "salesPrice")
-                            }
-                            onKeyDown={(event) =>
-                              handleQuickEntryFieldKeyDown(event, row.id, "salesPrice")
-                            }
-                            aria-label={getQuickRowAriaLabel(row, index, "Sales price")}
-                            aria-invalid={rowErrors.salesPrice ? true : undefined}
-                            title={rowErrors.salesPrice}
-                            inputMode="decimal"
-                          />
-                        </div>
-                        <div className="grid gap-1">
-                          <Label>Sales tax</Label>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className={cn(QUICK_ENTRY_SELECT_CLASS, "w-full justify-center")}
-                            onClick={() =>
-                              setQuickRows((current) =>
-                                current.map((entry) =>
-                                  entry.id === row.id
-                                    ? {
-                                        ...entry,
-                                        salesTaxMode: getNextTaxMode(entry.salesTaxMode),
-                                      }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            onFocus={() => handleQuickEntryFieldFocus(row.id, "salesTaxMode")}
-                            onKeyDown={(event) =>
-                              handleQuickEntryFieldKeyDown(event, row.id, "salesTaxMode")
-                            }
-                            aria-label={getQuickRowAriaLabel(row, index, "Sales tax")}
-                          >
-                            {row.salesTaxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
-                          </Button>
-                        </div>
                         {showPurchasePrice ? (
                           <div className="grid gap-1">
                             <Label>Purchase price</Label>
@@ -1864,12 +1805,71 @@ export function AddItemPage({
                                   "purchaseTaxMode",
                                 )
                               }
-                              aria-label={getQuickRowAriaLabel(row, index, "Purchase tax")}
-                            >
+                            aria-label={getQuickRowAriaLabel(row, index, "Purchase tax")}
+                          >
                               {row.purchaseTaxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
                             </Button>
                           </div>
                         ) : null}
+                        <div className="grid gap-1">
+                          <Label>Sales price</Label>
+                          <Input
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "salesPrice",
+                              QUICK_ENTRY_INPUT_CLASS,
+                              spreadsheetCellNumericClassName,
+                            )}
+                            value={row.salesPrice}
+                            onChange={(event) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? { ...entry, salesPrice: event.target.value }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={(event) =>
+                              handleNumericFieldFocus(event, row.id, "salesPrice")
+                            }
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "salesPrice")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "Sales price")}
+                            aria-invalid={rowErrors.salesPrice ? true : undefined}
+                            title={rowErrors.salesPrice}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <Label>Sales tax</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className={cn(QUICK_ENTRY_SELECT_CLASS, "w-full justify-center")}
+                            onClick={() =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? {
+                                        ...entry,
+                                        salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "salesTaxMode")}
+                            onKeyDown={(event) =>
+                              handleQuickEntryFieldKeyDown(event, row.id, "salesTaxMode")
+                            }
+                            aria-label={getQuickRowAriaLabel(row, index, "Sales tax")}
+                          >
+                            {row.salesTaxMode === "INCLUSIVE" ? "Inclusive" : "Exclusive"}
+                          </Button>
+                        </div>
                         <div className="grid gap-1">
                           <Label>GST %</Label>
                           <GstSlabSelect
@@ -2123,59 +2123,6 @@ export function AddItemPage({
                             placeholder={taxCodeLabel}
                           />
                         </TabularCell>
-                        <TabularCell variant="editable" align="end" error={Boolean(rowErrors.salesPrice)}>
-                          <Input
-                            unstyled
-                            {...getQuickRowCellDataAttributes(row.id, "salesPrice")}
-                            className={getQuickEntryFieldClassName(
-                              row.id,
-                              "salesPrice",
-                              undefined,
-                              spreadsheetCellNumericClassName,
-                            )}
-                            value={row.salesPrice}
-                            onChange={(event) =>
-                              setQuickRows((current) =>
-                                current.map((entry) =>
-                                  entry.id === row.id ? { ...entry, salesPrice: event.target.value } : entry,
-                                ),
-                              )
-                            }
-                            onFocus={(event) => handleNumericFieldFocus(event, row.id, "salesPrice")}
-                            onKeyDown={(event) => handleQuickEntryFieldKeyDown(event, row.id, "salesPrice")}
-                            aria-label={getQuickRowAriaLabel(row, index, "Sales price")}
-                            aria-invalid={rowErrors.salesPrice ? true : undefined}
-                            title={rowErrors.salesPrice}
-                            inputMode="decimal"
-                            placeholder="0.00"
-                          />
-                        </TabularCell>
-                        <TabularCell variant="editable">
-                          <Button
-                            {...getQuickRowCellDataAttributes(row.id, "salesTaxMode")}
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
-                            onClick={() =>
-                              setQuickRows((current) =>
-                                current.map((entry) =>
-                                  entry.id === row.id
-                                    ? {
-                                        ...entry,
-                                        salesTaxMode: getNextTaxMode(entry.salesTaxMode),
-                                      }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            onFocus={() => handleQuickEntryFieldFocus(row.id, "salesTaxMode")}
-                            onKeyDown={(event) => handleQuickEntryFieldKeyDown(event, row.id, "salesTaxMode")}
-                            aria-label={getQuickRowAriaLabel(row, index, "Sales tax")}
-                          >
-                            {row.salesTaxMode === "INCLUSIVE" ? "Incl." : "Excl."}
-                          </Button>
-                        </TabularCell>
                         {showPurchasePrice ? (
                           <TabularCell variant="editable" align="end" error={Boolean(rowErrors.purchasePrice)}>
                             <Input
@@ -2237,6 +2184,59 @@ export function AddItemPage({
                             </Button>
                           </TabularCell>
                         ) : null}
+                        <TabularCell variant="editable" align="end" error={Boolean(rowErrors.salesPrice)}>
+                          <Input
+                            unstyled
+                            {...getQuickRowCellDataAttributes(row.id, "salesPrice")}
+                            className={getQuickEntryFieldClassName(
+                              row.id,
+                              "salesPrice",
+                              undefined,
+                              spreadsheetCellNumericClassName,
+                            )}
+                            value={row.salesPrice}
+                            onChange={(event) =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id ? { ...entry, salesPrice: event.target.value } : entry,
+                                ),
+                              )
+                            }
+                            onFocus={(event) => handleNumericFieldFocus(event, row.id, "salesPrice")}
+                            onKeyDown={(event) => handleQuickEntryFieldKeyDown(event, row.id, "salesPrice")}
+                            aria-label={getQuickRowAriaLabel(row, index, "Sales price")}
+                            aria-invalid={rowErrors.salesPrice ? true : undefined}
+                            title={rowErrors.salesPrice}
+                            inputMode="decimal"
+                            placeholder="0.00"
+                          />
+                        </TabularCell>
+                        <TabularCell variant="editable">
+                          <Button
+                            {...getQuickRowCellDataAttributes(row.id, "salesTaxMode")}
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
+                            onClick={() =>
+                              setQuickRows((current) =>
+                                current.map((entry) =>
+                                  entry.id === row.id
+                                    ? {
+                                        ...entry,
+                                        salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                                      }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            onFocus={() => handleQuickEntryFieldFocus(row.id, "salesTaxMode")}
+                            onKeyDown={(event) => handleQuickEntryFieldKeyDown(event, row.id, "salesTaxMode")}
+                            aria-label={getQuickRowAriaLabel(row, index, "Sales tax")}
+                          >
+                            {row.salesTaxMode === "INCLUSIVE" ? "Incl." : "Excl."}
+                          </Button>
+                        </TabularCell>
                         <TabularCell variant="editable">
                           <GstSlabSelect
                             unstyled

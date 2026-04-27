@@ -380,38 +380,6 @@ export function ItemVariantFlatTable({
     );
     column += 1;
 
-    cells.push(
-      <TabularCell
-        key="sales"
-        variant="header"
-        align="center"
-        span={2}
-        className={groupedParentHeaderClassName}
-        style={firstRowStyle(column, 2)}
-      >
-        Sales
-      </TabularCell>,
-      <TabularCell
-        key="sales-price"
-        variant="header"
-        align="end"
-        className={groupedSubHeaderClassName}
-        style={secondRowStyle(column)}
-      >
-        Price
-      </TabularCell>,
-      <TabularCell
-        key="sales-tax"
-        variant="header"
-        align="center"
-        className={groupedSubHeaderClassName}
-        style={secondRowStyle(column + 1)}
-      >
-        Tax
-      </TabularCell>,
-    );
-    column += 2;
-
     if (showPurchasePrice) {
       cells.push(
         <TabularCell
@@ -445,6 +413,38 @@ export function ItemVariantFlatTable({
       );
       column += 2;
     }
+
+    cells.push(
+      <TabularCell
+        key="sales"
+        variant="header"
+        align="center"
+        span={2}
+        className={groupedParentHeaderClassName}
+        style={firstRowStyle(column, 2)}
+      >
+        Sales
+      </TabularCell>,
+      <TabularCell
+        key="sales-price"
+        variant="header"
+        align="end"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column)}
+      >
+        Price
+      </TabularCell>,
+      <TabularCell
+        key="sales-tax"
+        variant="header"
+        align="center"
+        className={groupedSubHeaderClassName}
+        style={secondRowStyle(column + 1)}
+      >
+        Tax
+      </TabularCell>,
+    );
+    column += 2;
 
     cells.push(
       <TabularCell key="gst" variant="header" rowSpan={2} style={rowSpanStyle(column)}>
@@ -516,12 +516,6 @@ export function ItemVariantFlatTable({
                         <p className="app-mobile-record-meta">
                           {taxCodeLabel}: {row.hsnSac || "-"}
                         </p>
-                        <p className="app-mobile-record-meta">
-                          Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
-                        </p>
-                        <p className="app-mobile-record-meta">
-                          Sales tax: {getTaxModeDisplay(row.salesTaxMode)}
-                        </p>
                         {showPurchasePrice ? (
                           <>
                             <p className="app-mobile-record-meta">
@@ -532,6 +526,12 @@ export function ItemVariantFlatTable({
                             </p>
                           </>
                         ) : null}
+                        <p className="app-mobile-record-meta">
+                          Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
+                        </p>
+                        <p className="app-mobile-record-meta">
+                          Sales tax: {getTaxModeDisplay(row.salesTaxMode)}
+                        </p>
                         <p className="app-mobile-record-meta">
                           GST %: {getGstSlabDisplay(row.gstSlab)}
                         </p>
@@ -575,12 +575,6 @@ export function ItemVariantFlatTable({
                         <p className="app-mobile-record-meta">
                           {taxCodeLabel}: {row.hsnSac || "-"}
                         </p>
-                        <p className="app-mobile-record-meta">
-                          Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
-                        </p>
-                        <p className="app-mobile-record-meta">
-                          Sales tax: {getTaxModeDisplay(row.salesTaxMode)}
-                        </p>
                         {showPurchasePrice ? (
                           <>
                             <p className="app-mobile-record-meta">
@@ -591,6 +585,12 @@ export function ItemVariantFlatTable({
                             </p>
                           </>
                         ) : null}
+                        <p className="app-mobile-record-meta">
+                          Sales: {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
+                        </p>
+                        <p className="app-mobile-record-meta">
+                          Sales tax: {getTaxModeDisplay(row.salesTaxMode)}
+                        </p>
                         <p className="app-mobile-record-meta">
                           GST %: {getGstSlabDisplay(row.gstSlab)}
                         </p>
@@ -698,20 +698,6 @@ export function ItemVariantFlatTable({
                     {row.hsnSac || "-"}
                   </TabularCell>
                 ) : null}
-                {showCommercialFields ? (
-                  <TabularCell
-                    align="end"
-                    className={tabularNumericClassName}
-                    title={formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
-                  >
-                    {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
-                  </TabularCell>
-                ) : null}
-                {showCommercialFields ? (
-                  <TabularCell align="center" title={getTaxModeDisplay(row.salesTaxMode)}>
-                    {getTaxModeDisplay(row.salesTaxMode)}
-                  </TabularCell>
-                ) : null}
                 {showCommercialFields && showPurchasePrice ? (
                   <TabularCell
                     align="end"
@@ -724,6 +710,20 @@ export function ItemVariantFlatTable({
                 {showCommercialFields && showPurchasePrice ? (
                   <TabularCell align="center" title={getTaxModeDisplay(row.purchaseTaxMode)}>
                     {getTaxModeDisplay(row.purchaseTaxMode)}
+                  </TabularCell>
+                ) : null}
+                {showCommercialFields ? (
+                  <TabularCell
+                    align="end"
+                    className={tabularNumericClassName}
+                    title={formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
+                  >
+                    {formatCurrencyDisplay(row.salesPrice ?? null, row.currency)}
+                  </TabularCell>
+                ) : null}
+                {showCommercialFields ? (
+                  <TabularCell align="center" title={getTaxModeDisplay(row.salesTaxMode)}>
+                    {getTaxModeDisplay(row.salesTaxMode)}
                   </TabularCell>
                 ) : null}
                 {showCommercialFields ? (

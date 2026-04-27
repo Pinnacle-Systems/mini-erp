@@ -302,12 +302,12 @@ export function ItemVariantCardsEditor({
   const editableFieldOrder = useMemo<EditableFieldKey[]>(() => {
     const fields: EditableFieldKey[] = ["name", "sku", "barcode"];
     if (showPricingFields) {
-      fields.push("salesPrice");
-      fields.push("salesTaxMode");
       if (showPurchasePrice) {
         fields.push("purchasePrice");
         fields.push("purchaseTaxMode");
       }
+      fields.push("salesPrice");
+      fields.push("salesTaxMode");
     }
     if (showPricingFields || showGstSlabField) {
       fields.push("gstSlab");
@@ -417,38 +417,6 @@ export function ItemVariantCardsEditor({
     column += 1;
 
     if (showPricingFields) {
-      cells.push(
-        <TabularCell
-          key="sales"
-          variant="header"
-          align="center"
-          span={2}
-          className={groupedParentHeaderClassName}
-          style={firstRowStyle(column, 2)}
-        >
-          Sales
-        </TabularCell>,
-        <TabularCell
-          key="sales-price"
-          variant="header"
-          align="end"
-          className={groupedSubHeaderClassName}
-          style={secondRowStyle(column)}
-        >
-          Price
-        </TabularCell>,
-        <TabularCell
-          key="sales-tax"
-          variant="header"
-          align="center"
-          className={groupedSubHeaderClassName}
-          style={secondRowStyle(column + 1)}
-        >
-          Tax
-        </TabularCell>,
-      );
-      column += 2;
-
       if (showPurchasePrice) {
         cells.push(
           <TabularCell
@@ -482,6 +450,38 @@ export function ItemVariantCardsEditor({
         );
         column += 2;
       }
+
+      cells.push(
+        <TabularCell
+          key="sales"
+          variant="header"
+          align="center"
+          span={2}
+          className={groupedParentHeaderClassName}
+          style={firstRowStyle(column, 2)}
+        >
+          Sales
+        </TabularCell>,
+        <TabularCell
+          key="sales-price"
+          variant="header"
+          align="end"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column)}
+        >
+          Price
+        </TabularCell>,
+        <TabularCell
+          key="sales-tax"
+          variant="header"
+          align="center"
+          className={groupedSubHeaderClassName}
+          style={secondRowStyle(column + 1)}
+        >
+          Tax
+        </TabularCell>,
+      );
+      column += 2;
     }
 
     if (showPricingFields || showGstSlabField) {
@@ -760,58 +760,6 @@ export function ItemVariantCardsEditor({
                         placeholder="Optional barcode"
                       />
                     </div>
-                    {showPricingFields ? (
-                      <div className="app-mobile-variant-field">
-                        <Label>Sales</Label>
-                        <Input
-                          {...getCellDataAttributes(variant.id, "salesPrice")}
-                          data-variant-grid-cell={`${variant.id}:salesPrice`}
-                          className={denseInputClassName}
-                          value={variant.salesPrice ?? ""}
-                          disabled={isReadOnly}
-                          onFocus={() => handleCellFocus(variant.id, "salesPrice")}
-                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
-                          onChange={(event) =>
-                            onVariantsChange(
-                              updateVariant(variants, variant.id, (entry) => ({
-                                ...entry,
-                                salesPrice: event.target.value,
-                              })),
-                            )
-                          }
-                          placeholder="Sales price"
-                          inputMode="decimal"
-                        />
-                      </div>
-                    ) : null}
-                    {showPricingFields ? (
-                      <div className="app-mobile-variant-field">
-                        <Label>Sales tax</Label>
-                        <Button
-                          {...getCellDataAttributes(variant.id, "salesTaxMode")}
-                          data-variant-grid-cell={`${variant.id}:salesTaxMode`}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className={cn(denseInputClassName, "justify-center")}
-                          disabled={isReadOnly}
-                          onClick={() =>
-                            onVariantsChange(
-                              updateVariant(variants, variant.id, (entry) => ({
-                                ...entry,
-                                salesTaxMode: getNextTaxMode(entry.salesTaxMode),
-                              })),
-                            )
-                          }
-                          onFocus={() => handleCellFocus(variant.id, "salesTaxMode")}
-                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesTaxMode")}
-                        >
-                          {normalizeTaxMode(variant.salesTaxMode) === "INCLUSIVE"
-                            ? "Inclusive"
-                            : "Exclusive"}
-                        </Button>
-                      </div>
-                    ) : null}
                     {showPricingFields && showPurchasePrice ? (
                       <div className="app-mobile-variant-field">
                         <Label>Purchase</Label>
@@ -863,6 +811,58 @@ export function ItemVariantCardsEditor({
                           }
                         >
                           {normalizeTaxMode(variant.purchaseTaxMode) === "INCLUSIVE"
+                            ? "Inclusive"
+                            : "Exclusive"}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {showPricingFields ? (
+                      <div className="app-mobile-variant-field">
+                        <Label>Sales</Label>
+                        <Input
+                          {...getCellDataAttributes(variant.id, "salesPrice")}
+                          data-variant-grid-cell={`${variant.id}:salesPrice`}
+                          className={denseInputClassName}
+                          value={variant.salesPrice ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "salesPrice")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesPrice: event.target.value,
+                              })),
+                            )
+                          }
+                          placeholder="Sales price"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    ) : null}
+                    {showPricingFields ? (
+                      <div className="app-mobile-variant-field">
+                        <Label>Sales tax</Label>
+                        <Button
+                          {...getCellDataAttributes(variant.id, "salesTaxMode")}
+                          data-variant-grid-cell={`${variant.id}:salesTaxMode`}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={cn(denseInputClassName, "justify-center")}
+                          disabled={isReadOnly}
+                          onClick={() =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                              })),
+                            )
+                          }
+                          onFocus={() => handleCellFocus(variant.id, "salesTaxMode")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesTaxMode")}
+                        >
+                          {normalizeTaxMode(variant.salesTaxMode) === "INCLUSIVE"
                             ? "Inclusive"
                             : "Exclusive"}
                         </Button>
@@ -1103,59 +1103,6 @@ export function ItemVariantCardsEditor({
                         placeholder="Optional barcode"
                       />
                     </TabularCell>
-                    {showPricingFields ? (
-                      <TabularCell variant="editable" align="end">
-                        <Input
-                          unstyled
-                          {...getCellDataAttributes(variant.id, "salesPrice")}
-                          data-variant-grid-cell={`${variant.id}:salesPrice`}
-                          className={cn(
-                            "w-full",
-                            getDesktopInputClassName({ numeric: true }),
-                            tabularNumericClassName,
-                          )}
-                          value={variant.salesPrice ?? ""}
-                          disabled={isReadOnly}
-                          onFocus={() => handleCellFocus(variant.id, "salesPrice")}
-                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
-                          onChange={(event) =>
-                            onVariantsChange(
-                              updateVariant(variants, variant.id, (entry) => ({
-                                ...entry,
-                                salesPrice: event.target.value,
-                              })),
-                            )
-                          }
-                          placeholder="Sales price"
-                          inputMode="decimal"
-                        />
-                      </TabularCell>
-                    ) : null}
-                    {showPricingFields ? (
-                      <TabularCell variant="editable">
-                        <Button
-                          {...getCellDataAttributes(variant.id, "salesTaxMode")}
-                          data-variant-grid-cell={`${variant.id}:salesTaxMode`}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
-                          disabled={isReadOnly}
-                          onClick={() =>
-                            onVariantsChange(
-                              updateVariant(variants, variant.id, (entry) => ({
-                                ...entry,
-                                salesTaxMode: getNextTaxMode(entry.salesTaxMode),
-                              })),
-                            )
-                          }
-                          onFocus={() => handleCellFocus(variant.id, "salesTaxMode")}
-                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesTaxMode")}
-                        >
-                          {normalizeTaxMode(variant.salesTaxMode) === "INCLUSIVE" ? "Incl." : "Excl."}
-                        </Button>
-                      </TabularCell>
-                    ) : null}
                     {showPricingFields && showPurchasePrice ? (
                       <TabularCell variant="editable" align="end">
                         <Input
@@ -1212,6 +1159,59 @@ export function ItemVariantCardsEditor({
                           {normalizeTaxMode(variant.purchaseTaxMode) === "INCLUSIVE"
                             ? "Incl."
                             : "Excl."}
+                        </Button>
+                      </TabularCell>
+                    ) : null}
+                    {showPricingFields ? (
+                      <TabularCell variant="editable" align="end">
+                        <Input
+                          unstyled
+                          {...getCellDataAttributes(variant.id, "salesPrice")}
+                          data-variant-grid-cell={`${variant.id}:salesPrice`}
+                          className={cn(
+                            "w-full",
+                            getDesktopInputClassName({ numeric: true }),
+                            tabularNumericClassName,
+                          )}
+                          value={variant.salesPrice ?? ""}
+                          disabled={isReadOnly}
+                          onFocus={() => handleCellFocus(variant.id, "salesPrice")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesPrice")}
+                          onChange={(event) =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesPrice: event.target.value,
+                              })),
+                            )
+                          }
+                          placeholder="Sales price"
+                          inputMode="decimal"
+                        />
+                      </TabularCell>
+                    ) : null}
+                    {showPricingFields ? (
+                      <TabularCell variant="editable">
+                        <Button
+                          {...getCellDataAttributes(variant.id, "salesTaxMode")}
+                          data-variant-grid-cell={`${variant.id}:salesTaxMode`}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-[var(--tabular-row-height)] w-full min-w-0 rounded-none border-none bg-transparent px-0 text-[10px] text-muted-foreground shadow-none hover:bg-muted/55"
+                          disabled={isReadOnly}
+                          onClick={() =>
+                            onVariantsChange(
+                              updateVariant(variants, variant.id, (entry) => ({
+                                ...entry,
+                                salesTaxMode: getNextTaxMode(entry.salesTaxMode),
+                              })),
+                            )
+                          }
+                          onFocus={() => handleCellFocus(variant.id, "salesTaxMode")}
+                          onKeyDown={(event) => handleCellKeyDown(event, variant.id, "salesTaxMode")}
+                        >
+                          {normalizeTaxMode(variant.salesTaxMode) === "INCLUSIVE" ? "Incl." : "Excl."}
                         </Button>
                       </TabularCell>
                     ) : null}
