@@ -1,6 +1,5 @@
 import {
   Boxes,
-  ChartColumn,
   ClipboardList,
   Cog,
   FileText,
@@ -12,13 +11,10 @@ import {
   PanelLeft,
   Package,
   PackageSearch,
-  Percent,
   ReceiptText,
   RefreshCcw,
   ScanBarcode,
-  ShieldCheck,
   ShoppingBag,
-  TrendingUp,
   Undo2,
   Users,
   UserRoundCog,
@@ -52,7 +48,7 @@ import { LandingRecentActivityItem } from "../../design-system/molecules/Landing
 
 type UserFolderId =
   | "finance"
-  | "sell"
+  | "sales"
   | "buy"
   | "products"
   | "stock"
@@ -222,8 +218,8 @@ const folders: Array<{
     ],
   },
   {
-    id: "sell",
-    label: "Sell",
+    id: "sales",
+    label: "Sales",
     Icon: HandCoins,
     requiredModule: "sales",
     apps: [
@@ -377,6 +373,7 @@ const folders: Array<{
       },
     ],
   },
+/*
   {
     id: "promotions",
     label: "Promotions",
@@ -445,6 +442,7 @@ const folders: Array<{
       },
     ],
   },
+*/
 ];
 
 const landingQuickActions: Array<{
@@ -457,7 +455,7 @@ const landingQuickActions: Array<{
   {
     label: "New Bill",
     description: "Start billing",
-    folderId: "sell",
+    folderId: "sales",
     appId: "sales-bills",
     Icon: HandCoins,
   },
