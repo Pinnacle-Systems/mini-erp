@@ -26,7 +26,17 @@ export const protect = catchAsync(async (req, res, next) => {
 
   // TODO: block if password was changed after the token was issued
 
-  req.user = currentUser;
+  req.user = {
+    ...currentUser,
+    tenantId: typeof decoded.tenantId === "string" ? decoded.tenantId : undefined,
+    memberRole: typeof decoded.memberRole === "string" ? decoded.memberRole : undefined,
+    locationId:
+      typeof decoded.locationId === "string"
+        ? decoded.locationId
+        : decoded.locationId === null
+          ? null
+          : undefined,
+  };
   req.session = { id: decoded.sid };
   next();
 });
