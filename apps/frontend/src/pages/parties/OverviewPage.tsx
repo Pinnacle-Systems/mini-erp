@@ -58,7 +58,8 @@ const toUserPartiesOverviewErrorMessage = (error: unknown) => {
 
 const isActiveParty = (party: CustomerRow | SupplierRow) => party.isActive && !party.deletedAt;
 
-const getNetAmount = (row: PartyBalanceRow) => row.receivableOutstanding - row.payableOutstanding;
+const getNetAmount = (row: PartyBalanceRow) =>
+  row.receivableOutstanding - row.customerCreditAmount - row.payableOutstanding + row.vendorCreditAmount;
 
 const summarizeRecentPartyPayments = (overview: FinancialOverview | null) =>
   (overview?.recentMovements ?? [])
@@ -138,17 +139,28 @@ export function OverviewPage() {
         .map((customer) => customer.entityId),
     );
     const receivableRows = balances
-      .filter((row) => row.receivableOutstanding > 0)
-      .sort((left, right) => right.receivableOutstanding - left.receivableOutstanding);
+      .filter((row) => row.receivableOutstanding > 0 || row.customerCreditAmount > 0)
+      .sort(
+        (left, right) =>
+          right.receivableOutstanding +
+          right.customerCreditAmount -
+          (left.receivableOutstanding + left.customerCreditAmount),
+      );
     const payableRows = balances
-      .filter((row) => row.payableOutstanding > 0)
-      .sort((left, right) => right.payableOutstanding - left.payableOutstanding);
+      .filter((row) => row.payableOutstanding > 0 || row.vendorCreditAmount > 0)
+      .sort(
+        (left, right) =>
+          right.payableOutstanding +
+          right.vendorCreditAmount -
+          (left.payableOutstanding + left.vendorCreditAmount),
+      );
     const sharedRows = balances
       .filter((row) => sharedPartyIds.has(row.partyId))
       .sort((left, right) => Math.abs(getNetAmount(right)) - Math.abs(getNetAmount(left)));
     const recentPayments = summarizeRecentPartyPayments(financialOverview);
     const receivableTotal = balances.reduce((sum, row) => sum + row.receivableOutstanding, 0);
     const payableTotal = balances.reduce((sum, row) => sum + row.payableOutstanding, 0);
+    const netPartyPosition = balances.reduce((sum, row) => sum + getNetAmount(row), 0);
 
     return {
       activeCustomers,
@@ -160,6 +172,7 @@ export function OverviewPage() {
       recentPayments,
       receivableTotal,
       payableTotal,
+      netPartyPosition,
     };
   }, [balances, customers, financialOverview, suppliers]);
 
@@ -169,7 +182,7 @@ export function OverviewPage() {
     { label: "Shared Parties", value: overview.sharedPartyIds.size },
     { label: "Customer Receivable", value: formatCurrency(overview.receivableTotal) },
     { label: "Supplier Payable", value: formatCurrency(overview.payableTotal) },
-    { label: "Net Party Position", value: formatCurrency(overview.receivableTotal - overview.payableTotal) },
+    { label: "Net Party Position", value: formatCurrency(overview.netPartyPosition) },
   ];
 
   const balanceGridTemplate = withTabularSerialNumberColumn(
@@ -415,9 +428,11 @@ export function OverviewPage() {
                         {formatCurrency(netAmount)}
                       </span>
                     </div>
-                    <div className="mt-1 flex justify-between gap-2 text-[10px] text-muted-foreground">
+                    <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
                       <span>Receivable {formatCurrency(row.receivableOutstanding)}</span>
-                      <span>Payable {formatCurrency(row.payableOutstanding)}</span>
+                      <span className="text-right">Payable {formatCurrency(row.payableOutstanding)}</span>
+                      <span>Customer credit {formatCurrency(row.customerCreditAmount)}</span>
+                      <span className="text-right">Vendor credit {formatCurrency(row.vendorCreditAmount)}</span>
                     </div>
                   </div>
                 );
