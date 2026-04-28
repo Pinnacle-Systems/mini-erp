@@ -40,6 +40,12 @@ export const accountsOverviewSchema = z.object({
   }),
 });
 
+export const partyBalancesSchema = z.object({
+  query: z.object({
+    tenantId: z.uuid(),
+  }),
+});
+
 export const listFinancialAccountsSchema = z.object({
   query: z.object({
     tenantId: z.uuid(),

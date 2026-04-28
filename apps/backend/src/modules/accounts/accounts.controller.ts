@@ -17,6 +17,16 @@ export const overview = catchAsync(async (req, res) => {
   res.json(successResponse(await accountsService.getOverview(tenantId)));
 });
 
+export const partyBalances = catchAsync(async (req, res) => {
+  const { tenantId } = req.query as { tenantId: string };
+  await assertMembership(req.user.id, tenantId);
+  res.json(
+    successResponse({
+      balances: await accountsService.getPartyBalances(tenantId),
+    }),
+  );
+});
+
 export const listFinancialAccounts = catchAsync(async (req, res) => {
   const { tenantId, includeInactive = false } = req.query as {
     tenantId: string;

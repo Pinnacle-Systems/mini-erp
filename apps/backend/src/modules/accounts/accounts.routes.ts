@@ -16,6 +16,7 @@ import {
   listMoneyMovements,
   listOpenDocuments,
   overview,
+  partyBalances,
   partyFinancialSummary,
   reversePaymentAllocation,
   voidMoneyMovement,
@@ -34,6 +35,7 @@ import {
   listOpenDocumentsSchema,
   listPaymentAllocationsSchema,
   paymentCreateSchema,
+  partyBalancesSchema,
   partyFinancialSummarySchema,
   reversePaymentAllocationSchema,
   voidMoneyMovementSchema,
@@ -43,6 +45,7 @@ const router = Router();
 
 router.use(protect);
 router.get("/overview", validateRequest(accountsOverviewSchema), overview);
+router.get("/party-balances", validateRequest(partyBalancesSchema), partyBalances);
 router.get("/financial-accounts", validateRequest(listFinancialAccountsSchema), listFinancialAccounts);
 router.post("/financial-accounts", validateRequest(createFinancialAccountSchema), createFinancialAccount);
 router.post("/financial-accounts/:accountId/archive", validateRequest(archiveFinancialAccountSchema), archiveFinancialAccount);
