@@ -1606,7 +1606,7 @@ export function ItemDetailsPage({
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <div className="flex items-center gap-1.5 rounded-full bg-white/75 px-2 py-1">
+              <div className="flex items-center gap-1.5 rounded-full bg-card/80 px-2 py-1">
                 <Label
                   htmlFor="item-active-status"
                   className="text-[11px] font-medium text-muted-foreground"
@@ -1692,7 +1692,7 @@ export function ItemDetailsPage({
           </div>
         </CardHeader>
         <CardContent className="grid gap-1.5 pb-20 sm:pb-24 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden lg:pb-0">
-          <div className="rounded-lg border border-border/80 bg-white p-1.5 lg:shrink-0">
+          <div className="rounded-lg border border-border/80 bg-card p-1.5 lg:shrink-0">
             <div className="grid gap-1.5">
               <div className="app-mobile-variant-inline-control shrink-0 font-medium text-foreground lg:min-h-0 lg:gap-1.5 lg:text-[10px]">
                 <Switch
@@ -1827,7 +1827,7 @@ export function ItemDetailsPage({
                     <span style={{ fontSize: "10px", lineHeight: "12px" }}>Category</span>
                   </div>
                   <div
-                    className={`grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5 lg:items-center lg:border-0 lg:bg-transparent lg:p-0 ${
+                    className={`grid gap-1.5 rounded-lg border border-border/70 bg-card p-1.5 lg:items-center lg:border-0 lg:bg-transparent lg:p-0 ${
                       showPurchasePrice
                         ? "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1fr)_84px_minmax(0,1fr)_84px_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
                         : "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.35fr)_minmax(0,1.15fr)_minmax(0,1fr)_84px_minmax(0,1fr)_92px_minmax(0,1.6fr)]"
@@ -2021,7 +2021,7 @@ export function ItemDetailsPage({
           {showVariantEditor ? (
             <div className="mt-1 grid gap-1.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
               <div className="grid gap-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
-                <div className="rounded-lg border border-border/80 bg-white p-1.5 lg:shrink-0">
+                <div className="rounded-lg border border-border/80 bg-card p-1.5 lg:shrink-0">
                   <p className="app-shell-action-title lg:text-[10px]">
                     Options
                   </p>

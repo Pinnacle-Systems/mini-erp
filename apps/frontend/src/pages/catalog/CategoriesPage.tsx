@@ -566,7 +566,7 @@ export function CategoriesPage() {
             </div>
           ) : null}
           {!activeBucket || visibleCategoryItems.length === 0 ? (
-            <div className="rounded-lg border border-white/70 bg-white/65 px-2 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-border/70 bg-card px-2 py-2 text-xs text-muted-foreground">
               {activeBucket?.items.length
                 ? "No active items mapped to this category."
                 : "No items mapped to this category."}
