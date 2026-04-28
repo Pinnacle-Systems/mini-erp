@@ -87,7 +87,7 @@ export function PageActionBar({
         ? createPortal(
             <div
               className={cn(
-                "pointer-events-none fixed inset-x-0 z-40 border-t border-border/80 bg-white p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden",
+                "pointer-events-none fixed inset-x-0 z-40 border-t border-border/80 bg-card p-2 shadow-[0_-1px_2px_rgba(15,23,42,0.05)] lg:hidden",
                 mobileOffsetClassName,
                 mobileBarClassName,
               )}

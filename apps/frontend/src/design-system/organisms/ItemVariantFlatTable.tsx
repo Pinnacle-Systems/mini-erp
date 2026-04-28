@@ -497,7 +497,7 @@ export function ItemVariantFlatTable({
                 className={`app-mobile-record-card block w-full ${
                   highlightInactiveRows && !row.isActive
                     ? "border-amber-400 bg-amber-100 hover:bg-amber-100"
-                    : "border-border/70 bg-white hover:bg-white/90"
+                    : "border-border/70 bg-card hover:bg-muted/65"
                 }`}
                 onClick={() => handleAction(row)}
                 aria-label={`${actionLabel} ${getPrimaryName(row)}`}
@@ -558,7 +558,7 @@ export function ItemVariantFlatTable({
                 className={`app-mobile-record-card ${
                   highlightInactiveRows && !row.isActive
                     ? "border-amber-400 bg-amber-100"
-                    : "border-border/70 bg-white"
+                    : "border-border/70 bg-card"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">

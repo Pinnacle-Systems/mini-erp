@@ -1560,7 +1560,7 @@ export function AddItemPage({
             onSubmit={onSubmit}
             className="space-y-1.5 pb-20 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1 lg:pb-0"
           >
-            <div className="rounded-lg border border-border/80 bg-white p-1.5">
+            <div className="rounded-lg border border-border/80 bg-card p-1.5">
               <div className="grid gap-1.5 lg:flex lg:items-end lg:justify-between lg:gap-2">
                 {hasVariants ? (
                   <div className="grid gap-1.5 lg:min-w-0 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_92px_minmax(0,1.6fr)]">
@@ -1663,7 +1663,7 @@ export function AddItemPage({
                     return (
                       <div
                         key={row.id}
-                        className="grid gap-1.5 rounded-lg border border-border/70 bg-white p-1.5"
+                        className="grid gap-1.5 rounded-lg border border-border/70 bg-card p-1.5"
                       >
                         <div className="grid gap-1">
                           <Label>Name</Label>
@@ -2372,7 +2372,7 @@ export function AddItemPage({
               </>
             ) : (
               <div className="space-y-1.5 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-1">
-                <div className="rounded-lg border border-border/80 bg-white p-1.5">
+                <div className="rounded-lg border border-border/80 bg-card p-1.5">
                   <p className="text-[11px] font-semibold text-foreground lg:text-[10px]">Options</p>
                   <div className="mt-1.5 space-y-1.5">
                     <div className="space-y-1 lg:rounded-md lg:border lg:border-border/70 lg:bg-slate-50/50 lg:p-1.5">

@@ -359,7 +359,7 @@ export function PartiesListPage({
                     return (
                       <div
                         key={row.entityId}
-                        className="rounded-xl border border-border/70 bg-white p-3"
+                        className="rounded-xl border border-border/70 bg-card p-3"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div>

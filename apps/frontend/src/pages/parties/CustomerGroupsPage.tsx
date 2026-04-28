@@ -409,7 +409,7 @@ export function CustomerGroupsPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-border/80 bg-white lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          <div className="rounded-lg border border-border/80 bg-card lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {loading ? (
               <div className="p-3 text-xs text-muted-foreground">Loading customer groups...</div>
             ) : groups.length === 0 ? (
@@ -425,8 +425,8 @@ export function CustomerGroupsPage() {
                       key={group.id}
                       className={`flex min-h-8 items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-xs transition ${
                         selected
-                          ? "border-[#8fb6e2] bg-[#edf5ff] text-[#163a63]"
-                          : "border-border/70 bg-card text-foreground/80 hover:bg-white"
+                          ? "border-primary/35 bg-primary/15 text-foreground"
+                          : "border-border/70 bg-card text-foreground/80 hover:bg-muted/65"
                       }`}
                     >
                       <Button
@@ -445,7 +445,7 @@ export function CustomerGroupsPage() {
                             {group.memberCount} member{group.memberCount === 1 ? "" : "s"}
                           </span>
                         </span>
-                        <span className="ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-white/80 px-1 text-[10px] leading-none">
+                        <span className="ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-background/80 px-1 text-[10px] leading-none">
                           {group.memberCount}
                         </span>
                       </Button>
@@ -511,7 +511,7 @@ export function CustomerGroupsPage() {
 
         <CardContent className="space-y-2 p-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
           {!activeStore || !isBusinessSelected ? (
-            <div className="rounded-lg border border-dashed border-border/80 bg-white p-3 text-xs text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border/80 bg-card p-3 text-xs text-muted-foreground">
               Select a business to manage customer groups.
             </div>
           ) : (
@@ -543,7 +543,7 @@ export function CustomerGroupsPage() {
                 />
               </div>
 
-              <div className="rounded-lg border border-border/80 bg-slate-50 px-2.5 py-2">
+              <div className="rounded-lg border border-border/80 bg-card px-2.5 py-2">
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-xs font-medium text-foreground">Group status</p>
@@ -587,7 +587,7 @@ export function CustomerGroupsPage() {
                 </div>
 
                 {memberQuery.trim() ? (
-                  <div className="rounded-lg border border-border/80 bg-slate-50">
+                  <div className="rounded-lg border border-border/80 bg-card">
                     {addableCustomers.length === 0 ? (
                       <div className="p-2.5 text-xs text-muted-foreground">
                         No additional customers match this search.
@@ -626,7 +626,7 @@ export function CustomerGroupsPage() {
                   </div>
                 ) : null}
 
-                <div className="rounded-lg border border-border/80 bg-white lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                <div className="rounded-lg border border-border/80 bg-card lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                   {selectedCustomers.length === 0 && unavailableMembers.length === 0 ? (
                     <div className="p-3 text-xs text-muted-foreground">
                       No customers mapped to this group.

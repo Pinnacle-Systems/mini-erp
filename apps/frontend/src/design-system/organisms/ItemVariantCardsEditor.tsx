@@ -571,7 +571,7 @@ export function ItemVariantCardsEditor({
               Bulk Actions
             </Button>
             {showBulkMenu ? (
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-[10.5rem] rounded-lg border border-border/80 bg-white p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[10.5rem] rounded-lg border border-border/80 bg-card p-1 shadow-[0_8px_18px_rgba(15,23,42,0.12)]">
                 <div className="grid gap-1">
                   <Button
                     type="button"
@@ -657,7 +657,7 @@ export function ItemVariantCardsEditor({
                 <div
                   key={variant.id}
                   className={`app-mobile-variant-card ${
-                    highlightedVariantId === variant.id ? "bg-sky-50/90" : "bg-white/90"
+                    highlightedVariantId === variant.id ? "bg-sky-100/20" : "bg-card"
                   }`}
                 >
                   {isLocked ? (
