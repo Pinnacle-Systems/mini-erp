@@ -124,6 +124,18 @@ type PartyFinancialSummary = {
   }>;
 };
 
+type PartyBalanceRow = {
+  partyId: string;
+  partyName: string;
+  receivableOutstanding: number;
+  payableOutstanding: number;
+  receivableDocumentCount: number;
+  payableDocumentCount: number;
+  customerCreditAmount: number;
+  vendorCreditAmount: number;
+  lastActivityAt: string | null;
+};
+
 type MoneyMovementListRow = PartyFinancialSummary["recentMovements"][number];
 
 const ensureDefaults = async (tenantId: string) => {
@@ -188,9 +200,6 @@ const getAllowedTypesForFlow = (flow: DocumentFlow) =>
 
 const getFlowForMovementDirection = (direction: "INFLOW" | "OUTFLOW"): DocumentFlow =>
   direction === "INFLOW" ? "RECEIVABLE" : "PAYABLE";
-
-const getExpectedDirectionForFlow = (flow: DocumentFlow): "INFLOW" | "OUTFLOW" =>
-  flow === "RECEIVABLE" ? "INFLOW" : "OUTFLOW";
 
 const assertNoDuplicateAllocationDocuments = (allocations: AllocationInput[]) => {
   const seen = new Set<string>();
@@ -1213,6 +1222,94 @@ const getPartyFinancialSummary = async (
   };
 };
 
+const getPartyBalances = async (tenantId: string): Promise<PartyBalanceRow[]> => {
+  await ensureDefaults(tenantId);
+
+  const [receivables, payables] = await Promise.all([
+    getPostedDocumentsForFlow(tenantId, "RECEIVABLE"),
+    getPostedDocumentsForFlow(tenantId, "PAYABLE"),
+  ]);
+
+  const balancesByPartyId = new Map<string, PartyBalanceRow>();
+  const ensureParty = (document: OpenFinancialDocumentSummary) => {
+    const partyId = document.partyId ?? "unassigned";
+    const existing = balancesByPartyId.get(partyId);
+    if (existing) {
+      if (!existing.partyName && document.partyName) {
+        existing.partyName = document.partyName;
+      }
+      return existing;
+    }
+
+    const next: PartyBalanceRow = {
+      partyId,
+      partyName: document.partyName || "Unassigned party",
+      receivableOutstanding: 0,
+      payableOutstanding: 0,
+      receivableDocumentCount: 0,
+      payableDocumentCount: 0,
+      customerCreditAmount: 0,
+      vendorCreditAmount: 0,
+      lastActivityAt: null,
+    };
+    balancesByPartyId.set(partyId, next);
+    return next;
+  };
+  const applyLastActivity = (row: PartyBalanceRow, document: OpenFinancialDocumentSummary) => {
+    const activityAt = document.lastPaymentAt ?? document.postedAt;
+    if (!activityAt) return;
+    if (!row.lastActivityAt || activityAt.localeCompare(row.lastActivityAt) > 0) {
+      row.lastActivityAt = activityAt;
+    }
+  };
+
+  for (const document of receivables) {
+    const row = ensureParty(document);
+    if (document.outstandingAmount > SETTLEMENT_EPSILON) {
+      row.receivableOutstanding += document.outstandingAmount;
+      row.receivableDocumentCount += 1;
+    }
+    if (document.netOutstandingAmount < -SETTLEMENT_EPSILON) {
+      row.customerCreditAmount += Math.abs(document.netOutstandingAmount);
+    }
+    applyLastActivity(row, document);
+  }
+
+  for (const document of payables) {
+    const row = ensureParty(document);
+    if (document.outstandingAmount > SETTLEMENT_EPSILON) {
+      row.payableOutstanding += document.outstandingAmount;
+      row.payableDocumentCount += 1;
+    }
+    if (document.netOutstandingAmount < -SETTLEMENT_EPSILON) {
+      row.vendorCreditAmount += Math.abs(document.netOutstandingAmount);
+    }
+    applyLastActivity(row, document);
+  }
+
+  return [...balancesByPartyId.values()]
+    .map((row) => ({
+      ...row,
+      receivableOutstanding: Number(row.receivableOutstanding.toFixed(2)),
+      payableOutstanding: Number(row.payableOutstanding.toFixed(2)),
+      customerCreditAmount: Number(row.customerCreditAmount.toFixed(2)),
+      vendorCreditAmount: Number(row.vendorCreditAmount.toFixed(2)),
+    }))
+    .filter(
+      (row) =>
+        row.receivableOutstanding > SETTLEMENT_EPSILON ||
+        row.payableOutstanding > SETTLEMENT_EPSILON ||
+        row.customerCreditAmount > SETTLEMENT_EPSILON ||
+        row.vendorCreditAmount > SETTLEMENT_EPSILON,
+    )
+    .sort((left, right) => {
+      const leftExposure = Math.abs(left.receivableOutstanding - left.payableOutstanding);
+      const rightExposure = Math.abs(right.receivableOutstanding - right.payableOutstanding);
+      if (rightExposure !== leftExposure) return rightExposure - leftExposure;
+      return left.partyName.localeCompare(right.partyName);
+    });
+};
+
 const voidMoneyMovement = async (tenantId: string, movementId: string) => {
   const movement = await prismaAny.moneyMovement.findFirst({
     where: {
@@ -2128,6 +2225,7 @@ export default {
   createExpense,
   getOverview,
   getDocumentBalance,
+  getPartyBalances,
   getPartyFinancialSummary,
   buildSettlementMap,
 };

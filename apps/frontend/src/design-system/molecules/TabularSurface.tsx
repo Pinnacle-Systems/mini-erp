@@ -242,8 +242,8 @@ export function TabularCell({
   const cellRef = useRef<HTMLDivElement | null>(null);
   const [overflowTitle, setOverflowTitle] = useState<string | undefined>();
   const alignClassName = getAlignClassName(align);
-  const fallbackTitle = getHoverTitle(hoverTitle, children);
-  const resolvedTitle = title ?? overflowTitle;
+  const fallbackTitle = getHoverTitle(hoverTitle ?? (variant === "header" ? true : undefined), children);
+  const resolvedTitle = title ?? fallbackTitle ?? overflowTitle;
 
   const updateOverflowTitle = () => {
     if (title) {
