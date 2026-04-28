@@ -31,7 +31,16 @@ import {
 } from "../../features/auth/session-business";
 import { useLogoutFlow } from "../../features/auth/useLogoutFlow";
 import { useSyncActions } from "../../features/sync/SyncProvider";
-import { getPendingOutboxCount } from "../../features/sync/engine";
+import {
+  getInitialLocalStockActivityHistory,
+  getLocalItemPricingRowsForDisplay,
+  getLocalItemsForDisplay,
+  getLocalStockLevels,
+  type ItemDisplay,
+  type ItemPricingRow,
+  type StockActivityHistoryRow,
+  type StockLevelRow,
+} from "../../features/sync/engine";
 import { Button } from "../../design-system/atoms/Button";
 import {
   Card,
@@ -42,9 +51,20 @@ import {
 } from "../../design-system/molecules/Card";
 import { AppNavButton } from "../../design-system/molecules/AppNavButton";
 import { AppTabButton } from "../../design-system/molecules/AppTabButton";
-import { LandingAttentionCard } from "../../design-system/molecules/LandingAttentionCard";
 import { LandingQuickActionButton } from "../../design-system/molecules/LandingQuickActionButton";
-import { LandingRecentActivityItem } from "../../design-system/molecules/LandingRecentActivityItem";
+import {
+  TabularBody,
+  TabularCell,
+  TabularHeader,
+  TabularRow,
+  TabularSerialNumberCell,
+  TabularSerialNumberHeaderCell,
+  TabularSurface,
+} from "../../design-system/molecules/TabularSurface";
+import { withTabularSerialNumberColumn } from "../../design-system/molecules/tabularSerialNumbers";
+import { getFinancialOverview, type FinancialOverview } from "../finance/financial-api";
+import { getPurchaseOverview, type PurchaseOverview } from "../purchases/purchase-documents-api";
+import { getSalesOverview, type SalesOverview } from "../sales/sales-documents-api";
 
 type UserFolderId =
   | "finance"
@@ -520,36 +540,240 @@ const landingQuickActions: Array<{
   },
 ];
 
-const landingAttentionCards = [
-  {
-    label: "Low stock",
-    value: "14",
-    detail: "3 items below reorder level",
-  },
-  {
-    label: "Pending returns",
-    value: "6",
-    detail: "2 require manager review",
-  },
-  {
-    label: "Open orders",
-    value: "11",
-    detail: "5 due before 6 PM",
-  },
-];
+type LandingMetric = {
+  label: string;
+  value: string;
+  detail: string;
+};
 
-const landingRecentActivity = [
-  "Bill #B-2041 edited by Rina",
-  "Item 'Basmati Rice 5KG' repriced",
-  "Customer 'Asha Traders' added",
-  "Stock adjusted for SKU ST-992",
-];
+type LandingAttentionRow = {
+  id: string;
+  module: string;
+  subject: string;
+  reason: string;
+  amount: number | null;
+};
 
-const landingBusinessPulse = [
-  { label: "Today sales", value: "₹42,860" },
-  { label: "Invoices", value: "87" },
-  { label: "Avg invoice value", value: "₹493" },
-];
+type LandingRecentRow = {
+  id: string;
+  occurredAt: string | null;
+  module: string;
+  subject: string;
+  detail: string;
+  amount: number | null;
+  direction?: "INFLOW" | "OUTFLOW";
+};
+
+type LandingDashboard = {
+  metrics: LandingMetric[];
+  attentionRows: LandingAttentionRow[];
+  recentRows: LandingRecentRow[];
+};
+
+const emptyLandingDashboard: LandingDashboard = {
+  metrics: [
+    { label: "Today Sales", value: "-", detail: "Posted sales invoices today" },
+    { label: "Invoices Today", value: "-", detail: "Sales invoice count" },
+    { label: "Receivable", value: "-", detail: "Customer outstanding" },
+    { label: "Payable", value: "-", detail: "Supplier outstanding" },
+    { label: "Low Stock", value: "-", detail: "Variants at 5 units or below" },
+    { label: "Catalog Attention", value: "-", detail: "Missing SKU, category, or price" },
+  ],
+  attentionRows: [],
+  recentRows: [],
+};
+
+const LOW_STOCK_THRESHOLD = 5;
+
+const formatCurrency = (value: number | null) =>
+  value === null
+    ? "-"
+    : new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value || 0);
+
+const formatDateTime = (value: string | null) => {
+  if (!value) return "-";
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const formatSignedCurrency = (value: number | null, direction?: "INFLOW" | "OUTFLOW") => {
+  if (value === null) return "-";
+  return `${direction === "OUTFLOW" ? "-" : direction === "INFLOW" ? "+" : ""}${formatCurrency(value)}`;
+};
+
+const aggregateStockLevels = (rows: StockLevelRow[]) => {
+  const byVariant = new Map<string, StockLevelRow>();
+  for (const row of rows) {
+    const existing = byVariant.get(row.variantId);
+    if (!existing) {
+      byVariant.set(row.variantId, { ...row });
+      continue;
+    }
+    existing.quantityOnHand += row.quantityOnHand;
+  }
+  return [...byVariant.values()];
+};
+
+const groupPricingRowsByItemId = (rows: ItemPricingRow[]) =>
+  rows.reduce<Map<string, ItemPricingRow[]>>((acc, row) => {
+    acc.set(row.itemId, [...(acc.get(row.itemId) ?? []), row]);
+    return acc;
+  }, new Map());
+
+const getCatalogAttentionCount = (
+  items: ItemDisplay[],
+  salesPricingRows: ItemPricingRow[],
+  purchasePricingRows: ItemPricingRow[],
+) => {
+  const salesByItemId = groupPricingRowsByItemId(salesPricingRows);
+  const purchaseByItemId = groupPricingRowsByItemId(purchasePricingRows);
+  let count = 0;
+
+  for (const item of items) {
+    if (!item.isActive) continue;
+    if (!item.category.trim()) count += 1;
+    if (!item.sku.trim() && item.variantSkus.every((sku) => !sku.trim())) count += 1;
+    const salesRows = salesByItemId.get(item.entityId) ?? [];
+    if (salesRows.length === 0 || salesRows.some((row) => row.amount === null)) count += 1;
+    if (item.itemType === "PRODUCT") {
+      const purchaseRows = purchaseByItemId.get(item.entityId) ?? [];
+      if (purchaseRows.length === 0 || purchaseRows.some((row) => row.amount === null)) count += 1;
+    }
+  }
+
+  return count;
+};
+
+const buildLandingDashboard = (input: {
+  salesOverview: SalesOverview | null;
+  purchaseOverview: PurchaseOverview | null;
+  financialOverview: FinancialOverview | null;
+  stockLevels: StockLevelRow[];
+  stockActivity: StockActivityHistoryRow[];
+  catalogItems: ItemDisplay[];
+  salesPricingRows: ItemPricingRow[];
+  purchasePricingRows: ItemPricingRow[];
+}): LandingDashboard => {
+  const stockRows = aggregateStockLevels(input.stockLevels);
+  const lowStockRows = stockRows
+    .filter((row) => row.quantityOnHand <= LOW_STOCK_THRESHOLD)
+    .sort((left, right) => left.quantityOnHand - right.quantityOnHand);
+  const catalogAttentionCount = getCatalogAttentionCount(
+    input.catalogItems,
+    input.salesPricingRows,
+    input.purchasePricingRows,
+  );
+  const attentionRows: LandingAttentionRow[] = [
+    ...(input.salesOverview?.needsAttention ?? []).slice(0, 4).map((row) => ({
+      id: `sales:${row.id}`,
+      module: "Sales",
+      subject: `${row.documentNo} - ${row.customerName}`,
+      reason: row.reasonLabel,
+      amount: row.amount,
+    })),
+    ...(input.purchaseOverview?.needsAttention ?? []).slice(0, 4).map((row) => ({
+      id: `purchase:${row.id}`,
+      module: "Purchases",
+      subject: `${row.documentNo} - ${row.supplierName}`,
+      reason: row.reasonLabel,
+      amount: row.amount,
+    })),
+    ...lowStockRows.slice(0, 4).map((row) => ({
+      id: `stock:${row.variantId}`,
+      module: "Stock",
+      subject: row.variantName || row.itemName,
+      reason:
+        row.quantityOnHand < 0
+          ? "Negative stock"
+          : row.quantityOnHand === 0
+            ? "Out of stock"
+            : "Low stock",
+      amount: null,
+    })),
+  ].slice(0, 8);
+
+  const recentRows: LandingRecentRow[] = [
+    ...(input.salesOverview?.recentActivity ?? []).map((row) => ({
+      id: `sales:${row.id}`,
+      occurredAt: row.updatedAt,
+      module: "Sales",
+      subject: row.documentNo,
+      detail: `${row.customerName} - ${row.status}`,
+      amount: row.amount,
+    })),
+    ...(input.purchaseOverview?.recentActivity ?? []).map((row) => ({
+      id: `purchase:${row.id}`,
+      occurredAt: row.updatedAt,
+      module: "Purchases",
+      subject: row.documentNo,
+      detail: `${row.supplierName} - ${row.status}`,
+      amount: row.amount,
+    })),
+    ...(input.financialOverview?.recentMovements ?? []).map((row) => ({
+      id: `finance:${row.id}`,
+      occurredAt: row.occurredAt,
+      module: "Finance",
+      subject: row.sourceDocumentNumber || row.sourceKind,
+      detail: row.partyName || row.accountName,
+      amount: row.amount,
+      direction: row.direction,
+    })),
+    ...input.stockActivity.map((row) => ({
+      id: `stock:${row.entityId}`,
+      occurredAt: row.occurredAt,
+      module: "Stock",
+      subject: row.itemName,
+      detail: `${row.locationName || "Unknown location"} - ${row.quantityDelta < 0 ? "-" : "+"}${Math.abs(row.quantityDelta)}`,
+      amount: null,
+    })),
+  ]
+    .sort((left, right) => (right.occurredAt ?? "").localeCompare(left.occurredAt ?? ""))
+    .slice(0, 8);
+
+  return {
+    metrics: [
+      {
+        label: "Today Sales",
+        value: formatCurrency(input.salesOverview?.kpis.todaySalesAmount ?? null),
+        detail: "Posted sales invoices today",
+      },
+      {
+        label: "Invoices Today",
+        value:
+          input.salesOverview?.kpis.todaySalesDocumentCount === undefined
+            ? "-"
+            : String(input.salesOverview.kpis.todaySalesDocumentCount),
+        detail: "Sales invoice count",
+      },
+      {
+        label: "Receivable",
+        value: formatCurrency(input.financialOverview?.receivableTotal ?? null),
+        detail: "Customer outstanding",
+      },
+      {
+        label: "Payable",
+        value: formatCurrency(input.financialOverview?.payableTotal ?? null),
+        detail: "Supplier outstanding",
+      },
+      {
+        label: "Low Stock",
+        value: String(lowStockRows.length),
+        detail: `Variants at ${LOW_STOCK_THRESHOLD} units or below`,
+      },
+      {
+        label: "Catalog Attention",
+        value: String(catalogAttentionCount),
+        detail: "Missing SKU, category, or price",
+      },
+    ],
+    attentionRows,
+    recentRows,
+  };
+};
 
 const MOBILE_NAV_BUTTON_WIDTH_PX = 80;
 const MOBILE_NAV_BUTTON_GAP_PX = 4;
@@ -563,6 +787,8 @@ export function AppHomePage() {
   const { loading: isSyncing, onSyncNow } = useSyncActions();
   const businesses = useSessionStore((state) => state.businesses);
   const activeStore = useSessionStore((state) => state.activeStore);
+  const activeLocationId = useSessionStore((state) => state.activeLocationId);
+  const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
   const activeBusinessModules = useSessionStore(
     (state) => state.activeBusinessModules,
   );
@@ -591,7 +817,11 @@ export function AppHomePage() {
         ? null
         : inferFolderIdFromPathname(window.location.pathname),
   );
-  const [pendingOutboxCount, setPendingOutboxCount] = useState(0);
+  const [landingDashboard, setLandingDashboard] = useState<LandingDashboard>(
+    emptyLandingDashboard,
+  );
+  const [landingLoading, setLandingLoading] = useState(false);
+  const [landingError, setLandingError] = useState<string | null>(null);
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   const [mobileVisibleFolderCount, setMobileVisibleFolderCount] = useState(1);
   const [isOnline, setIsOnline] = useState(() =>
@@ -750,6 +980,98 @@ export function AppHomePage() {
       landingQuickActions.filter((action) => visibleAppIds.has(action.appId)),
     [visibleAppIds],
   );
+
+  const loadLandingDashboard = useCallback(async () => {
+    if (!activeStore || !isBusinessSelected) {
+      setLandingDashboard(emptyLandingDashboard);
+      return;
+    }
+
+    setLandingLoading(true);
+    try {
+      const [
+        salesResult,
+        purchaseResult,
+        financeResult,
+        stockLevelsResult,
+        stockActivityResult,
+        catalogItemsResult,
+        salesPricingResult,
+        purchasePricingResult,
+      ] = await Promise.allSettled([
+        visibleAppIds.has("sales-overview")
+          ? getSalesOverview(activeLocationId ?? undefined)
+          : Promise.resolve(null),
+        visibleAppIds.has("purchase-overview")
+          ? getPurchaseOverview(activeLocationId ?? undefined)
+          : Promise.resolve(null),
+        visibleAppIds.has("finance-overview")
+          ? getFinancialOverview(activeStore)
+          : Promise.resolve(null),
+        visibleAppIds.has("stock-overview")
+          ? getLocalStockLevels(activeStore)
+          : Promise.resolve([]),
+        visibleAppIds.has("stock-overview")
+          ? getInitialLocalStockActivityHistory(activeStore)
+          : Promise.resolve([]),
+        visibleAppIds.has("catalog-overview")
+          ? getLocalItemsForDisplay(activeStore)
+          : Promise.resolve([]),
+        visibleAppIds.has("catalog-overview")
+          ? getLocalItemPricingRowsForDisplay(activeStore, undefined, true, "SALES")
+          : Promise.resolve([]),
+        visibleAppIds.has("catalog-overview")
+          ? getLocalItemPricingRowsForDisplay(activeStore, undefined, true, "PURCHASE")
+          : Promise.resolve([]),
+      ]);
+
+      const rejectedResults = [
+        salesResult,
+        purchaseResult,
+        financeResult,
+        stockLevelsResult,
+        stockActivityResult,
+        catalogItemsResult,
+        salesPricingResult,
+        purchasePricingResult,
+      ].filter((result) => result.status === "rejected");
+
+      for (const result of rejectedResults) {
+        console.error(result.reason);
+      }
+
+      setLandingDashboard(
+        buildLandingDashboard({
+          salesOverview: salesResult.status === "fulfilled" ? salesResult.value : null,
+          purchaseOverview: purchaseResult.status === "fulfilled" ? purchaseResult.value : null,
+          financialOverview: financeResult.status === "fulfilled" ? financeResult.value : null,
+          stockLevels: stockLevelsResult.status === "fulfilled" ? stockLevelsResult.value : [],
+          stockActivity:
+            stockActivityResult.status === "fulfilled" ? stockActivityResult.value : [],
+          catalogItems: catalogItemsResult.status === "fulfilled" ? catalogItemsResult.value : [],
+          salesPricingRows:
+            salesPricingResult.status === "fulfilled" ? salesPricingResult.value : [],
+          purchasePricingRows:
+            purchasePricingResult.status === "fulfilled" ? purchasePricingResult.value : [],
+        }),
+      );
+      setLandingError(
+        rejectedResults.length > 0
+          ? "Some dashboard data could not be refreshed. Showing available data."
+          : null,
+      );
+    } finally {
+      setLandingLoading(false);
+    }
+  }, [activeLocationId, activeStore, isBusinessSelected, visibleAppIds]);
+
+  useEffect(() => {
+    if (routeDrivenAppId) {
+      return;
+    }
+
+    void loadLandingDashboard();
+  }, [loadLandingDashboard, routeDrivenAppId]);
 
   const activeFolder = useMemo(
     () => visibleFolders.find((folder) => folder.id === activeFolderId) ?? null,
@@ -943,30 +1265,6 @@ export function AppHomePage() {
     };
   }, [visibleFolders.length]);
 
-  useEffect(() => {
-    if (!activeStore) {
-      queueMicrotask(() => {
-        setPendingOutboxCount(0);
-      });
-      return;
-    }
-
-    let cancelled = false;
-    void getPendingOutboxCount(activeStore)
-      .then((count) => {
-        if (!cancelled) {
-          setPendingOutboxCount(count);
-        }
-      })
-      .catch((error: unknown) => {
-        console.error(error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeStore]);
-
   const handleAppSelect = (appId: UserAppId) => {
     setShowCollapsedFolderFlyout(false);
     navigate(`/app/${APP_ROUTE_SEGMENT_BY_ID[appId]}`);
@@ -995,14 +1293,25 @@ export function AppHomePage() {
   };
 
   const renderLandingPlaceholder = () => {
+    const attentionGridTemplate = withTabularSerialNumberColumn(
+      "minmax(0,0.75fr) minmax(0,1.45fr) minmax(0,1.25fr) minmax(0,0.8fr)",
+    );
+    const recentGridTemplate = withTabularSerialNumberColumn(
+      "minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,1.25fr) minmax(0,1.1fr) minmax(0,0.75fr)",
+    );
+
     return (
       <section className="space-y-2 lg:grid lg:h-full lg:grid-cols-12 lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-2 lg:space-y-0 lg:overflow-hidden">
         <Card className="p-2 lg:col-span-8">
           <CardHeader className="mb-0">
             <CardTitle>Today Ops</CardTitle>
             <CardDescription>
-              Placeholder dashboard for <strong>{activeBusinessName}</strong>.
-              Replace each card with live data as modules are implemented.
+              Live operating snapshot for <strong>{activeBusinessName}</strong>.
+              {landingLoading ? (
+                <span className="ml-2 border-l border-border/80 pl-2 text-[10px]">
+                  Refreshing dashboard...
+                </span>
+              ) : null}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 sm:grid-cols-3">
@@ -1023,7 +1332,7 @@ export function AppHomePage() {
         </Card>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:col-span-4">
-          {landingBusinessPulse.map((metric) => (
+          {landingDashboard.metrics.slice(0, 3).map((metric) => (
             <Card key={metric.label} className="p-2">
               <CardContent className="p-0">
                 <p className="app-shell-caption">
@@ -1032,86 +1341,169 @@ export function AppHomePage() {
                 <p className="app-shell-value mt-1">
                   {metric.value}
                 </p>
+                <p className="mt-1 truncate text-[10px] text-muted-foreground">{metric.detail}</p>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        <div className="grid gap-2 lg:col-span-8 lg:min-h-0 lg:grid-cols-2">
-          <Card className="p-2">
+        <div className="grid gap-2 lg:col-span-12 lg:min-h-0 lg:grid-cols-2">
+          <Card className="min-h-0 p-2 lg:flex lg:flex-col">
             <CardHeader className="mb-1 p-0">
               <CardTitle className="app-shell-section-title">Needs Attention</CardTitle>
               <CardDescription>
-                Placeholder alert layout for future operational exceptions.
+                Exceptions pulled from sales, purchases, stock, and catalog.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-2 p-0">
-              {landingAttentionCards.map((card) => (
-                <LandingAttentionCard
-                  key={card.label}
-                  label={card.label}
-                  value={card.value}
-                  detail={card.detail}
-                />
-              ))}
+            <CardContent className="min-h-0 p-0 lg:flex lg:flex-1 lg:flex-col">
+              <div className="space-y-2 lg:hidden">
+                {landingDashboard.attentionRows.length === 0 ? (
+                  <div className="rounded-lg border border-border/80 bg-muted/55 px-3 py-2 text-xs text-muted-foreground">
+                    No operational exceptions are in view.
+                  </div>
+                ) : null}
+                {landingDashboard.attentionRows.map((row) => (
+                  <div key={row.id} className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{row.subject}</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {row.module} - {row.reason}
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">{formatCurrency(row.amount)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <TabularSurface className="hidden min-h-[12rem] overflow-hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+                <TabularHeader>
+                  <TabularRow columns={attentionGridTemplate}>
+                    <TabularSerialNumberHeaderCell />
+                    <TabularCell variant="header">Module</TabularCell>
+                    <TabularCell variant="header">Subject</TabularCell>
+                    <TabularCell variant="header">Reason</TabularCell>
+                    <TabularCell variant="header" align="end">
+                      Amount
+                    </TabularCell>
+                  </TabularRow>
+                </TabularHeader>
+                <TabularBody className="overflow-y-auto">
+                  {landingDashboard.attentionRows.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-muted-foreground">
+                      No operational exceptions are in view.
+                    </div>
+                  ) : null}
+                  {landingDashboard.attentionRows.map((row, index) => (
+                    <TabularRow key={row.id} columns={attentionGridTemplate} interactive>
+                      <TabularSerialNumberCell index={index} />
+                      <TabularCell>{row.module}</TabularCell>
+                      <TabularCell truncate hoverTitle={row.subject}>
+                        {row.subject}
+                      </TabularCell>
+                      <TabularCell truncate hoverTitle={row.reason}>
+                        {row.reason}
+                      </TabularCell>
+                      <TabularCell align="end" className="font-semibold text-foreground">
+                        {formatCurrency(row.amount)}
+                      </TabularCell>
+                    </TabularRow>
+                  ))}
+                </TabularBody>
+              </TabularSurface>
             </CardContent>
           </Card>
 
-          <Card className="p-2">
+          <Card className="min-h-0 p-2 lg:flex lg:flex-col">
             <CardHeader className="mb-1 p-0">
               <CardTitle className="app-shell-section-title">Recent Work</CardTitle>
               <CardDescription>
-                Placeholder activity layout until real history is wired in.
+                Recent document, payment, and stock activity across enabled modules.
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-0">
-              <ul className="space-y-1.5">
-                {landingRecentActivity.slice(0, 4).map((entry) => (
-                  <LandingRecentActivityItem key={entry} entry={entry} />
+            <CardContent className="min-h-0 p-0 lg:flex lg:flex-1 lg:flex-col">
+              <div className="space-y-2 lg:hidden">
+                {landingDashboard.recentRows.length === 0 ? (
+                  <div className="rounded-lg border border-border/80 bg-muted/55 px-3 py-2 text-xs text-muted-foreground">
+                    Recent activity will appear here after work is recorded.
+                  </div>
+                ) : null}
+                {landingDashboard.recentRows.map((row) => (
+                  <div key={row.id} className="rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{row.subject}</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {row.module} - {row.detail}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {formatDateTime(row.occurredAt)}
+                        </p>
+                      </div>
+                      <p
+                        className={
+                          row.direction === "OUTFLOW"
+                            ? "text-sm font-semibold text-destructive"
+                            : "text-sm font-semibold text-foreground"
+                        }
+                      >
+                        {formatSignedCurrency(row.amount, row.direction)}
+                      </p>
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
+              <TabularSurface className="hidden min-h-[12rem] overflow-hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+                <TabularHeader>
+                  <TabularRow columns={recentGridTemplate}>
+                    <TabularSerialNumberHeaderCell />
+                    <TabularCell variant="header">When</TabularCell>
+                    <TabularCell variant="header">Module</TabularCell>
+                    <TabularCell variant="header">Activity</TabularCell>
+                    <TabularCell variant="header">Detail</TabularCell>
+                    <TabularCell variant="header" align="end">
+                      Amount
+                    </TabularCell>
+                  </TabularRow>
+                </TabularHeader>
+                <TabularBody className="overflow-y-auto">
+                  {landingDashboard.recentRows.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-muted-foreground">
+                      Recent activity will appear here after work is recorded.
+                    </div>
+                  ) : null}
+                  {landingDashboard.recentRows.map((row, index) => (
+                    <TabularRow key={row.id} columns={recentGridTemplate} interactive>
+                      <TabularSerialNumberCell index={index} />
+                      <TabularCell truncate hoverTitle={formatDateTime(row.occurredAt)}>
+                        {formatDateTime(row.occurredAt)}
+                      </TabularCell>
+                      <TabularCell>{row.module}</TabularCell>
+                      <TabularCell truncate hoverTitle={row.subject}>
+                        {row.subject}
+                      </TabularCell>
+                      <TabularCell truncate hoverTitle={row.detail}>
+                        {row.detail}
+                      </TabularCell>
+                      <TabularCell
+                        align="end"
+                        className={row.direction === "OUTFLOW" ? "font-semibold text-destructive" : "font-semibold text-foreground"}
+                      >
+                        {formatSignedCurrency(row.amount, row.direction)}
+                      </TabularCell>
+                    </TabularRow>
+                  ))}
+                </TabularBody>
+              </TabularSurface>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="p-2 lg:col-span-4 lg:min-h-0">
-          <CardHeader className="mb-1 p-0">
-            <CardTitle className="app-shell-section-title">Search + Sync</CardTitle>
-            <CardDescription>
-              Reserved area for future global lookup and sync controls.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2 p-0">
-            <div className="app-shell-caption rounded-lg border border-dashed border-border/80 bg-muted/65 px-3 py-2">
-              Search controls will appear here when global lookup is
-              implemented.
-            </div>
-            <div className="app-shell-caption rounded-lg border border-border/80 bg-muted/50 px-3 py-2">
-              <p>Sync summary placeholder for the current business.</p>
-              <p>
-                Current queued item count can be shown here once the shell
-                status card is finalized.
-              </p>
-              <p>
-                Current local outbox count:{" "}
-                <span className="font-semibold text-foreground">
-                  {pendingOutboxCount}
-                </span>
-              </p>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                onClick={() => navigate("/app/settings")}
-                type="button"
-                variant="outline"
-                size="sm"
-                className="app-shell-header-control px-3"
-              >
-                Open settings
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {landingError ? (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive lg:col-span-12">
+            {landingError}
+          </div>
+        ) : null}
       </section>
     );
   };
