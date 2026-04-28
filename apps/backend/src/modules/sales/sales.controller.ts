@@ -1679,6 +1679,15 @@ export const deleteSalesDocument = catchAsync(async (req, res) => {
 export const getSalesOverview = catchAsync(async (req, res) => {
   const tenantId = req.user.tenantId;
   const { locationId } = req.query as { locationId?: string };
+  if (!tenantId) {
+    throw new ForbiddenError("Select a business to continue");
+  }
+  if (locationId) {
+    const location = await tenantService.validateBusinessLocation(tenantId, locationId);
+    if (!location) {
+      throw new BadRequestError("Selected location is not available");
+    }
+  }
 
   const overview = await getSalesOverviewService(tenantId, locationId);
 
