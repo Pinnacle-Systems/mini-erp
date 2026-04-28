@@ -34,7 +34,9 @@ android {
 
 android.applicationVariants.configureEach { variant ->
     variant.outputs.configureEach { output ->
-        output.outputFileName = "pinnacle-billing-${variant.name}.apk"
+        if (variant.buildType.name == "release") {
+            output.outputFileName = "pinnacle-billing-${variant.name}.apk"
+        }
     }
 }
 
