@@ -14,7 +14,6 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: dev_pgadmin
     restart: always
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
@@ -25,13 +24,6 @@ services:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
       - postgres
-
-  redis:
-    image: redis:8-alpine
-    container_name: redis
-    restart: always
-    ports:
-      - "6379:6379"
 
 volumes:
   pgdata:
