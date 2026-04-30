@@ -2436,11 +2436,16 @@ export function useSalesDocumentWorkspace({
             notes: localDraft.notes,
             lines: localDraft.lines,
           });
-    await postSalesDocumentDraft(serverDraft.id, tenantId, config.documentType);
-    setPersistedDuplicateMeta(serverDraft.id, null);
+    const postedDraft = await postSalesDocumentDraft(
+      serverDraft.id,
+      tenantId,
+      config.documentType,
+    );
+    const effectivePostedAt = postedDraft.postedAt ?? postedAt;
+    setPersistedDuplicateMeta(postedDraft.id, null);
     setServerInvoices((current) => [
-      { ...serverDraft, status: "OPEN", postedAt },
-      ...current.filter((invoice) => invoice.id !== serverDraft.id),
+      { ...postedDraft, status: postedDraft.status ?? "OPEN", postedAt: effectivePostedAt },
+      ...current.filter((invoice) => invoice.id !== postedDraft.id),
     ]);
 
     if (activeDraftSource === "local") {
@@ -2452,8 +2457,8 @@ export function useSalesDocumentWorkspace({
     setViewMode(isPosMode ? "editor" : "list");
     setSaveFeedback(
       isPosMode
-        ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted. Ready for the next sale.`
-        : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${serverDraft.billNumber} posted.`,
+        ? `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${postedDraft.billNumber} posted. Ready for the next sale.`
+        : `${config.singularLabel[0].toUpperCase()}${config.singularLabel.slice(1)} ${postedDraft.billNumber} posted.`,
       "success",
     );
 
@@ -2469,10 +2474,10 @@ export function useSalesDocumentWorkspace({
     );
 
     return {
-      billNumber: serverDraft.billNumber,
-      customerName: serverDraft.customerName,
-      locationId: serverDraft.locationId ?? null,
-      postedAt,
+      billNumber: postedDraft.billNumber,
+      customerName: postedDraft.customerName,
+      locationId: postedDraft.locationId ?? null,
+      postedAt: effectivePostedAt,
       lines: localDraft.lines.map((line) => ({ ...line })),
       ...receiptTotals,
     };

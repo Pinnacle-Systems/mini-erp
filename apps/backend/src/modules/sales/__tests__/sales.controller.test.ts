@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import accountsService from "../../accounts/accounts.service.js";
 import { documentLinkService } from "../document-link.service.js";
 import { postDraftDocument, transitionDocumentState } from "../sales.controller.js";
 import { stockPostingService } from "../stock-posting.service.js";
@@ -256,5 +257,151 @@ describe("sales.controller transitionDocumentState", () => {
         },
       ),
     ).rejects.toThrow("invoice requires an existing customer for credit transactions");
+  });
+
+  it("assigns a walk-in customer and records receipt when posting a cash invoice without a customer", async () => {
+    const tx = createSalesTxMock();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: "invoice-3",
+        business_id: "tenant-1",
+        type: "SALES_INVOICE",
+        status: "DRAFT",
+        posted_at: null,
+        deleted_at: null,
+        cancel_reason: null,
+        doc_number: "INV-0003",
+        parent_id: null,
+        party_id: null,
+        party_snapshot: null,
+        settlement_mode: "CASH",
+        grand_total: "220.50",
+        children: [],
+        lineItems: [
+          {
+            id: "line-1",
+            target_links: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "invoice-3",
+        business_id: "tenant-1",
+        type: "SALES_INVOICE",
+        status: "OPEN",
+        posted_at: new Date("2026-03-14T00:00:00.000Z"),
+        updated_at: new Date("2026-03-14T00:00:00.000Z"),
+        deleted_at: null,
+        cancel_reason: null,
+        doc_number: "INV-0003",
+        parent_id: null,
+        party_id: "walkin-1",
+        party_snapshot: {
+          role: "customer",
+          name: "Walk-in Customer",
+          phone: null,
+          address: null,
+          taxId: null,
+        },
+        settlement_mode: "CASH",
+        grand_total: "220.50",
+        children: [],
+        lineItems: [
+          {
+            id: "line-1",
+            target_links: [],
+          },
+        ],
+      });
+    tx.party.findFirst.mockResolvedValue(null);
+    tx.party.create.mockResolvedValue({
+      id: "walkin-1",
+      business_id: "tenant-1",
+      name: "Walk-in Customer",
+      phone: null,
+      email: null,
+      address: null,
+      tax_id: null,
+      type: "CUSTOMER",
+      is_active: true,
+      deleted_at: null,
+      created_at: new Date("2026-03-14T00:00:00.000Z"),
+      updated_at: new Date("2026-03-14T00:00:00.000Z"),
+    });
+    tx.financialAccount.findFirst.mockResolvedValue({ id: "cash-account-1" });
+    tx.document.update = vi.fn().mockResolvedValue(undefined);
+    tx.documentHistory.create = vi.fn().mockResolvedValue(undefined);
+
+    const upsertSpy = vi
+      .spyOn(documentLinkService, "upsertLinksForDocument")
+      .mockResolvedValue(undefined);
+    const stockSpy = vi
+      .spyOn(stockPostingService, "applyPostingEffects")
+      .mockResolvedValue(undefined);
+    const ensureDefaultsSpy = vi
+      .spyOn(accountsService, "ensureDefaults")
+      .mockResolvedValue(undefined);
+    const receiptSpy = vi
+      .spyOn(accountsService, "createReceivedPayment")
+      .mockResolvedValue({
+        id: "payment-1",
+        account_name: "Cash on Hand",
+        reference_no: null,
+        occurred_at: new Date("2026-03-14T00:00:00.000Z"),
+      } as never);
+
+    await postDraftDocument(
+      tx as never,
+      "tenant-1",
+      "SALES_INVOICE",
+      "invoice-3",
+      {
+        userId: "user-1",
+        name: "Test User",
+      },
+    );
+
+    expect(tx.party.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        business_id: "tenant-1",
+        name: "Walk-in Customer",
+        type: "CUSTOMER",
+      }),
+    });
+    expect(tx.document.update).toHaveBeenCalledWith({
+      where: { id: "invoice-3" },
+      data: expect.objectContaining({
+        status: "OPEN",
+        party_id: "walkin-1",
+        party_snapshot: {
+          role: "customer",
+          name: "Walk-in Customer",
+          phone: null,
+          address: null,
+          taxId: null,
+        },
+      }),
+    });
+    expect(receiptSpy).toHaveBeenCalledWith(
+      "tenant-1",
+      expect.objectContaining({
+        amount: 220.5,
+        financialAccountId: "cash-account-1",
+        partyId: "walkin-1",
+        allocations: [
+          {
+            documentType: "SALES_INVOICE",
+            documentId: "invoice-3",
+            allocatedAmount: 220.5,
+          },
+        ],
+      }),
+      tx,
+    );
+
+    upsertSpy.mockRestore();
+    stockSpy.mockRestore();
+    ensureDefaultsSpy.mockRestore();
+    receiptSpy.mockRestore();
   });
 });

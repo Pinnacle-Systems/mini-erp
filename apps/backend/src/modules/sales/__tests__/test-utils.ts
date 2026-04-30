@@ -15,6 +15,13 @@ export const createSalesTxMock = () => {
     findMany: vi.fn(),
     findUnique: vi.fn(),
   },
+  party: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+  },
+  financialAccount: {
+    findFirst: vi.fn(),
+  },
   businessLocation: {
     findFirst: vi.fn(),
   },
