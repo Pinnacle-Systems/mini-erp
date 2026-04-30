@@ -95,6 +95,8 @@ const SALES_DOCUMENT_CONVERSION_RULES: Partial<
   SALES_INVOICE: ["SALES_RETURN"],
 };
 
+const WALK_IN_CUSTOMER_NAME = "Walk-in Customer";
+
 const usesTransactionType = (documentType: SalesDocumentType) =>
   documentType === "SALES_INVOICE";
 
@@ -501,6 +503,121 @@ const getDocumentLocationReference = async (
     locationId: defaultLocation.id,
     locationName: defaultLocation.name,
   };
+};
+
+const buildCustomerSyncSnapshot = (customer: {
+  id: string;
+  business_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  tax_id: string | null;
+  type: string;
+  is_active: boolean | null;
+  deleted_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}) => ({
+  id: customer.id,
+  businessId: customer.business_id,
+  name: customer.name,
+  phone: customer.phone ?? null,
+  email: customer.email ?? null,
+  address: customer.address ?? null,
+  gstNo: customer.tax_id ?? null,
+  type: customer.type,
+  isActive: customer.is_active ?? true,
+  deletedAt: customer.deleted_at?.toISOString() ?? null,
+  createdAt: customer.created_at.toISOString(),
+  updatedAt: customer.updated_at.toISOString(),
+});
+
+const getOrCreateWalkInCustomer = async (
+  tx: SalesTransactionClient,
+  tenantId: string,
+) => {
+  const existing = await tx.party.findFirst({
+    where: {
+      business_id: tenantId,
+      name: WALK_IN_CUSTOMER_NAME,
+      deleted_at: null,
+      is_active: true,
+      type: {
+        in: ["CUSTOMER", "BOTH"],
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      address: true,
+      tax_id: true,
+    },
+  });
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = await tx.party.create({
+    data: {
+      business_id: tenantId,
+      name: WALK_IN_CUSTOMER_NAME,
+      phone: null,
+      email: null,
+      address: null,
+      tax_id: null,
+      type: "CUSTOMER",
+      is_active: true,
+      deleted_at: null,
+    },
+  });
+
+  await appendSyncChange(
+    tx,
+    tenantId,
+    "customer",
+    created.id,
+    "CREATE",
+    buildCustomerSyncSnapshot(created),
+  );
+
+  return {
+    id: created.id,
+    name: created.name,
+    phone: created.phone,
+    address: created.address,
+    tax_id: created.tax_id,
+  };
+};
+
+const getDefaultCashAccount = async (
+  tx: SalesTransactionClient,
+  tenantId: string,
+) => {
+  await accountsService.ensureDefaults(tenantId);
+
+  const account = await tx.financialAccount.findFirst({
+    where: {
+      business_id: tenantId,
+      account_type: "CASH",
+      is_active: true,
+      archived_at: null,
+    },
+    orderBy: {
+      created_at: "asc",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!account) {
+    throw new BadRequestError("Default cash account is not configured");
+  }
+
+  return account;
 };
 
 const getVariantSnapshotMap = async (
@@ -1222,6 +1339,23 @@ export const postDraftDocument = async (
     );
   }
 
+  const isCashSalesInvoice =
+    document.type === "SALES_INVOICE" && document.settlement_mode !== "CREDIT";
+  const walkInCustomer =
+    isCashSalesInvoice && !document.party_id
+      ? await getOrCreateWalkInCustomer(tx, tenantId)
+      : null;
+  const effectivePartyId = document.party_id ?? walkInCustomer?.id ?? null;
+  const effectivePartySnapshot = walkInCustomer
+    ? buildPartySnapshot({
+        role: "customer",
+        name: walkInCustomer.name,
+        phone: walkInCustomer.phone ?? "",
+        address: walkInCustomer.address ?? "",
+        taxId: walkInCustomer.tax_id ?? "",
+      })
+    : partySnapshot;
+
   await documentLinkService.upsertLinksForDocument(
     tx,
     tenantId,
@@ -1230,11 +1364,19 @@ export const postDraftDocument = async (
   );
   await stockPostingService.applyPostingEffects(tx, tenantId, documentId);
 
+  const postedAt = new Date();
   await tx.document.update({
     where: { id: documentId },
     data: {
       status: "OPEN",
-      posted_at: new Date(),
+      posted_at: postedAt,
+      ...(walkInCustomer
+        ? {
+            party_id: walkInCustomer.id,
+            party_snapshot: effectivePartySnapshot,
+            shipping_addr: walkInCustomer.address ?? null,
+          }
+        : {}),
     },
   });
 
@@ -1249,6 +1391,47 @@ export const postDraftDocument = async (
       reason: "POSTED",
     },
   });
+
+  if (isCashSalesInvoice && Number(document.grand_total ?? 0) > 0.01) {
+    const cashAccount = await getDefaultCashAccount(tx, tenantId);
+    const payment = await accountsService.createReceivedPayment(
+      tenantId,
+      {
+        occurredAt: postedAt.toISOString(),
+        amount: Number(document.grand_total ?? 0),
+        financialAccountId: cashAccount.id,
+        partyId: effectivePartyId ?? undefined,
+        notes: `Auto-receipt for Sales Invoice: ${document.doc_number}`,
+        allocations: [
+          {
+            documentType: "SALES_INVOICE",
+            documentId: document.id,
+            allocatedAmount: Number(document.grand_total ?? 0),
+          },
+        ],
+      },
+      tx as any,
+    );
+
+    await recordDocumentHistory(tx, {
+      tenantId,
+      documentId,
+      eventType: "STATUS_CHANGED",
+      actor,
+      fromStatus: "OPEN",
+      toStatus: "OPEN",
+      metadata: {
+        reason: "AUTO_PAYMENT_RECORDED",
+        paymentAccountName:
+          typeof payment.account_name === "string" && payment.account_name.trim()
+            ? payment.account_name
+            : null,
+        paymentReference: payment.reference_no ?? null,
+        paymentOccurredAt:
+          payment.occurred_at instanceof Date ? payment.occurred_at.toISOString() : null,
+      },
+    });
+  }
 
   if (document.parent_id) {
     const parent = await tx.document.findFirst({
