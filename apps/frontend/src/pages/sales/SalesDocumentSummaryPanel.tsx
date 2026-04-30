@@ -43,26 +43,6 @@ export function SalesDocumentSummaryPanel({
   desktopRailInset = true,
   className,
 }: SalesDocumentSummaryPanelProps) {
-  const paidAtPosting =
-    Boolean(financialBalance?.lastPaymentAt) &&
-    Boolean(financialBalance?.postedAt) &&
-    financialBalance?.lastPaymentAt === financialBalance?.postedAt;
-  const settlementSummaryDate =
-    financialBalance?.fullySettledAt ?? financialBalance?.lastPaymentAt ?? null;
-  const settlementSummaryDateLabel = settlementSummaryDate
-    ? config.documentType === "SALES_INVOICE"
-      ? paidAtPosting
-        ? "Collected"
-        : financialBalance?.fullySettledAt
-          ? "Settled"
-          : "Last receipt"
-      : paidAtPosting
-        ? "Paid"
-        : financialBalance?.fullySettledAt
-          ? "Settled"
-          : "Last payout"
-    : null;
-
   return (
     <div
       className={`w-full border-t border-border/70 pt-2 md:w-[280px] md:border-t-0 md:pt-0 ${
@@ -108,79 +88,38 @@ export function SalesDocumentSummaryPanel({
                 {formatCurrency(totals.grandTotal)}
               </span>
             </div>
-            <div className="border-t border-border/70" />
-            <div className="space-y-1 rounded-lg border border-border/70 bg-muted/50 py-1.5">
-              <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
-                Settlement
-              </div>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-2 text-xs">
-                <div className="mb-1.5 min-w-0">
-                  <div className="text-muted-foreground">
-                    {config.documentType === "SALES_INVOICE" ? "Cash collected" : "Paid out"}
-                  </div>
-                  {settlementSummaryDate && settlementSummaryDateLabel ? (
-                    <div className="text-[10px] leading-snug text-muted-foreground/75">
-                      {settlementSummaryDateLabel}:{" "}
-                      {new Date(settlementSummaryDate).toLocaleDateString()}
-                    </div>
-                  ) : null}
-                </div>
-                <span className="font-semibold text-foreground">
-                  {formatCurrency(financialBalance.paidAmount)}
-                </span>
-              </div>
-              {financialBalance.appliedReturnAmount > 0 ? (
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 text-xs">
-                  <span className="text-muted-foreground">Returns applied</span>
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(financialBalance.appliedReturnAmount)}
-                  </span>
-                </div>
-              ) : null}
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-card px-2 py-1.5 text-xs">
-                <div className="flex items-center gap-1">
-                  <span
-                    className={
-                      financialBalance.netOutstandingAmount < 0
-                        ? "font-semibold text-fuchsia-700"
-                        : "font-semibold text-foreground"
-                    }
-                  >
-                    {financialBalance.netOutstandingAmount < 0 ? "Customer credit" : "Outstanding"}
-                  </span>
-                  {financialBalance.netOutstandingAmount < 0 ? (
-                    <span
-                      className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-fuchsia-200/80 bg-fuchsia-50/80 text-fuchsia-700/85"
-                      title="Receipts and returns exceed the invoice total. A customer credit or refund is due."
-                      aria-label="Customer credit explanation"
-                    >
-                      <Info className="h-2 w-2" aria-hidden="true" />
-                    </span>
-                  ) : null}
-                </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 text-xs leading-tight">
+              <div className="flex min-w-0 items-center gap-1">
                 <span
                   className={
                     financialBalance.netOutstandingAmount < 0
-                      ? "font-semibold text-fuchsia-700"
-                      : "font-semibold text-foreground"
+                      ? "truncate font-semibold text-fuchsia-700"
+                      : "truncate text-muted-foreground"
                   }
                 >
-                  {formatCurrency(Math.abs(financialBalance.netOutstandingAmount))}
+                  {financialBalance.netOutstandingAmount < 0
+                    ? "Customer credit"
+                    : "Outstanding"}
                 </span>
+                {financialBalance.netOutstandingAmount < 0 ? (
+                  <span
+                    className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-fuchsia-200/80 bg-fuchsia-50/80 text-fuchsia-700/85"
+                    title="Receipts and returns exceed the invoice total. A customer credit or refund is due."
+                    aria-label="Customer credit explanation"
+                  >
+                    <Info className="h-2 w-2" aria-hidden="true" />
+                  </span>
+                ) : null}
               </div>
-              {financialBalance.netOutstandingAmount >= 0 &&
-              financialBalance.paidAmount <= 0.01 &&
-              financialBalance.appliedReturnAmount > 0.01 ? (
-                <div className="px-2 text-[11px] text-muted-foreground">
-                  This invoice is settled by linked sales returns. No cash receipt has been recorded.
-                </div>
-              ) : financialBalance.netOutstandingAmount >= 0 &&
-                financialBalance.paidAmount > 0.01 &&
-                financialBalance.appliedReturnAmount > 0.01 ? (
-                <div className="px-2 text-[11px] text-muted-foreground">
-                  This invoice is settled by a combination of cash receipts and linked sales returns.
-                </div>
-              ) : null}
+              <span
+                className={
+                  financialBalance.netOutstandingAmount < 0
+                    ? "font-semibold text-fuchsia-700"
+                    : "font-semibold text-foreground"
+                }
+              >
+                {formatCurrency(Math.abs(financialBalance.netOutstandingAmount))}
+              </span>
             </div>
           </>
         ) : (

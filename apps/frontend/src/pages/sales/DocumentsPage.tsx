@@ -1236,7 +1236,7 @@ function SalesDocumentWorkspace({
                   ) : null}
                 </div>
                 <div className="lg:hidden">{customerField}</div>
-                {!isPosMode ? (
+                {!isPosMode && (!isViewingPostedDocument || notes.trim()) ? (
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="sales-bill-notes">Notes</Label>
                     {!isViewingPostedDocument || notes.trim() ? (
