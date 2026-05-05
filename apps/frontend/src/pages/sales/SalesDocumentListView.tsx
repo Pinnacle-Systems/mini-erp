@@ -79,6 +79,7 @@ type SalesDocumentListViewProps = {
   activeDraftId: string | null;
   openRowMenuId: string | null;
   onOpenNewDraft: () => void;
+  onOpenRow: (row: InvoiceListRow) => void;
   onToggleRowMenu: (
     rowId: string,
     triggerElement: HTMLButtonElement,
@@ -96,6 +97,7 @@ export function SalesDocumentListView({
   activeDraftId,
   openRowMenuId,
   onOpenNewDraft,
+  onOpenRow,
   onToggleRowMenu,
   getRowMenuActions,
 }: SalesDocumentListViewProps) {
@@ -189,11 +191,20 @@ export function SalesDocumentListView({
             invoiceRows.map((row) => (
               <div
                 key={`${row.source}:${row.id}`}
-                className={`rounded-lg border px-2 py-2 text-xs ${
+                className={`cursor-pointer rounded-lg border px-2 py-2 text-xs ${
                   row.source === "local" && row.id === activeDraftId
                     ? "border-primary/25 bg-primary/10 text-primary"
                     : "border-border/70 bg-card text-foreground"
                 }`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenRow(row)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpenRow(row);
+                  }
+                }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -243,6 +254,7 @@ export function SalesDocumentListView({
                         <div
                           className="relative"
                           onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
                         >
                           <IconButton
                             type="button"
@@ -272,6 +284,7 @@ export function SalesDocumentListView({
                         <div
                           className="relative"
                           onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
                         >
                           <IconButton
                             type="button"
@@ -332,7 +345,20 @@ export function SalesDocumentListView({
                 </TabularHeader>
                 <TabularBody className="overflow-y-auto">
                 {invoiceRows.map((row, index) => (
-                  <TabularRow key={`${row.source}:${row.id}`} columns={desktopGridTemplate} interactive>
+                  <TabularRow
+                    key={`${row.source}:${row.id}`}
+                    columns={desktopGridTemplate}
+                    interactive
+                    className="cursor-pointer"
+                    tabIndex={0}
+                    onClick={() => onOpenRow(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onOpenRow(row);
+                      }
+                    }}
+                  >
                     <TabularSerialNumberCell index={index} />
                     <TabularCell truncate hoverTitle={row.billNumber} className="font-semibold text-foreground">
                       {row.billNumber}
@@ -400,6 +426,7 @@ export function SalesDocumentListView({
                           <div
                             className="relative inline-flex"
                             onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <IconButton
                               type="button"

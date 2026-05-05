@@ -340,6 +340,8 @@ function SalesDocumentWorkspace({
     isViewingPostedDocument,
     itemOptions,
     lines,
+    loadDraft,
+    loadServerDraft,
     lookupError,
     lookupLoading,
     notes,
@@ -634,6 +636,13 @@ function SalesDocumentWorkspace({
           activeDraftId={activeDraftId}
           openRowMenuId={openRowMenuId}
           onOpenNewDraft={openNewDraft}
+          onOpenRow={(row) => {
+            if (row.source === "local") {
+              loadDraft(row.draft);
+              return;
+            }
+            loadServerDraft(row.invoice);
+          }}
           onToggleRowMenu={toggleRowMenu}
           getRowMenuActions={getRowMenuActions}
         />

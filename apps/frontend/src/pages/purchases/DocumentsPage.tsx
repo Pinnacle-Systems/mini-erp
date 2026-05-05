@@ -604,7 +604,19 @@ function PurchaseDocumentWorkspace({
               </div>
             ) : (
               documentRows.map((row) => (
-                <div key={row.id} className="rounded-lg border border-border/70 bg-card px-2 py-2 text-xs">
+                <div
+                  key={row.id}
+                  className="cursor-pointer rounded-lg border border-border/70 bg-card px-2 py-2 text-xs"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDocumentRow(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openDocumentRow(row);
+                    }
+                  }}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{row.billNumber}</div>
@@ -638,7 +650,10 @@ function PurchaseDocumentWorkspace({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => openDocumentRow(row)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openDocumentRow(row);
+                      }}
                     >
                       {row.status === "DRAFT" ? "Open Draft" : "View"}
                     </Button>
@@ -648,6 +663,7 @@ function PurchaseDocumentWorkspace({
                       variant="ghost"
                       className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-primary hover:bg-muted/70"
                       onClick={(event) => {
+                        event.stopPropagation();
                         rowMenuButtonRefs.current.set(row.id, event.currentTarget);
                         setOpenRowMenuId(row.id);
                         setRowMenuAnchorRect(event.currentTarget.getBoundingClientRect());
@@ -696,7 +712,20 @@ function PurchaseDocumentWorkspace({
                   </TabularHeader>
                   <TabularBody className="overflow-y-auto">
                     {documentRows.map((row, index) => (
-                      <TabularRow key={row.id} columns={withTabularSerialNumberColumn(showSourceColumn ? (showPaymentColumn ? "minmax(0,1fr) minmax(0,1.45fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem") : (showPaymentColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem"))} interactive>
+                      <TabularRow
+                        key={row.id}
+                        columns={withTabularSerialNumberColumn(showSourceColumn ? (showPaymentColumn ? "minmax(0,1fr) minmax(0,1.45fr) minmax(0,0.9fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.95fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem") : (showPaymentColumn ? "minmax(0,1.1fr) minmax(0,1.55fr) minmax(0,0.8fr) minmax(0,0.8fr) minmax(0,0.7fr) minmax(0,0.9fr) 4.5rem" : "minmax(0,1.2fr) minmax(0,1.75fr) minmax(0,0.85fr) minmax(0,0.75fr) minmax(0,0.9fr) 4.5rem"))}
+                        interactive
+                        className="cursor-pointer"
+                        tabIndex={0}
+                        onClick={() => openDocumentRow(row)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openDocumentRow(row);
+                          }
+                        }}
+                      >
                         <TabularSerialNumberCell index={index} />
                         <TabularCell truncate hoverTitle={row.billNumber} className="font-semibold text-foreground">
                           {row.billNumber}
@@ -736,6 +765,7 @@ function PurchaseDocumentWorkspace({
                               variant="ghost"
                               className="h-7 w-7 rounded-full border-none bg-transparent p-0 text-primary hover:bg-muted/70"
                               onClick={(event) => {
+                                event.stopPropagation();
                                 rowMenuButtonRefs.current.set(row.id, event.currentTarget);
                                 setOpenRowMenuId(row.id);
                                 setRowMenuAnchorRect(event.currentTarget.getBoundingClientRect());
