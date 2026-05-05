@@ -1595,6 +1595,10 @@ export function useSalesDocumentWorkspace({
       return;
     }
 
+    if (documentId) {
+      return;
+    }
+
     if (billNumber === nextBillNumber) {
       return;
     }
@@ -1605,6 +1609,7 @@ export function useSalesDocumentWorkspace({
     activeDraftSource,
     billNumber,
     billNumberIsAuto,
+    documentId,
     nextBillNumber,
   ]);
 
