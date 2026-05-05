@@ -3,6 +3,7 @@ import {
   Copy,
   Eye,
   FileOutput,
+  HandCoins,
   History,
   RotateCcw,
   Trash2,
@@ -1407,6 +1408,20 @@ export function useSalesDocumentWorkspace({
         void openDocumentHistory(row.invoice);
       },
     });
+    if (
+      row.invoice.documentType === "SALES_INVOICE" &&
+      !["CANCELLED", "VOID"].includes(row.invoice.status ?? "") &&
+      (!row.invoice.settlement || row.invoice.settlement.outstandingAmount > 0.01)
+    ) {
+      actions.push({
+        key: "record-receipt",
+        label: "Record Receipt",
+        icon: HandCoins,
+        onSelect: () => {
+          navigate(`/app/payments-received?documentId=${encodeURIComponent(row.invoice.id)}`);
+        },
+      });
+    }
     actions.push({
       key: "duplicate",
       label: `Duplicate ${documentLabel}`,
