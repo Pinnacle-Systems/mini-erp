@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRightLeft, ListChecks, RotateCcw, Trash2 } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../design-system/atoms/Button";
 import { Input } from "../../design-system/atoms/Input";
 import { Label } from "../../design-system/atoms/Label";
@@ -118,6 +118,7 @@ const clampAllocationInput = (value: string, maxAmount?: number) => {
 
 export function PaymentsPage({ flow }: PaymentsPageProps) {
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeStore = useSessionStore((state) => state.activeStore);
   const isBusinessSelected = useSessionStore((state) => state.isBusinessSelected);
@@ -230,11 +231,31 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
     () => movements.find((movement) => movement.id === applyingMovementId) ?? null,
     [applyingMovementId, movements],
   );
+  const requestedDocument = useMemo(
+    () => documents.find((document) => document.id === requestedDocumentId) ?? null,
+    [documents, requestedDocumentId],
+  );
+  const isInvoiceStartedPaymentFlow = Boolean(requestedDocumentId && !selectedMovement);
 
   useEffect(() => {
     if (!selectedMovement) return;
     setWorkspaceStep("REVIEW");
   }, [selectedMovement]);
+
+  useEffect(() => {
+    if (!isInvoiceStartedPaymentFlow || !requestedDocument) return;
+
+    const nextAmount = Number(amount);
+    const nextAllocatedAmount =
+      Number.isFinite(nextAmount) && nextAmount > 0
+        ? Math.min(nextAmount, requestedDocument.outstandingAmount)
+        : 0;
+
+    setAllocationMode("MANUAL");
+    setAllocationInputs({
+      [requestedDocument.id]: nextAllocatedAmount > 0 ? String(nextAllocatedAmount) : "",
+    });
+  }, [amount, isInvoiceStartedPaymentFlow, requestedDocument]);
 
   const loadSelectedPaymentAllocations = useCallback(async () => {
     if (!selectedMovement) {
@@ -341,8 +362,8 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
   const isWorkspaceOpen = Boolean(requestedDocumentId || requestedMovementId || requestedMode === "new");
   const isExistingPaymentFlow = Boolean(selectedMovement);
   const isReviewStep = workspaceStep === "REVIEW";
-  const showInvoiceReview = allocationMode !== "ADVANCE";
-  const canGoBackToDetails = !isExistingPaymentFlow && isReviewStep;
+  const showInvoiceReview = !isInvoiceStartedPaymentFlow && allocationMode !== "ADVANCE";
+  const canGoBackToDetails = !isExistingPaymentFlow && !isInvoiceStartedPaymentFlow && isReviewStep;
 
   const reviewTitle = isExistingPaymentFlow
     ? `Apply Existing ${paymentLabel}`
@@ -368,7 +389,9 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
 
   const submitButtonLabel = loading
     ? "Saving..."
-    : isExistingPaymentFlow
+    : isInvoiceStartedPaymentFlow
+      ? `Save ${paymentLabel}`
+      : isExistingPaymentFlow
       ? `Apply Existing ${paymentLabel}`
       : allocationMode === "ADVANCE"
         ? `Save ${paymentLabel} as Unapplied Credit`
@@ -376,7 +399,9 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
           ? `Confirm and Save ${paymentLabel}`
           : `Save ${paymentLabel}`;
 
-  const stepIndicatorLabel = isExistingPaymentFlow
+  const stepIndicatorLabel = isInvoiceStartedPaymentFlow
+    ? "Invoice payment"
+    : isExistingPaymentFlow
     ? "Review and Apply"
     : isReviewStep
       ? "Step 2 of 2: Review"
@@ -443,6 +468,9 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
   };
 
   const handlePartyChange = (nextPartyId: string) => {
+    if (isInvoiceStartedPaymentFlow) {
+      return;
+    }
     setPartyId(nextPartyId);
     setAllocationInputs({});
     setApplyingMovementId("");
@@ -610,6 +638,15 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
         await recordReceivedPayment(payload);
       } else {
         await recordMadePayment(payload);
+      }
+
+      if (isInvoiceStartedPaymentFlow && requestedDocumentId) {
+        navigate(
+          flow === "RECEIVABLE"
+            ? `/app/sales-bills/${encodeURIComponent(requestedDocumentId)}`
+            : `/app/purchase-invoices/${encodeURIComponent(requestedDocumentId)}`,
+        );
+        return;
       }
 
       resetComposer();
@@ -938,6 +975,10 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                   <CardDescription>
                     {isExistingPaymentFlow
                       ? `Review how the remaining ${paymentLabel.toLowerCase()} balance should be applied for ${partyName}.`
+                      : isInvoiceStartedPaymentFlow
+                        ? `Enter the ${paymentLabel.toLowerCase()} details for ${
+                            requestedDocument?.billNumber ?? "the selected invoice"
+                          }. The invoice allocation is already selected.`
                       : isReviewStep
                         ? reviewDescription
                         : `Enter the ${paymentLabel.toLowerCase()} details first, then review the outcome before saving.`}
@@ -967,17 +1008,21 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                   <p className="text-muted-foreground">
                     {isExistingPaymentFlow
                       ? "Payment details are fixed. Choose how the remaining balance should be allocated."
+                      : isInvoiceStartedPaymentFlow
+                        ? `${
+                            requestedDocument?.billNumber ?? "The selected invoice"
+                          } is selected. Save once the account, date, and amount are correct.`
                       : isReviewStep
                         ? reviewDescription
                         : `Choose whether this ${paymentLabel.toLowerCase()} should stay unapplied, auto apply, or be allocated manually.`}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/70 bg-muted/45 px-2 py-1 text-[11px] text-muted-foreground">
-                  {allocationModeLabel}
+                  {isInvoiceStartedPaymentFlow ? "Invoice selected" : allocationModeLabel}
                 </div>
               </div>
 
-              {!isExistingPaymentFlow && !isReviewStep ? (
+              {!isExistingPaymentFlow && !isInvoiceStartedPaymentFlow && !isReviewStep ? (
                 <div className="grid gap-1 rounded-lg border border-border/80 bg-muted/35 px-2.5 py-2 text-[11px] text-muted-foreground lg:grid-cols-3">
                   <p>
                     <span className="font-semibold text-foreground">1. Enter details</span> for the{" "}
@@ -1003,7 +1048,7 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                         id={`payment-party-${flow}`}
                         value={partyId}
                         onChange={(event) => handlePartyChange(event.target.value)}
-                        disabled={loading}
+                        disabled={loading || isInvoiceStartedPaymentFlow}
                       >
                         <option value="">Select {counterpartyLabel.toLowerCase()}</option>
                         {parties.map((party) => (
@@ -1050,21 +1095,23 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                         disabled={loading}
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor={`payment-mode-${flow}`}>
-                        How should this {paymentLabel.toLowerCase()} be used?
-                      </Label>
-                      <Select
-                        id={`payment-mode-${flow}`}
-                        value={allocationMode}
-                        onChange={(event) => setAllocationMode(event.target.value as AllocationMode)}
-                        disabled={loading}
-                      >
-                        <option value="MANUAL">I will choose invoice amounts</option>
-                        <option value="AUTO">Auto apply to oldest invoices</option>
-                        <option value="ADVANCE">Keep entire amount as unapplied credit</option>
-                      </Select>
-                    </div>
+                    {!isInvoiceStartedPaymentFlow ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`payment-mode-${flow}`}>
+                          How should this {paymentLabel.toLowerCase()} be used?
+                        </Label>
+                        <Select
+                          id={`payment-mode-${flow}`}
+                          value={allocationMode}
+                          onChange={(event) => setAllocationMode(event.target.value as AllocationMode)}
+                          disabled={loading}
+                        >
+                          <option value="MANUAL">I will choose invoice amounts</option>
+                          <option value="AUTO">Auto apply to oldest invoices</option>
+                          <option value="ADVANCE">Keep entire amount as unapplied credit</option>
+                        </Select>
+                      </div>
+                    ) : null}
                     <div className="space-y-1.5">
                       <Label htmlFor={`payment-ref-${flow}`}>Reference</Label>
                       <Input
@@ -1093,16 +1140,28 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                         {partyName}
                       </p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
-                        {hasPartySelected
+                        {isInvoiceStartedPaymentFlow
+                          ? "Selected from the invoice."
+                          : hasPartySelected
                           ? "Open invoices will load for this party in review."
                           : `Choose a ${counterpartyLabel.toLowerCase()} to continue.`}
                       </p>
                     </div>
                     <div className="rounded-lg border border-border/80 bg-muted/55 px-2.5 py-2">
-                      <p className="text-[10px] text-muted-foreground">Open Invoices</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">{documents.length}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {isInvoiceStartedPaymentFlow ? "Selected Invoice" : "Open Invoices"}
+                      </p>
+                      <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                        {isInvoiceStartedPaymentFlow
+                          ? requestedDocument?.billNumber ?? "Invoice"
+                          : documents.length}
+                      </p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
-                        {showInvoiceReview
+                        {isInvoiceStartedPaymentFlow
+                          ? requestedDocument
+                            ? `Due ${formatCurrency(requestedDocument.outstandingAmount)}.`
+                            : "Loading invoice balance."
+                          : showInvoiceReview
                           ? "Review step will show matching invoices."
                           : "Review step will skip invoice allocation."}
                       </p>
@@ -1125,21 +1184,29 @@ export function PaymentsPage({ flow }: PaymentsPageProps) {
                         {formatCurrency(remainingAmount)}
                       </p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
-                        {allocationModeLabel}
+                        {isInvoiceStartedPaymentFlow ? "Only excess stays unapplied." : allocationModeLabel}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-2 border-t border-border/70 pt-2 lg:flex-row lg:items-end lg:justify-between">
                     <p className="text-[11px] text-muted-foreground">
-                      {allocationMode === "ADVANCE"
+                      {isInvoiceStartedPaymentFlow
+                        ? `${formatCurrency(allocatedAmount)} will be applied to ${
+                            requestedDocument?.billNumber ?? "this invoice"
+                          }.`
+                        : allocationMode === "ADVANCE"
                         ? `Continue to review this ${paymentLabel.toLowerCase()} as unapplied credit.`
                         : allocationMode === "AUTO"
                           ? `Continue to review the oldest invoices that will be applied automatically.`
                           : `Continue to the invoice allocation step and choose how much should be applied on each row.`}
                     </p>
-                    <Button type="button" onClick={openReviewStep} disabled={loading}>
-                      Continue To Review
+                    <Button
+                      type="button"
+                      onClick={isInvoiceStartedPaymentFlow ? () => void onSubmit() : openReviewStep}
+                      disabled={loading}
+                    >
+                      {isInvoiceStartedPaymentFlow ? submitButtonLabel : "Continue To Review"}
                     </Button>
                   </div>
                 </>
