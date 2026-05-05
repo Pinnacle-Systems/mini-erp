@@ -399,34 +399,10 @@ function PurchaseDocumentWorkspace({
   const cashPostingAccount = financialAccounts.find(
     (account) => account.id === selectedFinancialAccountId,
   );
-  const paidAtPosting =
-    Boolean(financialBalance?.lastPaymentAt) &&
-    Boolean(financialBalance?.postedAt) &&
-    financialBalance?.lastPaymentAt === financialBalance?.postedAt;
-  const shouldShowCashSettlementRow = Boolean(
-    financialBalance && financialBalance.paidAmount > 0.01,
-  );
   const shouldShowPurchaseSettlementSummary =
     config.documentType === "PURCHASE_INVOICE" && Boolean(financialBalance);
-  const settlementSummaryDate =
-    shouldShowCashSettlementRow
-      ? financialBalance?.fullySettledAt ?? financialBalance?.lastPaymentAt ?? null
-      : null;
-  const settlementSummaryDateLabel = settlementSummaryDate
-    ? paidAtPosting
-      ? "Paid"
-      : financialBalance?.fullySettledAt
-        ? "Settled"
-        : "Last pay"
-    : null;
-  const settlementExplanation = financialBalance
-    ? financialBalance.netOutstandingAmount < 0
-      ? "Payments and returns exceed the invoice total. A supplier credit or refund is due."
-      : financialBalance.paidAmount <= 0.01 && financialBalance.appliedReturnAmount > 0.01
-        ? "This invoice is settled by linked purchase returns. No cash payment has been recorded."
-        : financialBalance.paidAmount > 0.01 && financialBalance.appliedReturnAmount > 0.01
-          ? "This invoice is settled by a combination of cash payments and linked purchase returns."
-          : null
+  const settlementExplanation = financialBalance && financialBalance.netOutstandingAmount < 0
+    ? "Payments and returns exceed the invoice total. A supplier credit or refund is due."
     : null;
 
   useEffect(() => {
@@ -1108,66 +1084,22 @@ function PurchaseDocumentWorkspace({
                         <span className="text-muted-foreground">Tax</span>
                         <span className="font-semibold text-foreground">{formatCurrency(totals.taxTotal)}</span>
                       </div>
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-muted/55 py-1.5 text-xs">
-                        <span className="font-semibold text-foreground">Grand total</span>
-                        <span className="text-[15px] font-extrabold text-foreground">{formatCurrency(totals.grandTotal)}</span>
-                      </div>
                     </div>
-                    {shouldShowPurchaseSettlementSummary ? <div className="border-t border-border/70" /> : null}
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-muted/55 px-2 py-1.5 text-xs">
+                      <span className="font-semibold text-foreground">Grand total</span>
+                      <span className="text-sm font-extrabold text-foreground">{formatCurrency(totals.grandTotal)}</span>
+                    </div>
                     {shouldShowPurchaseSettlementSummary && financialBalance
                       ? (() => {
                           const settlement = financialBalance;
                           return (
-                            <div className="space-y-1 rounded-lg border border-border/70 bg-muted/50 py-1.5">
-                              <div className="px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
-                                Settlement
-                              </div>
-                              {shouldShowCashSettlementRow ? (
-                                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-2 text-xs">
-                                  <div className="mb-1.5 min-w-0">
-                                    <div className="text-muted-foreground">
-                                      {config.documentType === "PURCHASE_INVOICE"
-                                        ? "Cash paid"
-                                        : "Received back"}
-                                    </div>
-                                    {settlementSummaryDate && settlementSummaryDateLabel ? (
-                                      <div className="text-[10px] leading-snug text-muted-foreground/75">
-                                        {settlementSummaryDateLabel}:{" "}
-                                        {new Date(settlementSummaryDate).toLocaleDateString()}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                  <span className="font-semibold text-foreground">
-                                    {formatCurrency(settlement.paidAmount)}
-                                  </span>
-                                </div>
-                              ) : null}
-                              {settlement.appliedReturnAmount > 0 ? (
-                                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 text-xs">
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-muted-foreground">Returns applied</span>
-                                    {settlementExplanation && settlement.netOutstandingAmount >= 0 ? (
-                                      <span
-                                        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-border/70 bg-card text-muted-foreground/80"
-                                        title={settlementExplanation}
-                                        aria-label="Settlement explanation"
-                                      >
-                                        <Info className="h-2 w-2" aria-hidden="true" />
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <span className="font-semibold text-foreground">
-                                    {formatCurrency(settlement.appliedReturnAmount)}
-                                  </span>
-                                </div>
-                              ) : null}
-                              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border/70 bg-card px-2 py-1.5 text-xs">
+                              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 text-xs leading-tight">
                                 <div className="flex items-center gap-1">
                                   <span
                                     className={
                                       settlement.netOutstandingAmount < 0
                                         ? "font-semibold text-fuchsia-700"
-                                        : "font-semibold text-foreground"
+                                        : "text-muted-foreground"
                                     }
                                   >
                                     {settlement.netOutstandingAmount < 0
@@ -1194,7 +1126,6 @@ function PurchaseDocumentWorkspace({
                                   {formatCurrency(Math.abs(settlement.netOutstandingAmount))}
                                 </span>
                               </div>
-                            </div>
                           );
                         })()
                       : null}
