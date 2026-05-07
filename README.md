@@ -11,6 +11,10 @@ Mini ERP is a pnpm workspace with a React frontend and an Express + Prisma backe
 
 The canonical product rules live in [ARCHITECTURE.md](/home/ajay/workspace/mini-erp/ARCHITECTURE.md) and [DESIGN_GUIDELINES.md](/home/ajay/workspace/mini-erp/DESIGN_GUIDELINES.md).
 
+Current product-state docs:
+
+- [docs/features-and-gaps.md](/home/ajay/workspace/mini-erp/docs/features-and-gaps.md)
+
 ## Repo setup
 
 ### Prerequisites
